@@ -1,0 +1,38 @@
+{
+  "name": "trydood",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index",
+    "dev": "nodemon server.js",
+    "build": "echo \"Building the project...\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Mahadev",
+  "license": "ISC",
+  "description": "E-commerece application with user authentication, voucher management, and payment integration.",
+  "dependencies": {
+    "2factor": "^1.0.6",
+    "axios": "^1.13.2",
+    "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.8.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "email-validator": "^2.0.4",
+    "express": "^5.2.1",
+    "express-fileupload": "^1.5.2",
+    "firebase-admin": "^13.6.0",
+    "joi": "^18.0.2",
+    "jsonwebtoken": "^9.0.3",
+    "moment": "^2.30.1",
+    "mongoose": "^9.0.2",
+    "morgan": "^1.10.1",
+    "node-cron": "^4.2.1",
+    "pdfkit": "^0.17.2",
+    "razorpay": "^2.9.6",
+    "validator": "^13.15.26"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}
