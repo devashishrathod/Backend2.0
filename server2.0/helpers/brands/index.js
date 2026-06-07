@@ -1,3 +1,3 @@
-const generateUniqueBrandId = require("./generateUniqueBrandId");
+const { generateUniqueBrandId } = require("./generateUniqueBrandId");
 
 module.exports = { generateUniqueBrandId };
