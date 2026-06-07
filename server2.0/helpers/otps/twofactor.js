@@ -1,4 +1,3 @@
-require("dotenv").config();
 const APIKEY = process.env.TWO_FACTOR_API_KEY;
 const TwoFactor = new (require("2factor"))(APIKEY);
 var axios = require("axios");
@@ -11,7 +10,7 @@ exports.sendOTP = async (mobile) => {
     },
     (error) => {
       console.log("error: ", error);
-    }
+    },
   );
 };
 
@@ -22,7 +21,7 @@ exports.verifyOTP = async (sessionId, otp) => {
     },
     (error) => {
       console.log("error: ", error);
-    }
+    },
   );
 };
 

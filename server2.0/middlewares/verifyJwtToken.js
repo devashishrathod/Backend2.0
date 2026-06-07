@@ -1,5 +1,4 @@
 const jwt = require("jsonwebtoken");
-require("dotenv").config();
 const { getUserById } = require("../services/users");
 const { throwError, asyncWrapper } = require("../utils");
 

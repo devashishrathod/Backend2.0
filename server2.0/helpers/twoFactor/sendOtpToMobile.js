@@ -1,4 +1,3 @@
-require("dotenv").config();
 const axios = require("axios");
 const { throwError } = require("../../utils");
 const APIKEY = process.env.TWO_FACTOR_API_KEY;

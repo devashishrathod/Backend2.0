@@ -35,7 +35,7 @@ exports.updateBrand = async (userId, payload) => {
   }
   if (businessEntityType) updateData.businessEntityType = businessEntityType;
 
-  await Brand.findOneAndUpdate({ userId }, updateData, { new: true });
+  await Brand.findOneAndUpdate({ userId }, updateData);
   if (
     updateData.businessRegistrationStatus ===
     BUSINESS_REGISTRATION_STATUS.UNREGISTERED
