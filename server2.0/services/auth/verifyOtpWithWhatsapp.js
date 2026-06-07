@@ -11,7 +11,7 @@ exports.verifyOtpWithWhatsapp = async (body) => {
   if (!user) throwError(404, "Invalid Whatsapp number, user not found!");
   await verifyOtp(whatsappNumber, otp);
   user.isMobileVerified = true;
-  if (currentScreen) user.currentScreen = currentScreen.toUpperCase();
+  if (currentScreen) user.currentScreen = currentScreen.toUpperCase().trim();
   await user.save();
   const token = user.getSignedJwtToken();
   return { user, token };

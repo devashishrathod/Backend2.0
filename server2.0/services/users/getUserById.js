@@ -3,8 +3,8 @@ const { throwError } = require("../../utils");
 
 exports.getUserById = async (userId) => {
   const user = await User.findOne({ _id: userId, isDeleted: false }).select(
-    "-password -otp -isDeleted"
+    "-password -otp -isDeleted",
   );
-  if (!user) throwError(404, "User not found");
+  if (!user) throwError(401, "Unauthorized access! User not found.");
   return user;
 };

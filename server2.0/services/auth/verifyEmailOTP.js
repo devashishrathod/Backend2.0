@@ -5,7 +5,7 @@ const { sendOtpVerificationSuccessMail } = require("../../helpers/nodeMailer");
 const { LOGIN_TYPES, ROLES } = require("../../constants");
 
 exports.verifyEmailOTP = async (body) => {
-  let { otp, email, role } = body;
+  let { otp, email, role, currentScreen } = body;
   email = email?.toLowerCase();
   role = role?.toUpperCase() || ROLES.ADMIN;
   let user = await User.findOne({ email, role, isDeleted: false }).select(
@@ -18,6 +18,7 @@ exports.verifyEmailOTP = async (body) => {
     user.isEmailVerified = true;
     user.isLoggedIn = true;
     user.isOnline = true;
+    if (currentScreen) user.currentScreen = currentScreen.toUpperCase().trim();
     user = await user.save();
     const token = user.getSignedJwtToken();
     await sendOtpVerificationSuccessMail(email);

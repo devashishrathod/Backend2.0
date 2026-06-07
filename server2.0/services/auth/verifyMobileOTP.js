@@ -4,7 +4,7 @@ const { throwError } = require("../../utils");
 const { verifyOtpToMobile } = require("../../helpers/twoFactor");
 
 exports.verifyMobileOTP = async (body) => {
-  let { sessionId, otp, mobile, role } = body;
+  let { sessionId, otp, mobile, role, currentScreen } = body;
   role = role?.toUpperCase() || ROLES.ADMIN;
   let user = await User.findOne({ mobile, role, isDeleted: false }).select(
     "-password",
@@ -16,6 +16,7 @@ exports.verifyMobileOTP = async (body) => {
     user.isMobileVerified = true;
     user.isLoggedIn = true;
     user.isOnline = true;
+    if (currentScreen) user.currentScreen = currentScreen.toUpperCase().trim();
     user = await user.save();
     const token = user.getSignedJwtToken();
     return { user, token };

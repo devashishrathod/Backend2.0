@@ -162,6 +162,9 @@ exports.validateWhatsappVerifyOtp = Joi.object({
     .messages({
       "any.only": "Invalid role",
     }),
+  currentScreen: Joi.string().optional().messages({
+    "string.empty": "Current Screen is required",
+  }),
 });
 
 exports.validateSendEmailLogin = Joi.object({
@@ -201,6 +204,9 @@ exports.validateVerifyEmailOtp = Joi.object({
     .messages({
       "any.only": "Invalid role",
     }),
+  currentScreen: Joi.string().optional().messages({
+    "string.empty": "Current Screen is required",
+  }),
 });
 
 exports.validateSendMobileLogin = Joi.object({
@@ -247,4 +253,7 @@ exports.validateVerifyMobileOtp = Joi.object({
     .messages({
       "any.only": "Invalid role",
     }),
+  currentScreen: Joi.string().optional().messages({
+    "string.empty": "Current Screen is required",
+  }),
 });
