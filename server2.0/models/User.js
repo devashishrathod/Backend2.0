@@ -46,7 +46,7 @@ const userSchema = new mongoose.Schema(
         message: (props) => `${props.value} is not a valid WhatsApp number`,
       },
     },
-    username: { type: String, unique: true },
+    username: { type: String },
     referralCode: { type: String, unique: true },
     uniqueId: { type: String, unique: true },
     appliedReferralCode: { type: String },
