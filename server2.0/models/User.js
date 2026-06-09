@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const validator = require("validator");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const { ROLES, LOGIN_TYPES } = require("../constants");
+const { ROLES, LOGIN_TYPES, SCREENS } = require("../constants");
 const { isValidPhoneNumber } = require("../validator/common");
 const { customerField, brandField } = require("./validObjectId");
 
@@ -70,7 +70,7 @@ const userSchema = new mongoose.Schema(
       deviceId: { type: String },
     },
     image: { type: String },
-    currentScreen: { type: String, default: "LANDING_SCREEN" },
+    currentScreen: { type: String, enum: Object.values(SCREENS) },
     isEmailVerified: { type: Boolean, default: false },
     isMobileVerified: { type: Boolean, default: false },
     isSignUpCompleted: { type: Boolean, default: false },
