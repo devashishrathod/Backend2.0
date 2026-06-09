@@ -2,25 +2,26 @@ const Joi = require("joi");
 const {
   BUSINESS_REGISTRATION_STATUS,
   BUSINESS_ENTITY_TYPE,
+  SCREENS,
 } = require("../constants");
 
 exports.validateBasicDetails = Joi.object({
   currentScreen: Joi.string()
     .uppercase()
     .valid(
-      "REGISTRATION_STATUS",
-      "REGISTRATION_ENTITY_TYPE",
-      "BUSINESS_VERIFICATION",
+      SCREENS.REGISTRATION_STATUS,
+      SCREENS.REGISTRATION_ENTITY_TYPE,
+      SCREENS.PAN_VERIFICATION,
     )
     .required()
     .messages({
       "any.required": "Current Screen is required",
       "any.only":
-        "Current screen must be either REGISTRATION_STATUS, REGISTRATION_ENTITY_TYPE or BUSINESS_VERIFICATION",
+        "Current screen must be either REGISTRATION_STATUS, REGISTRATION_ENTITY_TYPE or PAN_VERIFICATION",
       "string.empty": "Current Screen cannot be empty",
     }),
   brandName: Joi.when("currentScreen", {
-    is: "REGISTRATION_STATUS",
+    is: SCREENS.REGISTRATION_STATUS,
     then: Joi.string().trim().min(2).max(120).optional().messages({
       "string.empty": "Brand Name cannot be empty",
       "string.min": "Brand Name must contain at least {#limit} characters",
@@ -29,7 +30,7 @@ exports.validateBasicDetails = Joi.object({
     otherwise: Joi.forbidden(),
   }),
   legalBusinessName: Joi.when("currentScreen", {
-    is: "REGISTRATION_STATUS",
+    is: SCREENS.REGISTRATION_STATUS,
     then: Joi.string().trim().min(3).max(120).required().messages({
       "any.required": "Legal Business Name is required",
       "string.empty": "Legal Business Name cannot be empty",
@@ -40,7 +41,7 @@ exports.validateBasicDetails = Joi.object({
     otherwise: Joi.forbidden(),
   }),
   businessRegistrationStatus: Joi.when("currentScreen", {
-    is: "REGISTRATION_ENTITY_TYPE",
+    is: SCREENS.REGISTRATION_ENTITY_TYPE,
     then: Joi.string()
       .trim()
       .valid(...Object.values(BUSINESS_REGISTRATION_STATUS))
@@ -54,7 +55,7 @@ exports.validateBasicDetails = Joi.object({
     otherwise: Joi.forbidden(),
   }),
   businessEntityType: Joi.when("currentScreen", {
-    is: "BUSINESS_VERIFICATION",
+    is: SCREENS.PAN_VERIFICATION,
     then: Joi.string()
       .trim()
       .valid(...Object.values(BUSINESS_ENTITY_TYPE))
