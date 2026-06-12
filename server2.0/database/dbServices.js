@@ -14,7 +14,7 @@ exports.findMany = async (
   Model,
   filter = {},
   projection = {},
-  options = {}
+  options = {},
 ) => {
   return await Model.find(filter, projection, options);
 };
@@ -23,7 +23,7 @@ exports.updateOne = async (
   Model,
   filter = {},
   updateData = {},
-  options = {}
+  options = {},
 ) => {
   return await Model.updateOne(filter, updateData, options);
 };
@@ -32,10 +32,10 @@ exports.findOneAndUpdate = async (
   Model,
   filter = {},
   updateData = {},
-  options = {}
+  options = {},
 ) => {
   return await Model.findOneAndUpdate(filter, updateData, {
-    new: true,
+    returnDocument: "after",
     ...options,
   });
 };
@@ -44,10 +44,10 @@ exports.findByIdAndUpdate = async (
   Model,
   id,
   updateData = {},
-  options = {}
+  options = {},
 ) => {
   return await Model.findByIdAndUpdate(id, updateData, {
-    new: true,
+    returnDocument: "after",
     ...options,
   });
 };

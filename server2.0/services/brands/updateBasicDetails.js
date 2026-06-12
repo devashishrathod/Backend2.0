@@ -3,7 +3,7 @@ const Brand = require("../../models/Brand");
 const { throwError } = require("../../utils");
 const { ROLES, BUSINESS_REGISTRATION_STATUS } = require("../../constants");
 
-exports.updateBrand = async (userId, payload) => {
+exports.updateBasicDetails = async (userId, payload) => {
   const user = await User.findById(userId);
   if (!user || user.isDeleted) {
     throwError(401, "Unauthorized access. User not found.");
