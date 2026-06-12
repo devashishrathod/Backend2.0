@@ -1,6 +1,9 @@
 const mongoose = require("mongoose");
 const validator = require("validator");
-const { isValidPhoneNumber } = require("../validator/common");
+const {
+  isValidPhoneNumber,
+  isValidateMerchantId,
+} = require("../validator/common");
 const {
   userField,
   PANField,
@@ -55,10 +58,19 @@ const brandSchema = new mongoose.Schema(
         message: (props) => `${props.value} is not a valid WhatsApp number`,
       },
     },
-    uniqueId: { type: String, unique: true },
+    uniqueId: { type: String, required: true, unique: true },
+    merchantId: {
+      type: String,
+      required: true,
+      validate: {
+        validator: isValidateMerchantId,
+        message: (props) => `${props.value} is not a valid Merchant token`,
+      },
+      unique: true,
+    },
     logo: { type: String },
     coverImage: { type: String },
-    hasAcceptedPartnershipDeed: { type: Boolean, default: false },
+    hasAcceptedPartnershipDeed: { type: Boolean },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
   },

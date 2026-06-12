@@ -1,3 +1,3 @@
-const { updateBrand } = require("./updateBrand");
+const { updateBasicDetails } = require("./updateBasicDetails");
 
-module.exports = { updateBrand };
+module.exports = { updateBasicDetails };

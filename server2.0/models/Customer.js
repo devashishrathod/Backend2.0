@@ -32,6 +32,7 @@ const customerSchema = new mongoose.Schema(
       },
     },
     image: { type: String },
+    uniqueId: { type: String, required: true, unique: true },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
   },

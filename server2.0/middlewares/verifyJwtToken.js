@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const { getUserById } = require("../services/users");
 const { throwError, asyncWrapper } = require("../utils");
+const { ROLES } = require("../constants");
 
 exports.verifyJwtToken = asyncWrapper(async (req, res, next) => {
   let token = req.headers["authorization"];
@@ -29,5 +30,11 @@ exports.verifyJwtToken = asyncWrapper(async (req, res, next) => {
   req.userId = user._id;
   req.role = user.role;
   req.user = user;
+  if (user.role === ROLES.CUSTOMER) {
+    req.customerId = user.customerId;
+  }
+  if (user.role === ROLES.VENDOR) {
+    req.brandId = user.brandId;
+  }
   next();
 });

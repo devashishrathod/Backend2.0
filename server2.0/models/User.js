@@ -1,10 +1,13 @@
 const mongoose = require("mongoose");
-const validator = require("validator");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { ROLES, LOGIN_TYPES, SCREENS } = require("../constants");
-const { isValidPhoneNumber } = require("../validator/common");
 const { customerField, brandField } = require("./validObjectId");
+const {
+  isValidEmail,
+  isValidUsername,
+  isValidPhoneNumber,
+} = require("../validator/common");
 
 const userSchema = new mongoose.Schema(
   {
@@ -28,27 +31,35 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
       validate: {
-        validator: validator.isEmail,
+        validator: (email) => isValidEmail(email),
         message: (props) => `${props.value} is not a valid email address`,
       },
     },
     mobile: {
       type: String,
       validate: {
-        validator: isValidPhoneNumber,
+        validator: (mobile) => isValidPhoneNumber(mobile),
         message: (props) => `${props.value} is not a valid mobile number`,
       },
     },
     whatsappNumber: {
       type: String,
       validate: {
-        validator: isValidPhoneNumber,
+        validator: (whatsappNumber) => isValidPhoneNumber(whatsappNumber),
         message: (props) => `${props.value} is not a valid WhatsApp number`,
       },
     },
-    username: { type: String },
+    username: {
+      type: String,
+      validate: {
+        validator: (username) => isValidUsername(username),
+        message: (props) => `${props.value} is not a valid username`,
+      },
+      unique: true,
+      sparse: true,
+    },
     referralCode: { type: String, unique: true },
-    uniqueId: { type: String, unique: true },
+    uniqueId: { type: String, required: true, unique: true },
     appliedReferralCode: { type: String },
     referralCount: { type: Number, default: 0 },
     // notificationPreferences: {},
