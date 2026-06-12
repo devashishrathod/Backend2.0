@@ -4,7 +4,7 @@ async function saveOtp(type, target, purpose, hash) {
   await Otp.findOneAndUpdate(
     { type, target, purpose },
     { hash, attempts: 0, createdAt: new Date() },
-    { upsert: true, new: true },
+    { upsert: true, returnDocument: "after" },
   );
 }
 
@@ -20,7 +20,7 @@ async function incrementAttempts(target, purpose) {
   const updated = await Otp.findOneAndUpdate(
     { target, purpose },
     { $inc: { attempts: 1 } },
-    { new: true },
+    { returnDocument: "after" },
   );
   return updated ? updated.attempts : null;
 }

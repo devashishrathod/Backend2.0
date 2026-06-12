@@ -31,6 +31,12 @@ const validateRoles = (...allowedRoles) =>
     req.userId = user._id;
     req.role = user.role;
     req.user = user;
+    if (user.role === ROLES.CUSTOMER) {
+      req.customerId = user.customerId;
+    }
+    if (user.role === ROLES.VENDOR) {
+      req.brandId = user.brandId;
+    }
     if (!allowedRoles.includes(user.role)) {
       throwError(
         403,

@@ -1,7 +1,7 @@
 const User = require("../../models/User");
 
 exports.generateUniqueUserId = async () => {
-  const prefix = "#TD";
+  const prefix = "#TU";
   while (true) {
     const randomNumber = Math.floor(10000 + Math.random() * 90000);
     const uniqueId = `${prefix}${randomNumber}`;
