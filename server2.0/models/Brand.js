@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
-const validator = require("validator");
 const {
+  isValidEmail,
   isValidPhoneNumber,
   isValidateMerchantId,
 } = require("../validator/common");
@@ -9,6 +9,7 @@ const {
   PANField,
   GSTField,
   BankField,
+  systemVerifyField,
   locationField,
 } = require("./validObjectId");
 const {
@@ -22,6 +23,7 @@ const brandSchema = new mongoose.Schema(
     PANId: PANField,
     GSTId: GSTField,
     BankId: BankField,
+    systemVerifyId: systemVerifyField,
     locationId: locationField,
     brandName: { type: String },
     legalBusinessName: { type: String },
@@ -40,7 +42,7 @@ const brandSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
       validate: {
-        validator: validator.isEmail,
+        validator: (email) => isValidEmail(email),
         message: (props) => `${props.value} is not a valid email address`,
       },
     },

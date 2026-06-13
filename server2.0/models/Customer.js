@@ -1,6 +1,5 @@
 const mongoose = require("mongoose");
-const validator = require("validator");
-const { isValidPhoneNumber } = require("../validator/common");
+const { isValidPhoneNumber, isValidEmail } = require("../validator/common");
 const { userField } = require("./validObjectId");
 
 const customerSchema = new mongoose.Schema(
@@ -13,7 +12,7 @@ const customerSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
       validate: {
-        validator: validator.isEmail,
+        validator: (email) => isValidEmail(email),
         message: (props) => `${props.value} is not a valid email address`,
       },
     },

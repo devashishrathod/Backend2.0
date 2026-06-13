@@ -6,6 +6,7 @@ const {
   addPanDetails,
   addGstDetails,
   addBankDetails,
+  verifyBrand,
 } = require("../controllers/brands");
 const { validateBasicDetails } = require("../validator/brands");
 const { validateAddPanDetails } = require("../validator/pan");
@@ -36,5 +37,6 @@ router.post(
   validateSchema(validateAddBankDetails),
   addBankDetails,
 );
+router.get("/onboarding/system-verify", isVendor, verifyBrand);
 
 module.exports = router;
