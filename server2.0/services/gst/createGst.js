@@ -40,8 +40,17 @@ exports.createGst = async (userId, payload) => {
   } = payload;
 
   gstNumber = gstNumber?.toUpperCase()?.trim();
-  const existing = await GST.findOne({ brandId, gstNumber });
-  if (existing) throwError(400, "GST detials already exists for this brand.");
+  const existing = await GST.findOne({ gstNumber, isDeleted: false });
+  if (existing) throwError(400, "GST detials already in use.");
+
+  // const existingWithBrand = await GST.findOne({
+  //   brandId,
+  //   gstNumber,
+  //   isDeleted: false,
+  // });
+  // if (existingWithBrand) {
+  //   throwError(400, "GST detials already exist for this brand.");
+  // }
 
   const gstDoc = await GST.create({
     brandId,
