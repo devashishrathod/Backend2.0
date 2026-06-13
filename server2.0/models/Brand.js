@@ -9,6 +9,7 @@ const {
   PANField,
   GSTField,
   BankField,
+  systemVerifyField,
   locationField,
 } = require("./validObjectId");
 const {
@@ -22,6 +23,7 @@ const brandSchema = new mongoose.Schema(
     PANId: PANField,
     GSTId: GSTField,
     BankId: BankField,
+    systemVerifyId: systemVerifyField,
     locationId: locationField,
     brandName: { type: String },
     legalBusinessName: { type: String },

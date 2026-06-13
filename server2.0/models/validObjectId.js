@@ -25,6 +25,7 @@ module.exports = Object.freeze({
   PANField: refField("PAN"),
   GSTField: refField("GST"),
   BankField: refField("Bank"),
+  systemVerifyField: refField("SystemVerify"),
 
   // Array of ObjectIds with validation
   locationsField: Object.freeze({

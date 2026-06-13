@@ -38,8 +38,8 @@ exports.createPan = async (userId, payload) => {
   } = payload;
 
   pan = pan?.toUpperCase()?.trim();
-  const existing = await PAN.findOne({ brandId, pan });
-  if (existing) throwError(400, "PAN details already exists for this brand.");
+  const existing = await PAN.findOne({ pan, isDeleted: false });
+  if (existing) throwError(400, "PAN details already in use.");
 
   const panDoc = await PAN.create({
     brandId,
