@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
-const validator = require("validator");
 const {
+  isValidEmail,
   isValidPhoneNumber,
   isValidateMerchantId,
 } = require("../validator/common");
@@ -42,7 +42,7 @@ const brandSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
       validate: {
-        validator: validator.isEmail,
+        validator: (email) => isValidEmail(email),
         message: (props) => `${props.value} is not a valid email address`,
       },
     },
