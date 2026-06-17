@@ -3,6 +3,7 @@ const User = require("../../models/User");
 const Brand = require("../../models/Brand");
 const { throwError } = require("../../utils");
 const { ROLES, SCREENS } = require("../../constants");
+const { identifyPanType } = require("../../helpers/pans");
 
 exports.createPan = async (userId, payload) => {
   const user = await User.findById(userId);
@@ -40,6 +41,8 @@ exports.createPan = async (userId, payload) => {
   pan = pan?.toUpperCase()?.trim();
   const existing = await PAN.findOne({ pan, isDeleted: false });
   if (existing) throwError(400, "PAN details already in use.");
+
+  panType = panType || identifyPanType(pan);
 
   const panDoc = await PAN.create({
     brandId,

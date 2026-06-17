@@ -29,6 +29,11 @@ const GST_TO_BRAND_ENTITY_MAP = Object.freeze({
 });
 
 module.exports = {
+  NODE_ENV: Object.freeze({
+    DEVELOPMENT: "DEVELOPMENT",
+    PRODUCTION: "PRODUCTION",
+  }),
+
   ROLES: Object.freeze({
     ADMIN: "ADMIN",
     VENDOR: "VENDOR",
