@@ -21,10 +21,9 @@ exports.validateAddPanDetails = Joi.object({
   panType: Joi.string()
     .trim()
     .valid(...Object.values(PAN_TYPES))
-    .required()
+    .optional()
     .messages({
       "string.empty": "PAN type cannot be empty",
-      "any.required": "PAN type is required",
       "any.only": `PAN type must be one of ${Object.values(PAN_TYPES).join(", ")}`,
     }),
   fullName: Joi.string().trim().min(3).required().messages({

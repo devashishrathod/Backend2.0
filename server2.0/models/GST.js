@@ -47,7 +47,7 @@ const gstSchema = new mongoose.Schema(
       buildingNumber: { type: String },
       buildingName: { type: String },
       location: { type: String, required: true },
-      city: { type: String, required: true },
+      city: { type: String },
       district: { type: String, required: true },
       state: { type: String, required: true },
       pin: { type: String, required: true },

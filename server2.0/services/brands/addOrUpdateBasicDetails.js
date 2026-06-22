@@ -3,7 +3,7 @@ const Brand = require("../../models/Brand");
 const { throwError } = require("../../utils");
 const { ROLES, BUSINESS_REGISTRATION_STATUS } = require("../../constants");
 
-exports.updateBasicDetails = async (userId, payload) => {
+exports.addOrUpdateBasicDetails = async (userId, payload) => {
   const user = await User.findById(userId);
   if (!user || user.isDeleted) {
     throwError(401, "Unauthorized access. User not found.");
@@ -45,7 +45,7 @@ exports.updateBasicDetails = async (userId, payload) => {
       "Business Registration Required: To maintain a trusted and compliant marketplace, Trydood currently supports only registered businesses and brands.",
     );
   }
-  user.currentScreen = currentScreen.toUpperCase().trim();
+  if (currentScreen) user.currentScreen = currentScreen.toUpperCase().trim();
   await user.save();
   return Brand.findOne({ userId }).populate(
     "userId",

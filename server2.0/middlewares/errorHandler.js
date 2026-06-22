@@ -16,7 +16,7 @@ exports.errorHandler = (err, req, res, next) => {
   }
   // ⭐ Handle CustomError
   if (err instanceof CustomError) {
-    return sendError(res, err.statusCode, err.message);
+    return sendError(res, err.statusCode, err.message, err.data);
   }
   // ⭐ Default fallback
   const status = err.status || 500;
