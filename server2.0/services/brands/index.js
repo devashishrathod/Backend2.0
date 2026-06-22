@@ -1,3 +1,3 @@
-const { updateBasicDetails } = require("./updateBasicDetails");
+const { addOrUpdateBasicDetails } = require("./addOrUpdateBasicDetails");
 
-module.exports = { updateBasicDetails };
+module.exports = { addOrUpdateBasicDetails };

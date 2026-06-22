@@ -1,23 +1,26 @@
 const express = require("express");
 const router = express.Router();
 const { validateSchema, isVendor } = require("../middlewares");
+const { validateAddPanDetails } = require("../validator/pan");
+const { validateAddGstDetails } = require("../validator/gst");
+const { validateAddBankDetails } = require("../validator/bank");
 const {
-  addBasicDetails,
+  validateAddBasicDetails,
+  validateUpdateBasicDetails,
+} = require("../validator/brands");
+const {
+  addOrUpdateBasicDetails,
   addPanDetails,
   addGstDetails,
   addBankDetails,
   verifyBrand,
 } = require("../controllers/brands");
-const { validateBasicDetails } = require("../validator/brands");
-const { validateAddPanDetails } = require("../validator/pan");
-const { validateAddGstDetails } = require("../validator/gst");
-const { validateAddBankDetails } = require("../validator/bank");
 
 router.post(
-  "/onboarding/basic-details",
+  "/onboarding/add-basic-details",
   isVendor,
-  validateSchema(validateBasicDetails),
-  addBasicDetails,
+  validateSchema(validateAddBasicDetails),
+  addOrUpdateBasicDetails,
 );
 router.post(
   "/onboarding/add-pan-details",
@@ -38,5 +41,12 @@ router.post(
   addBankDetails,
 );
 router.get("/onboarding/system-verify", isVendor, verifyBrand);
+// Review/Edit
+router.put(
+  "/onboarding/update-basic-details",
+  isVendor,
+  validateSchema(validateUpdateBasicDetails),
+  addOrUpdateBasicDetails,
+);
 
 module.exports = router;
