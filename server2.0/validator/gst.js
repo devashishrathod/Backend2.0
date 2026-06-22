@@ -69,7 +69,7 @@ exports.validateAddGstDetails = Joi.object({
     buildingNumber: Joi.string().trim().optional(),
     buildingName: Joi.string().trim().optional(),
     location: Joi.string().trim().required(),
-    city: Joi.string().trim().required(),
+    city: Joi.string().trim().optional(),
     district: Joi.string().trim().required(),
     state: Joi.string().trim().required(),
     pin: Joi.string().trim().required(),

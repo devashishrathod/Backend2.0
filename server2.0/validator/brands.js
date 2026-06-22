@@ -5,7 +5,7 @@ const {
   SCREENS,
 } = require("../constants");
 
-exports.validateBasicDetails = Joi.object({
+exports.validateAddBasicDetails = Joi.object({
   currentScreen: Joi.string()
     .uppercase()
     .valid(
@@ -49,8 +49,7 @@ exports.validateBasicDetails = Joi.object({
       .messages({
         "any.required": "Business Registration Status is required",
         "string.empty": "Business Registration Status cannot be empty",
-        "any.only":
-          "Business Registration Status must be either REGISTERED or UNREGISTERED",
+        "any.only": `Business Registration Status must be one of ${Object.values(BUSINESS_REGISTRATION_STATUS).join(", ")}`,
       }),
     otherwise: Joi.forbidden(),
   }),
@@ -63,9 +62,46 @@ exports.validateBasicDetails = Joi.object({
       .messages({
         "any.required": "Business Entity Type is required",
         "string.empty": "Business Entity Type cannot be empty",
-        "any.only":
-          "Business Entity Type must be either PROPRIETORSHIP, PARTNERSHIP, LLP, PRIVATE_LIMITED, PUBLIC_LIMITED, ONE_PERSON_COMPANY, TRUST, NGO or SOCIETY",
+        "any.only": `Business Entity Type must be one of ${Object.values(BUSINESS_ENTITY_TYPE).join(", ")}`,
       }),
     otherwise: Joi.forbidden(),
   }),
+});
+
+exports.validateUpdateBasicDetails = Joi.object({
+  currentScreen: Joi.string()
+    .uppercase()
+    .valid(...Object.values(SCREENS))
+    .optional()
+    .messages({
+      "any.only": `Current screen must be one of ${Object.values(SCREENS).join(", ")}`,
+      "string.empty": "Current Screen cannot be empty",
+    }),
+  brandName: Joi.string().trim().min(2).max(120).optional().messages({
+    "string.empty": "Brand Name cannot be empty",
+    "string.min": "Brand Name must contain at least {#limit} characters",
+    "string.max": "Brand Name cannot exceed {#limit} characters",
+  }),
+  legalBusinessName: Joi.string().trim().min(3).max(120).optional().messages({
+    "string.empty": "Legal Business Name cannot be empty",
+    "string.min":
+      "Legal Business Name must contain at least {#limit} characters",
+    "string.max": "Legal Business Name cannot exceed {#limit} characters",
+  }),
+  businessRegistrationStatus: Joi.string()
+    .trim()
+    .valid(...Object.values(BUSINESS_REGISTRATION_STATUS))
+    .optional()
+    .messages({
+      "string.empty": "Business Registration Status cannot be empty",
+      "any.only": `Business Registration Status must be one of ${Object.values(BUSINESS_REGISTRATION_STATUS).join(", ")}`,
+    }),
+  businessEntityType: Joi.string()
+    .trim()
+    .valid(...Object.values(BUSINESS_ENTITY_TYPE))
+    .optional()
+    .messages({
+      "string.empty": "Business Entity Type cannot be empty",
+      "any.only": `Business Entity Type must be one of ${Object.values(BUSINESS_ENTITY_TYPE).join(", ")}`,
+    }),
 });

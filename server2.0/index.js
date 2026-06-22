@@ -9,6 +9,7 @@ const { mongoDb } = require("./database/mongoDb");
 const { errorHandler } = require("./middlewares");
 const { throwError } = require("./utils");
 const allRoutes = require("./routes");
+const { getIP } = require("./configs/render");
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -20,6 +21,11 @@ app.use(morgan("dev"));
 app.use("/trydood/v1", allRoutes);
 app.get("/", async (req, res) => {
   res.send("Welcome to Trydood 2.0🚀");
+});
+app.get("/my-ip", getIP);
+app.get("/client-ip", (req, res) => {
+  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+  res.json({ ip });
 });
 app.use((req, res, next) => {
   throwError(404, "Invalid API");

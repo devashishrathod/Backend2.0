@@ -2,7 +2,7 @@ exports.sendSuccess = (
   res,
   statusCode = 200,
   message = "Success",
-  data = {}
+  data = {},
 ) => {
   return res.status(statusCode).json({
     success: true,
@@ -15,11 +15,11 @@ exports.sendError = (
   res,
   statusCode = 500,
   message = "Something went wrong",
-  errorData = {}
+  errorData = null,
 ) => {
   return res.status(statusCode).json({
     success: false,
     message,
-    error: errorData,
+    ...(errorData && { details: errorData }),
   });
 };
