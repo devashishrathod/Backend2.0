@@ -42,7 +42,7 @@ router.post(
   addBankDetails,
 );
 router.get("/onboarding/system-verify", isVendor, verifyBrand);
-router.put("/onboarding/approve-partnership", isVendor, acceptPartnershipDeed);
+router.put("/onboarding/accept-partnership", isVendor, acceptPartnershipDeed);
 // Review/Edit
 router.put(
   "/onboarding/update-basic-details",
