@@ -14,6 +14,7 @@ const {
   addGstDetails,
   addBankDetails,
   verifyBrand,
+  acceptPartnershipDeed,
 } = require("../controllers/brands");
 
 router.post(
@@ -41,6 +42,7 @@ router.post(
   addBankDetails,
 );
 router.get("/onboarding/system-verify", isVendor, verifyBrand);
+router.put("/onboarding/accept-partnership", isVendor, acceptPartnershipDeed);
 // Review/Edit
 router.put(
   "/onboarding/update-basic-details",

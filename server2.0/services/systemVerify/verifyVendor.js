@@ -15,6 +15,7 @@ const {
   SYSTEM_VERIFICATION_STATUS,
   BRAND_SYSTEM_VERIFY_UPDATED_BY,
   GST_TO_BRAND_ENTITY_MAP,
+  SCREENS,
 } = require("../../constants");
 const { brandField } = require("../../models/validObjectId");
 
@@ -262,5 +263,7 @@ exports.verifyVendor = async (userId) => {
   }
   brand.systemVerifyId = systemVerify._id;
   await brand.save();
+  user.currentScreen = SCREENS.PARTNERSHIP_DEED;
+  await user.save();
   return systemVerify;
 };
