@@ -18,6 +18,12 @@ exports.acceptPartnership = async (userId) => {
   if (!isVendor) {
     throwError(403, "You are not authorized to update brand details.");
   }
+  const brandId = user.brandId;
+  if (!brandId) throwError(400, "Brand not found for user.");
+
+  const brand = await Brand.findById(brandId);
+  if (!brand || brand.isDeleted) throwError(404, "Brand not found.");
+
   brand.hasAcceptedPartnershipDeed = true;
   await brand.save();
   user.currentScreen = SCREENS.SUBSCRIBE_PLAN;
