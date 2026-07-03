@@ -1,12 +1,13 @@
 const express = require("express");
 const router = express.Router();
-const { validateSchema, isVendor } = require("../middlewares");
+const { validateSchema, isVendor, verifyJwtToken } = require("../middlewares");
 const { validateAddPanDetails } = require("../validator/pan");
 const { validateAddGstDetails } = require("../validator/gst");
 const { validateAddBankDetails } = require("../validator/bank");
 const {
   validateAddBasicDetails,
   validateUpdateBasicDetails,
+  validateGetBrand,
 } = require("../validator/brands");
 const {
   addOrUpdateBasicDetails,
@@ -15,8 +16,10 @@ const {
   addBankDetails,
   verifyBrand,
   acceptPartnershipDeed,
+  get,
 } = require("../controllers/brands");
 
+// Onboarding Steps
 router.post(
   "/onboarding/add-basic-details",
   isVendor,
@@ -43,12 +46,14 @@ router.post(
 );
 router.get("/onboarding/system-verify", isVendor, verifyBrand);
 router.put("/onboarding/accept-partnership", isVendor, acceptPartnershipDeed);
-// Review/Edit
+// Onboarding (Review/Edit)
 router.put(
   "/onboarding/update-basic-details",
   isVendor,
   validateSchema(validateUpdateBasicDetails),
   addOrUpdateBasicDetails,
 );
+// General
+router.get("/get", verifyJwtToken, validateSchema(validateGetBrand), get);
 
 module.exports = router;
