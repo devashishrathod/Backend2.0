@@ -1,4 +1,5 @@
 const Joi = require("joi");
+const objectId = require("./validJoiObjectId");
 const {
   BUSINESS_REGISTRATION_STATUS,
   BUSINESS_ENTITY_TYPE,
@@ -105,3 +106,11 @@ exports.validateUpdateBasicDetails = Joi.object({
       "any.only": `Business Entity Type must be one of ${Object.values(BUSINESS_ENTITY_TYPE).join(", ")}`,
     }),
 });
+
+exports.validateGetBrand = {
+  query: Joi.object({
+    brandId: objectId().messages({
+      "any.invalid": "Invalid brandId",
+    }),
+  }),
+};
