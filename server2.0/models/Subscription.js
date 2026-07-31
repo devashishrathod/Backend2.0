@@ -14,10 +14,21 @@ const subscriptionSchema = new mongoose.Schema(
     durationInDays: { type: Number },
     benefits: { type: [String], default: [] },
     limitations: { type: [String], default: [] },
+    features: {
+      type: [
+        {
+          title: { type: String, trim: true, required: true },
+          value: { type: String, trim: true },
+          available: { type: Boolean, default: true },
+          _id: false,
+        },
+      ],
+      default: [],
+    },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
   },
-  { timestamps: true, versionKey: false }
+  { timestamps: true, versionKey: false },
 );
 
 module.exports = mongoose.model("Subscription", subscriptionSchema);
