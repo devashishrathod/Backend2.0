@@ -16,7 +16,7 @@ const {
 } = require("../validator/subscriptions");
 
 router.post(
-  "/add",
+  "/create",
   isAdmin,
   validateSchema(validateCreateSubscription),
   create,
