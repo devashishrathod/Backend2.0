@@ -20,7 +20,7 @@ exports.createSubscription = async (payload) => {
   if (existing)
     throwError(
       409,
-      `Subscription with this name for ${payload.type} plan already exists`
+      `Subscription with this name for ${payload.type} plan already exists`,
     );
   return await Subscription.create(payload);
 };
