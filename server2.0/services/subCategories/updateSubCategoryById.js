@@ -31,7 +31,7 @@ exports.updateSubCategoryById = async (id, payload, image) => {
       if (existingSubCategorywithCategory) {
         throwError(
           400,
-          `Another Subcategory exists with this name for same category`
+          `Another Subcategory exists with this name for same category`,
         );
       }
       subcategory.name = name;
@@ -46,7 +46,7 @@ exports.updateSubCategoryById = async (id, payload, image) => {
       if (existingSubCategorywithCategory) {
         throwError(
           400,
-          `Another Subcategory exists with this name for ${category.name}`
+          `Another Subcategory exists with this name for ${category.name}`,
         );
       }
     }
