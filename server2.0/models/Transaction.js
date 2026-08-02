@@ -1,0 +1,107 @@
+const mongoose = require("mongoose");
+const { isValidEmail, isValidPhoneNumber } = require("../validator/common");
+const {
+  userField,
+  subscriptionField,
+  brandField,
+  subBrandField,
+  voucherField,
+  billField,
+  settlementField,
+  refundField,
+} = require("./validObjectId");
+const {
+  PAYMENT_STATUS,
+  PAYMENT_METHODS,
+  WALLET_PROVIDERS,
+  REFUND_STATUS,
+} = require("../constants");
+
+const transactionSchema = new mongoose.Schema(
+  {
+    userId: userField,
+    brandId: brandField,
+    subBrandId: subBrandField,
+    subscriptionId: subscriptionField,
+    voucherId: voucherField,
+    billId: billField,
+    createdBy: userField,
+    settlementId: settlementField,
+    refundId: refundField,
+    entity: { type: String },
+    amount: { type: Number, required: true },
+    dueAmount: { type: Number },
+    paidAmount: { type: Number, default: 0 },
+    attempts: { type: Number, default: 0 },
+    offerId: { type: String },
+    currency: { type: String, default: "INR" },
+    description: { type: String },
+    email: {
+      type: String,
+      lowercase: true,
+      trim: true,
+      validate: {
+        validator: (email) => isValidEmail(email),
+        message: (props) => `${props.value} is not a valid email address`,
+      },
+    },
+    contact: {
+      type: String,
+      validate: {
+        validator: (mobile) => isValidPhoneNumber(mobile),
+        message: (props) => `${props.value} is not a valid contact number`,
+      },
+    },
+    status: {
+      type: String,
+      enum: [...Object.values(PAYMENT_STATUS)],
+      default: PAYMENT_STATUS.CREATED,
+    },
+    paymentMethod: {
+      type: String,
+      enum: Object.values(PAYMENT_METHODS),
+    },
+    walletProvider: { type: String, enum: WALLET_PROVIDERS },
+    razorpayOrderId: { type: String, required: true, unique: true },
+    razorpayPaymentId: { type: String },
+    razorpaySignature: { type: String },
+    invoiceId: { type: String, unique: true },
+    invoiceUrl: { type: String },
+    receipt: { type: String, maxlength: 40 },
+    amountRefunded: { type: Number, default: 0 },
+    verified: { type: Boolean, default: false },
+    notes: { type: Array, default: [] },
+    fee: { type: Number },
+    tax: { type: Number },
+    isInternational: { type: Boolean, default: false },
+    refundStatus: {
+      type: String,
+      enum: Object.values(REFUND_STATUS),
+      default: REFUND_STATUS.null,
+    },
+    cardId: { type: String, default: null },
+    bank: { type: String, default: null },
+    vpa: { type: String, default: null },
+    errorCode: { type: String, default: null },
+    errorDescription: { type: String, default: null },
+    errorSource: { type: String, default: null },
+    errorStep: { type: String, default: null },
+    errorReason: { type: String, default: null },
+    acquirerData: {
+      transaction_id: { type: String, default: null },
+    },
+    createdAtRaw: { type: Number },
+    updatedAtRaw: { type: Number },
+    paidToVendorAt: { type: Date },
+    paidRefundAt: { type: Date },
+    isRefunded: { type: Boolean, default: false },
+    isRefundRequested: { type: Boolean, default: false },
+    isPaidToVendor: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true },
+    isRemoved: { type: Boolean, default: false },
+    isDeleted: { type: Boolean, default: false },
+  },
+  { timestamps: true, versionKey: false },
+);
+
+module.exports = mongoose.model("Transaction", transactionSchema);

@@ -26,6 +26,14 @@ module.exports = Object.freeze({
   GSTField: refField("GST"),
   BankField: refField("Bank"),
   systemVerifyField: refField("SystemVerify"),
+  subscriptionField: refField("Subscription"),
+  transactionField: refField("Transaction"),
+  subscribedField: refField("Subscribed"),
+  subBrandField: refField("SubBrand"),
+  voucherField: refField("Voucher"),
+  billField: refField("Bill"),
+  settlementField: refField("Settlement"),
+  refundField: refField("Refund"),
 
   // Array of ObjectIds with validation
   locationsField: Object.freeze({
