@@ -192,6 +192,43 @@ module.exports = {
     Family: "FAMILY",
   }),
 
+  PAYMENT_STATUS: Object.freeze({
+    CREATED: "created",
+    AUTHORIZED: "authorized",
+    CAPTURED: "captured",
+    FAILED: "failed",
+  }),
+
+  PAYMENT_METHODS: Object.freeze({
+    CARD: "card",
+    NETBANKING: "netbanking",
+    UPI: "upi",
+    WALLET: "wallet",
+    PAYLATER: "paylater",
+    EMI: "emi",
+    COD: "cod",
+    BANK_TRANSFER: "bank_transfer",
+    CARDLESS_EMI: "cardless_emi",
+  }),
+
+  WALLET_PROVIDERS: Object.freeze([
+    "paytm",
+    "phonepe",
+    "amazonpay",
+    "mobikwik",
+    "freecharge",
+    "jiomoney",
+    "olamoney",
+    "airtelmoney",
+  ]),
+
+  REFUND_STATUS: Object.freeze({
+    PENDING: "PENDING",
+    COMPLETED: "COMPLETED",
+    FAILED: "FAILED",
+    null: null,
+  }),
+
   ZIP_CODE_REGEX_MAP: Object.freeze({
     IN: /^[1-9][0-9]{5}$/, // India (6 digits)
     US: /^\d{5}(-\d{4})?$/, // USA (ZIP or ZIP+4)
