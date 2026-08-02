@@ -73,6 +73,7 @@ const brandSchema = new mongoose.Schema(
     logo: { type: String },
     coverImage: { type: String },
     hasAcceptedPartnershipDeed: { type: Boolean },
+    isSubscribed: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
   },
