@@ -11,6 +11,7 @@ const {
   BankField,
   systemVerifyField,
   locationField,
+  subscribedField,
 } = require("./validObjectId");
 const {
   BUSINESS_REGISTRATION_STATUS,
@@ -25,6 +26,7 @@ const brandSchema = new mongoose.Schema(
     BankId: BankField,
     systemVerifyId: systemVerifyField,
     locationId: locationField,
+    subscribedId: subscribedField,
     brandName: { type: String },
     legalBusinessName: { type: String },
     //  tradeName: { type: String },

@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { validateSchema } = require("../middlewares");
+const { validateSchema, verifyJwtToken } = require("../middlewares");
 const {
   register,
   login,
@@ -10,6 +10,7 @@ const {
   verifyOtpWithEmail,
   loginWithMobile,
   verifyOtpWithMobile,
+  logout,
 } = require("../controllers/auth");
 const {
   validateRegisterUser,
@@ -54,5 +55,6 @@ router.post(
   validateSchema(validateVerifyMobileOtp),
   verifyOtpWithMobile,
 );
+router.post("/logout", verifyJwtToken, logout);
 
 module.exports = router;
