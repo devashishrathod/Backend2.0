@@ -1,5 +1,6 @@
 const cloudinary = require("../../configs/cloudinary");
 const CLOUD_BASE = process.env.CLOUD_BASE_URL;
+const { throwError } = require("../../utils");
 
 const isValidCloudinaryUrl = (url) => {
   if (!url || typeof url !== "string") return false;
@@ -40,7 +41,7 @@ exports.uploadFile = async (filePath, options = {}) => {
     return result;
   } catch (error) {
     console.error("Cloudinary Upload Error:", error);
-    throw new Error("Cloudinary upload failed");
+    throwError(500, error.message || "Cloudinary upload failed.");
   }
 };
 
@@ -71,9 +72,10 @@ exports.deleteFile = async (url, resourceType = "image") => {
       resource_type: resourceType,
     });
     console.log("Cloudinary delete:", { publicId, result });
-    return result.result === "ok" || result.result === "not found";
+    const success = ["ok", "not found"].includes(result.result);
+    return success;
   } catch (err) {
     console.error("Cloudinary Delete Error:", err);
-    return false;
+    throwError(500, err.message || "Cloudinary delete failed.");
   }
 };
