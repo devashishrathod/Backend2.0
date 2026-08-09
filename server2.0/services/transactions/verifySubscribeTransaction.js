@@ -4,17 +4,14 @@ const Subscription = require("../../models/Subscription");
 const Transaction = require("../../models/Transaction");
 const Subscribed = require("../../models/Subscribed");
 // const EmployeeReferral = require("../../model/EmployeeReferral");
-const { ROLES } = require("../../constants");
+const { ROLES, SCREENS } = require("../../constants");
 const { throwError } = require("../../utils");
+const { calculateEndDate } = require("../../helpers/subscribeds");
 const {
   generateRazorpaySignature,
   getPaymentDetails,
   generateAndUploadInvoice,
 } = require("../../helpers/transactions");
-const {
-  calculateEndDate,
-  calculateDuration,
-} = require("../../helpers/subscribeds");
 
 exports.verifySubscribeTransaction = async (tokenUserId, payload) => {
   try {
@@ -79,7 +76,6 @@ exports.verifySubscribeTransaction = async (tokenUserId, payload) => {
     }
 
     let newSubscribed;
-    let SubscribedBrand;
     const startDate = new Date();
     const durationInDays = checkSubscription?.durationInDays;
     const durationInYears = checkSubscription?.durationInYears;
@@ -139,22 +135,7 @@ exports.verifySubscribeTransaction = async (tokenUserId, payload) => {
     } else {
       newSubscribed = await Subscribed.create(subscribedData);
     }
-    // const generatedSignature = generateRazorpaySignature(
-    //   razorpayOrderId,
-    //   razorpayPaymentId,
-    //   ROLES.VENDOR,
-    // );
-    // const isValidSignature = generatedSignature === razorpaySignature;
-    // if (!isValidSignature) {
-    //   throwError(400, "Invalid signature. Payment may be tampered.");
-    // }
-    // const paymentDetails = await getPaymentDetails(
-    //   razorpayPaymentId,
-    //   ROLES.VENDOR,
-    // );
-    // if (!paymentDetails) {
-    //   throwError(503, "Razorpay services unavailable! Please try again later");
-    // }
+
     const updatedTxnData = {
       entity: paymentDetails?.entity,
       description: paymentDetails?.description,
@@ -209,7 +190,7 @@ exports.verifySubscribeTransaction = async (tokenUserId, payload) => {
       };
       const invoiceUrl = await generateAndUploadInvoice(invoiceData);
       console.log("Invoice URL:", invoiceUrl);
-      const finalTxn = await Transaction.findByIdAndUpdate(
+      await Transaction.findByIdAndUpdate(
         transactionId,
         { invoiceUrl },
         { returnDocument: "after" },
@@ -258,6 +239,8 @@ exports.verifySubscribeTransaction = async (tokenUserId, payload) => {
         updateTxn?.errorReason || "User transaction updation failed",
       );
     }
+    checkVendor.currentScreen = SCREENS.OUTLET_PAGE;
+    await checkVendor.save();
     return newSubscribed;
   } catch (error) {
     console.error("Payment verification error:", error);

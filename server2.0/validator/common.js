@@ -6,6 +6,10 @@ const MERCHANT_ID_REGEX = new RegExp(
 );
 
 module.exports = {
+  escapeRegex: (value = "") => {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  },
+
   isValidEmail: (email) =>
     /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email),
 
