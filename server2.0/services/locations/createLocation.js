@@ -1,67 +1,90 @@
 const Location = require("../../models/Location");
-const { validateObjectId, throwError } = require("../../utils");
-const { isValidZipCode } = require("../../validator/common");
-const { getLocationDetailsFromCoords } = require("../../helpers/locations");
+const Brand = require("../../models/Brand");
+const SubBrand = require("../../models/SubBrand");
+const { ROLES } = require("../../constants");
+const { throwError } = require("../../utils");
 
-exports.createLocation = async (payload) => {
+exports.createLocation = async (tokenUserId, payload) => {
   let {
+    // name,
+    // shopOrBuildingNumber,
     userId,
-    name,
-    shopOrBuildingNumber,
-    address,
-    area,
-    state,
-    city,
+    customerId,
+    brandId,
+    subBrandId,
+    addressLine1,
+    addressLine2,
+    landmark,
     district,
-    country,
+    city,
     zipcode,
+    state,
+    country,
+    formattedAddress,
     coordinates,
+    addressType,
+    isBrandAddress,
+    isSubBrandAddress,
+    isDefault,
   } = payload;
-  let locationData = payload;
-  if (userId) validateObjectId(userId, "User Id");
-  country = country?.toLowerCase() || "india";
-  if (!coordinates) {
-    if (!address || !city || !district || !zipcode || !state) {
-      throwError(
-        422,
-        "Please pass coordinates(Lat & Long) Or provide address, city, district, zipcode and state "
-      );
+  // const user = await User.findById(userId);
+  // if (!user || user.isDeleted) throwError(404, "User not found");
+  // const userRole = user.role;
+  // const isAdmin = userRole === ROLES.ADMIN;
+  // const isVendor = userRole === ROLES.VENDOR;
+  // const isSubVendor = userRole === ROLES.SUB_VENDOR;
+  // const isCustomer = userRole === ROLES.CUSTOMER;
+  // if (isCustomer) {
+  //   locationData.customerId = user.customerId;
+  // } else if (isVendor && !brandId && !subBrandId) {
+  //   locationData.brandId = user.brandId;
+  // } else if (isSubVendor || (isVendor && subBrandId)) {
+  //   locationData.brandId = user.brandId;
+  //   locationData.subBrandId = subBrandId;
+  // }
+  userId = userId || tokenUserId;
+  let locationData = {
+    userId,
+    customerId,
+    brandId,
+    subBrandId,
+    addressLine1,
+    addressLine2,
+    landmark,
+    city: city?.toLowerCase(),
+    district: district?.toLowerCase(),
+    zipcode,
+    state: state?.toLowerCase(),
+    country: country?.toLowerCase(),
+    formattedAddress:
+      formattedAddress ||
+      `${addressLine1?.toLowerCase()}, ${addressLine2?.toLowerCase()}, ${landmark?.toLowerCase()}, ${city?.toLowerCase()}, ${district?.toLowerCase()}, ${state?.toLowerCase()}, ${zipcode}, ${country?.toLowerCase()}`.trim(),
+    coordinates,
+    addressType,
+    isBrandAddress,
+    isSubBrandAddress,
+    isDefault,
+  };
+  const location = await Location.create(locationData);
+  if (location.isBrandAddress) {
+    const brand = await Brand.findById(location.brandId);
+    if (brand) {
+      brand.locationId = location._id;
+      await brand.save();
     }
-    if (zipcode && !isValidZipCode(country, zipcode)) {
-      throwError(
-        422,
-        `${zipcode} is not a valid ZIP/postal code for ${country}`
-      );
+  } else if (location.isSubBrandAddress) {
+    const subBrand = await SubBrand.findById(location.subBrandId);
+    if (subBrand) {
+      subBrand.locationId = location._id;
+      await subBrand.save();
     }
-    locationData = {
-      userId,
-      name: name?.toLowerCase(),
-      shopOrBuildingNumber: shopOrBuildingNumber?.toLowerCase(),
-      address: address?.toLowerCase(),
-      area: area?.toLowerCase(),
-      city: city?.toLowerCase(),
-      district: district?.toLowerCase(),
-      zipcode,
-      state: state?.toLowerCase(),
-      country: country?.toLowerCase(),
-      formattedAddress:
-        `${address?.toLowerCase()}, ${city?.toLowerCase()}, ${district?.toLowerCase()}, ${state?.toLowerCase()}, ${zipcode}, ${country?.toLowerCase()}`.trim(),
-      coordinates: [0, 0],
-    };
-  } else {
-    const [lat, lon] = coordinates;
-    const autoData = await getLocationDetailsFromCoords(lat, lon);
-    if (!autoData) throwError(422, "please provide correct coordinates");
-    locationData.coordinates = [autoData?.lat, autoData?.lon];
-    locationData.formattedAddress = autoData?.formattedAddress;
-    locationData.name = autoData?.name;
-    locationData.address = autoData?.address;
-    locationData.area = autoData?.area;
-    locationData.city = autoData?.city;
-    locationData.district = autoData?.district;
-    locationData.zipcode = autoData?.zipcode;
-    locationData.state = autoData?.state;
-    locationData.country = autoData?.country;
   }
-  return await Location.create(locationData);
+  // } else if (location.isDefault) {
+  //   const customer = await Customer.findById(location.customerId);
+  //   if (customer) {
+  //     customer.defaultLocationId = location._id;
+  //     await customer.save();
+  //   }
+  // }
+  return location;
 };

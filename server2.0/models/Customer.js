@@ -1,10 +1,11 @@
 const mongoose = require("mongoose");
 const { isValidPhoneNumber, isValidEmail } = require("../validator/common");
-const { userField } = require("./validObjectId");
+const { userField, locationField } = require("./validObjectId");
 
 const customerSchema = new mongoose.Schema(
   {
     userId: { ...userField, required: true },
+    locationId: locationField,
     fullName: { type: String },
     dob: { type: Date },
     email: {
