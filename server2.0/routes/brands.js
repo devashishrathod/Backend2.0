@@ -8,6 +8,7 @@ const {
   validateAddBasicDetails,
   validateUpdateBasicDetails,
   validateGetBrand,
+  validateUpdateBrand,
 } = require("../validator/brands");
 const {
   addOrUpdateBasicDetails,
@@ -17,6 +18,7 @@ const {
   verifyBrand,
   acceptPartnershipDeed,
   get,
+  update,
 } = require("../controllers/brands");
 
 // Onboarding Steps
@@ -55,5 +57,11 @@ router.put(
 );
 // General
 router.get("/get", verifyJwtToken, validateSchema(validateGetBrand), get);
+router.put(
+  "/update",
+  verifyJwtToken,
+  validateSchema(validateUpdateBrand),
+  update,
+);
 
 module.exports = router;
