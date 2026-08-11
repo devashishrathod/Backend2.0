@@ -114,3 +114,40 @@ exports.validateGetBrand = {
     }),
   }),
 };
+
+exports.validateUpdateBrand = {
+  query: {
+    brandId: objectId().optional().messages({
+      "any.invalid": "Invalid Brand ID format",
+    }),
+  },
+  body: {
+    brandName: Joi.string().trim().min(2).max(150).optional().messages({
+      "string.empty": "Brand name can't be empty",
+      "string.min": "Brand name must be at least 2 characters",
+      "string.max": "Brand name cannot exceed 150 characters",
+    }),
+    email: Joi.string().trim().lowercase().email().optional().messages({
+      "string.empty": "Email can't be empty",
+      "string.email": "Please enter a valid email address",
+    }),
+    joinedDate: Joi.date().optional().messages({
+      "date.base": "Please enter a valid joined date",
+    }),
+    description: Joi.string().trim().optional().messages({
+      "string.empty": "Description can't be empty",
+    }),
+    isActive: Joi.alternatives().try(Joi.string(), Joi.boolean()).optional(),
+    isOnboarding: Joi.boolean().optional().default(false),
+    subCategoryId: Joi.when("isOnboarding", {
+      is: true,
+      then: objectId().required().messages({
+        "any.required": "Sub-category ID is required during onboarding",
+        "any.invalid": "Invalid Sub-category ID format",
+      }),
+      otherwise: objectId().optional().messages({
+        "any.invalid": "Invalid Sub-category ID format",
+      }),
+    }),
+  },
+};

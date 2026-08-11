@@ -37,7 +37,13 @@ module.exports = {
   ROLES: Object.freeze({
     ADMIN: "ADMIN",
     VENDOR: "VENDOR",
+    SUB_VENDOR: "SUB_VENDOR",
     CUSTOMER: "CUSTOMER",
+  }),
+
+  OUTLET_TYPES: Object.freeze({
+    FRANCHISE: "FRANCHISE",
+    OUTLET: "OUTLET",
   }),
 
   LOGIN_TYPES: Object.freeze({
@@ -67,6 +73,7 @@ module.exports = {
     SYSTEM_VERIFICATION: "SYSTEM_VERIFICATION",
     PARTNERSHIP_DEED: "PARTNERSHIP_DEED",
     SUBSCRIBE_PLAN: "SUBSCRIBE_PLAN",
+    OUTLET_PAGE: "OUTLET_PAGE",
     UNDER_REVIEW: "UNDER_REVIEW",
     DASHBOARD: "DASHBOARD",
   }),
@@ -161,6 +168,7 @@ module.exports = {
     PENDING: "PENDING",
     APPROVED: "APPROVED",
     MANUAL_REVIEW: "MANUAL_REVIEW",
+    UNDER_REVIEW: "UNDER_REVIEW",
     REJECTED: "REJECTED",
   }),
 
@@ -227,6 +235,12 @@ module.exports = {
     COMPLETED: "COMPLETED",
     FAILED: "FAILED",
     null: null,
+  }),
+
+  ADDRESS_TYPES: Object.freeze({
+    HOME: "HOME",
+    WORK: "WORK",
+    OTHER: "OTHER",
   }),
 
   ZIP_CODE_REGEX_MAP: Object.freeze({

@@ -1,8 +1,13 @@
 const { ZIP_CODE_REGEX_MAP, COUNTRY_NAME_TO_ISO } = require("../constants");
-const CHARSET = process.env.MERCHANT_ID_SECRET;
+const MERCHANT_ID_CHARSET = process.env.MERCHANT_ID_SECRET;
+const STORE_ID_CHARSET = process.env.STORE_ID_SECRET;
 
 const MERCHANT_ID_REGEX = new RegExp(
-  `^TM-[${CHARSET}]{4}-[${CHARSET}]{4}-[${CHARSET}]{4}$`,
+  `^TM-[${MERCHANT_ID_CHARSET}]{4}-[${MERCHANT_ID_CHARSET}]{4}-[${MERCHANT_ID_CHARSET}]{4}$`,
+);
+
+const STORE_ID_REGEX = new RegExp(
+  `^TS-[${STORE_ID_CHARSET}]{4}-[${STORE_ID_CHARSET}]{4}-[${STORE_ID_CHARSET}]{4}$`,
 );
 
 module.exports = {
@@ -21,6 +26,8 @@ module.exports = {
     ), // Minimum 8 chars, at least one uppercase, one lowercase, one number and one special char
 
   isValidateMerchantId: (merchantId) => MERCHANT_ID_REGEX.test(merchantId),
+
+  isValidateStoreId: (storeId) => STORE_ID_REGEX.test(storeId),
 
   isValidUsername: (username) => /^[a-zA-Z0-9._]{3,20}$/.test(username), // 3-20 chars, letters, numbers, . and _
 

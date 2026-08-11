@@ -1,0 +1,65 @@
+const { ROLES } = require("../../constants");
+const Location = require("../../models/Location");
+const User = require("../../models/User");
+const Customer = require("../../models/Customer");
+const { throwError } = require("../../utils");
+
+exports.upsertLocation = async (tokenUserId, payload) => {
+  let {
+    userId,
+    addressLine1,
+    addressLine2,
+    landmark,
+    district,
+    city,
+    zipcode,
+    state,
+    country,
+    formattedAddress,
+    coordinates,
+    addressType,
+    isBrandAddress,
+    isSubBrandAddress,
+    isDefault,
+  } = payload;
+
+  userId = userId || tokenUserId;
+  const user = await User.findById(userId);
+  if (!user || user.isDeleted) throwError(404, "User not found");
+  if (user.role !== ROLES.CUSTOMER) throwError(403, "User is not a customer");
+  const customerId = user.customerId;
+  const customer = await Customer.findById(customerId);
+  if (!customer || customer.isDeleted) throwError(404, "Customer not found");
+  let locationData = {
+    userId,
+    customerId,
+    addressLine1,
+    addressLine2,
+    landmark,
+    city: city?.toLowerCase(),
+    district: district?.toLowerCase(),
+    zipcode,
+    state: state?.toLowerCase(),
+    country: country?.toLowerCase(),
+    formattedAddress:
+      formattedAddress ||
+      `${addressLine1?.toLowerCase()}, ${addressLine2?.toLowerCase()}, ${landmark?.toLowerCase()}, ${city?.toLowerCase()}, ${district?.toLowerCase()}, ${state?.toLowerCase()}, ${zipcode}, ${country?.toLowerCase()}`.trim(),
+    coordinates,
+    addressType,
+    isBrandAddress,
+    isSubBrandAddress,
+    isDefault,
+    isDeleted: false,
+  };
+  let location = await Location.findOne({ userId });
+  if (location) {
+    location = await Location.findByIdAndUpdate(location._id, locationData, {
+      returnDocument: "after",
+    });
+  } else {
+    location = await Location.create(locationData);
+  }
+  customer.locationId = location._id;
+  await customer.save();
+  return location;
+};

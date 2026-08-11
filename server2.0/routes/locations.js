@@ -1,19 +1,33 @@
 const express = require("express");
 const router = express.Router();
 
-const { isAdmin, verifyJwtToken } = require("../middlewares");
+const { validateSchema, verifyJwtToken } = require("../middlewares");
 const {
   create,
   getAll,
   get,
-  //  update,
+  update,
+  upsert,
   deleteLocation,
 } = require("../controllers/locations");
+const {
+  validateCreateLocation,
+  validateGetAllLocationsQuery,
+  validateGetLocation,
+  validateUpdateLocation,
+} = require("../validator/locations");
 
-router.post("/create", verifyJwtToken, create);
-router.get("/getAll", verifyJwtToken, getAll);
-router.get("/get/:id", verifyJwtToken, get);
-//router.put("/update/:id", isAdmin, update);
-router.delete("/delete/:id", isAdmin, deleteLocation);
+router.use(verifyJwtToken);
+
+router.post("/create", validateSchema(validateCreateLocation), create);
+router.get("/getAll", validateSchema(validateGetAllLocationsQuery), getAll);
+router.get("/get/:id", validateSchema(validateGetLocation), get);
+router.post("/upsert", validateSchema(validateCreateLocation), upsert); // customer use only one location
+router.put("/update/:id", validateSchema(validateUpdateLocation), update);
+router.delete(
+  "/delete/:id",
+  validateSchema(validateGetLocation),
+  deleteLocation,
+);
 
 module.exports = router;

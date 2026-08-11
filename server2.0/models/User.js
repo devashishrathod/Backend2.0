@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { ROLES, LOGIN_TYPES, SCREENS } = require("../constants");
-const { customerField, brandField } = require("./validObjectId");
+const { customerField, brandField, subBrandField } = require("./validObjectId");
 const {
   isValidEmail,
   isValidUsername,
@@ -13,6 +13,7 @@ const userSchema = new mongoose.Schema(
   {
     customerId: customerField,
     brandId: brandField,
+    subBrandId: subBrandField,
     name: { type: String },
     dob: { type: Date },
     role: {
@@ -70,7 +71,6 @@ const userSchema = new mongoose.Schema(
     // profileOverview: { type: String },
     walletBalance: { type: Number, default: 0 },
     tCoinsBalance: { type: Number, default: 0 },
-
     // lastActivity: { type: Date, default: Date.now },
     // lastLocation: { lat: Number, lng: Number },
     // currentLocation: { lat: Number, lng: Number },
