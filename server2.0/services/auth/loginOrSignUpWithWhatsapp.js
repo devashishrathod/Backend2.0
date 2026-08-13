@@ -50,6 +50,6 @@ exports.loginOrSignUpWithWhatsapp = async (body) => {
     }
     await user.save();
   }
-  await sendOtp(LOGIN_TYPES.WHATSAPP, whatsappNumber);
+  //  await sendOtp(LOGIN_TYPES.WHATSAPP, whatsappNumber);
   return { isFirst, user };
 };

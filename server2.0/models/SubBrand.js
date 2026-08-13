@@ -57,6 +57,35 @@ const subBrandSchema = new mongoose.Schema(
       },
       unique: true,
     },
+    geo: {
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
+        required: true,
+      },
+      coordinates: {
+        type: [Number],
+        required: true,
+        validate: {
+          validator: function (value) {
+            if (!Array.isArray(value) || value.length !== 2) {
+              return false;
+            }
+            const [lng, lat] = value;
+            return (
+              Number.isFinite(lng) &&
+              Number.isFinite(lat) &&
+              lng >= -180 &&
+              lng <= 180 &&
+              lat >= -90 &&
+              lat <= 90
+            );
+          },
+          message: "SubBrand geo coordinates must be [longitude, latitude].",
+        },
+      },
+    },
     logo: { type: String },
     coverImage: { type: String },
     description: { type: String },
@@ -65,5 +94,13 @@ const subBrandSchema = new mongoose.Schema(
   },
   { timestamps: true, versionKey: false },
 );
+
+subBrandSchema.index({ geo: "2dsphere" });
+
+subBrandSchema.index({ brandId: 1, isActive: 1, isDeleted: 1 });
+
+subBrandSchema.index({ locationId: 1 });
+
+subBrandSchema.index({ userId: 1, isActive: 1, isDeleted: 1 });
 
 module.exports = mongoose.model("SubBrand", subBrandSchema);
