@@ -1,13 +1,11 @@
 const Location = require("../../models/Location");
 const Brand = require("../../models/Brand");
 const SubBrand = require("../../models/SubBrand");
-const { ROLES } = require("../../constants");
 const { throwError } = require("../../utils");
+const { syncSubBrandLocAndGeo } = require("../../helpers/subBrands");
 
 exports.createLocation = async (tokenUserId, payload) => {
   let {
-    // name,
-    // shopOrBuildingNumber,
     userId,
     customerId,
     brandId,
@@ -23,68 +21,152 @@ exports.createLocation = async (tokenUserId, payload) => {
     formattedAddress,
     coordinates,
     addressType,
-    isBrandAddress,
-    isSubBrandAddress,
-    isDefault,
+    isBrandAddress = false,
+    isSubBrandAddress = false,
+    isDefault = false,
   } = payload;
-  // const user = await User.findById(userId);
-  // if (!user || user.isDeleted) throwError(404, "User not found");
-  // const userRole = user.role;
-  // const isAdmin = userRole === ROLES.ADMIN;
-  // const isVendor = userRole === ROLES.VENDOR;
-  // const isSubVendor = userRole === ROLES.SUB_VENDOR;
-  // const isCustomer = userRole === ROLES.CUSTOMER;
-  // if (isCustomer) {
-  //   locationData.customerId = user.customerId;
-  // } else if (isVendor && !brandId && !subBrandId) {
-  //   locationData.brandId = user.brandId;
-  // } else if (isSubVendor || (isVendor && subBrandId)) {
-  //   locationData.brandId = user.brandId;
-  //   locationData.subBrandId = subBrandId;
-  // }
-  userId = userId || tokenUserId;
-  let locationData = {
+
+  // =========================================================
+  // LOCATION TYPE
+  // =========================================================
+
+  // Brand + SubBrand both cannot be true
+  if (isBrandAddress && isSubBrandAddress) {
+    throwError(
+      400,
+      "Location cannot be both Brand address and SubBrand address",
+    );
+  }
+
+  // =========================================================
+  // USER LOCATION
+  // =========================================================
+
+  // Only normal user/customer location gets userId.
+  // Brand/SubBrand location must NOT contain userId.
+  if (!isBrandAddress && !isSubBrandAddress) {
+    userId = userId || tokenUserId;
+  } else {
+    userId = undefined;
+  }
+
+  // =========================================================
+  // VALIDATE BRAND ADDRESS
+  // =========================================================
+
+  if (isBrandAddress && !brandId) {
+    throwError(400, "brandId is required for Brand address");
+  }
+
+  // =========================================================
+  // VALIDATE SUB BRAND ADDRESS
+  // =========================================================
+
+  if (isSubBrandAddress && !subBrandId) {
+    throwError(400, "subBrandId is required for SubBrand address");
+  }
+
+  // =========================================================
+  // NORMAL USER ADDRESS
+  // =========================================================
+
+  if (!isBrandAddress && !isSubBrandAddress) {
+    // If customerId is required for user location,
+    // validate it here.
+  }
+
+  // =========================================================
+  // LOCATION DATA
+  // =========================================================
+
+  const locationData = {
     userId,
     customerId,
     brandId,
     subBrandId,
+
     addressLine1,
     addressLine2,
     landmark,
+
     city: city?.toLowerCase(),
     district: district?.toLowerCase(),
     zipcode,
     state: state?.toLowerCase(),
     country: country?.toLowerCase(),
+
     formattedAddress:
       formattedAddress ||
-      `${addressLine1?.toLowerCase()}, ${addressLine2?.toLowerCase()}, ${landmark?.toLowerCase()}, ${city?.toLowerCase()}, ${district?.toLowerCase()}, ${state?.toLowerCase()}, ${zipcode}, ${country?.toLowerCase()}`.trim(),
-    coordinates,
+      [
+        addressLine1,
+        addressLine2,
+        landmark,
+        city,
+        district,
+        state,
+        zipcode,
+        country,
+      ]
+        .filter(Boolean)
+        .map((value) => String(value).toLowerCase())
+        .join(", "),
+
+    geo: {
+      type: "Point",
+      coordinates,
+    },
+
     addressType,
+
     isBrandAddress,
     isSubBrandAddress,
     isDefault,
   };
+
+  // =========================================================
+  // CREATE LOCATION
+  // =========================================================
+
   const location = await Location.create(locationData);
+
+  // =========================================================
+  // BRAND LOCATION
+  // =========================================================
+
   if (location.isBrandAddress) {
-    const brand = await Brand.findById(location.brandId);
-    if (brand) {
-      brand.locationId = location._id;
-      await brand.save();
+    const brand = await Brand.findOne({
+      _id: location.brandId,
+      isDeleted: false,
+    });
+
+    if (!brand) {
+      throwError(404, "Brand not found");
     }
-  } else if (location.isSubBrandAddress) {
-    const subBrand = await SubBrand.findById(location.subBrandId);
-    if (subBrand) {
-      subBrand.locationId = location._id;
-      await subBrand.save();
-    }
+
+    brand.locationId = location._id;
+    await brand.save();
   }
-  // } else if (location.isDefault) {
-  //   const customer = await Customer.findById(location.customerId);
-  //   if (customer) {
-  //     customer.defaultLocationId = location._id;
-  //     await customer.save();
-  //   }
-  // }
+
+  // =========================================================
+  // SUB BRAND LOCATION
+  // =========================================================
+  else if (location.isSubBrandAddress) {
+    const subBrand = await SubBrand.findOne({
+      _id: location.subBrandId,
+      isDeleted: false,
+    });
+
+    if (!subBrand) {
+      throwError(404, "SubBrand not found");
+    }
+    await syncSubBrandLocAndGeo(subBrand._id, location.geo, location._id);
+  }
+  // =========================================================
+  // USER LOCATION
+  // =========================================================
+  // For normal user location:
+  // userId = body.userId || tokenUserId
+  //
+  // Nothing else needs to be synced here currently.
   return location;
 };

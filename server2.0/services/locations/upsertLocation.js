@@ -44,7 +44,7 @@ exports.upsertLocation = async (tokenUserId, payload) => {
     formattedAddress:
       formattedAddress ||
       `${addressLine1?.toLowerCase()}, ${addressLine2?.toLowerCase()}, ${landmark?.toLowerCase()}, ${city?.toLowerCase()}, ${district?.toLowerCase()}, ${state?.toLowerCase()}, ${zipcode}, ${country?.toLowerCase()}`.trim(),
-    coordinates,
+    geo: { type: "Point", coordinates },
     addressType,
     isBrandAddress,
     isSubBrandAddress,

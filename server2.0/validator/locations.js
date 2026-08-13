@@ -42,14 +42,29 @@ exports.validateCreateLocation = {
     country: Joi.string().min(2).max(80).default("india"),
     formattedAddress: Joi.string().min(1).max(500).optional(),
     coordinates: Joi.array()
-      .items(Joi.number())
+      .items(Joi.number().required())
       .length(2)
-      .messages({
-        "array.length": "Coordinates must be [longitude, latitude]",
+      .custom((value, helpers) => {
+        const [lng, lat] = value;
+        if (lng < -180 || lng > 180) {
+          return helpers.error("any.invalid", {
+            message: "Longitude must be between -180 and 180.",
+          });
+        }
+        if (lat < -90 || lat > 90) {
+          return helpers.error("any.invalid", {
+            message: "Latitude must be between -90 and 90.",
+          });
+        }
+        return value;
       })
       .required()
       .messages({
-        "any.required": "Coordinates are required",
+        "array.base": "Coordinates must be an array.",
+        "array.length": "Coordinates must be [longitude, latitude].",
+        "array.includes": "Coordinates must contain only numbers.",
+        "any.required": "Coordinates are required.",
+        "any.invalid": "Invalid longitude/latitude.",
       }),
     addressType: Joi.string()
       .valid(...Object.values(ADDRESS_TYPES))
@@ -140,12 +155,29 @@ exports.validateUpdateLocation = {
     country: Joi.string().min(2).max(80).optional(),
     formattedAddress: Joi.string().min(1).max(500).optional(),
     coordinates: Joi.array()
-      .items(Joi.number())
+      .items(Joi.number().required())
       .length(2)
-      .messages({
-        "array.length": "Coordinates must be [longitude, latitude]",
+      .custom((value, helpers) => {
+        const [lng, lat] = value;
+        if (lng < -180 || lng > 180) {
+          return helpers.error("any.invalid", {
+            message: "Longitude must be between -180 and 180.",
+          });
+        }
+        if (lat < -90 || lat > 90) {
+          return helpers.error("any.invalid", {
+            message: "Latitude must be between -90 and 90.",
+          });
+        }
+        return value;
       })
-      .optional(),
+      .optional()
+      .messages({
+        "array.base": "Coordinates must be an array.",
+        "array.length": "Coordinates must be [longitude, latitude].",
+        "array.includes": "Coordinates must contain only numbers.",
+        "any.invalid": "Invalid longitude/latitude.",
+      }),
     addressType: Joi.string()
       .valid(...Object.values(ADDRESS_TYPES))
       .optional(),

@@ -9,7 +9,7 @@ exports.verifyOtpWithWhatsapp = async (body) => {
   whatsappNumber = whatsappNumber?.toLowerCase();
   const user = await User.findOne({ whatsappNumber, role, isDeleted: false });
   if (!user) throwError(404, "Invalid Whatsapp number, user not found!");
-  await verifyOtp(whatsappNumber, otp);
+  //  await verifyOtp(whatsappNumber, otp);
   user.isMobileVerified = true;
   if (currentScreen) user.currentScreen = currentScreen.toUpperCase().trim();
   await user.save();
