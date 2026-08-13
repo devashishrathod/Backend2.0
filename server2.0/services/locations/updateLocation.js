@@ -1,5 +1,6 @@
 const Location = require("../../models/Location");
 const { throwError } = require("../../utils");
+const { syncSubBrandLocAndGeo } = require("../../helpers/subBrands");
 
 exports.updateLocation = async (userId, payload) => {
   let {
@@ -23,6 +24,11 @@ exports.updateLocation = async (userId, payload) => {
   const location = await Location.findById(id);
   if (!location || location.isDeleted) throwError(404, "Location not found");
 
+  let isSubBrandLocation = false;
+  if (location.isSubBrandAddress && location.subBrandId) {
+    isSubBrandLocation = true;
+  }
+
   let locationData = {};
   if (addressLine1) locationData.addressLine1 = addressLine1;
   if (addressLine2) locationData.addressLine2 = addressLine2;
@@ -36,7 +42,11 @@ exports.updateLocation = async (userId, payload) => {
     locationData.formattedAddress =
       formattedAddress ||
       `${addressLine1?.toLowerCase()}, ${addressLine2?.toLowerCase()}, ${landmark?.toLowerCase()}, ${city?.toLowerCase()}, ${district?.toLowerCase()}, ${state?.toLowerCase()}, ${zipcode}, ${country?.toLowerCase()}`.trim();
-  if (coordinates) locationData.coordinates = coordinates;
+  if (coordinates) {
+    const locGeo = { type: "Point", coordinates };
+    locationData.geo = locGeo;
+    if (isSubBrandLocation) syncSubBrandLocAndGeo(location.subBrandId, locGeo);
+  }
   if (addressType) locationData.addressType = addressType;
   if (isBrandAddress !== undefined) {
     locationData.isBrandAddress = isBrandAddress;

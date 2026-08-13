@@ -12,7 +12,8 @@ exports.deleteLocation = async (payload) => {
     const subBrand = await SubBrand.findById(result.subBrandId);
     if (subBrand) {
       subBrand.locationId = null;
-      await subBrand.save();
+      ((subBrand.geo = { type: "Point", coordinates: [0, 0] }),
+        await subBrand.save());
     }
   } else if (result.brandId) {
     const brand = await Brand.findById(result.brandId);
