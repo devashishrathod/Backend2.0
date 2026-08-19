@@ -19,10 +19,10 @@ const {
   generateVoucherCode,
   generateVoucherVersionCode,
 } = require("./generateUniueCode");
-const {
-  cloneVoucherVersion,
-  createVoucherHistory,
-} = require("./validateVersions");
+// const {
+//   cloneVoucherVersion,
+//   createVoucherHistory,
+// } = require("./validateVersions");
 
 module.exports = {
   normalizeVoucherName,
@@ -40,6 +40,6 @@ module.exports = {
   rollbackVoucherImages,
   generateVoucherCode,
   generateVoucherVersionCode,
-  cloneVoucherVersion,
-  createVoucherHistory,
+  // cloneVoucherVersion,
+  // createVoucherHistory,
 };
