@@ -10,6 +10,10 @@ const STORE_ID_REGEX = new RegExp(
   `^TS-[${STORE_ID_CHARSET}]{4}-[${STORE_ID_CHARSET}]{4}-[${STORE_ID_CHARSET}]{4}$`,
 );
 
+const VOUCHER_CODE_REGEX = /^VCH-\d{8}$/;
+
+const VOUCHER_VERSION_CODE_REGEX = /^VCH-\d{8}-V\d+$/;
+
 module.exports = {
   escapeRegex: (value = "") => {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -28,6 +32,11 @@ module.exports = {
   isValidateMerchantId: (merchantId) => MERCHANT_ID_REGEX.test(merchantId),
 
   isValidateStoreId: (storeId) => STORE_ID_REGEX.test(storeId),
+
+  isValidateVoucherCode: (voucherCode) => VOUCHER_CODE_REGEX.test(voucherCode),
+
+  isValidateVoucherVersionCode: (versionCode) =>
+    VOUCHER_VERSION_CODE_REGEX.test(versionCode),
 
   isValidUsername: (username) => /^[a-zA-Z0-9._]{3,20}$/.test(username), // 3-20 chars, letters, numbers, . and _
 

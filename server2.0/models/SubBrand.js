@@ -61,12 +61,10 @@ const subBrandSchema = new mongoose.Schema(
       type: {
         type: String,
         enum: ["Point"],
-        default: "Point",
-        required: true,
+        default: "Point"
       },
       coordinates: {
         type: [Number],
-        required: true,
         validate: {
           validator: function (value) {
             if (!Array.isArray(value) || value.length !== 2) {
@@ -83,7 +81,8 @@ const subBrandSchema = new mongoose.Schema(
             );
           },
           message: "SubBrand geo coordinates must be [longitude, latitude].",
-        },
+        } , 
+        default: [0, 0]
       },
     },
     logo: { type: String },

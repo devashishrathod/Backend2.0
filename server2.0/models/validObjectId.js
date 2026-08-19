@@ -32,6 +32,8 @@ module.exports = Object.freeze({
   subBrandField: refField("SubBrand"),
   workHoursField: refField("WorkHours"),
   voucherField: refField("Voucher"),
+  voucherSubBrandField: refField("VoucherSubBrand"),
+  voucherOfferField: refField("VoucherOffer"),
   billField: refField("Bill"),
   settlementField: refField("Settlement"),
   refundField: refField("Refund"),
