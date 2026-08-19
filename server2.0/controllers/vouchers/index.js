@@ -3,6 +3,7 @@ const { create } = require("./create");
 const { submitForReview } = require("./submitForReview");
 const { review } = require("./review");
 const { publish } = require("./publish");
+const { getAllVersions } = require("./getAllVersions");
 
 module.exports = {
   create,
@@ -10,4 +11,5 @@ module.exports = {
   submitForReview,
   review,
   publish,
+  getAllVersions,
 };

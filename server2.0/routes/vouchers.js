@@ -8,6 +8,7 @@ const {
   submitForReview,
   review,
   publish,
+  getAllVersions,
 } = require("../controllers/vouchers");
 const {
   validateCreateVoucher,
@@ -15,6 +16,7 @@ const {
   validateSubmitVoucherForReview,
   validateReviewVoucher,
   validatePublishVoucher,
+  validateGetAllVoucherVersions,
 } = require("../validator/vouchers");
 
 router.use(verifyJwtToken);
@@ -35,6 +37,11 @@ router.post(
   "/publish/:versionId",
   validateSchema(validatePublishVoucher),
   publish,
+);
+router.get(
+  "/versions/get-all",
+  validateSchema(validateGetAllVoucherVersions),
+  getAllVersions,
 );
 
 module.exports = router;

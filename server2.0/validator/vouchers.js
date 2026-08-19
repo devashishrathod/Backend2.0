@@ -5,6 +5,7 @@ const {
   VOUCHER_USAGE_TYPE,
   DISCOUNT_APPLICABLE_ON,
   VOUCHER_APPROVAL_ACTION,
+  VOUCHER_STATUSES,
 } = require("../constants/voucher");
 
 const offerSchema = Joi.object({
@@ -185,4 +186,62 @@ exports.validatePublishVoucher = {
       "any.invalid": "Invalid voucher version ID.",
     }),
   },
+};
+
+exports.validateGetAllVoucherVersions = {
+  query: Joi.object({
+    page: Joi.number().integer().min(1).optional(),
+    limit: Joi.number().integer().min(1).max(100).optional(),
+    search: Joi.string().trim().optional(),
+    voucherId: objectId().optional().messages({
+      "any.invalid": "Invalid Voucher ID format",
+    }),
+    brandId: objectId().optional().messages({
+      "any.invalid": "Invalid Brand ID format",
+    }),
+    categoryId: objectId().optional().messages({
+      "any.invalid": "Invalid Category ID format",
+    }),
+    subCategoryId: objectId().optional().messages({
+      "any.invalid": "Invalid Sub Category ID format",
+    }),
+    createdBy: objectId().optional().messages({
+      "any.invalid": "Invalid Created By ID format",
+    }),
+    submittedBy: objectId().optional().messages({
+      "any.invalid": "Invalid Submitted By ID format",
+    }),
+    reviewedBy: objectId().optional().messages({
+      "any.invalid": "Invalid Reviewed By ID format",
+    }),
+    approvedBy: objectId().optional().messages({
+      "any.invalid": "Invalid Approved By ID format",
+    }),
+    rejectedBy: objectId().optional().messages({
+      "any.invalid": "Invalid Rejected By ID format",
+    }),
+    versionNumber: Joi.number().integer().min(1).optional(),
+    name: Joi.string().trim().optional(),
+    versionCode: Joi.string().trim().optional(),
+    status: Joi.string()
+      .valid(...Object.values(VOUCHER_STATUSES))
+      .optional(),
+    isImmutable: Joi.alternatives().try(Joi.string(), Joi.boolean()).optional(),
+    isActive: Joi.alternatives().try(Joi.string(), Joi.boolean()).optional(),
+    fromDate: Joi.date().iso().optional(),
+    toDate: Joi.date().iso().optional(),
+    sortBy: Joi.string()
+      .valid(
+        "name",
+        "versionNumber",
+        "status",
+        "startAt",
+        "endAt",
+        "publishedAt",
+        "createdAt",
+        "updatedAt",
+      )
+      .optional(),
+    sortOrder: Joi.string().valid("asc", "desc").optional().default("desc"),
+  }),
 };

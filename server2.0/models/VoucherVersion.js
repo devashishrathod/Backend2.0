@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const { isValidateVoucherVersionCode } = require("../validator/common");
-const { userField } = require("./validObjectId");
+const { userField, brandField } = require("./validObjectId");
 const {
   VOUCHER_STATUSES,
   VOUCHER_DISCOUNT_TYPES,
@@ -96,6 +96,10 @@ const voucherVersionSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    brandId: {
+      ...brandField,
+      required: true,
+    },
     versionNumber: {
       type: Number,
       required: true,
@@ -161,6 +165,7 @@ const voucherVersionSchema = new mongoose.Schema(
       default: VOUCHER_STATUSES.DRAFT,
       index: true,
     },
+    attachedSubBrandsCount: { type: Number, default: 0 },
     versionCode: {
       type: String,
       required: true,
