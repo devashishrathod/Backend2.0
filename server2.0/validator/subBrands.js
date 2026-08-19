@@ -46,3 +46,41 @@ exports.validateUpdateSubBrand = {
     isActive: Joi.alternatives().try(Joi.string(), Joi.boolean()).default(true),
   },
 };
+
+exports.validateGetAllSubBrands = {
+  query: Joi.object({
+    page: Joi.number().integer().min(1).optional(),
+    limit: Joi.number().integer().min(1).max(100).optional(),
+    search: Joi.string().trim().optional(),
+    userId: objectId().optional().messages({
+      "any.invalid": "Invalid User ID format",
+    }),
+    brandId: objectId().optional().messages({
+      "any.invalid": "Invalid Brand ID format",
+    }),
+    locationId: objectId().optional().messages({
+      "any.invalid": "Invalid Location ID format",
+    }),
+    workHoursId: objectId().optional().messages({
+      "any.invalid": "Invalid Work Hours ID format",
+    }),
+    outletType: Joi.string()
+      .valid(...Object.values(OUTLET_TYPES))
+      .optional()
+      .messages({
+        "string.empty": "Outlet type can't be empty",
+      }),
+    email: Joi.string().trim().optional(),
+    mobile: Joi.string().trim().optional(),
+    whatsappNumber: Joi.string().trim().optional(),
+    uniqueId: Joi.string().trim().optional(),
+    storeId: Joi.string().trim().optional(),
+    isActive: Joi.alternatives().try(Joi.string(), Joi.boolean()).optional(),
+    fromDate: Joi.date().iso().optional(),
+    toDate: Joi.date().iso().optional(),
+    sortBy: Joi.string()
+      .valid("joinedDate", "createdAt", "updatedAt", "outletType", "isActive")
+      .optional(),
+    sortOrder: Joi.string().valid("asc", "desc").optional().default("desc"),
+  }),
+};
