@@ -61,7 +61,7 @@ const subBrandSchema = new mongoose.Schema(
       type: {
         type: String,
         enum: ["Point"],
-        default: "Point"
+        default: "Point",
       },
       coordinates: {
         type: [Number],
@@ -81,8 +81,8 @@ const subBrandSchema = new mongoose.Schema(
             );
           },
           message: "SubBrand geo coordinates must be [longitude, latitude].",
-        } , 
-        default: [0, 0]
+        },
+        default: [0, 0],
       },
     },
     logo: { type: String },
@@ -95,6 +95,8 @@ const subBrandSchema = new mongoose.Schema(
 );
 
 subBrandSchema.index({ geo: "2dsphere" });
+
+subBrandSchema.index({ isActive: 1, isDeleted: 1 });
 
 subBrandSchema.index({ brandId: 1, isActive: 1, isDeleted: 1 });
 

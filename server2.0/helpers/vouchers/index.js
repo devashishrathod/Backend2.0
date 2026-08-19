@@ -23,6 +23,10 @@ const {
 //   cloneVoucherVersion,
 //   createVoucherHistory,
 // } = require("./validateVersions");
+const {
+  buildCustomerVoucherPipeline,
+  buildCustomerVoucherDetailPipeline,
+} = require("./customerListing");
 
 module.exports = {
   normalizeVoucherName,
@@ -42,4 +46,6 @@ module.exports = {
   generateVoucherVersionCode,
   // cloneVoucherVersion,
   // createVoucherHistory,
+  buildCustomerVoucherPipeline,
+  buildCustomerVoucherDetailPipeline,
 };

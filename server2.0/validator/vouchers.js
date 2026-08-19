@@ -245,3 +245,39 @@ exports.validateGetAllVoucherVersions = {
     sortOrder: Joi.string().valid("asc", "desc").optional().default("desc"),
   }),
 };
+
+exports.validateCustomerGetAllVouchers = {
+  query: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(50).default(10),
+    search: Joi.string().trim().max(100).optional(),
+    categoryId: objectId().optional().messages({
+      "any.invalid": "Invalid category ID.",
+    }),
+    subCategoryId: objectId().optional().messages({
+      "any.invalid": "Invalid subCategory ID.",
+    }),
+    sortBy: Joi.string()
+      .valid("distance", "createdAt", "startAt", "endAt")
+      .default("distance"),
+    sortOrder: Joi.string().valid("asc", "desc").default("asc"),
+    latitude: Joi.number().min(-90).max(90).optional(),
+    longitude: Joi.number().min(-180).max(180).optional(),
+  }),
+};
+
+exports.validateCustomerGetVoucher = {
+  params: {
+    voucherId: objectId().required().messages({
+      "any.required": "Voucher ID is required.",
+      "any.invalid": "Invalid voucher ID format.",
+    }),
+  },
+  query: Joi.object({
+    latitude: Joi.number().min(-90).max(90).optional(),
+    longitude: Joi.number().min(-180).max(180).optional(),
+    outletId: objectId().optional().messages({
+      "any.invalid": "Invalid outlet ID format.",
+    }),
+  }),
+};

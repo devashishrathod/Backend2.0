@@ -103,4 +103,26 @@ voucherSubBrandSchema.index({
   isDeleted: 1,
 });
 
+voucherSubBrandSchema.index(
+  {
+    subBrandId: 1,
+    voucherVersionId: 1,
+  },
+  {
+    unique: true,
+  },
+);
+
+voucherSubBrandSchema.index({
+  subBrandId: 1,
+  isActive: 1,
+  isDeleted: 1,
+});
+
+voucherSubBrandSchema.index({
+  voucherVersionId: 1,
+  isActive: 1,
+  isDeleted: 1,
+});
+
 module.exports = mongoose.model("VoucherSubBrand", voucherSubBrandSchema);

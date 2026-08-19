@@ -4,6 +4,8 @@ const { submitForReview } = require("./submitForReview");
 const { review } = require("./review");
 const { publish } = require("./publish");
 const { getAllVersions } = require("./getAllVersions");
+const { getAllCustomerVouchers } = require("./getAllCustomerVouchers");
+const { getCustomerVoucher } = require("./getCustomerVoucher");
 
 module.exports = {
   create,
@@ -12,4 +14,6 @@ module.exports = {
   review,
   publish,
   getAllVersions,
+  getAllCustomerVouchers,
+  getCustomerVoucher,
 };

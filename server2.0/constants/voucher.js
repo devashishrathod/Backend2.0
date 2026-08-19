@@ -45,6 +45,7 @@ const VOUCHER_STATUSES = Object.freeze({
 const VOUCHER_OFFER_LIMITS = Object.freeze({
   MAX_IMAGES: 5,
   MAX_OFFERS: 10,
+  MAX_DISTANCE: 10000,
 });
 
 const VOUCHER_DISCOUNT_TYPES = Object.freeze({
