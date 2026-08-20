@@ -1,23 +1,22 @@
 const Joi = require("joi");
 const objectId = require("./validJoiObjectId");
 const {
-  BANNER_TYPE,
-  BANNER_REDIRECT_TYPE,
-  BANNER_SORT_BY,
-} = require("../constants/banner");
+  TICKER_REDIRECT_TYPE,
+  TICKER_SORT_BY,
+} = require("../constants/promotionalTicker");
 
 const redirectObjectSchema = Joi.object({
   type: Joi.string()
-    .valid(...Object.values(BANNER_REDIRECT_TYPE))
-    .default(BANNER_REDIRECT_TYPE.NONE),
+    .valid(...Object.values(TICKER_REDIRECT_TYPE))
+    .default(TICKER_REDIRECT_TYPE.NONE),
   targetId: objectId()
     .allow(null)
     .when("type", {
       is: Joi.valid(
-        BANNER_REDIRECT_TYPE.CATEGORY,
-        BANNER_REDIRECT_TYPE.DEAL,
-        BANNER_REDIRECT_TYPE.BRAND,
-        BANNER_REDIRECT_TYPE.OFFER,
+        TICKER_REDIRECT_TYPE.CATEGORY,
+        TICKER_REDIRECT_TYPE.DEAL,
+        TICKER_REDIRECT_TYPE.BRAND,
+        TICKER_REDIRECT_TYPE.OFFER,
       ),
       then: Joi.required().messages({
         "any.required": "Target ID is required for this redirect type.",
@@ -29,7 +28,7 @@ const redirectObjectSchema = Joi.object({
     .uri()
     .allow(null)
     .when("type", {
-      is: BANNER_REDIRECT_TYPE.EXTERNAL_URL,
+      is: TICKER_REDIRECT_TYPE.EXTERNAL_URL,
       then: Joi.required().messages({
         "any.required": "URL is required for EXTERNAL_URL redirect type.",
       }),
@@ -71,24 +70,17 @@ const withDateRangeCheck = (schema) =>
     return value;
   });
 
-exports.validateCreateBanner = {
+exports.validateCreateTicker = {
   body: withDateRangeCheck(
     Joi.object({
-      title: Joi.string().trim().min(2).max(150).required().messages({
+      title: Joi.string().trim().min(2).max(100).required().messages({
         "any.required": "Title is required.",
         "string.empty": "Title is required.",
       }),
-      description: Joi.string().trim().max(1000).allow("").optional(),
-      type: Joi.string()
-        .valid(...Object.values(BANNER_TYPE))
-        .required()
-        .messages({
-          "any.required": "Banner type is required.",
-          "any.only": `Type must be one of: ${Object.values(BANNER_TYPE).join(", ")}.`,
-        }),
       redirect: jsonTolerantObject(redirectObjectSchema, {
         label: "Redirect",
       }).optional(),
+      displayOrder: Joi.number().integer().min(0).optional().default(0),
       startDate: Joi.date().iso().optional().allow(null),
       endDate: Joi.date().iso().optional().allow(null),
       isActive: Joi.boolean().optional().default(true),
@@ -96,23 +88,20 @@ exports.validateCreateBanner = {
   ),
 };
 
-exports.validateUpdateBanner = {
+exports.validateUpdateTicker = {
   params: {
     id: objectId().required().messages({
-      "any.required": "Banner ID is required.",
-      "any.invalid": "Invalid banner ID.",
+      "any.required": "Ticker ID is required.",
+      "any.invalid": "Invalid ticker ID.",
     }),
   },
   body: withDateRangeCheck(
     Joi.object({
-      title: Joi.string().trim().min(2).max(150).optional(),
-      description: Joi.string().trim().max(1000).allow("").optional(),
-      type: Joi.string()
-        .valid(...Object.values(BANNER_TYPE))
-        .optional(),
+      title: Joi.string().trim().min(2).max(100).optional(),
       redirect: jsonTolerantObject(redirectObjectSchema, {
         label: "Redirect",
       }).optional(),
+      displayOrder: Joi.number().integer().min(0).optional(),
       startDate: Joi.date().iso().optional().allow(null),
       endDate: Joi.date().iso().optional().allow(null),
       isActive: Joi.boolean().optional(),
@@ -124,38 +113,35 @@ exports.validateUpdateBanner = {
   ),
 };
 
-exports.validateGetBanner = {
+exports.validateGetTicker = {
   params: {
     id: objectId().required().messages({
-      "any.required": "Banner ID is required.",
-      "any.invalid": "Invalid banner ID.",
+      "any.required": "Ticker ID is required.",
+      "any.invalid": "Invalid ticker ID.",
     }),
   },
 };
 
-exports.validateGetAllBanners = {
+exports.validateGetAllTickers = {
   query: Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
     search: Joi.string().trim().allow("").optional(),
-    type: Joi.string()
-      .valid(...Object.values(BANNER_TYPE))
-      .optional(),
     isActive: Joi.boolean().optional(),
     fromDate: Joi.date().iso().optional(),
     toDate: Joi.date().iso().optional(),
     sortBy: Joi.string()
-      .valid(...Object.values(BANNER_SORT_BY))
-      .default(BANNER_SORT_BY.CREATED_AT),
-    sortOrder: Joi.string().valid("asc", "desc").default("desc"),
+      .valid(...Object.values(TICKER_SORT_BY))
+      .default(TICKER_SORT_BY.DISPLAY_ORDER),
+    sortOrder: Joi.string().valid("asc", "desc").default("asc"),
   }),
 };
 
-exports.validateDeleteBanner = {
+exports.validateDeleteTicker = {
   params: {
     id: objectId().required().messages({
-      "any.required": "Banner ID is required.",
-      "any.invalid": "Invalid banner ID.",
+      "any.required": "Ticker ID is required.",
+      "any.invalid": "Invalid ticker ID.",
     }),
   },
 };

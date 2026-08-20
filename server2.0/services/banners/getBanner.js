@@ -1,9 +1,8 @@
 const Banner = require("../../models/Banner");
-const { throwError, validateObjectId } = require("../../utils");
+const { throwError } = require("../../utils");
 
 exports.getBanner = async (id) => {
-  validateObjectId(id, "Banner Id");
-  const banner = await Banner.findById(id);
-  if (!banner || banner.isDeleted) throwError(404, "Banner not found");
+  const banner = await Banner.findOne({ _id: id, isDeleted: false });
+  if (!banner) throwError(404, "Banner not found.");
   return banner;
 };

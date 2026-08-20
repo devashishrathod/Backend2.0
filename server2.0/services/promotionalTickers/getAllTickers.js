@@ -1,29 +1,22 @@
-const Banner = require("../../models/Banner");
+const PromotionalTicker = require("../../models/PromotionalTicker");
 const { pagination } = require("../../utils");
-const { BANNER_SORT_BY } = require("../../constants/banner");
+const { TICKER_SORT_BY } = require("../../constants/promotionalTicker");
 
-exports.getAllBanners = async (query) => {
+exports.getAllTickers = async (query) => {
   const {
     page = 1,
     limit = 10,
     search,
-    type,
     isActive,
     fromDate,
     toDate,
-    sortBy = BANNER_SORT_BY.CREATED_AT,
-    sortOrder = "desc",
+    sortBy = TICKER_SORT_BY.DISPLAY_ORDER,
+    sortOrder = "asc",
   } = query;
 
   const match = { isDeleted: false };
-  if (type) match.type = type;
   if (typeof isActive !== "undefined") match.isActive = isActive;
-  if (search) {
-    match.$or = [
-      { title: { $regex: new RegExp(search, "i") } },
-      { description: { $regex: new RegExp(search, "i") } },
-    ];
-  }
+  if (search) match.title = { $regex: new RegExp(search, "i") };
   if (fromDate || toDate) {
     match.createdAt = {};
     if (fromDate) match.createdAt.$gte = new Date(fromDate);
@@ -39,5 +32,11 @@ exports.getAllBanners = async (query) => {
     { $sort: { [sortBy]: sortOrder === "asc" ? 1 : -1 } },
   ];
 
-  return pagination(Banner, pipeline, page, limit, "banner");
+  return pagination(
+    PromotionalTicker,
+    pipeline,
+    page,
+    limit,
+    "promotional ticker",
+  );
 };

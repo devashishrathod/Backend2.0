@@ -2,7 +2,7 @@ const { create } = require("./create");
 const { get } = require("./get");
 const { getAll } = require("./getAll");
 const { update } = require("./update");
-const { deleteBanner } = require("./deleteBanner");
+const { deleteTicker } = require("./deleteTicker");
 const { getActiveForCustomer } = require("./getActiveForCustomer");
 
 module.exports = {
@@ -10,6 +10,6 @@ module.exports = {
   get,
   getAll,
   update,
-  deleteBanner,
+  deleteTicker,
   getActiveForCustomer,
 };
