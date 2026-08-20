@@ -81,22 +81,22 @@ const locationSchema = new mongoose.Schema(
 
 locationSchema.index({ geo: "2dsphere" });
 
-locationSchema.index({ userId: 1, isActive: 1, isDeleted: 1 });
+// locationSchema.index({ userId: 1, isActive: 1, isDeleted: 1 });
 
 locationSchema.index({ customerId: 1, isActive: 1, isDeleted: 1 });
 
 locationSchema.index({ subBrandId: 1, isActive: 1, isDeleted: 1 });
 
-locationSchema.index(
-  { userId: 1, isDefault: 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      isDefault: true,
-      isActive: true,
-      isDeleted: false,
-    },
-  },
-);
+// locationSchema.index(
+//   { userId: 1, isDefault: 1 },
+//   {
+//     unique: true,
+//     partialFilterExpression: {
+//       isDefault: true,
+//       isActive: true,
+//       isDeleted: false,
+//     },
+//   },
+// );
 
 module.exports = mongoose.model("Location", locationSchema);
