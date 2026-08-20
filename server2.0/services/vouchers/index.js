@@ -3,6 +3,10 @@ const { updateVoucher } = require("./updateVoucher");
 const { submitVoucherForReview } = require("./submitVoucherForReview");
 const { reviewVoucher } = require("./reviewVoucher");
 const { publishVoucher } = require("./publishVoucher");
+const { getAllVoucherVersions } = require("./getAllVoucherVersions");
+const { getCustomerVouchers } = require("./getCustomerVouchers");
+const { getCustomerSingleVoucher } = require("./getCustomerSingleVoucher");
+const { previewCustomerVoucher } = require("./previewCustomerVoucher");
 
 module.exports = {
   createVoucher,
@@ -10,4 +14,8 @@ module.exports = {
   submitVoucherForReview,
   reviewVoucher,
   publishVoucher,
+  getAllVoucherVersions,
+  getCustomerVouchers,
+  getCustomerSingleVoucher,
+  previewCustomerVoucher,
 };

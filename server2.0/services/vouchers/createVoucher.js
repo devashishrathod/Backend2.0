@@ -122,6 +122,7 @@ exports.createVoucher = async (userId, payload, images) => {
         {
           createdBy: userId,
           voucherId: voucher._id,
+          brandId,
           versionNumber: 1,
           versionCode,
           name,
