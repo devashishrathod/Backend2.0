@@ -26,6 +26,7 @@ const {
 const {
   buildCustomerVoucherPipeline,
   buildCustomerVoucherDetailPipeline,
+  mapCustomerVoucherDetail,
 } = require("./customerListing");
 
 module.exports = {
@@ -48,4 +49,5 @@ module.exports = {
   // createVoucherHistory,
   buildCustomerVoucherPipeline,
   buildCustomerVoucherDetailPipeline,
+  mapCustomerVoucherDetail,
 };

@@ -829,3 +829,79 @@ exports.buildCustomerVoucherDetailPipeline = ({
     },
   ];
 };
+
+exports.formatDistance = (meters) => {
+  if (
+    meters === undefined ||
+    meters === null ||
+    !Number.isFinite(Number(meters))
+  ) {
+    return null;
+  }
+  const distance = Number(meters);
+  if (distance < 1000) {
+    return {
+      meters: Math.round(distance),
+      kilometers: Number((distance / 1000).toFixed(2)),
+      display: `${Math.round(distance)} m`,
+    };
+  }
+  return {
+    meters: Math.round(distance),
+    kilometers: Number((distance / 1000).toFixed(2)),
+    display: `${(distance / 1000).toFixed(1)} km`,
+  };
+};
+
+exports.mapCustomerVoucherOutlet = (outlet) => {
+  if (!outlet) return null;
+  return {
+    id: outlet._id,
+    uniqueId: outlet.uniqueId || null,
+    storeId: outlet.storeId || null,
+    logo: outlet.logo || null,
+    coverImage: outlet.coverImage || null,
+    description: outlet.description || null,
+    distance: exports.formatDistance(outlet.distanceInMeters),
+    location: outlet.location
+      ? {
+          id: outlet.location._id,
+          addressLine1: outlet.location.addressLine1,
+          addressLine2: outlet.location.addressLine2,
+          landmark: outlet.location.landmark,
+          city: outlet.location.city,
+          district: outlet.location.district,
+          state: outlet.location.state,
+          country: outlet.location.country,
+          zipcode: outlet.location.zipcode,
+          formattedAddress: outlet.location.formattedAddress,
+          geo: outlet.location.geo,
+        }
+      : null,
+    workHours: outlet.workHours || null,
+  };
+};
+
+exports.mapCustomerVoucherDetail = (data) => {
+  if (!data) return null;
+  return {
+    voucherId: data.voucherId,
+    name: data.name,
+    categoryId: data.categoryId,
+    subCategoryId: data.subCategoryId,
+    version: data.version
+      ? {
+          id: data.version._id,
+          versionNumber: data.version.versionNumber,
+          images: data.version.images || [],
+          description: data.version.description || null,
+          offers: data.version.offers || [],
+          startAt: data.version.startAt,
+          endAt: data.version.endAt,
+        }
+      : null,
+    selectedOutlet: exports.mapCustomerVoucherOutlet(data.selectedOutlet),
+    outlets: (data.outlets || []).map(exports.mapCustomerVoucherOutlet),
+    outletCount: data.outletCount || 0,
+  };
+};

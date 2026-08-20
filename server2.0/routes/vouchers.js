@@ -11,6 +11,7 @@ const {
   getAllVersions,
   getAllCustomerVouchers,
   getCustomerVoucher,
+  previewCustomerVoucher,
 } = require("../controllers/vouchers");
 const {
   validateCreateVoucher,
@@ -21,6 +22,7 @@ const {
   validateGetAllVoucherVersions,
   validateCustomerGetAllVouchers,
   validateCustomerGetVoucher,
+  validateCustomerVoucherPreview,
 } = require("../validator/vouchers");
 
 router.use(verifyJwtToken);
@@ -58,6 +60,11 @@ router.get(
   "/customer/get/:voucherId",
   validateSchema(validateCustomerGetVoucher),
   getCustomerVoucher,
+);
+router.post(
+  "/customer/voucher/preview",
+  validateSchema(validateCustomerVoucherPreview),
+  previewCustomerVoucher,
 );
 
 module.exports = router;

@@ -281,3 +281,21 @@ exports.validateCustomerGetVoucher = {
     }),
   }),
 };
+
+exports.validateCustomerVoucherPreview = {
+  body: Joi.object({
+    voucherId: objectId().required().messages({
+      "any.required": "Voucher ID is required.",
+      "any.invalid": "Invalid voucher ID format.",
+    }),
+    outletId: objectId().required().messages({
+      "any.required": "Outlet ID is required.",
+      "any.invalid": "Invalid outlet ID format.",
+    }),
+    billAmount: Joi.number().positive().precision(2).required().messages({
+      "number.base": "Bill amount must be a number.",
+      "number.positive": "Bill amount must be greater than zero.",
+      "any.required": "Bill amount is required.",
+    }),
+  }),
+};

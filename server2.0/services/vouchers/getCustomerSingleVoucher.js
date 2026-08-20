@@ -6,6 +6,7 @@ const { throwError } = require("../../utils");
 //const { getVoucherConfig } = require("./getVoucherConfig");
 const {
   buildCustomerVoucherDetailPipeline,
+  mapCustomerVoucherDetail,
 } = require("../../helpers/vouchers");
 const { VOUCHER_OFFER_LIMITS } = require("../../constants/voucher");
 
@@ -112,5 +113,14 @@ exports.getCustomerSingleVoucher = async (userId, payload) => {
     throwError(404, "Voucher not found or currently unavailable.");
   }
 
-  return result[0];
+  const data = result[0];
+  if (
+    payload.outletId &&
+    !data.outlets.some(
+      (outlet) => outlet._id.toString() === payload.outletId.toString(),
+    )
+  ) {
+    throwError(400, "Selected outlet is not linked with this voucher.");
+  }
+  return mapCustomerVoucherDetail(data);
 };

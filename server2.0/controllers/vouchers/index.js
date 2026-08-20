@@ -6,6 +6,7 @@ const { publish } = require("./publish");
 const { getAllVersions } = require("./getAllVersions");
 const { getAllCustomerVouchers } = require("./getAllCustomerVouchers");
 const { getCustomerVoucher } = require("./getCustomerVoucher");
+const { previewCustomerVoucher } = require("./previewCustomerVoucher");
 
 module.exports = {
   create,
@@ -16,4 +17,5 @@ module.exports = {
   getAllVersions,
   getAllCustomerVouchers,
   getCustomerVoucher,
+  previewCustomerVoucher,
 };
