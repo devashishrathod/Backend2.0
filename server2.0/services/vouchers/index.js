@@ -1,5 +1,5 @@
 const { createVoucher } = require("./createVoucher");
-// const { updateVoucher } = require("./updateVoucher");
+const { updateVoucher } = require("./updateVoucher");
 const { submitVoucherForReview } = require("./submitVoucherForReview");
 const { reviewVoucher } = require("./reviewVoucher");
 const { publishVoucher } = require("./publishVoucher");
@@ -10,7 +10,7 @@ const { previewCustomerVoucher } = require("./previewCustomerVoucher");
 
 module.exports = {
   createVoucher,
-  //  updateVoucher,
+  updateVoucher,
   submitVoucherForReview,
   reviewVoucher,
   publishVoucher,

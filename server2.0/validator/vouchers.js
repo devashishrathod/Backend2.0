@@ -103,6 +103,49 @@ exports.validateCreateVoucher = {
   }),
 };
 
+const jsonTolerantArray = (itemSchema, { label = "Item" } = {}) =>
+  Joi.any().custom((value, helpers) => {
+    if (value === undefined || value === null || value === "") return [];
+    let items = value;
+    if (typeof items === "string") {
+      try {
+        items = JSON.parse(items);
+      } catch (error) {
+        items = [items];
+      }
+    }
+    if (!Array.isArray(items)) items = [items];
+
+    const parsedItems = [];
+    for (let i = 0; i < items.length; i++) {
+      let item = items[i];
+      if (typeof item === "string") {
+        const trimmed = item.trim();
+        if (
+          (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+          (trimmed.startsWith("[") && trimmed.endsWith("]"))
+        ) {
+          try {
+            item = JSON.parse(trimmed);
+          } catch (error) {
+            item = trimmed;
+          }
+        }
+      }
+      const { error, value: validItem } = itemSchema.validate(item, {
+        convert: true,
+      });
+      if (error) {
+        const messages = error.details
+          .map((detail) => detail.message)
+          .join(", ");
+        return helpers.message({ custom: `${label} ${i + 1}: ${messages}` });
+      }
+      parsedItems.push(validItem);
+    }
+    return parsedItems;
+  });
+
 exports.validateUpdateVoucher = {
   params: {
     voucherId: objectId().required().messages({
@@ -113,19 +156,31 @@ exports.validateUpdateVoucher = {
   body: Joi.object({
     name: Joi.string().trim().min(2).max(150).optional(),
     description: Joi.string().trim().max(2000).allow("").optional(),
-    // categoryId: objectId().optional().messages({
-    //   "any.invalid": "Invalid category ID.",
-    // }),
-    // subCategoryId: objectId().allow(null).optional(),
     startAt: Joi.date().iso().optional(),
     endAt: Joi.date().iso().optional(),
-    tags: Joi.array()
-      .items(Joi.string().messages({ "any.invalid": "Invalid tag" }))
-      .min(1)
-      .optional(),
-    offers: Joi.array().min(1).items(offerSchema).optional(),
-    subBrandIds: Joi.array().items(objectId()).min(1).optional(),
-    saveAsDraft: Joi.boolean().optional(),
+
+    newTags: jsonTolerantArray(Joi.string().trim().min(1), {
+      label: "Tag",
+    }).optional(),
+    removedTags: jsonTolerantArray(Joi.string().trim().min(1), {
+      label: "Tag",
+    }).optional(),
+
+    newOffers: jsonTolerantArray(offerSchema, { label: "Offer" }).optional(),
+    removedOfferIds: jsonTolerantArray(objectId(), {
+      label: "Offer ID",
+    }).optional(),
+
+    removeImageIds: jsonTolerantArray(objectId(), {
+      label: "Image ID",
+    }).optional(),
+
+    newSubBrandIds: jsonTolerantArray(objectId(), {
+      label: "Sub-brand ID",
+    }).optional(),
+    removeSubBrandIds: jsonTolerantArray(objectId(), {
+      label: "Sub-brand ID",
+    }).optional(),
   }),
 };
 
