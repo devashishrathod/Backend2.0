@@ -19,10 +19,10 @@ const {
   generateVoucherCode,
   generateVoucherVersionCode,
 } = require("./generateUniueCode");
-// const {
-//   cloneVoucherVersion,
-//   createVoucherHistory,
-// } = require("./validateVersions");
+const {
+  getNextVersionNumber,
+  createVoucherHistory,
+} = require("./validateVersions");
 const {
   buildCustomerVoucherPipeline,
   buildCustomerVoucherDetailPipeline,
@@ -45,8 +45,8 @@ module.exports = {
   rollbackVoucherImages,
   generateVoucherCode,
   generateVoucherVersionCode,
-  // cloneVoucherVersion,
-  // createVoucherHistory,
+  getNextVersionNumber,
+  createVoucherHistory,
   buildCustomerVoucherPipeline,
   buildCustomerVoucherDetailPipeline,
   mapCustomerVoucherDetail,

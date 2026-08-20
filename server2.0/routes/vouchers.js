@@ -28,7 +28,7 @@ const {
 router.use(verifyJwtToken);
 
 router.post("/create", validateSchema(validateCreateVoucher), create);
-// router.put("/update/:voucherId", validateSchema(validateUpdateVoucher), update);
+router.put("/update/:voucherId", validateSchema(validateUpdateVoucher), update);
 router.post(
   "/submit-review/:voucherId",
   validateSchema(validateSubmitVoucherForReview),

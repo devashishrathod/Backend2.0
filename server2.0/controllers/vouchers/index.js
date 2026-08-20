@@ -1,5 +1,5 @@
 const { create } = require("./create");
-// const { update } = require("./update");
+const { update } = require("./update");
 const { submitForReview } = require("./submitForReview");
 const { review } = require("./review");
 const { publish } = require("./publish");
@@ -10,7 +10,7 @@ const { previewCustomerVoucher } = require("./previewCustomerVoucher");
 
 module.exports = {
   create,
-  //update,
+  update,
   submitForReview,
   review,
   publish,
