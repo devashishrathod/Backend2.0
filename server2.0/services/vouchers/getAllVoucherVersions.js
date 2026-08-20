@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const VoucherVersion = require("../../models/VoucherVersion");
 const { buildAggregateLookup } = require("../../database");
 const { pagination, validateObjectId } = require("../../utils");
+const { VOUCHER_SORT_BY } = require("../../constants/voucher");
 
 exports.getAllVoucherVersions = async (query) => {
   let {
@@ -25,9 +26,13 @@ exports.getAllVoucherVersions = async (query) => {
     isActive,
     fromDate,
     toDate,
-    sortBy = "createdAt",
-    sortOrder = "desc",
+    sortBy,
+    sortOrder,
   } = query;
+
+  // RELEVANCE only makes sense with an actual search term to score against;
+  // without one, treat it as NEWEST.
+  const useRelevance = sortBy === VOUCHER_SORT_BY.RELEVANCE && !!search;
 
   page = page ? Number(page) : 1;
   limit = limit ? Number(limit) : 10;
@@ -83,7 +88,11 @@ exports.getAllVoucherVersions = async (query) => {
     match.versionCode = { $regex: new RegExp(versionCode, "i") };
   }
 
-  if (search) {
+  if (useRelevance) {
+    // $text must be the first stage in the pipeline, so it's folded into
+    // this same $match object rather than a separate stage.
+    match.$text = { $search: search };
+  } else if (search) {
     match.$or = [
       { name: { $regex: new RegExp(search, "i") } },
       { description: { $regex: new RegExp(search, "i") } },
@@ -102,8 +111,22 @@ exports.getAllVoucherVersions = async (query) => {
     }
   }
 
-  const sortStage = {};
-  sortStage[sortBy] = sortOrder === "asc" ? 1 : -1;
+  let sortStage;
+  if (useRelevance) {
+    sortStage = { score: { $meta: "textScore" } };
+  } else if (
+    sortBy === VOUCHER_SORT_BY.NEWEST ||
+    (sortBy === VOUCHER_SORT_BY.RELEVANCE && !search) ||
+    !sortBy
+  ) {
+    sortStage = { createdAt: sortOrder === "asc" ? 1 : -1 };
+  } else if (sortBy === VOUCHER_SORT_BY.EXPIRING_SOON) {
+    sortStage = { endAt: sortOrder === "desc" ? -1 : 1 };
+  } else {
+    // Legacy raw-field sort (admin table columns): name, versionNumber,
+    // status, startAt, endAt, publishedAt, createdAt, updatedAt.
+    sortStage = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
+  }
 
   const userProject = { password: 0, otp: 0, refreshToken: 0 };
 

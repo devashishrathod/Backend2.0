@@ -2,7 +2,10 @@ const Customer = require("../../models/Customer");
 const Location = require("../../models/Location");
 const SubBrand = require("../../models/SubBrand");
 const { throwError, pagination } = require("../../utils");
-const { buildCustomerVoucherPipeline } = require("../../helpers/vouchers");
+const {
+  buildCustomerVoucherPipeline,
+  mapCustomerVoucherListItem,
+} = require("../../helpers/vouchers");
 const { getVoucherConfig } = require("../../helpers/settings");
 
 exports.getCustomerVouchers = async (userId, query) => {
@@ -76,11 +79,16 @@ exports.getCustomerVouchers = async (userId, query) => {
     query,
   });
 
-  return pagination(
+  const result = await pagination(
     SubBrand,
     pipeline,
     query.page || 1,
     query.limit || 10,
     "voucher",
   );
+
+  return {
+    ...result,
+    data: result.data.map(mapCustomerVoucherListItem),
+  };
 };
