@@ -22,8 +22,8 @@ const {
 const {
   VOUCHER_STATUSES,
   VOUCHER_APPROVAL_ACTION,
-  VOUCHER_OFFER_LIMITS,
 } = require("../../constants/voucher");
+const { getVoucherConfig } = require("../../helpers/settings");
 
 const mergeTags = (existingTags = [], newTags = [], removedTags = []) => {
   const removeSet = new Set(
@@ -41,6 +41,7 @@ const mergeOffers = (
   existingOffers = [],
   newOffers = [],
   removedOfferIds = [],
+  maxOffers,
 ) => {
   const removeSet = new Set((removedOfferIds || []).map(String));
   const kept = (existingOffers || [])
@@ -68,7 +69,7 @@ const mergeOffers = (
 
   const combined = [...kept, ...added];
   if (!combined.length) throwError(400, "At least one offer is required.");
-  validateVoucherOffers(combined, VOUCHER_OFFER_LIMITS.MAX_OFFERS);
+  validateVoucherOffers(combined, maxOffers);
 
   return combined
     .sort((a, b) => a.minBillAmount - b.minBillAmount)
@@ -79,6 +80,7 @@ const mergeImages = (
   existingImages = [],
   uploadedImages = [],
   removeImageIds = [],
+  maxImages,
 ) => {
   const removeSet = new Set((removeImageIds || []).map(String));
   const kept = (existingImages || []).filter(
@@ -102,11 +104,8 @@ const mergeImages = (
   if (!combined.length) {
     throwError(400, "At least one voucher image is required.");
   }
-  if (combined.length > VOUCHER_OFFER_LIMITS.MAX_IMAGES) {
-    throwError(
-      400,
-      `Maximum ${VOUCHER_OFFER_LIMITS.MAX_IMAGES} voucher images are allowed.`,
-    );
+  if (combined.length > maxImages) {
+    throwError(400, `Maximum ${maxImages} voucher images are allowed.`);
   }
 
   return {
@@ -207,6 +206,8 @@ exports.updateVoucher = async (userId, payload = {}, images) => {
 
     if (!currentVersion) throwError(404, "Voucher current version not found.");
 
+    const { maxOffers, maxImages } = await getVoucherConfig();
+
     if (currentVersion.status === VOUCHER_STATUSES.UNDER_REVIEW) {
       throwError(409, "Voucher is under review and cannot be edited.");
     }
@@ -291,10 +292,11 @@ exports.updateVoucher = async (userId, payload = {}, images) => {
       currentVersion.offers,
       payload.newOffers,
       payload.removedOfferIds,
+      maxOffers,
     );
 
     const voucherFiles = normalizeVoucherImages(images);
-    validateVoucherImages(voucherFiles, VOUCHER_OFFER_LIMITS.MAX_IMAGES);
+    validateVoucherImages(voucherFiles, maxImages);
     if (voucherFiles.length) {
       uploadedImages = await uploadVoucherImages(voucherFiles);
     }
@@ -303,6 +305,7 @@ exports.updateVoucher = async (userId, payload = {}, images) => {
       currentVersion.images,
       uploadedImages,
       payload.removeImageIds,
+      maxImages,
     );
 
     const existingSubBrandDocs = await VoucherSubBrand.find({
