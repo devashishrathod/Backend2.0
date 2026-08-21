@@ -27,6 +27,7 @@ const {
   buildCustomerVoucherPipeline,
   buildCustomerVoucherDetailPipeline,
   mapCustomerVoucherDetail,
+  mapCustomerVoucherListItem,
 } = require("./customerListing");
 
 module.exports = {
@@ -50,4 +51,5 @@ module.exports = {
   buildCustomerVoucherPipeline,
   buildCustomerVoucherDetailPipeline,
   mapCustomerVoucherDetail,
+  mapCustomerVoucherListItem,
 };

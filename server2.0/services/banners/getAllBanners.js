@@ -1,28 +1,26 @@
 const Banner = require("../../models/Banner");
 const { pagination } = require("../../utils");
+const { BANNER_SORT_BY } = require("../../constants/banner");
 
 exports.getAllBanners = async (query) => {
-  let {
-    page,
-    limit,
+  const {
+    page = 1,
+    limit = 10,
     search,
-    name,
+    type,
     isActive,
     fromDate,
     toDate,
-    sortBy = "createdAt",
+    sortBy = BANNER_SORT_BY.CREATED_AT,
     sortOrder = "desc",
   } = query;
-  page = page ? Number(page) : 1;
-  limit = limit ? Number(limit) : 10;
+
   const match = { isDeleted: false };
-  if (typeof isActive !== "undefined") {
-    match.isActive = isActive === "true" || isActive === true;
-  }
-  if (name) match.name = { $regex: new RegExp(name, "i") };
+  if (type) match.type = type;
+  if (typeof isActive !== "undefined") match.isActive = isActive;
   if (search) {
     match.$or = [
-      { name: { $regex: new RegExp(search, "i") } },
+      { title: { $regex: new RegExp(search, "i") } },
       { description: { $regex: new RegExp(search, "i") } },
     ];
   }
@@ -30,24 +28,16 @@ exports.getAllBanners = async (query) => {
     match.createdAt = {};
     if (fromDate) match.createdAt.$gte = new Date(fromDate);
     if (toDate) {
-      const d = new Date(toDate);
-      d.setHours(23, 59, 59, 999);
-      match.createdAt.$lte = d;
+      const end = new Date(toDate);
+      end.setHours(23, 59, 59, 999);
+      match.createdAt.$lte = end;
     }
   }
-  const pipeline = [{ $match: match }];
-  pipeline.push({
-    $project: {
-      name: 1,
-      description: 1,
-      image: 1,
-      video: 1,
-      isActive: 1,
-      createdAt: 1,
-    },
-  });
-  const sortStage = {};
-  sortStage[sortBy] = sortOrder === "asc" ? 1 : -1;
-  pipeline.push({ $sort: sortStage });
-  return await pagination(Banner, pipeline, page, limit);
+
+  const pipeline = [
+    { $match: match },
+    { $sort: { [sortBy]: sortOrder === "asc" ? 1 : -1 } },
+  ];
+
+  return pagination(Banner, pipeline, page, limit, "banner");
 };

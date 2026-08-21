@@ -22,10 +22,8 @@ const {
   validateVoucherOffers,
   normalizeVoucherOffers,
 } = require("../../helpers/voucherOffers");
-const {
-  VOUCHER_OFFER_LIMITS,
-  VOUCHER_STATUSES,
-} = require("../../constants/voucher");
+const { VOUCHER_STATUSES } = require("../../constants/voucher");
+const { getVoucherConfig } = require("../../helpers/settings");
 
 exports.createVoucher = async (userId, payload, images) => {
   const session = await mongoose.startSession();
@@ -74,15 +72,14 @@ exports.createVoucher = async (userId, payload, images) => {
       session,
     );
 
-    // const maxOffersLimit = await getSetting()?.vouchers?.maxOffersPerVoucher  || 10
-    validateVoucherOffers(offers, VOUCHER_OFFER_LIMITS.MAX_OFFERS); // 10   maxOffersLimit
+    const { maxOffers, maxImages } = await getVoucherConfig();
+    validateVoucherOffers(offers, maxOffers);
     offers = normalizeVoucherOffers(offers);
 
-    // const maxOffers = VOUCHER_OFFER_LIMITS.DEFAULT_MAX_OFFERS;
     const validity = validateVoucherValidityPeriod(startAt, endAt);
 
     const voucherFiles = normalizeVoucherImages(images);
-    validateVoucherImages(voucherFiles, VOUCHER_OFFER_LIMITS.MAX_IMAGES); // 5
+    validateVoucherImages(voucherFiles, maxImages);
     if (voucherFiles.length) {
       uploadedImages = await uploadVoucherImages(voucherFiles);
     }

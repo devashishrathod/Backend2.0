@@ -1,27 +1,46 @@
 const Banner = require("../../models/Banner");
 const { throwError } = require("../../utils");
-const { uploadImage, uploadVideo } = require("../uploads");
+const { BANNER_MEDIA_FIELD } = require("../../constants/banner");
+const {
+  uploadBannerMedia,
+  deleteBannerMedia,
+  assertNoActiveOverlap,
+} = require("../../helpers/banners");
 
-exports.createBanner = async (video, image, payload) => {
-  let { name, description, isActive } = payload;
-  name = name?.toLowerCase();
-  description = description?.toLowerCase();
-  const existingBanner = await Banner.findOne({ name, isDeleted: false });
-  if (existingBanner) {
-    throwError(400, "Banner already exist with this name");
-  }
-  if (!video && !image) {
-    throwError(422, "Either video or image is required");
-  }
-  let videoUrl;
-  let imageUrl;
-  if (video) videoUrl = await uploadVideo(video.tempFilePath);
-  if (image) imageUrl = await uploadImage(image.tempFilePath);
-  return await Banner.create({
-    name,
+exports.createBanner = async (userId, payload, files) => {
+  const {
+    title,
     description,
-    image: imageUrl,
-    video: videoUrl,
-    isActive,
-  });
+    type,
+    redirect,
+    startDate,
+    endDate,
+    isActive = true,
+  } = payload;
+
+  const field = BANNER_MEDIA_FIELD[type];
+  const file = files?.[field];
+  if (!file)
+    throwError(422, `Please upload a ${field} file for this banner type.`);
+
+  await assertNoActiveOverlap({ isActive, startDate, endDate });
+
+  const media = await uploadBannerMedia(type, file);
+
+  try {
+    return await Banner.create({
+      title,
+      description,
+      type,
+      redirect,
+      startDate: startDate || null,
+      endDate: endDate || null,
+      isActive,
+      createdBy: userId,
+      [field]: media,
+    });
+  } catch (error) {
+    await deleteBannerMedia(type, media);
+    throw error;
+  }
 };

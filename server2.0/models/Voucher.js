@@ -131,4 +131,10 @@ voucherSchema.index({
   isDeleted: 1,
 });
 
+// Powers sortBy=RELEVANCE (textScore) on the customer voucher listing search.
+voucherSchema.index(
+  { name: "text", description: "text" },
+  { name: "VoucherTextIndex", weights: { name: 5, description: 1 } },
+);
+
 module.exports = mongoose.model("Voucher", voucherSchema);

@@ -1,19 +1,35 @@
 const express = require("express");
 const router = express.Router();
 
-const { isAdmin, verifyJwtToken } = require("../middlewares");
+const { verifyJwtToken, validateSchema } = require("../middlewares");
 const {
   create,
-  getAll,
   get,
-  // update,
+  getAll,
+  update,
   deleteBanner,
+  getActiveForCustomer,
 } = require("../controllers/banners");
+const {
+  validateCreateBanner,
+  validateUpdateBanner,
+  validateGetBanner,
+  validateGetAllBanners,
+  validateDeleteBanner,
+} = require("../validator/banners");
 
-router.post("/create", isAdmin, create);
-router.get("/getAll", verifyJwtToken, getAll);
-router.get("/get/:id", verifyJwtToken, get);
-// router.put("/update/:id", isAdmin, update);
-router.delete("/delete/:id", isAdmin, deleteBanner);
+router.use(verifyJwtToken);
+
+router.post("/create", validateSchema(validateCreateBanner), create);
+router.put("/update/:id", validateSchema(validateUpdateBanner), update);
+router.get("/get-all", validateSchema(validateGetAllBanners), getAll);
+router.get("/get/:id", validateSchema(validateGetBanner), get);
+router.delete(
+  "/delete/:id",
+  validateSchema(validateDeleteBanner),
+  deleteBanner,
+);
+// Customer
+router.get("/customer/active", getActiveForCustomer);
 
 module.exports = router;

@@ -274,4 +274,13 @@ voucherVersionSchema.index(
   },
 );
 
+// Powers sortBy=RELEVANCE (textScore) on the admin voucher versions listing.
+voucherVersionSchema.index(
+  { name: "text", description: "text", versionCode: "text", tags: "text" },
+  {
+    name: "VoucherVersionTextIndex",
+    weights: { name: 5, versionCode: 4, tags: 3, description: 1 },
+  },
+);
+
 module.exports = mongoose.model("VoucherVersion", voucherVersionSchema);

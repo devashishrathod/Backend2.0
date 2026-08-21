@@ -1,4 +1,6 @@
 const mongoose = require("mongoose");
+const { VOUCHER_SORT_BY } = require("../../constants/voucher");
+const { buildAggregateLookup } = require("../../database");
 
 exports.buildCustomerVoucherPipeline = ({
   latitude,
@@ -7,6 +9,10 @@ exports.buildCustomerVoucherPipeline = ({
   query,
 }) => {
   const pipeline = [];
+  const sortBy = query.sortBy || VOUCHER_SORT_BY.DISTANCE;
+  // RELEVANCE only makes sense with an actual search term to score against;
+  // without one, it falls back to NEWEST (handled in the final $sort below).
+  const useRelevance = sortBy === VOUCHER_SORT_BY.RELEVANCE && !!query.search;
 
   /**
    * ------------------------------------------------
@@ -162,6 +168,10 @@ exports.buildCustomerVoucherPipeline = ({
             isActive: true,
 
             isDeleted: false,
+
+            // $text must be the first stage of this sub-pipeline, so it's
+            // folded into this same $match rather than a separate stage.
+            ...(useRelevance ? { $text: { $search: query.search } } : {}),
           },
         },
 
@@ -172,6 +182,8 @@ exports.buildCustomerVoucherPipeline = ({
             categoryId: 1,
             subCategoryId: 1,
             createdAt: 1,
+            brandId: 1,
+            ...(useRelevance ? { relevanceScore: { $meta: "textScore" } } : {}),
           },
         },
       ],
@@ -183,6 +195,51 @@ exports.buildCustomerVoucherPipeline = ({
   pipeline.push({
     $unwind: "$voucher",
   });
+
+  /**
+   * ------------------------------------------------
+   * 4b. Brand (general details + subscription plan)
+   * ------------------------------------------------
+   */
+
+  pipeline.push(
+    ...buildAggregateLookup({
+      from: "brands",
+      localField: "voucher.brandId",
+      as: "brand",
+      project: {
+        brandName: 1,
+        description: 1,
+        legalBusinessName: 1,
+        merchantId: 1,
+        uniqueId: 1,
+        isActive: 1,
+        isApproved: 1,
+        joinedDate: 1,
+        subscribedId: 1,
+      },
+    }),
+  );
+
+  // Brand -> Subscribed (the brand's purchased subscription instance)
+  pipeline.push(
+    ...buildAggregateLookup({
+      from: "subscribeds",
+      localField: "brand.subscribedId",
+      as: "brand.subscription",
+      project: { subscriptionId: 1 },
+    }),
+  );
+
+  // Subscribed -> Subscription (the actual plan, e.g. Basic/Advance/Pro)
+  pipeline.push(
+    ...buildAggregateLookup({
+      from: "subscriptions",
+      localField: "brand.subscription.subscriptionId",
+      as: "brand.subscription.plan",
+      project: { name: 1, type: 1 },
+    }),
+  );
 
   /**
    * ------------------------------------------------
@@ -214,7 +271,7 @@ exports.buildCustomerVoucherPipeline = ({
    * ------------------------------------------------
    */
 
-  if (query.search) {
+  if (query.search && !useRelevance) {
     pipeline.push({
       $match: {
         "voucher.name": {
@@ -259,6 +316,10 @@ exports.buildCustomerVoucherPipeline = ({
         $first: "$version",
       },
 
+      brand: {
+        $first: "$brand",
+      },
+
       nearestOutlet: {
         $first: {
           subBrandId: "$_id",
@@ -289,6 +350,100 @@ exports.buildCustomerVoucherPipeline = ({
 
   /**
    * ------------------------------------------------
+   * 8b. Populate nearestOutlet.location
+   * ------------------------------------------------
+   */
+
+  pipeline.push(
+    ...buildAggregateLookup({
+      from: "locations",
+      localField: "nearestOutlet.locationId",
+      as: "nearestOutlet.location",
+      project: {
+        addressLine1: 1,
+        addressLine2: 1,
+        landmark: 1,
+        city: 1,
+        district: 1,
+        state: 1,
+        country: 1,
+        zipcode: 1,
+        formattedAddress: 1,
+        geo: 1,
+      },
+    }),
+  );
+
+  /**
+   * ------------------------------------------------
+   * 8c. isAppliedOnAllOutlets
+   *
+   * Compares total active outlets of the brand against how many of the
+   * brand's outlets this specific voucher version is actually linked to
+   * (brand-wide, not just the ones near this customer).
+   * ------------------------------------------------
+   */
+
+  pipeline.push({
+    $lookup: {
+      from: "subbrands",
+      let: { brandId: "$voucher.brandId" },
+      pipeline: [
+        {
+          $match: {
+            $expr: { $eq: ["$brandId", "$$brandId"] },
+            isActive: true,
+            isDeleted: false,
+          },
+        },
+        { $count: "count" },
+      ],
+      as: "brandOutletCountResult",
+    },
+  });
+
+  pipeline.push({
+    $lookup: {
+      from: "vouchersubbrands",
+      let: { versionId: "$version._id" },
+      pipeline: [
+        {
+          $match: {
+            $expr: { $eq: ["$voucherVersionId", "$$versionId"] },
+            isActive: true,
+            isDeleted: false,
+          },
+        },
+        { $count: "count" },
+      ],
+      as: "voucherOutletCountResult",
+    },
+  });
+
+  pipeline.push({
+    $addFields: {
+      totalBrandOutlets: {
+        $ifNull: [{ $arrayElemAt: ["$brandOutletCountResult.count", 0] }, 0],
+      },
+      totalVoucherOutlets: {
+        $ifNull: [{ $arrayElemAt: ["$voucherOutletCountResult.count", 0] }, 0],
+      },
+    },
+  });
+
+  pipeline.push({
+    $addFields: {
+      isAppliedOnAllOutlets: {
+        $and: [
+          { $gt: ["$totalBrandOutlets", 0] },
+          { $eq: ["$totalBrandOutlets", "$totalVoucherOutlets"] },
+        ],
+      },
+    },
+  });
+
+  /**
+   * ------------------------------------------------
    * 9. Final response
    * ------------------------------------------------
    */
@@ -305,28 +460,49 @@ exports.buildCustomerVoucherPipeline = ({
 
       subCategoryId: "$voucher.subCategoryId",
 
+      createdAt: "$voucher.createdAt",
+
       version: 1,
+
+      brand: 1,
 
       nearestOutlet: 1,
 
       outletCount: 1,
+
+      offerCount: { $size: { $ifNull: ["$version.offers", []] } },
+
+      isAppliedOnAllOutlets: 1,
+
+      ...(useRelevance ? { relevanceScore: "$voucher.relevanceScore" } : {}),
     },
   });
 
   /**
    * ------------------------------------------------
-   * 10. Final home page sorting
+   * 10. Final home page sorting (VOUCHER_SORT_BY)
    * ------------------------------------------------
+   * DISTANCE       -> nearest outlet first (default direction: asc)
+   * NEWEST         -> voucher.createdAt (default direction: desc)
+   * EXPIRING_SOON  -> version.endAt (default direction: asc)
+   * RELEVANCE      -> textScore, best match first; falls back to NEWEST
+   *                   when no search term was actually provided.
+   * sortOrder, when explicitly passed, overrides the default direction.
    */
 
   const sortStage = {};
 
-  if (query.sortBy === "createdAt") {
-    sortStage["voucher.createdAt"] = query.sortOrder === "desc" ? -1 : 1;
+  if (useRelevance) {
+    sortStage.relevanceScore = -1;
+  } else if (
+    sortBy === VOUCHER_SORT_BY.NEWEST ||
+    (sortBy === VOUCHER_SORT_BY.RELEVANCE && !query.search)
+  ) {
+    sortStage.createdAt = query.sortOrder === "asc" ? 1 : -1;
+  } else if (sortBy === VOUCHER_SORT_BY.EXPIRING_SOON) {
+    sortStage["version.endAt"] = query.sortOrder === "desc" ? -1 : 1;
   } else {
-    /**
-     * Default = nearest voucher first
-     */
+    // DISTANCE (default)
     sortStage["nearestOutlet.distanceInMeters"] =
       query.sortOrder === "desc" ? -1 : 1;
   }
@@ -812,9 +988,9 @@ exports.buildCustomerVoucherDetailPipeline = ({
 
         name: 1,
 
-        categoryId: 1,
+        // categoryId: 1,
 
-        subCategoryId: 1,
+        // subCategoryId: 1,
 
         version: 1,
 
@@ -879,6 +1055,100 @@ exports.mapCustomerVoucherOutlet = (outlet) => {
         }
       : null,
     workHours: outlet.workHours || null,
+  };
+};
+
+// "Best" offer = the active offer with the highest discountValue. A list
+// view has no bill-amount context to compute a true per-customer discount,
+// so this is a display heuristic, not a personalized calculation.
+const pickBestOffer = (offers = []) => {
+  const pool = offers.filter((offer) => offer.isActive !== false);
+  const source = pool.length ? pool : offers;
+  if (!source.length) return null;
+  const best = [...source].sort(
+    (a, b) => (b.discountValue || 0) - (a.discountValue || 0),
+  )[0];
+  return {
+    _id: best._id,
+    title: best.title,
+    minBillAmount: best.minBillAmount,
+    discountType: best.discountType,
+    discountValue: best.discountValue,
+    maxDiscountAmount: best.maxDiscountAmount ?? null,
+    usageType: best.usageType,
+    discountApplicableOn: best.discountApplicableOn,
+  };
+};
+
+exports.mapCustomerVoucherListItem = (item) => {
+  if (!item) return null;
+
+  const version = item.version || {};
+  const { distanceInMeters, locationId, location, ...outletRest } =
+    item.nearestOutlet || {};
+
+  return {
+    voucherId: item.voucherId,
+    name: item.name,
+    categoryId: item.categoryId,
+    subCategoryId: item.subCategoryId,
+    createdAt: item.createdAt,
+    brand: item.brand
+      ? {
+          id: item.brand._id,
+          brandName: item.brand.brandName || null,
+          description: item.brand.description || null,
+          legalBusinessName: item.brand.legalBusinessName || null,
+          merchantId: item.brand.merchantId || null,
+          uniqueId: item.brand.uniqueId || null,
+          isActive: item.brand.isActive ?? null,
+          isVerified: item.brand.isApproved ?? false,
+          joinedDate: item.brand.joinedDate || null,
+          subscriptionPlan: item.brand.subscription?.plan?.name || null,
+        }
+      : null,
+    version: {
+      id: version._id,
+      versionNumber: version.versionNumber,
+      description: version.description || null,
+      images: (version.images || []).map((image) => ({
+        _id: image._id,
+        url: image.url,
+        sortOrder: image.sortOrder,
+      })),
+      bestOffer: pickBestOffer(version.offers),
+      startAt: version.startAt,
+      endAt: version.endAt,
+    },
+    nearestOutlet: item.nearestOutlet
+      ? {
+          ...outletRest,
+          location: location
+            ? {
+                id: location._id,
+                addressLine1: location.addressLine1,
+                addressLine2: location.addressLine2,
+                landmark: location.landmark,
+                city: location.city,
+                district: location.district,
+                state: location.state,
+                country: location.country,
+                zipcode: location.zipcode,
+                formattedAddress: location.formattedAddress,
+                geo: location.geo,
+              }
+            : null,
+          distance: exports.formatDistance(distanceInMeters),
+        }
+      : null,
+    outletCount: item.outletCount,
+    offerCount: item.offerCount || 0,
+    isAppliedOnAllOutlets: item.isAppliedOnAllOutlets ?? false,
+    isContainsAd: false,
+    isFavorite: false,
+    ...(item.relevanceScore !== undefined
+      ? { relevanceScore: item.relevanceScore }
+      : {}),
   };
 };
 

@@ -2,9 +2,11 @@ const Customer = require("../../models/Customer");
 const Location = require("../../models/Location");
 const SubBrand = require("../../models/SubBrand");
 const { throwError, pagination } = require("../../utils");
-const { buildCustomerVoucherPipeline } = require("../../helpers/vouchers");
-const { VOUCHER_OFFER_LIMITS } = require("../../constants/voucher");
-// const { getVoucherConfig } = require("./getVoucherConfig");
+const {
+  buildCustomerVoucherPipeline,
+  mapCustomerVoucherListItem,
+} = require("../../helpers/vouchers");
+const { getVoucherConfig } = require("../../helpers/settings");
 
 exports.getCustomerVouchers = async (userId, query) => {
   const customer = await Customer.findOne({
@@ -57,15 +59,9 @@ exports.getCustomerVouchers = async (userId, query) => {
    * -----------------------------------------
    */
 
-  // const config = await getVoucherConfig();
+  const config = await getVoucherConfig();
 
-  // if (!config) {
-  //   throwError(500, "Voucher configuration not found.");
-  // }
-
-  //  const maxDistance = Number(config.maxDistanceKm) * 1000;
-
-  const maxDistance = Number(VOUCHER_OFFER_LIMITS.MAX_DISTANCE || 25) * 1000;
+  const maxDistance = Number(config.maxDistanceKm) * 1000;
   if (!Number.isFinite(maxDistance) || maxDistance <= 0) {
     throwError(500, "Invalid voucher maximum distance configuration.");
   }
@@ -83,11 +79,16 @@ exports.getCustomerVouchers = async (userId, query) => {
     query,
   });
 
-  return pagination(
+  const result = await pagination(
     SubBrand,
     pipeline,
     query.page || 1,
     query.limit || 10,
     "voucher",
   );
+
+  return {
+    ...result,
+    data: result.data.map(mapCustomerVoucherListItem),
+  };
 };

@@ -1,6 +1,6 @@
 const ShowcaseSection = require("../../models/ShowcaseSection");
 const { throwError } = require("../../utils");
-const { SHOWCASE_MEDIA_CONFIG } = require("../../constants/showcase");
+const { getShowcaseConfig } = require("../../helpers/settings");
 //const { validateVendorBrand } = require("../../helpers/showcase/common");
 const {
   normalizeFiles,
@@ -8,12 +8,10 @@ const {
   uploadSingleMedia,
   rollbackUploads,
   deleteMedia,
-  getShowcaseConfig,
 } = require("../../helpers/showcases");
 
 exports.replaceSectionMedia = async (userId, payload, file) => {
   // const brand = await validateVendorBrand(userId);
-  console.log(payload);
   const section = await ShowcaseSection.findOne(
     {
       _id: payload.sectionId,
@@ -39,8 +37,7 @@ exports.replaceSectionMedia = async (userId, payload, file) => {
     throwError(400, "Please upload exactly one media file.");
   }
 
-  //  const config = (await getShowcaseConfig()) || SHOWCASE_MEDIA_CONFIG;
-  const config = SHOWCASE_MEDIA_CONFIG;
+  const config = await getShowcaseConfig();
   validateMediaFiles(uploadedFiles, config);
   let uploaded = null;
   try {

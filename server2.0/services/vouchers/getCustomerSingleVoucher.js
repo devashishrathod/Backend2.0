@@ -3,12 +3,11 @@ const Customer = require("../../models/Customer");
 const Location = require("../../models/Location");
 const Voucher = require("../../models/Voucher");
 const { throwError } = require("../../utils");
-//const { getVoucherConfig } = require("./getVoucherConfig");
 const {
   buildCustomerVoucherDetailPipeline,
   mapCustomerVoucherDetail,
 } = require("../../helpers/vouchers");
-const { VOUCHER_OFFER_LIMITS } = require("../../constants/voucher");
+const { getVoucherConfig } = require("../../helpers/settings");
 
 exports.getCustomerSingleVoucher = async (userId, payload) => {
   /**
@@ -77,15 +76,9 @@ exports.getCustomerSingleVoucher = async (userId, payload) => {
    * -----------------------------------------
    */
 
-  //   const config = await getVoucherConfig();
+  const config = await getVoucherConfig();
 
-  //   if (!config) {
-  //     throwError(500, "Voucher configuration not found.");
-  //   }
-
-  //   const maxDistance = Number(config.maxDistanceKm) * 1000;
-
-  const maxDistance = VOUCHER_OFFER_LIMITS.MAX_DISTANCE || 25;
+  const maxDistance = Number(config.maxDistanceKm) * 1000;
 
   if (!Number.isFinite(maxDistance) || maxDistance <= 0) {
     throwError(500, "Invalid voucher maximum distance configuration.");

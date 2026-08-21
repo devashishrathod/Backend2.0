@@ -1,18 +1,15 @@
 const Banner = require("../../models/Banner");
-const { throwError, validateObjectId } = require("../../utils");
-const { deleteAudioOrVideo, deleteImage } = require("../uploads");
+const { throwError } = require("../../utils");
 
-exports.deleteBanner = async (id) => {
-  validateObjectId(id, "Banner Id");
-  const result = await Banner.findById(id);
-  if (!result || result.isDeleted) throwError(404, "Banner not found");
-  await deleteAudioOrVideo(result?.video);
-  await deleteImage(result?.image);
-  result.isDeleted = true;
-  result.isActive = false;
-  result.image = null;
-  result.video = null;
-  result.updatedAt = new Date();
-  await result.save();
-  return;
+exports.deleteBanner = async (userId, id) => {
+  const banner = await Banner.findOne({ _id: id, isDeleted: false });
+  if (!banner) throwError(404, "Banner not found.");
+
+  banner.isDeleted = true;
+  banner.isActive = false;
+  banner.updatedBy = userId;
+  // Deleting doesn't touch type/media, so it shouldn't be blocked by
+  // full-document validation (e.g. legacy documents saved before the
+  // BANNER_TYPE enum switched to uppercase).
+  await banner.save({ validateBeforeSave: false });
 };
