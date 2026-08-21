@@ -17,17 +17,25 @@ const {
   rollbackVoucherImages,
   generateVoucherCode,
   generateVoucherVersionCode,
+  uploadVoucherBannerMedia,
+  deleteVoucherBannerMedia,
 } = require("../../helpers/vouchers");
 const {
   validateVoucherOffers,
   normalizeVoucherOffers,
 } = require("../../helpers/voucherOffers");
 const { VOUCHER_STATUSES } = require("../../constants/voucher");
+const {
+  VOUCHER_BANNER_MEDIA_FIELD,
+  VOUCHER_BANNER_FILE_FIELD,
+} = require("../../constants/voucherBanner");
 const { getVoucherConfig } = require("../../helpers/settings");
 
-exports.createVoucher = async (userId, payload, images) => {
+exports.createVoucher = async (userId, payload, files = {}) => {
+  const images = files?.images;
   const session = await mongoose.startSession();
   let uploadedImages = [];
+  let uploadedBanner = null;
   try {
     session.startTransaction();
     let {
@@ -43,6 +51,7 @@ exports.createVoucher = async (userId, payload, images) => {
       subBrandIds,
       isActive,
       isSaveAsDraft,
+      bannerType,
     } = payload;
     const brand = await Brand.findById(brandId);
     if (!brand || brand.isDeleted) throwError(400, "Brand not found");
@@ -79,10 +88,11 @@ exports.createVoucher = async (userId, payload, images) => {
     const validity = validateVoucherValidityPeriod(startAt, endAt);
 
     const voucherFiles = normalizeVoucherImages(images);
-    validateVoucherImages(voucherFiles, maxImages);
-    if (voucherFiles.length) {
-      uploadedImages = await uploadVoucherImages(voucherFiles);
+    if (!voucherFiles.length) {
+      throwError(422, "At least one voucher image is required.");
     }
+    validateVoucherImages(voucherFiles, maxImages);
+    uploadedImages = await uploadVoucherImages(voucherFiles);
 
     tags = getUniqueTags(tags || []);
 
@@ -139,6 +149,13 @@ exports.createVoucher = async (userId, payload, images) => {
       { session },
     );
 
+    if (bannerType) {
+      const bannerField = VOUCHER_BANNER_MEDIA_FIELD[bannerType];
+      const bannerFile = files?.[VOUCHER_BANNER_FILE_FIELD[bannerType]];
+      uploadedBanner = await uploadVoucherBannerMedia(bannerType, bannerFile);
+      voucher.banner = { type: bannerType, [bannerField]: uploadedBanner };
+    }
+
     voucher.currentVersionId = version._id;
     voucher.currentVersion = versionNumber;
     await voucher.save({ session });
@@ -169,6 +186,9 @@ exports.createVoucher = async (userId, payload, images) => {
   } catch (error) {
     await session.abortTransaction();
     if (uploadedImages.length) await rollbackVoucherImages(uploadedImages);
+    if (uploadedBanner) {
+      await deleteVoucherBannerMedia(payload.bannerType, uploadedBanner);
+    }
     if (error?.code === 11000) {
       throwError(
         409,

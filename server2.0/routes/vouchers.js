@@ -12,6 +12,8 @@ const {
   getAllCustomerVouchers,
   getCustomerVoucher,
   previewCustomerVoucher,
+  setBanner,
+  deleteBanner,
 } = require("../controllers/vouchers");
 const {
   validateCreateVoucher,
@@ -23,6 +25,8 @@ const {
   validateCustomerGetAllVouchers,
   validateCustomerGetVoucher,
   validateCustomerVoucherPreview,
+  validateSetVoucherBanner,
+  validateDeleteVoucherBanner,
 } = require("../validator/vouchers");
 
 router.use(verifyJwtToken);
@@ -48,6 +52,18 @@ router.get(
   "/versions/get-all",
   validateSchema(validateGetAllVoucherVersions),
   getAllVersions,
+);
+
+// Voucher banner (master-level, independent of version/approval flow)
+router.post(
+  "/:voucherId/banner",
+  validateSchema(validateSetVoucherBanner),
+  setBanner,
+);
+router.delete(
+  "/:voucherId/banner",
+  validateSchema(validateDeleteVoucherBanner),
+  deleteBanner,
 );
 
 // Customer
