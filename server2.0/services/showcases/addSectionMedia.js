@@ -10,8 +10,7 @@ const {
   uploadMultipleMedia,
   rollbackUploads,
 } = require("../../helpers/showcases");
-//const { getShowcaseConfig } = require("../../services/showcase");
-const { SHOWCASE_MEDIA_CONFIG } = require("../../constants/showcase");
+const { getShowcaseConfig } = require("../../helpers/settings");
 
 exports.addSectionMedia = async (userId, payload, files) => {
   // let brand = await validateVendorBrand(userId);
@@ -25,8 +24,7 @@ exports.addSectionMedia = async (userId, payload, files) => {
   if (!uploadedFiles.length) {
     throwError(400, "Please upload at least one media.");
   }
-  //  const config = (await getShowcaseConfig()) || SHOWCASE_MEDIA_CONFIG;
-  const config = SHOWCASE_MEDIA_CONFIG;
+  const config = await getShowcaseConfig();
   const { images, videos } = getExistingMediaCounts(section.medias);
   validateMediaFiles(uploadedFiles, config, images, videos);
   let uploaded = [];

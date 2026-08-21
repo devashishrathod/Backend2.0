@@ -6,6 +6,7 @@ const {
   DISCOUNT_APPLICABLE_ON,
   VOUCHER_APPROVAL_ACTION,
   VOUCHER_STATUSES,
+  VOUCHER_SORT_BY,
 } = require("../constants/voucher");
 
 const offerSchema = Joi.object({
@@ -287,6 +288,7 @@ exports.validateGetAllVoucherVersions = {
     toDate: Joi.date().iso().optional(),
     sortBy: Joi.string()
       .valid(
+        // Legacy raw-field sort (admin table columns) — unchanged.
         "name",
         "versionNumber",
         "status",
@@ -295,9 +297,17 @@ exports.validateGetAllVoucherVersions = {
         "publishedAt",
         "createdAt",
         "updatedAt",
+        // Curated presets (VOUCHER_SORT_BY) — DISTANCE excluded, this listing
+        // has no customer geo context.
+        VOUCHER_SORT_BY.NEWEST,
+        VOUCHER_SORT_BY.EXPIRING_SOON,
+        VOUCHER_SORT_BY.RELEVANCE,
       )
       .optional(),
-    sortOrder: Joi.string().valid("asc", "desc").optional().default("desc"),
+    // No default: each sortBy preset applies its own natural direction
+    // (NEWEST -> desc, EXPIRING_SOON -> asc) when this is omitted; legacy
+    // raw-field sorts still default to desc, same as before.
+    sortOrder: Joi.string().valid("asc", "desc").optional(),
   }),
 };
 
@@ -313,9 +323,12 @@ exports.validateCustomerGetAllVouchers = {
       "any.invalid": "Invalid subCategory ID.",
     }),
     sortBy: Joi.string()
-      .valid("distance", "createdAt", "startAt", "endAt")
-      .default("distance"),
-    sortOrder: Joi.string().valid("asc", "desc").default("asc"),
+      .valid(...Object.values(VOUCHER_SORT_BY))
+      .default(VOUCHER_SORT_BY.DISTANCE),
+    // No default: DISTANCE/RELEVANCE default to asc/best-match, NEWEST
+    // defaults to desc, EXPIRING_SOON defaults to asc — see
+    // buildCustomerVoucherPipeline for the per-preset direction.
+    sortOrder: Joi.string().valid("asc", "desc").optional(),
     latitude: Joi.number().min(-90).max(90).optional(),
     longitude: Joi.number().min(-180).max(180).optional(),
   }),

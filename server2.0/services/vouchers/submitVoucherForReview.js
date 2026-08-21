@@ -6,9 +6,9 @@ const { throwError } = require("../../utils");
 const { validateVoucherBeforeSubmit } = require("../../helpers/vouchers");
 const {
   VOUCHER_STATUSES,
-  VOUCHER_OFFER_LIMITS,
   VOUCHER_APPROVAL_ACTION,
 } = require("../../constants/voucher");
+const { getVoucherConfig } = require("../../helpers/settings");
 
 exports.submitVoucherForReview = async (userId, voucherId) => {
   const session = await mongoose.startSession();
@@ -52,12 +52,12 @@ exports.submitVoucherForReview = async (userId, voucherId) => {
       );
     }
 
-    const maxOffers = VOUCHER_OFFER_LIMITS.MAX_OFFERS;
+    const { maxOffers, maxImages } = await getVoucherConfig();
 
     const validation = await validateVoucherBeforeSubmit(
       voucher,
       version,
-      maxOffers,
+      { maxOffers, maxImages },
       session,
     );
 

@@ -7,8 +7,8 @@ const { validateVoucherForApproval } = require("../../helpers/vouchers");
 const {
   VOUCHER_STATUSES,
   VOUCHER_APPROVAL_ACTION,
-  VOUCHER_OFFER_LIMITS,
 } = require("../../constants/voucher");
+const { getVoucherConfig } = require("../../helpers/settings");
 
 exports.reviewVoucher = async (adminUserId, versionId, payload = {}) => {
   const session = await mongoose.startSession();
@@ -125,11 +125,11 @@ exports.reviewVoucher = async (adminUserId, versionId, payload = {}) => {
     }
 
     if (action === VOUCHER_APPROVAL_ACTION.APPROVED) {
-      const maxOffers = VOUCHER_OFFER_LIMITS.MAX_OFFERS;
+      const { maxOffers, maxImages } = await getVoucherConfig();
       const validation = await validateVoucherForApproval(
         voucher,
         version,
-        maxOffers,
+        { maxOffers, maxImages },
         session,
       );
       const reviewedAt = new Date();
