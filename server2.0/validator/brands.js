@@ -4,7 +4,16 @@ const {
   BUSINESS_REGISTRATION_STATUS,
   BUSINESS_ENTITY_TYPE,
   SCREENS,
+  SYSTEM_VERIFICATION_STATUS,
 } = require("../constants");
+const {
+  BRAND_VERIFICATION_ACTION,
+  BRAND_VERIFICATION_ADMIN_ACTION,
+  BRAND_VERIFICATION_ACTOR,
+  BRAND_VERIFICATION_SORT_BY,
+  BRAND_VERIFICATION_SORT_ORDER,
+  BRAND_VERIFICATION_LIMITS,
+} = require("../constants/brandVerification");
 
 exports.validateAddBasicDetails = Joi.object({
   currentScreen: Joi.string()
@@ -150,4 +159,187 @@ exports.validateUpdateBrand = {
       }),
     }),
   },
+};
+
+// ---------------------------------------------------------------
+// ADMIN — BRAND VERIFICATION
+// ---------------------------------------------------------------
+exports.validateReviewBrandVerification = {
+  params: {
+    brandId: objectId().required().messages({
+      "any.required": "Brand ID is required",
+      "any.invalid": "Invalid Brand ID format",
+    }),
+  },
+  body: Joi.object({
+    action: Joi.string()
+      .uppercase()
+      .valid(...Object.values(BRAND_VERIFICATION_ADMIN_ACTION))
+      .required()
+      .messages({
+        "any.required": "Review action is required",
+        "string.empty": "Review action cannot be empty",
+        "any.only": `Review action must be one of ${Object.values(BRAND_VERIFICATION_ADMIN_ACTION).join(", ")}`,
+      }),
+    rejectionReason: Joi.string()
+      .trim()
+      .max(BRAND_VERIFICATION_LIMITS.MAX_REASON_LENGTH)
+      .when("action", {
+        is: BRAND_VERIFICATION_ADMIN_ACTION.REJECTED,
+        then: Joi.required().messages({
+          "any.required": "Rejection reason is required when rejecting a brand",
+          "string.empty": "Rejection reason is required when rejecting a brand",
+        }),
+        otherwise: Joi.forbidden().messages({
+          "any.unknown":
+            "Rejection reason is only allowed when rejecting a brand",
+        }),
+      })
+      .messages({
+        "string.max": `Rejection reason cannot exceed ${BRAND_VERIFICATION_LIMITS.MAX_REASON_LENGTH} characters`,
+      }),
+    revokeReason: Joi.string()
+      .trim()
+      .max(BRAND_VERIFICATION_LIMITS.MAX_REASON_LENGTH)
+      .when("action", {
+        is: BRAND_VERIFICATION_ADMIN_ACTION.REVOKED,
+        then: Joi.required().messages({
+          "any.required": "Revoke reason is required when revoking an approval",
+          "string.empty": "Revoke reason is required when revoking an approval",
+        }),
+        otherwise: Joi.forbidden().messages({
+          "any.unknown":
+            "Revoke reason is only allowed when revoking an approval",
+        }),
+      })
+      .messages({
+        "string.max": `Revoke reason cannot exceed ${BRAND_VERIFICATION_LIMITS.MAX_REASON_LENGTH} characters`,
+      }),
+    // REVIEWED only. Omit it to flip the current value, or send an explicit
+    // boolean to force it (idempotent panels).
+    isReviewed: Joi.boolean()
+      .when("action", {
+        is: BRAND_VERIFICATION_ADMIN_ACTION.REVIEWED,
+        then: Joi.optional(),
+        otherwise: Joi.forbidden().messages({
+          "any.unknown": "isReviewed is only allowed with the REVIEWED action",
+        }),
+      })
+      .messages({
+        "boolean.base": "isReviewed must be a boolean",
+      }),
+    note: Joi.string()
+      .trim()
+      .max(BRAND_VERIFICATION_LIMITS.MAX_NOTE_LENGTH)
+      .optional()
+      .messages({
+        "string.empty": "Note cannot be empty",
+        "string.max": `Note cannot exceed ${BRAND_VERIFICATION_LIMITS.MAX_NOTE_LENGTH} characters`,
+      }),
+  }),
+};
+
+exports.validateGetAllBrandVerifications = {
+  query: Joi.object({
+    page: Joi.number().integer().min(1).optional().messages({
+      "number.min": "Page must be at least 1",
+    }),
+    limit: Joi.number().integer().min(1).max(100).optional().messages({
+      "number.min": "Limit must be at least 1",
+      "number.max": "Limit cannot exceed 100",
+    }),
+    search: Joi.string().trim().optional(),
+    brandId: objectId().optional().messages({
+      "any.invalid": "Invalid Brand ID format",
+    }),
+    reviewedByAdminId: objectId().optional().messages({
+      "any.invalid": "Invalid Reviewed By ID format",
+    }),
+    status: Joi.string()
+      .uppercase()
+      .valid(...Object.values(SYSTEM_VERIFICATION_STATUS))
+      .optional()
+      .messages({
+        "any.only": `Status must be one of ${Object.values(SYSTEM_VERIFICATION_STATUS).join(", ")}`,
+      }),
+    attemptNumber: Joi.number().integer().min(1).optional(),
+    isReviewed: Joi.alternatives().try(Joi.string(), Joi.boolean()).optional(),
+    isRejected: Joi.alternatives().try(Joi.string(), Joi.boolean()).optional(),
+    isRevoked: Joi.alternatives().try(Joi.string(), Joi.boolean()).optional(),
+    isAdminApproved: Joi.alternatives()
+      .try(Joi.string(), Joi.boolean())
+      .optional(),
+    isSuperseded: Joi.alternatives()
+      .try(Joi.string(), Joi.boolean())
+      .optional(),
+    minScore: Joi.number().optional(),
+    maxScore: Joi.number().optional(),
+    fromDate: Joi.date().iso().optional(),
+    toDate: Joi.date().iso().min(Joi.ref("fromDate")).optional().messages({
+      "date.min": "To date cannot be earlier than from date",
+    }),
+    sortBy: Joi.string()
+      .uppercase()
+      .valid(...Object.values(BRAND_VERIFICATION_SORT_BY))
+      .optional()
+      .messages({
+        "any.only": `Sort by must be one of ${Object.values(BRAND_VERIFICATION_SORT_BY).join(", ")}`,
+      }),
+    sortOrder: Joi.string()
+      .uppercase()
+      .valid(...Object.values(BRAND_VERIFICATION_SORT_ORDER))
+      .optional()
+      .messages({
+        "any.only": `Sort order must be one of ${Object.values(BRAND_VERIFICATION_SORT_ORDER).join(", ")}`,
+      }),
+  }),
+};
+
+exports.validateGetBrandVerificationHistory = {
+  query: Joi.object({
+    page: Joi.number().integer().min(1).optional().messages({
+      "number.min": "Page must be at least 1",
+    }),
+    limit: Joi.number().integer().min(1).max(100).optional().messages({
+      "number.min": "Limit must be at least 1",
+      "number.max": "Limit cannot exceed 100",
+    }),
+    // Ignored for vendors — the service always scopes them to their own brand.
+    brandId: objectId().optional().messages({
+      "any.invalid": "Invalid Brand ID format",
+    }),
+    systemVerifyId: objectId().optional().messages({
+      "any.invalid": "Invalid System Verify ID format",
+    }),
+    performedBy: objectId().optional().messages({
+      "any.invalid": "Invalid Performed By ID format",
+    }),
+    action: Joi.string()
+      .uppercase()
+      .valid(...Object.values(BRAND_VERIFICATION_ACTION))
+      .optional()
+      .messages({
+        "any.only": `Action must be one of ${Object.values(BRAND_VERIFICATION_ACTION).join(", ")}`,
+      }),
+    performedByType: Joi.string()
+      .uppercase()
+      .valid(...Object.values(BRAND_VERIFICATION_ACTOR))
+      .optional()
+      .messages({
+        "any.only": `Performed by type must be one of ${Object.values(BRAND_VERIFICATION_ACTOR).join(", ")}`,
+      }),
+    attemptNumber: Joi.number().integer().min(1).optional(),
+    search: Joi.string().trim().optional(),
+    fromDate: Joi.date().iso().optional(),
+    toDate: Joi.date().iso().min(Joi.ref("fromDate")).optional().messages({
+      "date.min": "To date cannot be earlier than from date",
+    }),
+    sortOrder: Joi.string()
+      .uppercase()
+      .valid(...Object.values(BRAND_VERIFICATION_SORT_ORDER))
+      .optional()
+      .messages({
+        "any.only": `Sort order must be one of ${Object.values(BRAND_VERIFICATION_SORT_ORDER).join(", ")}`,
+      }),
+  }),
 };
