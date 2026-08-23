@@ -7,6 +7,7 @@ const {
 const MESSAGES = Object.freeze({
   [BRAND_VERIFICATION_ACTION.APPROVED]: "Brand approved successfully.",
   [BRAND_VERIFICATION_ACTION.REJECTED]: "Brand rejected successfully.",
+  [BRAND_VERIFICATION_ACTION.REVOKED]: "Brand approval revoked successfully.",
   [BRAND_VERIFICATION_ACTION.REVIEWED]: "Brand marked as reviewed.",
   [BRAND_VERIFICATION_ACTION.UNREVIEWED]: "Brand marked as not reviewed.",
 });

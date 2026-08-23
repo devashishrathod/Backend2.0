@@ -37,7 +37,7 @@ exports.verifyVendor = async (userId) => {
     );
   }
   if (user.role !== ROLES.VENDOR) {
-    throwError(403, "You are not authorized to add GST details.");
+    throwError(403, "You are not authorized to verify a brand.");
   }
   const brandId = user.brandId;
   if (!brandId) throwError(400, "Brand not found for user.");

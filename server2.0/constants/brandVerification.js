@@ -11,6 +11,8 @@ const BRAND_VERIFICATION_ACTION = Object.freeze({
   REVOKED: "REVOKED", // admin withdrew an approval (reason mandatory)
   APPROVAL_ACKNOWLEDGED: "APPROVAL_ACKNOWLEDGED", // vendor dismissed the
   // approval screen and moved on to the dashboard
+  REMEDIATION_UPDATED: "REMEDIATION_UPDATED", // vendor edited an onboarding
+  // section after a rejection, before resubmitting
 });
 
 // What an admin is allowed to send to the review API.
