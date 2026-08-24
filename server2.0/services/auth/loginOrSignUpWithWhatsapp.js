@@ -28,7 +28,10 @@ exports.loginOrSignUpWithWhatsapp = async (body) => {
     user = await User.create({
       whatsappNumber,
       role,
-      password: process.env.DEFAULT_PASSWORD || "Trydood@123",
+      // No password. This account authenticates by OTP; giving every such user
+      // the same DEFAULT_PASSWORD meant one known string logged into all of
+      // them, and there was no flow to ever change it. A password is only set
+      // when the user chooses one via POST /auth/set-password.
       uniqueId: await generateUniqueUserId(),
       referralCode: await generateReferralCode(),
     });

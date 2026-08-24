@@ -7,15 +7,26 @@ const fileUpload = require("express-fileupload");
 
 const { mongoDb } = require("./database/mongoDb");
 const { errorHandler } = require("./middlewares");
+const { logChannelStatus } = require("./helpers/notifications");
 const { throwError } = require("./utils");
 const allRoutes = require("./routes");
 const { getIP } = require("./configs/render");
+const { startJobs } = require("./jobs");
 
 const app = express();
 const port = process.env.PORT || 8080;
 
 app.use(fileUpload({ useTempFiles: true, tempFileDir: "/tmp/" }));
-app.use(express.json());
+// The raw bytes are kept alongside the parsed body because Razorpay signs the
+// untouched payload — re-serialised JSON would not match the HMAC. Only the
+// webhook route reads `req.rawBody`; everything else is unaffected.
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      if (buf?.length) req.rawBody = buf;
+    },
+  }),
+);
 app.use(cors());
 app.use(morgan("dev"));
 app.use("/trydood/v1", allRoutes);
@@ -36,6 +47,15 @@ mongoDb();
 
 app.listen(port, async () => {
   console.log(`✅ Trydood 2.0 Server running on http://localhost:${port}`);
+  // Which notification channels can actually deliver. Answers "did my env
+  // var take effect?" without an endpoint, and logs no credentials.
+  logChannelStatus();
+  // Background sweeps (subscription + voucher expiry). Started after the
+  // listener so a slow first run never delays the port binding, and never
+  // allowed to take the process down. Disable with ENABLE_JOBS=false.
+  startJobs().catch((error) =>
+    console.error("❌ [jobs] failed to start:", error?.message),
+  );
   if (process.env.ENABLE_NGROK === "true") {
     const url = await ngrok.connect({
       addr: port,

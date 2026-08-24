@@ -29,6 +29,10 @@ const {
   mapCustomerVoucherDetail,
   mapCustomerVoucherListItem,
 } = require("./customerListing");
+const {
+  uploadVoucherBannerMedia,
+  deleteVoucherBannerMedia,
+} = require("./voucherBannerMedia");
 
 module.exports = {
   normalizeVoucherName,
@@ -52,4 +56,6 @@ module.exports = {
   buildCustomerVoucherDetailPipeline,
   mapCustomerVoucherDetail,
   mapCustomerVoucherListItem,
+  uploadVoucherBannerMedia,
+  deleteVoucherBannerMedia,
 };

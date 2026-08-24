@@ -36,7 +36,9 @@ exports.uploadPDF = async (pdfPath, fileName) => {
     public_id: fileName.replace(".pdf", ""),
   });
   if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
-  console.log("PDF uploaded successfully:", result);
+  // Was dumping the entire Cloudinary response. This now runs on every
+  // subscription payment, so it is trimmed to the one useful line.
+  console.log(`PDF uploaded: ${result.secure_url}`);
   return result.secure_url;
 };
 

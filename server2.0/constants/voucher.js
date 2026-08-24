@@ -54,7 +54,32 @@ const VOUCHER_DISCOUNT_TYPES = Object.freeze({
   FLAT: "FLAT",
 });
 
+/**
+ * Statuses that count against the plan's voucher limit.
+ *
+ * A voucher that has run its course — expired, archived, or rejected — releases
+ * its slot, so a vendor does not have to delete history to create something new.
+ * Everything still in play (drafts, in review, approved, live, paused) holds one.
+ */
+const VOUCHER_SLOT_CONSUMING_STATUSES = Object.freeze([
+  VOUCHER_STATUSES.DRAFT,
+  VOUCHER_STATUSES.UNDER_REVIEW,
+  VOUCHER_STATUSES.APPROVED,
+  VOUCHER_STATUSES.PUBLISHED,
+  VOUCHER_STATUSES.PAUSED,
+]);
+
+// The complement, kept explicit so a new status added to VOUCHER_STATUSES shows
+// up as uncategorised rather than silently freeing a slot.
+const VOUCHER_SLOT_RELEASING_STATUSES = Object.freeze([
+  VOUCHER_STATUSES.EXPIRED,
+  VOUCHER_STATUSES.ARCHIVED,
+  VOUCHER_STATUSES.REJECTED,
+]);
+
 module.exports = {
+  VOUCHER_SLOT_CONSUMING_STATUSES,
+  VOUCHER_SLOT_RELEASING_STATUSES,
   VOUCHER_USAGE_TYPE,
   DISCOUNT_APPLICABLE_ON,
   VOUCHER_SORT_BY,

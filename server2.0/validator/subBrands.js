@@ -19,6 +19,14 @@ exports.validateWhatsappSubBrandSignUp = Joi.object({
   isFirstOutlet: Joi.alternatives()
     .try(Joi.string(), Joi.boolean())
     .default(false),
+  // Decides which plan pool the signup draws from — outlets and franchises are
+  // metered separately. Defaults to OUTLET, matching the SubBrand schema.
+  outletType: Joi.string()
+    .valid(...Object.values(OUTLET_TYPES))
+    .default(OUTLET_TYPES.OUTLET)
+    .messages({
+      "any.only": `outletType must be one of: ${Object.values(OUTLET_TYPES).join(", ")}`,
+    }),
 });
 
 exports.validateUpdateSubBrand = {
@@ -43,7 +51,9 @@ exports.validateUpdateSubBrand = {
     description: Joi.string().optional().messages({
       "any.empty": "Description can't be empty",
     }),
-    isActive: Joi.alternatives().try(Joi.string(), Joi.boolean()).default(true),
+    // No `.default(true)` — it used to silently reactivate a deactivated outlet
+    // on any update that simply did not mention isActive.
+    isActive: Joi.boolean().optional(),
   },
 };
 

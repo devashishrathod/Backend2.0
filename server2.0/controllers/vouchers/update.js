@@ -3,7 +3,7 @@ const { updateVoucher } = require("../../services/vouchers");
 
 exports.update = asyncWrapper(async (req, res) => {
   const result = await updateVoucher(
-    req.userId,
+    { userId: req.userId, role: req.role, brandId: req.brandId },
     req.validatedData,
     req.files?.newImages,
   );

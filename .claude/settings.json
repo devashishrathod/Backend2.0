@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(node scripts/setPlanEntitlements.js)",
+      "Bash(node scripts/setSubscriptionConfig.js)",
+      "Bash(node scripts/setPlanEntitlements.js --apply)",
+      "Bash(node scripts/setSubscriptionConfig.js --apply)",
+      "Bash(node scripts/backfillSubscriptionState.js --apply)",
+      "Bash(node -e \"require\\('dotenv'\\).config\\({quiet:true}\\); require\\('./routes'\\); require\\('./jobs'\\); console.log\\('  app+jobs: OK'\\);\")",
+      "Bash(grep -nA3 \"type:\" validator/auth.js)",
+      "Bash(grep -nA10 \"matchPassword\\\\|pre\\(\\\\\"save\\\\\"\" models/User.js)",
+      "Bash(timeout 60 node -e ' *)",
+      "Bash(timeout 110 node .tmp-real.js)",
+      "Bash(timeout 90 node -e ' *)",
+      "Bash(node -e \"require\\('dotenv'\\).config\\({quiet:true}\\); require\\('./services/transactions'\\); require\\('./helpers/subscribeds'\\); console.log\\('OK'\\);\")",
+      "Bash(timeout 110 node .tmp-promo.js)",
+      "Bash(timeout 110 node .tmp-over.js)",
+      "Bash(node -e \"require\\('dotenv'\\).config\\({quiet:true}\\); const p=require\\('./helpers/push'\\); console.log\\('push exports:', Object.keys\\(p\\).join\\(', '\\)\\); console.log\\('fcm configured:', p.isFcmConfigured\\(\\)\\);\")",
+      "Bash(node -e \"const n=require\\('./helpers/notifications'\\); console.log\\('exports:', Object.keys\\(n\\).join\\(', '\\)\\)\")",
+      "Bash(node -e \"require\\('./services/promoCodes'\\); console.log\\('parse ok'\\)\")",
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/c69b47dc-be04-43d9-917c-a398162e1230/scratchpad/promo-flow-folder.js\" \"c:/Users/acar/OneDrive/Documents/GitHub/Backend2.0/server2.0/postman\")",
+      "Bash(node -e \"require\\('./subscription-extras'\\); console.log\\('parse ok'\\)\")",
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/c69b47dc-be04-43d9-917c-a398162e1230/scratchpad/report-docs.js\" \"c:/Users/acar/OneDrive/Documents/GitHub/Backend2.0/server2.0\")",
+      "Bash(sed -n '/promo code/,/promoDiscount/p' models/pricingSchema.js)",
+      "Bash(node -e \"require\\('./models/pricingSchema'\\); console.log\\('schema parse ok'\\)\")",
+      "Bash(grep -n 'showcaseUsed\\\\|releaseEntitlementSlot\\\\|$inc' services/showcase/deleteSection.js services/showcase/createSection.js)",
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/c69b47dc-be04-43d9-917c-a398162e1230/scratchpad/deferred-docs.js\" \"c:/Users/acar/OneDrive/Documents/GitHub/Backend2.0/server2.0\")",
+      "Bash(taskkill //F //IM node.exe)"
+    ]
+  }
+}

@@ -6,6 +6,10 @@ const { verifyBrand } = require("./verifyBrand");
 const { acceptPartnershipDeed } = require("./acceptPartnershipDeed");
 const { get } = require("./get");
 const { update } = require("./update");
+const { reviewBrandVerification } = require("./reviewBrandVerification");
+const { acknowledgeApproval } = require("./acknowledgeApproval");
+const { getVerificationHistory } = require("./getVerificationHistory");
+const { getAllVerifications } = require("./getAllVerifications");
 
 module.exports = {
   addOrUpdateBasicDetails,
@@ -16,4 +20,8 @@ module.exports = {
   acceptPartnershipDeed,
   get,
   update,
+  reviewBrandVerification,
+  acknowledgeApproval,
+  getVerificationHistory,
+  getAllVerifications,
 };

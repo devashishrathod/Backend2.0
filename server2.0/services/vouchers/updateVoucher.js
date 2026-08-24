@@ -24,6 +24,7 @@ const {
   VOUCHER_APPROVAL_ACTION,
 } = require("../../constants/voucher");
 const { getVoucherConfig } = require("../../helpers/settings");
+const { resolveActorBrand } = require("../../helpers/brands");
 
 const mergeTags = (existingTags = [], newTags = [], removedTags = []) => {
   const removeSet = new Set(
@@ -172,7 +173,8 @@ const buildSubBrandMapping = ({
   isDeleted: false,
 });
 
-exports.updateVoucher = async (userId, payload = {}, images) => {
+exports.updateVoucher = async (actor, payload = {}, images) => {
+  const userId = actor.userId;
   const session = await mongoose.startSession();
   let uploadedImages = [];
   let removedImagesToDelete = [];
@@ -187,9 +189,10 @@ exports.updateVoucher = async (userId, payload = {}, images) => {
 
     if (!voucher) throwError(404, "Voucher not found.");
 
-    // if (String(voucher.createdBy) !== String(userId)) {
-    //   throwError(403, "You are not authorized to update this voucher.");
-    // }
+    // Checked at the brand, not at `createdBy`. The original check was on the
+    // creating user, which broke as soon as a brand had more than one operator,
+    // so it had been commented out and left the endpoint open to any caller.
+    await resolveActorBrand(actor, voucher.brandId);
 
     if (!voucher.currentVersionId) {
       throwError(400, "Voucher has no editable version.");

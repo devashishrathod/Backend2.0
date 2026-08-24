@@ -7,6 +7,9 @@ const { verifyOtpWithEmail } = require("./verifyOtpWithEmail");
 const { loginWithMobile } = require("./loginWithMobile");
 const { verifyOtpWithMobile } = require("./verifyOtpWithMobile");
 const { logout } = require("./logout");
+const { setPasswordHandler } = require("./setPassword");
+const { forgotPasswordHandler } = require("./forgotPassword");
+const { resetPasswordHandler } = require("./resetPassword");
 
 module.exports = {
   register,
@@ -18,4 +21,7 @@ module.exports = {
   loginWithMobile,
   verifyOtpWithMobile,
   logout,
+  setPasswordHandler,
+  forgotPasswordHandler,
+  resetPasswordHandler,
 };
