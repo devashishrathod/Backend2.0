@@ -10,8 +10,19 @@ const {
   isRemediation,
 } = require("./onboardingEditWindow");
 const { recordRemediationUpdate } = require("./recordRemediationUpdate");
+const { applyPlanEntitlements } = require("./applyPlanEntitlements");
+const { resolveActorBrand } = require("./resolveActorBrand");
+const { recountBrandUsage } = require("./recountBrandUsage");
+const { summarizeUsage } = require("./summarizeUsage");
+const {
+  reserveSlot,
+  releaseSlot,
+  switchSlot,
+  bucketLabel,
+} = require("./entitlementSlots");
 
 module.exports = {
+  resolveActorBrand,
   generateUniqueBrandId,
   generateBrandMerchantId,
   validateBrandVendor,
@@ -20,4 +31,11 @@ module.exports = {
   assertOnboardingEditable,
   isRemediation,
   recordRemediationUpdate,
+  applyPlanEntitlements,
+  recountBrandUsage,
+  summarizeUsage,
+  reserveSlot,
+  releaseSlot,
+  switchSlot,
+  bucketLabel,
 };

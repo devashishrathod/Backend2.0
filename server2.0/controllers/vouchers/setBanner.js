@@ -6,7 +6,7 @@ exports.setBanner = asyncWrapper(async (req, res) => {
   const { voucherId, bannerType } = req.validatedData;
   const file = req.files?.[VOUCHER_BANNER_FILE_FIELD[bannerType]];
   const result = await setVoucherBanner(
-    req.userId,
+    { userId: req.userId, role: req.role, brandId: req.brandId },
     voucherId,
     bannerType,
     file,

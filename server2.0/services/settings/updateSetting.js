@@ -9,6 +9,11 @@ exports.updateSetting = async (userId, payload = {}) => {
   if (payload.vendor?.showcase) {
     Object.assign(setting.vendor.showcase, payload.vendor.showcase);
   }
+  if (payload.vendor?.subscription) {
+    // Merged, not replaced, so an admin can PATCH just the GST rate without
+    // resetting the seller identity and every policy flag to their defaults.
+    Object.assign(setting.vendor.subscription, payload.vendor.subscription);
+  }
   if (typeof payload.isActive === "boolean") {
     setting.isActive = payload.isActive;
   }

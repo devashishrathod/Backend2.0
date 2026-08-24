@@ -1,249 +1,116 @@
-const User = require("../../models/User");
-const Brand = require("../../models/Brand");
-const Subscription = require("../../models/Subscription");
 const Transaction = require("../../models/Transaction");
 const Subscribed = require("../../models/Subscribed");
-// const EmployeeReferral = require("../../model/EmployeeReferral");
-const { ROLES, SCREENS } = require("../../constants");
+const { ROLES } = require("../../constants");
+const {
+  PAYMENT_GATEWAYS,
+  SUBSCRIPTION_SOURCE,
+} = require("../../constants/subscription");
 const { throwError } = require("../../utils");
-const { calculateEndDate } = require("../../helpers/subscribeds");
+const {
+  getActiveSubscription,
+  settleSubscriptionPayment,
+} = require("../../helpers/subscribeds");
 const {
   generateRazorpaySignature,
   getPaymentDetails,
-  generateAndUploadInvoice,
 } = require("../../helpers/transactions");
 
-exports.verifySubscribeTransaction = async (tokenUserId, payload) => {
-  try {
-    const checkUser = await User.findById(tokenUserId);
-    if (!checkUser || checkUser.isDeleted) throwError(404, "User not found!");
-    const {
-      razorpayOrderId,
-      razorpayPaymentId,
-      razorpaySignature,
-      transactionId,
-    } = payload;
-    if (
-      !razorpayOrderId ||
-      !razorpayPaymentId ||
-      !razorpaySignature ||
-      !transactionId
-    ) {
-      throwError(422, "Missing required fields");
-    }
+/**
+ * Verify a Razorpay payment from the client callback and activate the plan.
+ *
+ * This endpoint authenticates the caller and the payment; the settlement itself
+ * lives in `helpers/subscribeds/settleSubscriptionPayment.js`, shared with the
+ * webhook. Both paths therefore apply the same money checks, activation, promo
+ * commit, invoice and screen advance — there is no second implementation to
+ * drift.
+ *
+ * The two paths race by design (the browser callback and the webhook usually
+ * land within milliseconds). The shared settlement claims the transaction with a
+ * conditional update on `verified: false`, so exactly one of them activates and
+ * the other is told the plan is already live.
+ *
+ * Rewritten earlier around four things the original got wrong:
+ *
+ *  1. **Error codes.** The whole body sat in a try/catch that rethrew everything
+ *     as 500, so 404 / 400 / 403 all reached the client as a server error.
+ *  2. **Idempotency.** A replayed verify used to create a second Subscribed
+ *     document and expire the first.
+ *  3. **Amount and order binding.** The captured amount is compared against the
+ *     paise figure frozen on the transaction, and the payment's order_id against
+ *     ours, so a short payment cannot activate a plan.
+ *  4. **Invoice failures no longer eat the payment.**
+ */
+exports.verifySubscribeTransaction = async (actor, payload) => {
+  const {
+    razorpayOrderId,
+    razorpayPaymentId,
+    razorpaySignature,
+    transactionId,
+  } = payload;
 
-    const generatedSignature = generateRazorpaySignature(
-      razorpayOrderId,
-      razorpayPaymentId,
-      ROLES.VENDOR,
-    );
-    const isValidSignature = generatedSignature === razorpaySignature;
-    if (!isValidSignature) {
-      throwError(400, "Invalid signature. Payment may be tampered.");
-    }
-    const paymentDetails = await getPaymentDetails(
-      razorpayPaymentId,
-      ROLES.VENDOR,
-    );
-    if (!paymentDetails) {
-      throwError(503, "Razorpay services unavailable! Please try again later");
-    }
-
-    const checkTxn = await Transaction.findById(transactionId);
-    if (!checkTxn || checkTxn.isDeleted) {
-      throwError(404, "User transaction not found!");
-    }
-    const { userId, createdBy, brandId, subscriptionId } = checkTxn;
-    if (tokenUserId.toString() !== createdBy.toString()) {
-      throwError(404, "You are not authorized to verify this payment request");
-    }
-
-    const checkVendor = await User.findById(userId);
-    if (!checkVendor || checkVendor.isDeleted) {
-      throwError(404, "Vendor not found!");
-    }
-
-    const checkBrand = await Brand.findById(brandId);
-    if (!checkBrand || checkBrand.isDeleted) {
-      throwError(404, "Brand not found!");
-    }
-
-    const checkSubscription = await Subscription.findById(subscriptionId);
-    if (!checkSubscription || checkSubscription.isDeleted) {
-      throwError(404, "Subscription plan not found!");
-    } else if (!checkSubscription.isActive) {
-      throwError(404, "Subscription plan is inactive!");
-    }
-
-    let newSubscribed;
-    const startDate = new Date();
-    const durationInDays = checkSubscription?.durationInDays;
-    const durationInYears = checkSubscription?.durationInYears;
-    let endDate = calculateEndDate(startDate, durationInYears, durationInDays);
-    const subscribedData = {
-      userId,
-      brandId,
-      subscribedBy: createdBy,
-      transaction: checkTxn?._id,
-      subscriptionId,
-      durationInDays,
-      durationInYears,
-      startDate,
-      endDate,
-      discount: checkSubscription?.discount,
-      price: checkSubscription?.price,
-    };
-    if (checkBrand.isSubscribed) {
-      const subscribedDetails = await Subscribed.findById(
-        checkBrand?.subscribedId,
-      );
-      if (!subscribedDetails) {
-        throwError(404, "Brand/Vendor's subscribed details not found!");
-      }
-      if (subscribedDetails.isExpired) {
-        newSubscribed = await Subscribed.create(subscribedData);
-      } else {
-        const previousSubscriptionId = subscribedDetails?.subscriptionId;
-        const checkPreviousSubscription = await Subscription.findById(
-          previousSubscriptionId,
-        );
-        const currentPlanPrice = checkSubscription?.price;
-        const previousPlanPrice = checkPreviousSubscription?.price;
-        if (currentPlanPrice < previousPlanPrice) {
-          throwError(
-            403,
-            "Downgrading is not permitted. Your current plan provides greater value than the selected option. Please choose a higher-tier plan.",
-          );
-        }
-        const now = new Date();
-        newSubscribed = await Subscribed.create(subscribedData);
-        const oldPlanUpdatedData = {
-          upgradedTo: newSubscribed._id,
-          isUpgraded: true,
-          upgradeDate: now,
-          upgradedBy: tokenUserId,
-          isActive: false,
-          isExpired: true,
-          endDate: now,
-          numberOfUpgrade: (subscribedDetails?.numberOfUpgrade || 0) + 1,
-        };
-        await Subscribed.findByIdAndUpdate(
-          subscribedDetails?._id,
-          oldPlanUpdatedData,
-        );
-      }
-    } else {
-      newSubscribed = await Subscribed.create(subscribedData);
-    }
-
-    const updatedTxnData = {
-      entity: paymentDetails?.entity,
-      description: paymentDetails?.description,
-      status: paymentDetails?.status,
-      razorpayPaymentId,
-      razorpaySignature,
-      verified: paymentDetails?.captured,
-      paidAmount: paymentDetails?.amount / 100,
-      dueAmount: checkSubscription?.price - paymentDetails?.amount / 100,
-      amountRefunded: (paymentDetails?.amount_refunded ?? 0) / 100,
-      refundStatus: paymentDetails?.refund_status,
-      isInternational: paymentDetails?.international,
-      paymentMethod: paymentDetails?.method,
-      walletProvider: paymentDetails?.wallet,
-      fee: paymentDetails?.fee / 100,
-      tax: paymentDetails?.tax / 100,
-      cardId: paymentDetails?.card_id,
-      bank: paymentDetails?.bank,
-      vpa: paymentDetails?.vpa,
-      notes: paymentDetails?.notes,
-      errorCode: paymentDetails?.error_code,
-      errorDescription: paymentDetails?.error_description,
-      errorSource: paymentDetails?.error_source,
-      errorStep: paymentDetails?.error_step,
-      errorReason: paymentDetails?.error_reason,
-      acquirerData: paymentDetails?.acquirer_data,
-      updatedAtRaw: paymentDetails?.created_at,
-    };
-    const updateTxn = await Transaction.findByIdAndUpdate(
-      transactionId,
-      updatedTxnData,
-      {
-        returnDocument: "after",
-      },
-    );
-    if (!updateTxn) throwError(404, "Transaction update failed");
-    if (updateTxn?.verified) {
-      const amountData = {
-        paidAmount: paymentDetails?.amount / 100,
-        dueAmount: checkSubscription?.price - paymentDetails?.amount / 100,
-        isActive: true,
-      };
-      const invoiceData = {
-        invoiceId: updateTxn.invoiceId,
-        transaction: updateTxn._id.toString(),
-        planName: checkSubscription?.name,
-        price: updateTxn.paidAmount,
-        date: new Date(startDate).toLocaleDateString("en-IN"),
-        planEnd: new Date(endDate).toLocaleDateString("en-IN"),
-        status: updateTxn.status,
-        paymentMethod: updateTxn.paymentMethod,
-      };
-      const invoiceUrl = await generateAndUploadInvoice(invoiceData);
-      console.log("Invoice URL:", invoiceUrl);
-      await Transaction.findByIdAndUpdate(
-        transactionId,
-        { invoiceUrl },
-        { returnDocument: "after" },
-      );
-      newSubscribed = await Subscribed.findByIdAndUpdate(
-        newSubscribed?._id,
-        amountData,
-      );
-      await Brand.findByIdAndUpdate(brandId, {
-        subscribedId: newSubscribed?._id,
-        isSubscribed: true,
-      });
-      // const referral = await EmployeeReferral.findOne({
-      //   brand: brand,
-      //   user: user,
-      // });
-      // if (referral && checkSubscription?.name) {
-      //   let incField = null;
-      //   switch (checkSubscription.name) {
-      //     case "Starter":
-      //       incField = "subscriptionCount.noOfStarterPlan";
-      //       break;
-      //     case "Professional":
-      //       incField = "subscriptionCount.noOfProfessionalPlan";
-      //       break;
-      //     case "Enterprise":
-      //       incField = "subscriptionCount.noOfEntrepreneurPlan";
-      //       break;
-      //     default:
-      //       incField = null;
-      //   }
-      //   if (incField) {
-      //     await EmployeeReferral.findOneAndUpdate(
-      //       { brand: brand, user: user },
-      //       {
-      //         $inc: { [incField]: 1 },
-      //         $set: { isSubscribed: true },
-      //       },
-      //       { new: true },
-      //     );
-      //   }
-      // }
-    } else {
-      throwError(
-        updateTxn?.errorCode || 400,
-        updateTxn?.errorReason || "User transaction updation failed",
-      );
-    }
-    checkVendor.currentScreen = SCREENS.OUTLET_PAGE;
-    await checkVendor.save();
-    return newSubscribed;
-  } catch (error) {
-    console.error("Payment verification error:", error);
-    throwError(500, error.message);
+  const transaction = await Transaction.findById(transactionId);
+  if (!transaction || transaction.isDeleted) {
+    throwError(404, "Transaction not found!");
   }
+  if (transaction.gateway !== PAYMENT_GATEWAYS.RAZORPAY) {
+    throwError(422, "This transaction was not created through Razorpay.");
+  }
+  if (transaction.razorpayOrderId !== razorpayOrderId) {
+    throwError(422, "This payment does not belong to the given transaction.");
+  }
+
+  const isAdmin = actor.role === ROLES.ADMIN;
+  if (!isAdmin && String(transaction.createdBy) !== String(actor.userId)) {
+    throwError(403, "You are not authorized to verify this payment request");
+  }
+
+  // Fast path for an obvious replay — including one the webhook already
+  // settled. The authoritative guard is the conditional claim inside the shared
+  // settlement; this only avoids a pointless gateway round trip.
+  if (transaction.verified) {
+    const existing = transaction.subscribedId
+      ? await Subscribed.findById(transaction.subscribedId)
+      : await getActiveSubscription(transaction.brandId);
+    return {
+      subscribed: existing,
+      transaction,
+      alreadyVerified: true,
+      invoiceUrl: transaction.invoiceUrl || null,
+    };
+  }
+
+  const expectedSignature = generateRazorpaySignature(
+    razorpayOrderId,
+    razorpayPaymentId,
+    ROLES.VENDOR,
+  );
+  if (expectedSignature !== razorpaySignature) {
+    throwError(400, "Invalid signature. Payment may be tampered.");
+  }
+
+  let payment;
+  try {
+    payment = await getPaymentDetails(razorpayPaymentId, ROLES.VENDOR);
+  } catch (error) {
+    console.error("[verifySubscribe] Razorpay lookup failed:", error?.message);
+    throwError(503, "Razorpay services unavailable! Please try again later");
+  }
+  if (!payment) {
+    throwError(503, "Razorpay services unavailable! Please try again later");
+  }
+
+  const result = await settleSubscriptionPayment({
+    transaction,
+    payment,
+    actor,
+    source: isAdmin
+      ? SUBSCRIPTION_SOURCE.ADMIN_PAYMENT
+      : SUBSCRIPTION_SOURCE.PAYMENT,
+  });
+
+  return {
+    ...result,
+    // The webhook may have won the race and settled it first — still a success.
+    alreadyVerified: result.alreadySettled,
+  };
 };

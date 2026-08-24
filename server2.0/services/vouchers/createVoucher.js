@@ -30,9 +30,36 @@ const {
   VOUCHER_BANNER_FILE_FIELD,
 } = require("../../constants/voucherBanner");
 const { getVoucherConfig } = require("../../helpers/settings");
+const { assertActiveSubscription } = require("../../helpers/subscribeds");
+const {
+  reserveSlot,
+  releaseSlot,
+  resolveActorBrand,
+} = require("../../helpers/brands");
+const { ENTITLEMENT_BUCKETS } = require("../../constants/subscription");
 
-exports.createVoucher = async (userId, payload, files = {}) => {
+exports.createVoucher = async (actor, payload, files = {}) => {
   const images = files?.images;
+  const userId = actor.userId;
+
+  // Ownership first. `brandId` came straight from the request body and was only
+  // checked for existence, so any authenticated caller could create a voucher
+  // against any brand — and, now that vouchers are metered, drain that brand's
+  // plan quota. An admin may name any brand; a vendor only their own.
+  const actorBrand = await resolveActorBrand(actor, payload.brandId);
+  payload.brandId = actorBrand._id;
+
+  // Gated before the transaction opens, so a vendor without a live plan gets
+  // "subscribe to continue" rather than a validation error about the voucher.
+  // `assertActiveSubscription` resolves the plan from `status` + `endDate` and
+  // self-heals a lapsed row, so an expired plan is caught even if the expiry
+  // job has not run.
+  await assertActiveSubscription(payload.brandId);
+
+  // Atomic claim on the plan's voucher pool: the limit test lives inside the
+  // update filter, so two concurrent creates cannot both take the last slot.
+  await reserveSlot(payload.brandId, ENTITLEMENT_BUCKETS.VOUCHERS);
+
   const session = await mongoose.startSession();
   let uploadedImages = [];
   let uploadedBanner = null;
@@ -185,6 +212,9 @@ exports.createVoucher = async (userId, payload, files = {}) => {
     };
   } catch (error) {
     await session.abortTransaction();
+    // Hand the reserved slot back before rethrowing, otherwise a failed create
+    // silently costs the vendor one voucher from their plan.
+    await releaseSlot(payload.brandId, ENTITLEMENT_BUCKETS.VOUCHERS);
     if (uploadedImages.length) await rollbackVoucherImages(uploadedImages);
     if (uploadedBanner) {
       await deleteVoucherBannerMedia(payload.bannerType, uploadedBanner);

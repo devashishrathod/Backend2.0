@@ -257,3 +257,70 @@ exports.validateVerifyMobileOtp = Joi.object({
     "string.empty": "Current Screen is required",
   }),
 });
+
+// ---------------------------------------------------------------------------
+// Password set / reset
+// ---------------------------------------------------------------------------
+
+// One rule, used by both set and reset, so the strength requirement cannot
+// diverge between the two paths.
+const strongPassword = Joi.string()
+  .min(8)
+  .max(72) // bcrypt silently truncates past 72 bytes
+  .pattern(/[a-z]/, "lowercase")
+  .pattern(/[A-Z]/, "uppercase")
+  .pattern(/\d/, "number")
+  .required()
+  .messages({
+    "string.min": "Password must be at least {#limit} characters",
+    "string.max": "Password cannot exceed {#limit} characters",
+    "string.pattern.name":
+      "Password must include an uppercase letter, a lowercase letter and a number",
+    "any.required": "newPassword is required",
+  });
+
+exports.validateSetPassword = {
+  body: Joi.object({
+    // Only required when the account already has a password — enforced in the
+    // service, which is the only place that knows whether it does.
+    currentPassword: Joi.string().optional(),
+    newPassword: strongPassword,
+  }),
+};
+
+exports.validateForgotPassword = {
+  body: Joi.object({
+    type: Joi.string()
+      .valid(LOGIN_TYPES.WHATSAPP, LOGIN_TYPES.EMAIL, LOGIN_TYPES.MOBILE)
+      .required()
+      .messages({
+        "any.only": "type must be one of: WHATSAPP, EMAIL, MOBILE",
+        "any.required": "type is required",
+      }),
+    target: Joi.string().trim().required().messages({
+      "any.required": "target (the number or email) is required",
+    }),
+    role: Joi.string()
+      .valid(...Object.values(ROLES))
+      .optional()
+      .messages({
+        "any.only": `role must be one of: ${Object.values(ROLES).join(", ")}`,
+      }),
+  }),
+};
+
+exports.validateResetPassword = {
+  body: Joi.object({
+    type: Joi.string()
+      .valid(LOGIN_TYPES.WHATSAPP, LOGIN_TYPES.EMAIL, LOGIN_TYPES.MOBILE)
+      .required(),
+    target: Joi.string().trim().required(),
+    otp: Joi.string().trim().required().messages({
+      "any.required": "otp is required",
+    }),
+    role: Joi.string()
+      .valid(...Object.values(ROLES))
+      .optional(),
+    newPassword: strongPassword,
+  }),
+};

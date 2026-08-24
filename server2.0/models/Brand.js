@@ -38,8 +38,30 @@ const brandSchema = new mongoose.Schema(
     subCategoryId: subCategoryField,
     workHoursId: workHoursField,
     firstSubBrandId: subBrandField,
-    subBrandsLimit: { type: Number },
-    subBrandsUsed: { type: Number },
+    // ---------- plan entitlement mirror (source of truth: Subscription) ------
+    // Written only by helpers/brands/applyPlanEntitlements.js, which runs on
+    // every activation, plan change, expiry and cancellation. `*Used` is
+    // maintained atomically by helpers/subBrands/reserveOutletSlot.js and can
+    // always be rebuilt from the SubBrand rows via recountBrandUsage.js.
+    //
+    // Four independent pools — none draws from another:
+    //   subBrands  <- SubBrand rows with outletType OUTLET
+    //   franchises <- SubBrand rows with outletType FRANCHISE
+    //   vouchers   <- Voucher rows in a live status
+    //   showcase   <- ShowcaseSection rows
+    subBrandsLimit: { type: Number, default: 0, min: 0 },
+    subBrandsUsed: { type: Number, default: 0, min: 0 },
+    franchisesLimit: { type: Number, default: 0, min: 0 },
+    franchisesUsed: { type: Number, default: 0, min: 0 },
+    vouchersLimit: { type: Number, default: 0, min: 0 },
+    vouchersUsed: { type: Number, default: 0, min: 0 },
+    showcaseLimit: { type: Number, default: 0, min: 0 },
+    showcaseUsed: { type: Number, default: 0, min: 0 },
+    isSubBrandsUnlimited: { type: Boolean, default: false },
+    isFranchisesUnlimited: { type: Boolean, default: false },
+    isVouchersUnlimited: { type: Boolean, default: false },
+    isShowcaseUnlimited: { type: Boolean, default: false },
+    entitlementsSyncedAt: { type: Date },
     followersCount: { type: Number, default: 0 },
     avoidanceCount: { type: Number, default: 0 },
     joinedDate: { type: Date, default: Date.now },

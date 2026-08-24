@@ -9,6 +9,8 @@ const {
   VOUCHER_APPROVAL_ACTION,
 } = require("../../constants/voucher");
 const { getVoucherConfig } = require("../../helpers/settings");
+const { recountBrandUsage } = require("../../helpers/brands");
+const { ENTITLEMENT_BUCKETS } = require("../../constants/subscription");
 
 exports.reviewVoucher = async (adminUserId, versionId, payload = {}) => {
   const session = await mongoose.startSession();
@@ -217,6 +219,9 @@ exports.reviewVoucher = async (adminUserId, versionId, payload = {}) => {
         { session },
       );
       await session.commitTransaction();
+    // A review outcome can move the voucher in or out of the slot-consuming
+    // set (REJECTED releases, APPROVED holds), so reconcile the cached counter.
+    await recountBrandUsage(voucher.brandId, [ENTITLEMENT_BUCKETS.VOUCHERS]);
       return {
         voucherId: voucher._id,
         versionId: version._id,
@@ -317,6 +322,9 @@ exports.reviewVoucher = async (adminUserId, versionId, payload = {}) => {
       { session },
     );
     await session.commitTransaction();
+    // A review outcome can move the voucher in or out of the slot-consuming
+    // set (REJECTED releases, APPROVED holds), so reconcile the cached counter.
+    await recountBrandUsage(voucher.brandId, [ENTITLEMENT_BUCKETS.VOUCHERS]);
     return {
       voucherId: voucher._id,
       versionId: version._id,

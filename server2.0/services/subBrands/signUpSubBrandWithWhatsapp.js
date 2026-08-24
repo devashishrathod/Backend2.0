@@ -1,52 +1,131 @@
 const User = require("../../models/User");
 const Brand = require("../../models/Brand");
 const SubBrand = require("../../models/SubBrand");
-const { ROLES, LOGIN_TYPES } = require("../../constants");
+const { ROLES, LOGIN_TYPES, OUTLET_TYPES } = require("../../constants");
 const { throwError } = require("../../utils");
 const { sendOtp } = require("../../services/otps");
 const {
   generateUniqueUserId,
   generateReferralCode,
 } = require("../../helpers/users");
+const { assertActiveSubscription } = require("../../helpers/subscribeds");
+const { resolveActorBrand } = require("../../helpers/brands");
 const {
   generateUniqueSubBrandId,
   generateSubBrandStoreId,
+  reserveOutletSlot,
+  releaseOutletSlot,
 } = require("../../helpers/subBrands");
 
-exports.signUpSubBrandWithWhatsapp = async (payload) => {
-  let { brandId, isFirstOutlet, whatsappNumber } = payload;
-  const brand = await Brand.findById(brandId);
-  if (!brand || brand.isDeleted) throwError(404, "Brand not found!");
+/**
+ * Register a new outlet or franchise under a brand.
+ *
+ * This is where the plan's limits are actually enforced. Previously there were
+ * no checks at all here — no subscription gate and no limit test — so a vendor
+ * could add unlimited outlets, on any plan, or with no plan.
+ *
+ * Order matters:
+ *  1. `assertActiveSubscription` proves there is a live plan (self-healing, so
+ *     an expired plan is caught even if the expiry job has not run).
+ *  2. `reserveOutletSlot` claims a slot with an atomic conditional increment.
+ *     Two concurrent signups cannot both pass — the limit test and the
+ *     increment are one operation, unlike a read-then-write check.
+ *  3. Everything after that is wrapped so a failure gives the slot back rather
+ *     than permanently consuming one from the vendor's quota.
+ *
+ * Outlets and franchises draw on separate pools, chosen by `outletType`.
+ */
+exports.signUpSubBrandWithWhatsapp = async (actor, payload) => {
+  let { brandId, isFirstOutlet, whatsappNumber, outletType } = payload;
+  outletType = outletType || OUTLET_TYPES.OUTLET;
+
+  // Ownership first: a vendor may only add outlets to their own brand. The
+  // route used to accept any brandId from any authenticated caller.
+  const brand = await resolveActorBrand(actor, brandId);
+  brandId = brand._id;
 
   whatsappNumber = whatsappNumber?.toLowerCase();
-  let user = await User.findOne({
+  const existing = await User.findOne({
     whatsappNumber,
     role: ROLES.SUB_VENDOR,
     isDeleted: false,
-  });
-  if (user) {
+  })
+    .select("_id")
+    .lean();
+  if (existing) {
     throwError(403, "Outlet/Sub-Brand is already registered with this number");
   }
-  user = await User.create({
-    whatsappNumber,
-    role: ROLES.SUB_VENDOR,
-    password: process.env.DEFAULT_PASSWORD || "Trydood@123",
-    uniqueId: await generateUniqueUserId(),
-    referralCode: await generateReferralCode(),
-  });
-  const subBrand = await SubBrand.create({
-    userId: user._id,
-    brandId,
-    whatsappNumber,
-    uniqueId: await generateUniqueSubBrandId(),
-    storeId: await generateSubBrandStoreId(),
-  });
-  user.subBrandId = subBrand._id;
-  await user.save();
-  if (isFirstOutlet) {
-    brand.firstSubBrandId = subBrand._id;
-    await brand.save();
+
+  // Gate first, so a vendor with no plan gets "subscribe to continue" rather
+  // than a limit message about a plan they do not have.
+  await assertActiveSubscription(brandId);
+
+  await reserveOutletSlot(brandId, outletType);
+
+  let user;
+  let subBrand;
+  try {
+    user = await User.create({
+      whatsappNumber,
+      role: ROLES.SUB_VENDOR,
+      // No password. This account authenticates by OTP; giving every such user
+      // the same DEFAULT_PASSWORD meant one known string logged into all of
+      // them, and there was no flow to ever change it. A password is only set
+      // when the user chooses one via POST /auth/set-password.
+      uniqueId: await generateUniqueUserId(),
+      referralCode: await generateReferralCode(),
+    });
+    subBrand = await SubBrand.create({
+      userId: user._id,
+      brandId,
+      outletType,
+      whatsappNumber,
+      uniqueId: await generateUniqueSubBrandId(),
+      storeId: await generateSubBrandStoreId(),
+    });
+    user.subBrandId = subBrand._id;
+    await user.save();
+
+    if (isFirstOutlet) {
+      brand.firstSubBrandId = subBrand._id;
+      await brand.save();
+    }
+    await sendOtp(LOGIN_TYPES.WHATSAPP, whatsappNumber);
+  } catch (error) {
+    // Hand the reserved slot back before rethrowing, otherwise a transient OTP
+    // or DB failure silently costs the vendor one outlet from their plan.
+    await releaseOutletSlot(brandId, outletType);
+    if (subBrand?._id) {
+      await SubBrand.deleteOne({ _id: subBrand._id }).catch(() => {});
+    }
+    if (user?._id) await User.deleteOne({ _id: user._id }).catch(() => {});
+    throw error;
   }
-  await sendOtp(LOGIN_TYPES.WHATSAPP, whatsappNumber);
-  return user;
+
+  const updated = await Brand.findById(brandId)
+    .select(
+      "subBrandsUsed subBrandsLimit isSubBrandsUnlimited franchisesUsed franchisesLimit isFranchisesUnlimited",
+    )
+    .lean();
+
+  return {
+    user,
+    subBrand,
+    usage: {
+      subBrands: {
+        used: updated.subBrandsUsed ?? 0,
+        limit: updated.isSubBrandsUnlimited
+          ? null
+          : (updated.subBrandsLimit ?? 0),
+        isUnlimited: Boolean(updated.isSubBrandsUnlimited),
+      },
+      franchises: {
+        used: updated.franchisesUsed ?? 0,
+        limit: updated.isFranchisesUnlimited
+          ? null
+          : (updated.franchisesLimit ?? 0),
+        isUnlimited: Boolean(updated.isFranchisesUnlimited),
+      },
+    },
+  };
 };
