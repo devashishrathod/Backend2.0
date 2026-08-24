@@ -170,6 +170,9 @@ module.exports = {
     MANUAL_REVIEW: "MANUAL_REVIEW",
     UNDER_REVIEW: "UNDER_REVIEW",
     REJECTED: "REJECTED",
+    // Approval withdrawn by an admin after it was granted. Distinct from
+    // REJECTED, which means it was never approved in the first place.
+    REVOKED: "REVOKED",
   }),
 
   BRAND_SYSTEM_VERIFY_UPDATED_BY: Object.freeze({

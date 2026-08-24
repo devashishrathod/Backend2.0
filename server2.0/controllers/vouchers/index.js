@@ -7,6 +7,8 @@ const { getAllVersions } = require("./getAllVersions");
 const { getAllCustomerVouchers } = require("./getAllCustomerVouchers");
 const { getCustomerVoucher } = require("./getCustomerVoucher");
 const { previewCustomerVoucher } = require("./previewCustomerVoucher");
+const { setBanner } = require("./setBanner");
+const { deleteBanner } = require("./deleteBanner");
 
 module.exports = {
   create,
@@ -18,4 +20,6 @@ module.exports = {
   getAllCustomerVouchers,
   getCustomerVoucher,
   previewCustomerVoucher,
+  setBanner,
+  deleteBanner,
 };

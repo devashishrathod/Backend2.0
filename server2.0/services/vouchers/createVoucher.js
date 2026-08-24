@@ -17,17 +17,52 @@ const {
   rollbackVoucherImages,
   generateVoucherCode,
   generateVoucherVersionCode,
+  uploadVoucherBannerMedia,
+  deleteVoucherBannerMedia,
 } = require("../../helpers/vouchers");
 const {
   validateVoucherOffers,
   normalizeVoucherOffers,
 } = require("../../helpers/voucherOffers");
 const { VOUCHER_STATUSES } = require("../../constants/voucher");
+const {
+  VOUCHER_BANNER_MEDIA_FIELD,
+  VOUCHER_BANNER_FILE_FIELD,
+} = require("../../constants/voucherBanner");
 const { getVoucherConfig } = require("../../helpers/settings");
+const { assertActiveSubscription } = require("../../helpers/subscribeds");
+const {
+  reserveSlot,
+  releaseSlot,
+  resolveActorBrand,
+} = require("../../helpers/brands");
+const { ENTITLEMENT_BUCKETS } = require("../../constants/subscription");
 
-exports.createVoucher = async (userId, payload, images) => {
+exports.createVoucher = async (actor, payload, files = {}) => {
+  const images = files?.images;
+  const userId = actor.userId;
+
+  // Ownership first. `brandId` came straight from the request body and was only
+  // checked for existence, so any authenticated caller could create a voucher
+  // against any brand — and, now that vouchers are metered, drain that brand's
+  // plan quota. An admin may name any brand; a vendor only their own.
+  const actorBrand = await resolveActorBrand(actor, payload.brandId);
+  payload.brandId = actorBrand._id;
+
+  // Gated before the transaction opens, so a vendor without a live plan gets
+  // "subscribe to continue" rather than a validation error about the voucher.
+  // `assertActiveSubscription` resolves the plan from `status` + `endDate` and
+  // self-heals a lapsed row, so an expired plan is caught even if the expiry
+  // job has not run.
+  await assertActiveSubscription(payload.brandId);
+
+  // Atomic claim on the plan's voucher pool: the limit test lives inside the
+  // update filter, so two concurrent creates cannot both take the last slot.
+  await reserveSlot(payload.brandId, ENTITLEMENT_BUCKETS.VOUCHERS);
+
   const session = await mongoose.startSession();
   let uploadedImages = [];
+  let uploadedBanner = null;
   try {
     session.startTransaction();
     let {
@@ -43,6 +78,7 @@ exports.createVoucher = async (userId, payload, images) => {
       subBrandIds,
       isActive,
       isSaveAsDraft,
+      bannerType,
     } = payload;
     const brand = await Brand.findById(brandId);
     if (!brand || brand.isDeleted) throwError(400, "Brand not found");
@@ -79,10 +115,11 @@ exports.createVoucher = async (userId, payload, images) => {
     const validity = validateVoucherValidityPeriod(startAt, endAt);
 
     const voucherFiles = normalizeVoucherImages(images);
-    validateVoucherImages(voucherFiles, maxImages);
-    if (voucherFiles.length) {
-      uploadedImages = await uploadVoucherImages(voucherFiles);
+    if (!voucherFiles.length) {
+      throwError(422, "At least one voucher image is required.");
     }
+    validateVoucherImages(voucherFiles, maxImages);
+    uploadedImages = await uploadVoucherImages(voucherFiles);
 
     tags = getUniqueTags(tags || []);
 
@@ -139,6 +176,13 @@ exports.createVoucher = async (userId, payload, images) => {
       { session },
     );
 
+    if (bannerType) {
+      const bannerField = VOUCHER_BANNER_MEDIA_FIELD[bannerType];
+      const bannerFile = files?.[VOUCHER_BANNER_FILE_FIELD[bannerType]];
+      uploadedBanner = await uploadVoucherBannerMedia(bannerType, bannerFile);
+      voucher.banner = { type: bannerType, [bannerField]: uploadedBanner };
+    }
+
     voucher.currentVersionId = version._id;
     voucher.currentVersion = versionNumber;
     await voucher.save({ session });
@@ -168,7 +212,13 @@ exports.createVoucher = async (userId, payload, images) => {
     };
   } catch (error) {
     await session.abortTransaction();
+    // Hand the reserved slot back before rethrowing, otherwise a failed create
+    // silently costs the vendor one voucher from their plan.
+    await releaseSlot(payload.brandId, ENTITLEMENT_BUCKETS.VOUCHERS);
     if (uploadedImages.length) await rollbackVoucherImages(uploadedImages);
+    if (uploadedBanner) {
+      await deleteVoucherBannerMedia(payload.bannerType, uploadedBanner);
+    }
     if (error?.code === 11000) {
       throwError(
         409,

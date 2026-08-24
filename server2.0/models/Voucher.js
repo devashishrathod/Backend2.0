@@ -1,7 +1,28 @@
 const mongoose = require("mongoose");
 const { userField, brandField } = require("./validObjectId");
 const { VOUCHER_STATUSES } = require("../constants/voucher");
+const {
+  VOUCHER_BANNER_TYPE,
+  VOUCHER_BANNER_MEDIA_FIELD,
+} = require("../constants/voucherBanner");
 const { isValidateVoucherCode } = require("../validator/common");
+
+const voucherBannerMediaSchema = new mongoose.Schema(
+  {
+    url: { type: String, trim: true },
+    storage: {
+      provider: {
+        type: String,
+        enum: ["CLOUDINARY", "S3"],
+        default: "CLOUDINARY",
+      },
+      publicId: { type: String },
+      bucket: { type: String },
+      key: { type: String },
+    },
+  },
+  { _id: false },
+);
 
 const voucherSchema = new mongoose.Schema(
   {
@@ -98,12 +119,36 @@ const voucherSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Independent of the version/approval flow entirely — a single "current
+    // banner" slot on the master voucher for brand offer promotion. Adding,
+    // replacing, or removing it never touches status/approval/versions.
+    banner: {
+      type: {
+        type: String,
+        enum: Object.values(VOUCHER_BANNER_TYPE),
+        default: null,
+      },
+      image: { type: voucherBannerMediaSchema, default: () => ({}) },
+      video: { type: voucherBannerMediaSchema, default: () => ({}) },
+      gif: { type: voucherBannerMediaSchema, default: () => ({}) },
+    },
   },
   {
     timestamps: true,
     versionKey: false,
   },
 );
+
+voucherSchema.pre("validate", function () {
+  if (!this.banner || !this.banner.type) return;
+  const field = VOUCHER_BANNER_MEDIA_FIELD[this.banner.type];
+  const media = this.banner[field];
+  if (!media || !media.url) {
+    throw new Error(
+      `${field} media is required for voucher banner type '${this.banner.type}'.`,
+    );
+  }
+});
 
 voucherSchema.index(
   {

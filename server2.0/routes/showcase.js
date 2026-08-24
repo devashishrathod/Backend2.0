@@ -54,7 +54,7 @@ router.get(
   getVideoClips,
 );
 router.put(
-  "section/:brandId/reorder",
+  "/section/:brandId/reorder",
   validateSchema(validateReorderSections),
   reorderSections,
 );

@@ -26,7 +26,13 @@ const userSchema = new mongoose.Schema(
       enum: Object.values(LOGIN_TYPES),
       default: LOGIN_TYPES.WHATSAPP,
     },
-    password: { type: String, required: true },
+    // Not required: accounts created through an OTP flow (WhatsApp / email /
+    // mobile) genuinely have no password. They used to all be given the same
+    // shared DEFAULT_PASSWORD, which meant one known string logged into any of
+    // them. Password login now refuses an account that never set one.
+    password: { type: String },
+    // When the user actually chose their own password. Absent = never set.
+    passwordSetAt: { type: Date },
     email: {
       type: String,
       lowercase: true,
@@ -109,8 +115,16 @@ userSchema.methods.getSignedJwtToken = function () {
   );
 };
 
+// Returns false — rather than throwing inside bcrypt — when the account has no
+// password at all, so every password login path fails closed.
 userSchema.methods.matchPassword = async function (enteredPassword) {
-  return await bcrypt.compare(enteredPassword, this.password);
+  if (!this.password || !enteredPassword) return false;
+  return bcrypt.compare(enteredPassword, this.password);
+};
+
+// True only once the user has chosen their own password.
+userSchema.methods.hasPassword = function () {
+  return Boolean(this.password);
 };
 
 userSchema.pre("save", async function () {

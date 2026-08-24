@@ -33,11 +33,9 @@ const extractPublicId = (url) => {
 exports.uploadFile = async (filePath, options = {}) => {
   try {
     const result = await cloudinary.uploader.upload(filePath, options);
-    console.log("Cloudinary Uploaded:", {
-      url: result.secure_url,
-      public_id: result.public_id,
-      resource_type: result.resource_type,
-    });
+    // One line, not a multi-line object — this runs on every upload, which now
+    // includes every subscription invoice.
+    console.log(`Cloudinary uploaded: ${result.secure_url}`);
     return result;
   } catch (error) {
     console.error("Cloudinary Upload Error:", error);

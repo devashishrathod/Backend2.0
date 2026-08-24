@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "code-review-graph": {
+      "command": "C:\\Python313\\python.exe",
+      "args": [
+        "-m",
+        "code_review_graph",
+        "serve"
+      ],
+      "cwd": "C:\\Users\\acar\\OneDrive\\Documents\\GitHub\\Backend2.0\\server2.0",
+      "env": {
+        "CRG_REPO_ROOT": "C:\\Users\\acar\\OneDrive\\Documents\\GitHub\\Backend2.0\\server2.0"
+      },
+      "type": "stdio"
+    }
+  }
+}

@@ -2,7 +2,10 @@ const { asyncWrapper, sendSuccess } = require("../../utils");
 const { signUpSubBrandWithWhatsapp } = require("../../services/subBrands");
 
 exports.signUp = asyncWrapper(async (req, res) => {
-  const result = await signUpSubBrandWithWhatsapp(req.validatedData);
+  const result = await signUpSubBrandWithWhatsapp(
+    { userId: req.userId, role: req.role, brandId: req.brandId },
+    req.validatedData,
+  );
   return sendSuccess(
     res,
     200,
