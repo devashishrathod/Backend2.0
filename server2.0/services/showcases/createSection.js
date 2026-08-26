@@ -4,15 +4,23 @@ const { throwError } = require("../../utils");
 const { SHOWCASE_SECTION_TYPE } = require("../../constants/showcase");
 const { generateUniqueSlug } = require("../../helpers/showcases");
 const {
-  validateBrandVendor,
+  resolveActorBrand,
   reserveSlot,
   releaseSlot,
 } = require("../../helpers/brands");
 const { assertActiveSubscription } = require("../../helpers/subscribeds");
 const { ENTITLEMENT_BUCKETS } = require("../../constants/subscription");
 
-exports.createSection = async (userId, payload) => {
-  const brand = await validateBrandVendor(userId);
+/**
+ * @param {{ userId: string, role: string, brandId?: string }} actor
+ * @param {object} payload  may carry `brandId` — required when the actor is an
+ *                          admin, ignored-then-verified for a vendor.
+ */
+exports.createSection = async (actor, payload) => {
+  // Was `validateBrandVendor(userId)`, which resolved the brand from the token
+  // and so could only ever work for a vendor. `resolveActorBrand` keeps that
+  // behaviour for vendors and lets an admin name the brand they are acting for.
+  const brand = await resolveActorBrand(actor, payload.brandId);
 
   // A showcase section is a metered plan feature, same as an outlet. The
   // subscription gate runs first so a vendor with no live plan is told to

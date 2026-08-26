@@ -6,6 +6,8 @@ const {
   isAdmin,
   isVendor,
   isCustomer,
+  isSubVendor,
+  isVendorOrAdmin,
 } = require("./validateRoles");
 
 module.exports = {
@@ -16,4 +18,6 @@ module.exports = {
   isAdmin,
   isVendor,
   isCustomer,
+  isSubVendor,
+  isVendorOrAdmin,
 };

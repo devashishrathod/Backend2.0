@@ -4,8 +4,15 @@ const { throwError } = require("../../utils");
 const { deleteAllMedia } = require("../../helpers/showcases");
 const { releaseSlot } = require("../../helpers/brands");
 const { ENTITLEMENT_BUCKETS } = require("../../constants/subscription");
+const {
+  resolveSectionForActor,
+} = require("../../helpers/showcases");
 
-exports.deleteFullSection = async (userId, payload) => {
+exports.deleteFullSection = async (actor, payload) => {
+  await resolveSectionForActor(actor, payload.sectionId, {
+    projection: { brandId: 1 },
+  });
+
   // const brand = await validateVendorBrand(userId);
   const section = await ShowcaseSection.findOne(
     {

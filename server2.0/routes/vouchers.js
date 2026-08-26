@@ -4,10 +4,9 @@ const router = express.Router();
 const {
   verifyJwtToken,
   validateSchema,
-  validateRoles,
   isAdmin,
+  isVendorOrAdmin,
 } = require("../middlewares");
-const { ROLES } = require("../constants");
 const {
   create,
   update,
@@ -39,7 +38,6 @@ const {
 // are gated to the brand owner (or an admin). Ownership itself is enforced
 // per-brand inside the services via resolveActorBrand; the route gate only keeps
 // customers out of vendor tooling.
-const isVendorOrAdmin = validateRoles(ROLES.VENDOR, ROLES.ADMIN);
 
 router.post(
   "/create",
@@ -74,7 +72,7 @@ router.post(
 );
 router.get(
   "/versions/get-all",
-  verifyJwtToken,
+  isVendorOrAdmin,
   validateSchema(validateGetAllVoucherVersions),
   getAllVersions,
 );

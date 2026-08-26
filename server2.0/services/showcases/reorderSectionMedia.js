@@ -1,5 +1,8 @@
 const ShowcaseSection = require("../../models/ShowcaseSection");
 const { throwError } = require("../../utils");
+const {
+  resolveSectionForActor,
+} = require("../../helpers/showcases");
 //const { validateVendorBrand } = require("../../helpers/showcase/common");
 const {
   normalizeSortOrder,
@@ -8,7 +11,11 @@ const {
   syncSectionCoverImage,
 } = require("../../helpers/showcases");
 
-exports.reorderSectionMedia = async (userId, payload) => {
+exports.reorderSectionMedia = async (actor, payload) => {
+  await resolveSectionForActor(actor, payload.sectionId, {
+    projection: { brandId: 1 },
+  });
+
   // const brand = await validateVendorBrand(userId);
   let { sectionId, medias } = payload;
   if (!Array.isArray(medias) || medias.length === 0) {

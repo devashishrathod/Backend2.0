@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const { verifyJwtToken, validateSchema } = require("../middlewares");
+const { validateSchema, isAdmin, isCustomer } = require("../middlewares");
 const {
   create,
   get,
@@ -18,19 +18,28 @@ const {
   validateDeleteTicker,
 } = require("../validator/promotionalTicker");
 
-router.use(verifyJwtToken);
+// ---------------------------------------------------------------------------
+// App-level ticker strip — same ownership story as banners: platform content,
+// so admin-managed. Previously any authenticated token could write here.
+// ---------------------------------------------------------------------------
 
-router.post("/create", validateSchema(validateCreateTicker), create);
-router.put("/update/:id", validateSchema(validateUpdateTicker), update);
-router.get("/get-all", validateSchema(validateGetAllTickers), getAll);
-router.get("/get/:id", validateSchema(validateGetTicker), get);
+router.post("/create", isAdmin, validateSchema(validateCreateTicker), create);
+router.put(
+  "/update/:id",
+  isAdmin,
+  validateSchema(validateUpdateTicker),
+  update,
+);
+router.get("/get-all", isAdmin, validateSchema(validateGetAllTickers), getAll);
+router.get("/get/:id", isAdmin, validateSchema(validateGetTicker), get);
 router.delete(
   "/delete/:id",
+  isAdmin,
   validateSchema(validateDeleteTicker),
   deleteTicker,
 );
 
-// Customer
-router.get("/customer/active", getActiveForCustomer);
+// The tickers the customer app renders, in display order.
+router.get("/customer/active", isCustomer, getActiveForCustomer);
 
 module.exports = router;

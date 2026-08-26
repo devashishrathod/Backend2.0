@@ -3,15 +3,23 @@ const { throwError, validateObjectId } = require("../../utils");
 
 exports.updatePrivacyAndPolicy = async (id, payload) => {
   validateObjectId(id, "PrivacyAndPolicy Id");
+
   const result = await PrivacyAndPolicy.findById(id);
   if (!result || result.isDeleted) {
     throwError(404, "Privacy and policy not found");
   }
-  let { title, description, isActive } = payload;
-  if (typeof isActive !== "undefined") result.isActive = !result.isActive;
+
+  let { title, type, description, isActive } = payload;
+
+  // Was a toggle (`!result.isActive`), so `isActive: true` on an already-active
+  // document turned it off.
+  if (typeof isActive !== "undefined") result.isActive = isActive;
+
   if (title) {
     title = title.toLowerCase();
-    const existing = await result.findOne({
+    // Was `result.findOne(...)` — called on a document rather than the model,
+    // so any title change threw "result.findOne is not a function".
+    const existing = await PrivacyAndPolicy.findOne({
       _id: { $ne: id },
       title,
       isDeleted: false,
@@ -21,8 +29,11 @@ exports.updatePrivacyAndPolicy = async (id, payload) => {
     }
     result.title = title;
   }
-  if (description) result.description = description?.toLowerCase();
-  result.updatedAt = new Date();
+
+  if (typeof type !== "undefined") result.type = type;
+  // Stored as written — see the note in createPrivacyAndPolicy.
+  if (typeof description !== "undefined") result.description = description;
+
   await result.save();
   return result;
 };

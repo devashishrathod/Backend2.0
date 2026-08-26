@@ -4,7 +4,8 @@ const {
   validateSchema,
   isVendor,
   isAdmin,
-  verifyJwtToken,
+  isCustomer,
+  isVendorOrAdmin,
 } = require("../middlewares");
 const { validateAddPanDetails } = require("../validator/pan");
 const { validateAddGstDetails } = require("../validator/gst");
@@ -17,6 +18,7 @@ const {
   validateReviewBrandVerification,
   validateGetAllBrandVerifications,
   validateGetBrandVerificationHistory,
+  validateGetCustomerBrand,
 } = require("../validator/brands");
 const {
   addOrUpdateBasicDetails,
@@ -26,6 +28,7 @@ const {
   verifyBrand,
   acceptPartnershipDeed,
   get,
+  getCustomer,
   update,
   reviewBrandVerification,
   acknowledgeApproval,
@@ -85,16 +88,33 @@ router.put(
 // Shared audit trail — admins see any brand, vendors only their own.
 router.get(
   "/verifications/history",
-  verifyJwtToken,
+  isVendorOrAdmin,
   validateSchema(validateGetBrandVerificationHistory),
   getVerificationHistory,
 );
 
-// General
-router.get("/get", verifyJwtToken, validateSchema(validateGetBrand), get);
+// ---------------------------------------------------------------------------
+// Customer — the public brand profile.
+//
+// Its own endpoint rather than a role-filtered `/get`: that pipeline joins the
+// brand's PAN, GSTIN, bank account, KYC scores and subscription billing, and a
+// projection that strips six sensitive joins is one edit away from leaking
+// again. This one only ever builds what the profile screen renders — brand,
+// features, visible showcase and outlets — so there is nothing to strip.
+// ---------------------------------------------------------------------------
+router.get(
+  "/customer/get/:brandId",
+  isCustomer,
+  validateSchema(validateGetCustomerBrand),
+  getCustomer,
+);
+
+// General — vendor's own brand, or any brand for an admin. Not customer-facing:
+// see the note above.
+router.get("/get", isVendorOrAdmin, validateSchema(validateGetBrand), get);
 router.put(
   "/update",
-  verifyJwtToken,
+  isVendorOrAdmin,
   validateSchema(validateUpdateBrand),
   update,
 );

@@ -1,4 +1,5 @@
 const { throwError } = require("../../utils");
+const { VOUCHER_DISCOUNT_TYPES } = require("../../constants/voucher");
 
 exports.calculateVoucherOffer = ({ offers = [], billAmount }) => {
   const amount = Number(billAmount);
@@ -35,7 +36,7 @@ exports.calculateVoucherOffer = ({ offers = [], billAmount }) => {
     .map((offer) => {
       const minAmount = Number(offer.minBillAmount || 0);
       let discountAmount = 0;
-      if (offer.discountType === "PERCENTAGE") {
+      if (offer.discountType === VOUCHER_DISCOUNT_TYPES.PERCENTAGE) {
         const percentage = Number(offer.discountValue);
         discountAmount = (amount * percentage) / 100;
         if (
@@ -48,7 +49,16 @@ exports.calculateVoucherOffer = ({ offers = [], billAmount }) => {
           );
         }
       }
-      if (offer.discountType === "FLAT") {
+      // FIXED is in VOUCHER_DISCOUNT_TYPES and passes validation, but nothing
+      // ever calculated it — such an offer scored 0, got filtered out of the
+      // eligible list, and the customer saw "No eligible offer found for this
+      // bill amount" as though their bill were the problem. It means the same
+      // thing as FLAT, so it is treated as an alias rather than removed, which
+      // would strand the offers already stored with it.
+      if (
+        offer.discountType === VOUCHER_DISCOUNT_TYPES.FLAT ||
+        offer.discountType === VOUCHER_DISCOUNT_TYPES.FIXED
+      ) {
         discountAmount = Number(offer.discountValue);
       }
       discountAmount = Math.min(discountAmount, amount);

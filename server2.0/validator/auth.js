@@ -1,6 +1,17 @@
 const Joi = require("joi");
 const { ROLES, LOGIN_TYPES } = require("../constants");
 
+/**
+ * Shown whenever a non-admin role is offered to a password endpoint.
+ *
+ * Password sign-in is deliberately admin-only — customers and vendors
+ * authenticate with a WhatsApp OTP, so a password on those accounts would be a
+ * credential to steal and nothing more. Naming the alternative here keeps the
+ * refusal actionable instead of a bare "Invalid role".
+ */
+const PASSWORD_ROLE_MESSAGE =
+  "Password sign-in is only available for admin accounts. Customers and vendors sign in with a WhatsApp OTP.";
+
 exports.validateRegisterUser = Joi.object({
   name: Joi.string().trim().min(3).max(120).required().messages({
     "string.empty": "Name is required",
@@ -13,11 +24,18 @@ exports.validateRegisterUser = Joi.object({
     "string.email": "Please enter a valid email address",
     "any.required": "Email is required",
   }),
+  // No default. This endpoint sits behind `isAdmin`, but a silent ADMIN default
+  // is still the wrong shape for a create call — the caller should have to say
+  // what they are creating.
   role: Joi.string()
     .trim()
     .uppercase()
     .valid(...Object.values(ROLES))
-    .default(ROLES.ADMIN),
+    .required()
+    .messages({
+      "any.required": "Role is required",
+      "any.only": `Role must be one of: ${Object.values(ROLES).join(", ")}`,
+    }),
   dob: Joi.date().max("now").required().messages({
     "date.base": "Date of birth must be a valid date",
     "date.max": "Date of birth cannot be in future",
@@ -107,14 +125,16 @@ exports.validateLogin = Joi.object({
       }),
     otherwise: Joi.forbidden(),
   }),
+  // Password sign-in is admin-only: every other role authenticates by OTP, so
+  // handing them a password would only add a credential worth stealing.
   role: Joi.when("type", {
     is: Joi.valid(LOGIN_TYPES.EMAIL, LOGIN_TYPES.MOBILE),
     then: Joi.string()
       .uppercase()
-      .valid(...Object.values(ROLES))
+      .valid(ROLES.ADMIN)
       .default(ROLES.ADMIN)
       .messages({
-        "any.only": "Invalid role",
+        "any.only": PASSWORD_ROLE_MESSAGE,
       }),
     otherwise: Joi.forbidden(),
   }),
@@ -301,10 +321,11 @@ exports.validateForgotPassword = {
       "any.required": "target (the number or email) is required",
     }),
     role: Joi.string()
-      .valid(...Object.values(ROLES))
-      .optional()
+      .uppercase()
+      .valid(ROLES.ADMIN)
+      .default(ROLES.ADMIN)
       .messages({
-        "any.only": `role must be one of: ${Object.values(ROLES).join(", ")}`,
+        "any.only": PASSWORD_ROLE_MESSAGE,
       }),
   }),
 };
@@ -319,8 +340,12 @@ exports.validateResetPassword = {
       "any.required": "otp is required",
     }),
     role: Joi.string()
-      .valid(...Object.values(ROLES))
-      .optional(),
+      .uppercase()
+      .valid(ROLES.ADMIN)
+      .default(ROLES.ADMIN)
+      .messages({
+        "any.only": PASSWORD_ROLE_MESSAGE,
+      }),
     newPassword: strongPassword,
   }),
 };

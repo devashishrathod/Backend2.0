@@ -2,10 +2,9 @@ const express = require("express");
 const router = express.Router();
 const {
   validateSchema,
-  validateRoles,
   isAdmin,
+  isVendorOrAdmin,
 } = require("../middlewares");
-const { ROLES } = require("../constants");
 
 const {
   validateSubscribePreview,
@@ -32,7 +31,6 @@ const {
 // These routes previously ran only `verifyJwtToken`, so any authenticated user
 // — including a customer — could open and verify an order against any brand.
 // Ownership is enforced per-brand inside the services via resolveActorBrand.
-const isVendorOrAdmin = validateRoles(ROLES.VENDOR, ROLES.ADMIN);
 
 // ---------------------------------------------------------------------------
 // PUBLIC — Razorpay webhook.

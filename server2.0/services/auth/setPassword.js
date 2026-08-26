@@ -1,4 +1,5 @@
 const User = require("../../models/User");
+const { ROLES } = require("../../constants");
 const { throwError } = require("../../utils");
 
 /**
@@ -20,6 +21,16 @@ exports.setPassword = async (userId, payload) => {
 
   const user = await User.findById(userId);
   if (!user || user.isDeleted) throwError(404, "User not found");
+
+  // The route already gates on `isAdmin`; this is the same rule stated where the
+  // decision actually lives, so a future caller that reaches the service by some
+  // other path cannot hand a customer or vendor a password.
+  if (user.role !== ROLES.ADMIN) {
+    throwError(
+      403,
+      "Password sign-in is not available for this account type. Please sign in with a WhatsApp OTP.",
+    );
+  }
 
   const alreadyHasOne = user.hasPassword();
 

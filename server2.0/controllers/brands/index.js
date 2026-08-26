@@ -5,6 +5,7 @@ const { addBankDetails } = require("./addBankDetails");
 const { verifyBrand } = require("./verifyBrand");
 const { acceptPartnershipDeed } = require("./acceptPartnershipDeed");
 const { get } = require("./get");
+const { getCustomer } = require("./getCustomer");
 const { update } = require("./update");
 const { reviewBrandVerification } = require("./reviewBrandVerification");
 const { acknowledgeApproval } = require("./acknowledgeApproval");
@@ -19,6 +20,7 @@ module.exports = {
   verifyBrand,
   acceptPartnershipDeed,
   get,
+  getCustomer,
   update,
   reviewBrandVerification,
   acknowledgeApproval,

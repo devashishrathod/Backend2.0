@@ -124,6 +124,17 @@ exports.validateGetBrand = {
   }),
 };
 
+// The customer profile screen addresses a brand by path, never by an implicit
+// "my brand" — a customer has no brand of their own to fall back to.
+exports.validateGetCustomerBrand = {
+  params: {
+    brandId: objectId().required().messages({
+      "any.required": "Brand ID is required",
+      "any.invalid": "Invalid brandId",
+    }),
+  },
+};
+
 exports.validateUpdateBrand = {
   query: {
     brandId: objectId().optional().messages({

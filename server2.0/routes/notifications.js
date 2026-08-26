@@ -1,8 +1,11 @@
 const express = require("express");
 const router = express.Router();
 
-const { validateSchema, validateRoles } = require("../middlewares");
-const { ROLES } = require("../constants");
+const {
+  validateSchema,
+  isAdmin,
+  isVendorOrAdmin,
+} = require("../middlewares");
 const { getAll, markRead, broadcast } = require("../controllers/notifications");
 const {
   validateGetAllNotifications,
@@ -12,8 +15,6 @@ const {
 
 // A vendor is scoped to their own brand inside the service; an admin may pass
 // any brandId, or omit it to read the admin-audience feed.
-const isVendorOrAdmin = validateRoles(ROLES.VENDOR, ROLES.ADMIN);
-const isAdmin = validateRoles(ROLES.ADMIN);
 
 router.get(
   "/get-all",

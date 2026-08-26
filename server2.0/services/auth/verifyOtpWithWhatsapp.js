@@ -2,17 +2,29 @@ const User = require("../../models/User");
 const { ROLES } = require("../../constants");
 const { verifyOtp } = require("../../services/otps");
 const { throwError } = require("../../utils");
+const { sanitizeUser } = require("../../helpers/users");
 
 exports.verifyOtpWithWhatsapp = async (body) => {
   let { otp, whatsappNumber, role, currentScreen } = body;
   role = role?.toUpperCase() || ROLES.CUSTOMER;
   whatsappNumber = whatsappNumber?.toLowerCase();
+
   const user = await User.findOne({ whatsappNumber, role, isDeleted: false });
   if (!user) throwError(404, "Invalid Whatsapp number, user not found!");
+
+  // Step one refuses to *create* a deactivated account's role, but an account
+  // can be deactivated between requesting a code and presenting it.
+  if (!user.isActive) {
+    throwError(403, "Your account is deactivated. Please contact support.");
+  }
+
   //  await verifyOtp(whatsappNumber, otp);
+
   user.isMobileVerified = true;
   if (currentScreen) user.currentScreen = currentScreen.toUpperCase().trim();
   await user.save();
+
   const token = user.getSignedJwtToken();
-  return { user, token };
+
+  return { user: sanitizeUser(user), token };
 };

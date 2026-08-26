@@ -1,19 +1,44 @@
+const mongoose = require("mongoose");
 const ShowcaseSection = require("../../models/ShowcaseSection");
-const { pagination } = require("../../utils");
+const { ROLES } = require("../../constants");
+const { pagination, throwError } = require("../../utils");
 const { escapeRegex } = require("../../validator/common");
-// const { validateVendorBrand } = require("../../helpers/showcase/common");
+const { resolveActorBrand } = require("../../helpers/brands");
 
-exports.getAllSections = async (userId, query) => {
-  // const brand = await validateVendorBrand(userId);
-  const { page, limit, search, sortBy, order, isActive, isVisible } = query;
-  const pipeline = [];
+/**
+ * List showcase sections, scoped to what the caller may see.
+ *
+ * The brand filter used to be commented out, so a vendor asking for "my
+ * sections" was handed every brand's sections on the platform.
+ *
+ * - VENDOR is pinned to their own brand. A `brandId` in the query is resolved
+ *   through `resolveActorBrand`, which rejects anything that is not theirs, so
+ *   the filter cannot be widened from the request.
+ * - ADMIN stays global by design: omitting `brandId` lists across every brand,
+ *   passing one narrows to it.
+ *
+ * @param {{ userId: string, role: string, brandId?: string }} actor
+ */
+exports.getAllSections = async (actor, query) => {
+  const { page, limit, search, sortBy, order, isActive, isVisible, brandId } =
+    query;
+
   const match = {
-    // brandId: brand._id,
     isActive: isActive !== undefined ? isActive : true,
     isVisible: isVisible !== undefined ? isVisible : true,
     isDeleted: false,
   };
 
+  if (actor?.role === ROLES.VENDOR) {
+    const brand = await resolveActorBrand(actor, brandId);
+    match.brandId = new mongoose.Types.ObjectId(brand._id);
+  } else if (actor?.role === ROLES.ADMIN) {
+    if (brandId) match.brandId = new mongoose.Types.ObjectId(brandId);
+  } else {
+    throwError(403, "Forbidden");
+  }
+
+  const pipeline = [];
   pipeline.push({ $match: match });
 
   if (search?.trim()) {

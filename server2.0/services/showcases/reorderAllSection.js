@@ -1,15 +1,22 @@
 const ShowcaseSection = require("../../models/ShowcaseSection");
 const { throwError } = require("../../utils");
-//const { validateVendorBrand } = require("../../helpers/showcase/common");
+const { resolveActorBrand } = require("../../helpers/brands");
 const {
   validateUniqueIds,
   validateUniqueSortOrders,
   normalizeSortOrder,
 } = require("../../helpers/showcases");
 
-exports.reorderAllSections = async (userId, payload) => {
-  //  const brand = await validateVendorBrand(user);
+exports.reorderAllSections = async (actor, payload) => {
   let { sections, brandId } = payload;
+
+  // `brandId` comes off the path, so it was previously whatever the caller
+  // typed — a vendor could reorder another brand's showcase. Resolving it
+  // through the actor pins a vendor to their own brand and still lets an admin
+  // name any.
+  const brand = await resolveActorBrand(actor, brandId);
+  brandId = brand._id;
+
   validateUniqueIds(sections);
   validateUniqueSortOrders(sections);
   sections = normalizeSortOrder(sections);

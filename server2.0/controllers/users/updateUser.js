@@ -3,7 +3,9 @@ const { updateUserById } = require("../../services/users");
 const { validateUpdateUser } = require("../../validator/users");
 
 exports.updateUser = asyncWrapper(async (req, res) => {
-  const userId = req.query?.userId || req.userId;
+  // Always the caller — see the note in getUser. The write side was the worse
+  // half: `?userId=` let anyone change another account's name and email.
+  const userId = req.userId;
   const { error, value } = validateUpdateUser(req.body);
   if (error) throwError(422, error.details.map((d) => d.message).join(", "));
   const image = req.files?.image;

@@ -33,16 +33,23 @@ exports.getBrandVerificationHistory = async (query = {}, requester = {}) => {
   page = page ? Number(page) : 1;
   limit = limit ? Number(limit) : 10;
 
-  const isVendor = requester.role === ROLES.VENDOR;
   const match = { isDeleted: false };
 
-  if (isVendor) {
+  // Every role is named explicitly. The `else` used to catch admins *and*
+  // everyone else, so a customer could pass any `brandId` and read that brand's
+  // KYC scores, match flags, duplicate findings and rejection reasons.
+  if (requester.role === ROLES.VENDOR) {
     // A vendor can never widen the scope past its own brand.
     if (!requester.brandId) throwError(400, "Brand not found for user.");
     match.brandId = new mongoose.Types.ObjectId(requester.brandId);
-  } else if (brandId) {
-    validateObjectId(brandId, "Brand Id");
-    match.brandId = new mongoose.Types.ObjectId(brandId);
+  } else if (requester.role === ROLES.ADMIN) {
+    // Optional for an admin: omitting it reads across every brand.
+    if (brandId) {
+      validateObjectId(brandId, "Brand Id");
+      match.brandId = new mongoose.Types.ObjectId(brandId);
+    }
+  } else {
+    throwError(403, "Forbidden");
   }
 
   if (systemVerifyId) {

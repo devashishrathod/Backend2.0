@@ -1,6 +1,9 @@
 const ShowcaseSection = require("../../models/ShowcaseSection");
 const { throwError } = require("../../utils");
 const { getShowcaseConfig } = require("../../helpers/settings");
+const {
+  resolveSectionForActor,
+} = require("../../helpers/showcases");
 //const { validateVendorBrand } = require("../../helpers/showcase/common");
 const {
   normalizeFiles,
@@ -10,7 +13,11 @@ const {
   deleteMedia,
 } = require("../../helpers/showcases");
 
-exports.replaceSectionMedia = async (userId, payload, file) => {
+exports.replaceSectionMedia = async (actor, payload, file) => {
+  await resolveSectionForActor(actor, payload.sectionId, {
+    projection: { brandId: 1 },
+  });
+
   // const brand = await validateVendorBrand(userId);
   const section = await ShowcaseSection.findOne(
     {

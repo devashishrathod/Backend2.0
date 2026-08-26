@@ -2,8 +2,15 @@ const ShowcaseSection = require("../../models/ShowcaseSection");
 const { throwError } = require("../../utils");
 const { generateUniqueSlug } = require("../../helpers/showcases");
 const { escapeRegex } = require("../../validator/common");
+const {
+  resolveSectionForActor,
+} = require("../../helpers/showcases");
 
-exports.updateSection = async (payload) => {
+exports.updateSection = async (actor, payload) => {
+  await resolveSectionForActor(actor, payload.sectionId, {
+    projection: { brandId: 1 },
+  });
+
   const section = await ShowcaseSection.findOne({
     _id: payload.sectionId,
     isDeleted: false,

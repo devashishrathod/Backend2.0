@@ -29,7 +29,11 @@ exports.validateCreateLocation = {
     zipcode: Joi.string()
       .required()
       .custom((value, helpers) => {
-        const country = helpers.state.ancestors[0].country;
+        // Falls back to what `country` itself defaults to. Joi applies defaults
+        // *after* custom validators run, so reading the sibling directly meant
+        // that omitting `country` — which the field explicitly permits — failed
+        // every zipcode with "Invalid Zip Code/Postal Code".
+        const country = helpers.state.ancestors[0].country || "india";
         if (!isValidZipCode(country, value)) {
           return helpers.error("any.invalid");
         }
@@ -75,6 +79,83 @@ exports.validateCreateLocation = {
     isSubBrandAddress: Joi.alternatives()
       .try(Joi.string(), Joi.boolean())
       .default(false),
+    isDefault: Joi.alternatives()
+      .try(Joi.string(), Joi.boolean())
+      .default(false),
+  }),
+};
+
+/**
+ * The customer's own address — a deliberately narrower shape than
+ * `validateCreateLocation`, which this endpoint used to borrow.
+ *
+ * `userId` is gone because the service now always uses the token holder, and
+ * leaving the key accepted here would have kept it out of `stripUnknown`'s
+ * reach. `brandId` / `subBrandId` and their flags are gone because a customer
+ * address is never either of those — reusing the create schema meant a customer
+ * could mark their own address as a brand address.
+ */
+exports.validateUpsertLocation = {
+  body: Joi.object({
+    addressLine1: Joi.string().required().messages({
+      "any.required": "Address Line 1 is required",
+    }),
+    addressLine2: Joi.string().optional(),
+    landmark: Joi.string().optional(),
+    city: Joi.string().required().messages({
+      "any.required": "City is required",
+    }),
+    district: Joi.string().optional(),
+    state: Joi.string().required().messages({
+      "any.required": "State is required",
+    }),
+    zipcode: Joi.string()
+      .required()
+      .custom((value, helpers) => {
+        // Falls back to what `country` itself defaults to. Joi applies defaults
+        // *after* custom validators run, so reading the sibling directly meant
+        // that omitting `country` — which the field explicitly permits — failed
+        // every zipcode with "Invalid Zip Code/Postal Code".
+        const country = helpers.state.ancestors[0].country || "india";
+        if (!isValidZipCode(country, value)) {
+          return helpers.error("any.invalid");
+        }
+        return value;
+      })
+      .messages({
+        "any.required": "Zip Code/Postal Code is required",
+        "any.invalid": "Invalid Zip Code/Postal Code",
+      }),
+    country: Joi.string().min(2).max(80).default("india"),
+    formattedAddress: Joi.string().min(1).max(500).optional(),
+    coordinates: Joi.array()
+      .items(Joi.number().required())
+      .length(2)
+      .custom((value, helpers) => {
+        const [lng, lat] = value;
+        if (lng < -180 || lng > 180) {
+          return helpers.error("any.invalid", {
+            message: "Longitude must be between -180 and 180.",
+          });
+        }
+        if (lat < -90 || lat > 90) {
+          return helpers.error("any.invalid", {
+            message: "Latitude must be between -90 and 90.",
+          });
+        }
+        return value;
+      })
+      .required()
+      .messages({
+        "array.base": "Coordinates must be an array.",
+        "array.length": "Coordinates must be [longitude, latitude].",
+        "array.includes": "Coordinates must contain only numbers.",
+        "any.required": "Coordinates are required.",
+        "any.invalid": "Invalid longitude/latitude.",
+      }),
+    addressType: Joi.string()
+      .valid(...Object.values(ADDRESS_TYPES))
+      .default(ADDRESS_TYPES.HOME),
     isDefault: Joi.alternatives()
       .try(Joi.string(), Joi.boolean())
       .default(false),
@@ -143,7 +224,11 @@ exports.validateUpdateLocation = {
     zipcode: Joi.string()
       .optional()
       .custom((value, helpers) => {
-        const country = helpers.state.ancestors[0].country;
+        // Falls back to what `country` itself defaults to. Joi applies defaults
+        // *after* custom validators run, so reading the sibling directly meant
+        // that omitting `country` — which the field explicitly permits — failed
+        // every zipcode with "Invalid Zip Code/Postal Code".
+        const country = helpers.state.ancestors[0].country || "india";
         if (!isValidZipCode(country, value)) {
           return helpers.error("any.invalid");
         }
