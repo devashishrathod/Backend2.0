@@ -40,6 +40,6 @@ router.delete(
 );
 
 // The tickers the customer app renders, in display order.
-router.get("/customer/active", isCustomer, getActiveForCustomer);
+router.get("/customer/active", getActiveForCustomer);
 
 module.exports = router;

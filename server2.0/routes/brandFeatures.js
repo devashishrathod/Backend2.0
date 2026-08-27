@@ -50,13 +50,11 @@ router.delete(
 // Reads — customer brand profile needs these.
 router.get(
   "/get-all",
-  verifyJwtToken,
   validateSchema(validateGetAllBrandFeatures),
   getAll,
 );
 router.get(
   "/get/:featureId",
-  verifyJwtToken,
   validateSchema(validateGetBrandFeature),
   get,
 );

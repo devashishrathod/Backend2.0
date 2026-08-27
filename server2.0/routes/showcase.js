@@ -122,13 +122,11 @@ router.delete(
 // Only active, visible content, with storage internals stripped.
 router.get(
   "/get-brand-showcase/:brandId",
-  isCustomer,
   validateSchema(validateGetBrandShowcase),
   getBrandShowcase,
 );
 router.get(
   "/:brandId/video-clips",
-  isCustomer,
   validateSchema(validateGetVideoClips),
   getVideoClips,
 );

@@ -116,19 +116,16 @@ router.delete(
 // Customer
 router.get(
   "/customer/get-all",
-  verifyJwtToken,
   validateSchema(validateCustomerGetAllVouchers),
   getAllCustomerVouchers,
 );
 router.get(
   "/customer/get/:voucherId",
-  verifyJwtToken,
   validateSchema(validateCustomerGetVoucher),
   getCustomerVoucher,
 );
 router.post(
   "/customer/voucher/preview",
-  verifyJwtToken,
   validateSchema(validateCustomerVoucherPreview),
   previewCustomerVoucher,
 );

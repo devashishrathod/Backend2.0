@@ -130,13 +130,11 @@ router.get(
 // a brand id.
 router.get(
   "/customer/get-all",
-  isCustomer,
   validateSchema(validateGetAllCustomerBrands),
   getAllCustomer,
 );
 router.get(
   "/customer/get/:brandId",
-  isCustomer,
   validateSchema(validateGetCustomerBrand),
   getCustomer,
 );

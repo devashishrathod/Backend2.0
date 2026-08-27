@@ -42,6 +42,6 @@ router.delete(
 );
 
 // The one banner the customer app renders.
-router.get("/customer/active", isCustomer, getActiveForCustomer);
+router.get("/customer/active", getActiveForCustomer);
 
 module.exports = router;
