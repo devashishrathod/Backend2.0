@@ -212,9 +212,31 @@ const vendorSettingSchema = new mongoose.Schema(
   { _id: false },
 );
 
+/**
+ * The platform fee a customer pays on top of a discounted bill.
+ *
+ * Charged in slabs rather than as a percentage: every `slabSize` rupees of the
+ * bill costs `feePerSlab`, so a 600 bill sits in the second slab and pays 10.
+ * Kept configurable because the slab is a commercial decision, not a technical
+ * one — an admin changes it through `PUT /settings/update`, not a deploy.
+ */
+const convenienceFeeSchema = new mongoose.Schema(
+  {
+    isEnabled: { type: Boolean, default: true },
+    slabSize: { type: Number, default: 500, min: 1 },
+    feePerSlab: { type: Number, default: 5, min: 0 },
+    // null = no ceiling; the slab pattern just keeps going.
+    maxFee: { type: Number, default: null, min: 0 },
+  },
+  { _id: false },
+);
+
 const customerSettingSchema = new mongoose.Schema(
   {
-    // Future customer settings
+    convenienceFee: {
+      type: convenienceFeeSchema,
+      default: () => ({}),
+    },
   },
   { _id: false },
 );

@@ -29,6 +29,7 @@ const {
   mapCustomerVoucherDetail,
   mapCustomerVoucherListItem,
 } = require("./customerListing");
+const { pickVoucherBanner } = require("./pickVoucherBanner");
 const {
   uploadVoucherBannerMedia,
   deleteVoucherBannerMedia,
@@ -56,6 +57,7 @@ module.exports = {
   buildCustomerVoucherDetailPipeline,
   mapCustomerVoucherDetail,
   mapCustomerVoucherListItem,
+  pickVoucherBanner,
   uploadVoucherBannerMedia,
   deleteVoucherBannerMedia,
 };

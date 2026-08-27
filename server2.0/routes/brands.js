@@ -4,7 +4,8 @@ const {
   validateSchema,
   isVendor,
   isAdmin,
-  verifyJwtToken,
+  isCustomer,
+  isVendorOrAdmin,
 } = require("../middlewares");
 const { validateAddPanDetails } = require("../validator/pan");
 const { validateAddGstDetails } = require("../validator/gst");
@@ -17,6 +18,10 @@ const {
   validateReviewBrandVerification,
   validateGetAllBrandVerifications,
   validateGetBrandVerificationHistory,
+  validateGetCustomerBrand,
+  validateGetAllCustomerBrands,
+  validateReviewTopBrand,
+  validateGetTopBrands,
 } = require("../validator/brands");
 const {
   addOrUpdateBasicDetails,
@@ -26,8 +31,12 @@ const {
   verifyBrand,
   acceptPartnershipDeed,
   get,
+  getCustomer,
+  getAllCustomer,
   update,
   reviewBrandVerification,
+  reviewTopBrand,
+  getTopBrands,
   acknowledgeApproval,
   getVerificationHistory,
   getAllVerifications,
@@ -82,19 +91,60 @@ router.put(
   validateSchema(validateReviewBrandVerification),
   reviewBrandVerification,
 );
+// Admin — "Top Brands" curation. One endpoint both ways: `isTopBrand: false`
+// removes, and a new `topOrder` on an already-pinned brand reorders it.
+router.put(
+  "/admin/top-brands/:brandId",
+  isAdmin,
+  validateSchema(validateReviewTopBrand),
+  reviewTopBrand,
+);
+// The admin's own view of that list — unlike the customer tab it also shows
+// brands that have since been deactivated, so they can be unpinned.
+router.get(
+  "/admin/top-brands",
+  isAdmin,
+  validateSchema(validateGetTopBrands),
+  getTopBrands,
+);
 // Shared audit trail — admins see any brand, vendors only their own.
 router.get(
   "/verifications/history",
-  verifyJwtToken,
+  isVendorOrAdmin,
   validateSchema(validateGetBrandVerificationHistory),
   getVerificationHistory,
 );
 
-// General
-router.get("/get", verifyJwtToken, validateSchema(validateGetBrand), get);
+// ---------------------------------------------------------------------------
+// Customer — the public brand profile.
+//
+// Its own endpoint rather than a role-filtered `/get`: that pipeline joins the
+// brand's PAN, GSTIN, bank account, KYC scores and subscription billing, and a
+// projection that strips six sensitive joins is one edit away from leaking
+// again. This one only ever builds what the profile screen renders — brand,
+// features, visible showcase and outlets — so there is nothing to strip.
+// ---------------------------------------------------------------------------
+// The brand directory and the "Top Brands" tab, both from here — `topOnly`
+// narrows to the curated picks, and without it the picks simply lead the list.
+// Declared before `/customer/get/:brandId` so the literal path is never read as
+// a brand id.
+router.get(
+  "/customer/get-all",
+  validateSchema(validateGetAllCustomerBrands),
+  getAllCustomer,
+);
+router.get(
+  "/customer/get/:brandId",
+  validateSchema(validateGetCustomerBrand),
+  getCustomer,
+);
+
+// General — vendor's own brand, or any brand for an admin. Not customer-facing:
+// see the note above.
+router.get("/get", isVendorOrAdmin, validateSchema(validateGetBrand), get);
 router.put(
   "/update",
-  verifyJwtToken,
+  isVendorOrAdmin,
   validateSchema(validateUpdateBrand),
   update,
 );

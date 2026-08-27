@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { validateSchema, verifyJwtToken } = require("../middlewares");
+const { validateSchema, verifyJwtToken, isAdmin } = require("../middlewares");
 const {
   register,
   login,
@@ -29,7 +29,15 @@ const {
   validateResetPassword,
 } = require("../validator/auth");
 
-router.post("/register", validateSchema(validateRegisterUser), register);
+// Creating an account here is an admin action. It used to be public with `role`
+// defaulting to ADMIN, so anyone who could reach the endpoint could mint
+// themselves a super admin. The very first admin is seeded with
+// `node scripts/seedAdmin.js` instead.
+router.post("/register", isAdmin, validateSchema(validateRegisterUser), register);
+
+// Password sign-in is admin-only by product decision — customers and vendors
+// authenticate with a WhatsApp OTP. The role restriction lives in the validator
+// so the refusal is a clean 422 rather than a confusing "user not found".
 router.post("/login", validateSchema(validateLogin), login);
 router.post(
   "/loginOrSignUp-with-whatsapp",
@@ -62,17 +70,19 @@ router.post(
   verifyOtpWithMobile,
 );
 // ---------------------------------------------------------------------------
-// Password set / reset
+// Password set / reset — ADMIN ONLY.
 //
 // Accounts created through an OTP flow start with **no** password — they used to
 // all share one seeded value with no way to change it. Password login is only
-// possible once the user has been through here.
+// possible once the user has been through here, and by product decision only an
+// admin gets that option: customers and vendors sign in with a WhatsApp OTP, so
+// giving them a password would add a credential to steal and nothing else.
 // ---------------------------------------------------------------------------
 
 // Signed in: set a password for the first time, or change an existing one.
 router.post(
   "/set-password",
-  verifyJwtToken,
+  isAdmin,
   validateSchema(validateSetPassword),
   setPasswordHandler,
 );

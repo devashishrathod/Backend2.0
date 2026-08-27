@@ -20,8 +20,12 @@ const {
   deleteMedia,
   deleteAllMedia,
 } = require("./upload");
+const {
+  resolveSectionForActor,
+} = require("./resolveSectionForActor");
 
 module.exports = {
+  resolveSectionForActor,
   generateUniqueSlug,
   normalizeFiles,
   validateFilesExist,

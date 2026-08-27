@@ -4,9 +4,18 @@ const User = require("../../models/User");
 const Customer = require("../../models/Customer");
 const { throwError } = require("../../utils");
 
+/**
+ * Save (or replace) the signed-in customer's single address.
+ *
+ * Scoped to the token holder only. `userId` used to be read off the body and
+ * preferred over the token — the role check that followed then ran against the
+ * *target* account rather than the caller, so any customer could overwrite any
+ * other customer's address by naming their id. That is worse than it sounds:
+ * the voucher feed is built from this location, so rewriting it silently
+ * changes what the victim is shown.
+ */
 exports.upsertLocation = async (tokenUserId, payload) => {
   let {
-    userId,
     addressLine1,
     addressLine2,
     landmark,
@@ -23,7 +32,7 @@ exports.upsertLocation = async (tokenUserId, payload) => {
     isDefault,
   } = payload;
 
-  userId = userId || tokenUserId;
+  const userId = tokenUserId;
   const user = await User.findById(userId);
   if (!user || user.isDeleted) throwError(404, "User not found");
   if (user.role !== ROLES.CUSTOMER) throwError(403, "User is not a customer");

@@ -1,8 +1,11 @@
 const express = require("express");
 const router = express.Router();
 
-const { validateSchema, validateRoles, isAdmin } = require("../middlewares");
-const { ROLES } = require("../constants");
+const {
+  validateSchema,
+  isAdmin,
+  isVendorOrAdmin,
+} = require("../middlewares");
 const {
   grant,
   cancel,
@@ -23,8 +26,6 @@ const {
   validateGetForfeitedSubscriptions,
   validateCompensateForfeit,
 } = require("../validator/subscribeds");
-
-const isVendorOrAdmin = validateRoles(ROLES.VENDOR, ROLES.ADMIN);
 
 // ---------------------------------------------------------------------------
 // Admin — subscription management without an online payment.

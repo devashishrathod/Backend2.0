@@ -11,8 +11,15 @@ const {
   rollbackUploads,
 } = require("../../helpers/showcases");
 const { getShowcaseConfig } = require("../../helpers/settings");
+const {
+  resolveSectionForActor,
+} = require("../../helpers/showcases");
 
-exports.addSectionMedia = async (userId, payload, files) => {
+exports.addSectionMedia = async (actor, payload, files) => {
+  await resolveSectionForActor(actor, payload.sectionId, {
+    projection: { brandId: 1 },
+  });
+
   // let brand = await validateVendorBrand(userId);
   const section = await ShowcaseSection.findOne({
     _id: payload.sectionId,

@@ -3,7 +3,7 @@ const { replaceSectionMedia } = require("../../services/showcases");
 
 exports.replaceMedia = asyncWrapper(async (req, res) => {
   const result = await replaceSectionMedia(
-    req.userId,
+    { userId: req.userId, role: req.role, brandId: req.brandId },
     req.validatedData,
     req.files?.file,
   );

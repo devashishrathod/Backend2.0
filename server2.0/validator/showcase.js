@@ -7,6 +7,11 @@ const {
 } = require("../constants/showcase");
 
 exports.validateCreateSection = Joi.object({
+  // Required when an admin is creating on a brand's behalf; a vendor may omit
+  // it and gets their own brand. `resolveActorBrand` enforces both halves.
+  brandId: objectId().optional().messages({
+    "any.invalid": "Invalid brandId",
+  }),
   title: Joi.string().trim().min(2).max(60).required().messages({
     "string.empty": "Section title is required.",
     "string.min": "Section title must contain at least 2 characters.",
@@ -39,6 +44,12 @@ exports.validateGetSection = {
 
 exports.validateGetAllSections = {
   query: Joi.object({
+    // Optional for both roles, but it means different things: a vendor may only
+    // name their own brand (the service rejects any other), while an admin uses
+    // it to narrow a listing that is otherwise platform-wide.
+    brandId: objectId().optional().messages({
+      "any.invalid": "Invalid brandId",
+    }),
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
     search: Joi.string().trim().allow("").optional(),

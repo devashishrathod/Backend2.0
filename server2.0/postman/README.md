@@ -1,128 +1,235 @@
-# Postman — Brand Verification & Admin Approval
+# Postman — Trydood 2.0
 
-Postman v2.1 collection for the brand KYC + admin approval flow, generated from the
-`server2.0` codebase.
+Ek collection per panel. Har collection **generate hoti hai**, hand-likhi nahi — enums,
+limits aur defaults `constants/` se seedhe padhe jaate hain, to collection API ke baare me
+jhooth nahi bol sakti.
 
-| File | What it is |
+| Collection | Endpoints | Status |
+|---|---:|---|
+| `trydood-customer.postman_collection.json` | 35 | ✅ Live verified — 74 requests · 308 assertions · sab pass |
+| `trydood-vendor.postman_collection.json` | 78 | ✅ Live verified — 101 requests · 234 assertions · sab pass |
+| `trydood-admin.postman_collection.json` | 114 | ⬜ Phase 3 |
+| `trydood-security-changes.postman_collection.json` | – | ⏳ Teeno panel collections ready hone par retire hogi |
+
+Companion docs: [`../docs/customer_mobile_api_doc.md`](../docs/customer_mobile_api_doc.md) ·
+[`../docs/vendor_panel_api_doc.md`](../docs/vendor_panel_api_doc.md) ·
+[`../docs/endpoints_category.md`](../docs/endpoints_category.md)
+
+### Ab tak kya nikla
+
+Live runs ne paanch aise defects pakde jo code padhkar nahi dikhte the:
+
+| Kya | Kahan |
 |---|---|
-| `trydood-brand-verification.postman_collection.json` | The collection — 15 requests, 139 saved response examples |
-| `environments/local.postman_environment.json` | `http://localhost:8080/trydood/v1` |
-| `environments/staging.postman_environment.json` | `https://backend2-0-4v4i.onrender.com/trydood/v1` |
-| `environments/production.postman_environment.json` | Production base URL — **confirm before use** |
-| `generate.js` | Regenerates all of the above from the code |
+| 🔴 `currentScreen` galat value poori login call `422` kar deti hai — aur enum me koi customer screen hai hi nahi | Customer |
+| 🔴 `GET /brands/verifications/history` har vendor request pe `500` (`isVendor is not defined`) | Vendor |
+| 🔴 Dono showcase reorder endpoints har request pe `500` — `id` vs `sectionId`/`mediaId`. **Kabhi kaam nahi kiye** | Vendor |
+| Doc me `nearestOutlet._id` likha tha, asli me `subBrandId` hai | Customer |
+| Doc me section detail ka `medias[]` flat likha tha, asli me nested `media.data[]` hai | Vendor |
 
-Companion docs: [`../docs/brand_verification_api_doc.md`](../docs/brand_verification_api_doc.md) ·
-[`../docs/brand_verification_future_updates.md`](../docs/brand_verification_future_updates.md)
+Teeno 🔴 fix ho chuke hain aur ab collections me unke regression tests hain.
 
 ---
 
-## Import
+## Ye collections kaise likhi gayi hain
 
-1. Postman → **Import** → drop in `trydood-brand-verification.postman_collection.json`.
-2. **Import** the environment you need from `environments/`.
-3. Select that environment in the top-right dropdown (nothing works until you do —
-   the collection pre-request script logs a warning if `base_url` is unset).
+Teen decisions jo har collection pe lagte hain:
 
-## Fill in the secrets
+**1. Happy path aur behaviour badalne wale edge cases alag requests hain.**
+Matlab poora folder Collection Runner / Newman me chalta hai aur waqai API **test** karta
+hai, sirf document nahi karta. Per-field Joi rejections (`limit > 50`, bad ObjectId,
+missing required field) **saved examples** hain — wo sirf validator ko dohraate hain, unhe
+alag request banane se collection bhaari ho jaati aur signal kam ho jaata.
 
-Environment variables typed `secret` ship **empty on purpose** — no credentials in git.
-Set these yourself in Postman:
+**2. Har request pe `pm.test` assertions hain.** Status, response envelope, aur documented
+field shape. Envelope check har 2xx pe isliye hai ki wo ek aisa controller pakad leta hai
+jo chup-chaap `res.json(...)` return kar de — jo yahan pehle ho chuka hai
+(`DELETE /users/delete`).
 
-| Variable | Set it to |
-|---|---|
-| `admin_password` | Your admin account password |
-| `vendor_password` | The test vendor's password |
-| `admin_email` | Defaults to `admin@trydood.com` — change if yours differs |
-| `vendor_mobile` / `vendor_whatsapp` | Your test vendor's 10-digit number |
-| `otp` | Only for the WhatsApp login flow |
+**3. Sensitive fields ka absence bhi assert hota hai.** Sasta check hai aur failure mode
+severe: ek projection edit jo `password` ya brand ka PAN wapas le aaye, wo baaki saare
+tests pass karte hue nikal jaata.
 
-## Token capture — no copy-pasting
+---
 
-The `00 — Auth` folder writes tokens into the environment for you:
+## Customer collection chalana
 
-| Run this | It sets |
-|---|---|
-| **Login as Admin** | `admin_token`, `admin_user_id` |
-| **Login as Vendor (mobile + password)** | `vendor_token`, `brand_id` |
-| **Vendor WhatsApp — Send OTP** → **Verify OTP** | `vendor_token`, `brand_id` |
-
-Login response puts the JWT at `data.token`
-(`services/auth/loginWithEmailAndPassword.js`), which is what the scripts read.
-
-Two more requests keep the rest wired up:
-
-- **List Brand Verifications (queue)** captures `brand_id` and `system_verify_id` from
-  the first row, so the review requests are immediately runnable.
-- **Run System Verify (KYC)** captures `system_verify_id` and `brand_id` from its own
-  response.
-
-Every `brands/*` request authenticates with the right variable already —
-vendor routes use `{{vendor_token}}`, admin routes use `{{admin_token}}`.
-
-## Suggested run order
+### 1. Import
 
 ```
-00 — Auth
-  └─ Login as Admin                          → admin_token
-  └─ Login as Vendor                         → vendor_token, brand_id
-
-Brands / Onboarding (Vendor)
-  └─ Run System Verify (KYC)                 → SystemVerify created,
-                                                Brand parked at UNDER_REVIEW
-
-Brands / Admin — Verification
-  └─ List Brand Verifications (queue)        → brand_id, system_verify_id
-  └─ Review — Toggle Reviewed        (optional, "I have seen this")
-  └─ Review — Approve (Case A or B)  OR  Review — Reject (Case C)
-
-Brands / Onboarding (Vendor)
-  └─ Acknowledge Approval                    → currentScreen = DASHBOARD
-
-Brands / Admin — Verification
-  └─ Review — Revoke Approval        (only on an approved brand)
-
-Brands / Verification History
-  └─ Admin view  /  Vendor view
+Postman → Import → trydood-customer.postman_collection.json
+Postman → Import → environments/customer-local.postman_environment.json
 ```
 
-## Folder map
+Top-right dropdown se environment **select** karein — bina iske pre-request script warning
+deta hai.
 
-| Folder | Requests |
-|---|---|
-| `00 — Auth (token capture)` | Login as Admin · Login as Vendor · WhatsApp Send OTP · WhatsApp Verify OTP |
-| `Brands / Onboarding (Vendor)` | Run System Verify (KYC) · Acknowledge Approval |
-| `Brands / Admin — Verification` | List Brand Verifications (queue) · Approve Case A · Approve Case B · Reject Case C · Toggle Reviewed Case D · Force Reviewed Case D2 · Revoke Case E |
-| `Brands / Verification History` | Admin view · Vendor view (own brand only) |
+### 2. Sirf ek variable bharna hai
 
-The five review requests all hit the **same route**
-(`PUT /brands/admin/verifications/:brandId/review`) — they are split one-per-case so
-each carries its own body, description and error examples.
+`customer_whatsapp` — koi bhi 10-digit number jo `6-9` se shuru ho. Collection khud us
+number se signup kar legi.
 
-## Things worth knowing before you run it
+Baaki sab (`customer_token`, `brand_id`, `voucher_id`, …) folder `00` se aage **apne aap**
+capture hota jaata hai.
 
-- **List endpoints return `404` when empty**, not an empty array. The shared
-  `pagination` utility throws. Treat it as an empty state.
-- **The system never auto-approves.** Whatever it scores, `Brand.status` becomes
-  `UNDER_REVIEW` and `Brand.isApproved` stays `false` until an admin acts.
-- **`rejectionReason` and `revokeReason` are mutually exclusive** and each is only
-  valid on its own action — sending the wrong one is a `422`.
-- **Re-running System Verify** only works when the live attempt is `REJECTED` or
-  `REVOKED`. An attempt waiting on the admin is locked (`409`).
-- **One admin rejection per attempt.** Rejecting an already admin-rejected attempt is
-  a `409` — the vendor has to resubmit first.
-- **Approved brands cannot be rejected** — use *Revoke Approval* instead (`409`).
-- **`409` is normal under concurrency.** Every write is transactional with optimistic
-  locking, so if two admins act at once the loser gets a `409`. Refresh and retry.
+### 3. Fixtures seed karein
 
-## Regenerating
+Voucher feed geo-scoped hai aur `pagination` khaali result pe `404` deti hai, to bina data
+ke aadhi collection empty-state hit karegi. Seeder wahi banata hai jo collection expect
+karti hai:
 
 ```bash
-node postman/generate.js
+node scripts/seedPostmanFixtures.js --db Trydood2_postman --apply
 ```
 
-Run this from `server2.0/`. It rewrites the collection and all three environment
-files. **Do not hand-edit the JSON** — enum lists, reason limits and role names are
-read straight out of `constants.js` and `constants/brandVerification.js`, so editing
-the JSON by hand is how it starts lying about the API.
+Dry run default hai; `--apply` chahiye. **Production database name pe wo chalta hi nahi** —
+koi flag nahi hai jo usko allow kare.
 
-Adding a case? Add it to `generate.js` and re-run.
+Kya banta hai — sab Indore (`[75.8937, 22.7533]`) me:
+
+| | |
+|---|---|
+| 1 admin user | banners / tickers ka `createdBy`, curation stamps |
+| 1 category + sub-category | master data |
+| 2 brands + 1 outlet each | ek pinned as Top Brand |
+| 10 brand features | profile ka 10-cap exercise karne ke liye |
+| 1 visible showcase (8 media) + 1 hidden | dono showcase endpoints ka farak dikhane ke liye |
+| 2 published vouchers | ek suggested + IMAGE banner, ek plain (`bannerType: null`) |
+| 1 banner + 2 tickers | home screen |
+| 1 terms + 1 privacy | legal |
+
+Re-runnable hai — apne hi documents pehle clear karta hai, duplicate nahi banata.
+
+### 4. Server usi database pe chalayein
+
+```bash
+MONGO_URL="<...>/Trydood2_postman" npm run dev
+```
+
+### 5. Run
+
+Collection Runner se, ya CLI se:
+
+```bash
+npx newman run postman/trydood-customer.postman_collection.json \
+  -e postman/environments/customer-local.postman_environment.json \
+  --env-var "customer_whatsapp=9812340011"
+```
+
+**Order maayne rakhta hai.** Baad wale folders pehle wale ke capture kiye ids use karte
+hain, aur folder `07` ke toggle-pairs deliberately aise arrange hain ki list request
+`on` state me chale. Poori collection idempotent hai — dobara chalane pe wahi result.
+
+---
+
+## Folder map — customer
+
+| Folder | Kya |
+|---|---|
+| `00 — Setup & Auth` | WhatsApp login, token capture, `isFirst` regression, ADMIN self-signup block |
+| `01 — User Profile` | Get / update (multipart), aur `DELETE /users/delete` ka no-op behaviour |
+| `02 — Location` | Upsert + read, coordinate order aur zipcode ke traps |
+| `03 — Master Data` | Categories, sub-categories |
+| `04 — Home Screen` | Banner (`null` ho sakta hai) aur tickers (`[]` ho sakta hai) |
+| `05 — Vouchers` | Feed, Suggestions tab, detail, discount preview + convenience fee |
+| `06 — Brand Profile` | Directory, Top Brands tab, profile, showcase, video clips, features |
+| `07 — Engagement` | Follow / avoid toggles + lists |
+| `08 — Legal` | Terms aur privacy reads |
+| `09 — Push Notifications` | Device register / list / test / unregister |
+| `10 — Access control` | Negative tests — customer token in endpoints pe refuse hona chahiye |
+
+---
+
+## Chalane se pehle jaan lein
+
+- **List endpoints khaali pe `404` dete hain**, empty array nahi — shared `pagination`
+  utility throw karti hai. Ise empty state samajhein, error nahi.
+  Do exceptions: `/banners/customer/active` (`null` deta hai) aur
+  `/promotionalTickers/customer/active` (`[]` deta hai).
+- **`coordinates` `[longitude, latitude]`** order me hain — GeoJSON standard, Maps APIs se
+  ulta. Indore = `[75.8937, 22.7533]`.
+  ⚠️ Indore ke case me dono numbers valid ranges me aate hain, to ulta bhejne pe **koi
+  error nahi aayega** — address chup-chaap Somalia ke paas chala jayega aur feed khaali
+  aa jayegi.
+- **WhatsApp OTP abhi verify nahi hota** (deliberate, deferred) — koi bhi 6-digit chalega.
+- **`currentScreen` customer app se mat bhejein** — us enum me koi customer screen hai hi
+  nahi, aur galat value poori login call `422` kar deti hai.
+- **`POST /deviceTokens/test` live Firebase call hai** — jis environment me FCM configure
+  nahi hai wahan `422` dega. Wo endpoint ka bug nahi; test dono outcomes accept karta hai.
+
+---
+
+## Generate / validate
+
+```bash
+node postman/generate-customer-collection.js
+
+node postman/lib/validate-collection.js \
+  postman/trydood-customer.postman_collection.json \
+  postman/environments/customer-local.postman_environment.json
+```
+
+Validator wo cheezein pakadta hai jo generate hui collection me sasti hain check karna aur
+mehngi discover karna: test-script ka syntax error (jo generator me error nahi hota, sirf
+Postman me run-time pe phatta hai), `{{variable}}` jo environment me hai hi nahi, aur koi
+request jispe assertion hi nahi hai.
+
+**JSON hand-edit mat karein.** Naya case add karna ho to generator me add karke re-run
+karein.
+
+| File | Kya |
+|---|---|
+| `lib/builders.js` | Teeno collections ke shared builders — request, assertions, envelope |
+| `lib/validate-collection.js` | Pre-import sanity checks |
+| `generate-customer-collection.js` | Customer collection |
+| `generate-vendor-collection.js` | Vendor collection |
+| `../scripts/seedPostmanFixtures.js` | Fixture seeder (customer + vendor dono ke liye) |
+
+---
+
+## Vendor collection — jo customer se alag hai
+
+### Do tokens
+
+| Token | Kaun | Kis liye |
+|---|---|---|
+| `vendor_token` | Seeded vendor — brand approved + subscribed | Baaki saare folders |
+| `onboard_token` | Har run pe naya throwaway vendor | Sirf folder `04 — Onboarding` |
+
+Onboarding ek **state machine** hai. Seeded brand us machine ke aakhir me khada hai, to
+uspe onboarding steps chalane ka matlab ya refusal hai ya usko peeche dhakelna. Isliye wo
+folder apna alag vendor banata hai.
+
+### Har poore pass se pehle seed karein
+
+Vendor collection idempotent **nahi** hai, aur ho bhi nahi sakti — voucher lifecycle
+one-way hai:
+
+```
+DRAFT ──submit──▶ UNDER_REVIEW ──[admin]──▶ APPROVED ──publish──▶ PUBLISHED
+```
+
+Ek pass DRAFT ko `UNDER_REVIEW` aur APPROVED ko `PUBLISHED` kar deta hai. Doosre pass me
+un dono ke liye input bacha hi nahi hota. Assertions us refusal ko accept karti hain aur
+console pe bata deti hain, par wo teen endpoints tabhi **actually** verify hote hain jab
+seed fresh ho.
+
+### Jo headless verify nahi ho sakta — 10 endpoints
+
+| Kya | Kitne | Kyun |
+|---|---:|---|
+| KYC verify | 3 | Live CGPey calls |
+| Razorpay order + verify | 2 | Live Razorpay calls |
+| Test push | 1 | Live Firebase call |
+| File uploads | 4 | Multipart with a real file |
+
+In sab pe assertions success **aur** documented failure dono accept karte hain, aur kisi
+*aur* tarah ke failure pe fail ho jaate hain — to wo abhi bhi ek real check hai, bas
+kamzor. File fields request me maujood hain par **disabled**; enable karke file chunein to
+success path chal jaata hai.
+
+```bash
+newman run postman/trydood-vendor.postman_collection.json \
+  -e postman/environments/vendor-local.postman_environment.json \
+  --env-var "vendor_whatsapp=9700000011"
+```

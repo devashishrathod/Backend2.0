@@ -1,16 +1,13 @@
 const express = require("express");
 const router = express.Router();
 
-const { validateSchema, validateRoles, verifyJwtToken } = require("../middlewares");
-const { ROLES } = require("../constants");
+const { validateSchema, verifyJwtToken, isVendorOrAdmin } = require("../middlewares");
 const { signUp, update, getAll } = require("../controllers/subBrands");
 const {
   validateWhatsappSubBrandSignUp,
   validateUpdateSubBrand,
   validateGetAllSubBrands,
 } = require("../validator/subBrands");
-
-const isVendorOrAdmin = validateRoles(ROLES.VENDOR, ROLES.ADMIN);
 
 // Creating an outlet consumes a slot from the brand's plan, so it is gated to
 // the brand owner (or an admin) rather than any authenticated user.
@@ -22,7 +19,7 @@ router.post(
 );
 router.get(
   "/get-all",
-  verifyJwtToken,
+  isVendorOrAdmin,
   validateSchema(validateGetAllSubBrands),
   getAll,
 );

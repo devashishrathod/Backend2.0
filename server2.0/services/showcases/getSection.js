@@ -2,8 +2,17 @@ const mongoose = require("mongoose");
 const ShowcaseSection = require("../../models/ShowcaseSection");
 const { throwError } = require("../../utils");
 const { escapeRegex } = require("../../validator/common");
+const {
+  resolveSectionForActor,
+} = require("../../helpers/showcases");
 
-exports.getSection = async (userId, query) => {
+exports.getSection = async (actor, query) => {
+  // Reading another brand section metadata is still a leak, so the same
+  // ownership rule applies to the read path.
+  await resolveSectionForActor(actor, query.sectionId, {
+    projection: { brandId: 1 },
+  });
+
   let { sectionId, page, limit, type, search } = query;
   page = page || 1;
   limit = limit || 10;

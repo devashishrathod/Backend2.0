@@ -15,7 +15,9 @@ const PURPOSE = "password-reset";
  * (identifier, role) the same way.
  */
 const findTarget = async ({ type, target, role }) => {
-  const resolvedRole = role?.toUpperCase() || ROLES.CUSTOMER;
+  // Defaults to ADMIN because password sign-in is admin-only; the validator
+  // rejects any other role before it reaches here.
+  const resolvedRole = role?.toUpperCase() || ROLES.ADMIN;
   const query = { role: resolvedRole, isDeleted: false };
 
   if (type === LOGIN_TYPES.WHATSAPP) query.whatsappNumber = target.toLowerCase();

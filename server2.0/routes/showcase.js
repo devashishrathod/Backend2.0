@@ -1,7 +1,11 @@
 const express = require("express");
 const router = express.Router();
 
-const { verifyJwtToken, validateSchema } = require("../middlewares");
+const {
+  validateSchema,
+  isCustomer,
+  isVendorOrAdmin,
+} = require("../middlewares");
 const {
   create,
   get,
@@ -33,16 +37,89 @@ const {
   validateReorderMedias,
 } = require("../validator/showcase");
 
-router.use(verifyJwtToken);
+// ---------------------------------------------------------------------------
+// A brand's photo/video gallery.
+//
+// The whole file used to run on a bare `verifyJwtToken`, and the services took
+// a `userId` they never checked — so any signed-in caller could edit, reorder
+// or delete any brand's gallery from its id alone. Ownership is now resolved
+// per request inside the services (`resolveSectionForActor` for anything
+// addressed by `sectionId`, `resolveActorBrand` where a `brandId` is named),
+// which pins a vendor to their own brand and lets an admin act on any.
+// ---------------------------------------------------------------------------
 
-router.post("/section/add", validateSchema(validateCreateSection), create);
-router.get("/section/get/:sectionId", validateSchema(validateGetSection), get);
-router.get("/section/get-all", validateSchema(validateGetAllSections), getAll);
+// ── Sections ───────────────────────────────────────────────────────────────
+router.post(
+  "/section/add",
+  isVendorOrAdmin,
+  validateSchema(validateCreateSection),
+  create,
+);
+router.get(
+  "/section/get/:sectionId",
+  isVendorOrAdmin,
+  validateSchema(validateGetSection),
+  get,
+);
+router.get(
+  "/section/get-all",
+  isVendorOrAdmin,
+  validateSchema(validateGetAllSections),
+  getAll,
+);
 router.put(
   "/section/update/:sectionId",
+  isVendorOrAdmin,
   validateSchema(validateUpdateSection),
   update,
 );
+router.put(
+  "/section/:brandId/reorder",
+  isVendorOrAdmin,
+  validateSchema(validateReorderSections),
+  reorderSections,
+);
+router.delete(
+  "/section/delete/:sectionId",
+  isVendorOrAdmin,
+  validateSchema(validateDeleteSection),
+  deleteSection,
+);
+
+// ── Media ──────────────────────────────────────────────────────────────────
+router.post(
+  "/section/:sectionId/add-media",
+  isVendorOrAdmin,
+  validateSchema(validateAddMedia),
+  addMedia,
+);
+router.patch(
+  "/section/:sectionId/media/update/:mediaId",
+  isVendorOrAdmin,
+  validateSchema(validateUpdateMedia),
+  updateMedia,
+);
+router.put(
+  "/section/:sectionId/media/replace/:mediaId",
+  isVendorOrAdmin,
+  validateSchema(validateReplaceMedia),
+  replaceMedia,
+);
+router.put(
+  "/section/:sectionId/media/reorder",
+  isVendorOrAdmin,
+  validateSchema(validateReorderMedias),
+  reorderMedia,
+);
+router.delete(
+  "/section/:sectionId/media/delete/:mediaId",
+  isVendorOrAdmin,
+  validateSchema(validateDeleteMedia),
+  deleteMedia,
+);
+
+// ── Customer-facing reads ──────────────────────────────────────────────────
+// Only active, visible content, with storage internals stripped.
 router.get(
   "/get-brand-showcase/:brandId",
   validateSchema(validateGetBrandShowcase),
@@ -52,42 +129,6 @@ router.get(
   "/:brandId/video-clips",
   validateSchema(validateGetVideoClips),
   getVideoClips,
-);
-router.put(
-  "/section/:brandId/reorder",
-  validateSchema(validateReorderSections),
-  reorderSections,
-);
-router.delete(
-  "/section/delete/:sectionId",
-  validateSchema(validateDeleteSection),
-  deleteSection,
-);
-// Media
-router.post(
-  "/section/:sectionId/add-media",
-  validateSchema(validateAddMedia),
-  addMedia,
-);
-router.patch(
-  "/section/:sectionId/media/update/:mediaId",
-  validateSchema(validateUpdateMedia),
-  updateMedia,
-);
-router.put(
-  "/section/:sectionId/media/replace/:mediaId",
-  validateSchema(validateReplaceMedia),
-  replaceMedia,
-);
-router.put(
-  "/section/:sectionId/media/reorder",
-  validateSchema(validateReorderMedias),
-  reorderMedia,
-);
-router.delete(
-  "/section/:sectionId/media/delete/:mediaId",
-  validateSchema(validateDeleteMedia),
-  deleteMedia,
 );
 
 module.exports = router;
