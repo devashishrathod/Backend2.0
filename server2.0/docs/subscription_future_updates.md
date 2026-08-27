@@ -375,6 +375,19 @@ count and order below are what each template must be written against:
 | `WHATSAPP_TEMPLATE_SUBSCRIPTION_EXPIRING` | 3 | plan, days left, end date |
 | `WHATSAPP_TEMPLATE_SUBSCRIPTION_EXPIRED` | 2 | plan, end date |
 | `WHATSAPP_TEMPLATE_SUBSCRIPTION_CANCELLED` | 1 | plan |
+| `WHATSAPP_TEMPLATE_BRAND_UNDER_REVIEW` | 2 | name, brand |
+| `WHATSAPP_TEMPLATE_BRAND_RESUBMITTED` | 2 | name, brand |
+| `WHATSAPP_TEMPLATE_BRAND_APPROVED` | 2 | name, brand |
+| `WHATSAPP_TEMPLATE_BRAND_REJECTED` | 3 | name, brand, reason |
+| `WHATSAPP_TEMPLATE_BRAND_APPROVAL_REVOKED` | 3 | name, brand, reason |
+| `WHATSAPP_TEMPLATE_BRAND_DEACTIVATED` | 2 | name, brand |
+| `WHATSAPP_TEMPLATE_BRAND_ACTIVATED` | 2 | name, brand |
+| `WHATSAPP_TEMPLATE_BRAND_HIDDEN_FROM_CUSTOMERS` | 2 | name, brand |
+| `WHATSAPP_TEMPLATE_BRAND_VISIBLE_TO_CUSTOMERS` | 2 | name, brand |
+
+The brand-lifecycle set is covered in detail in design doc §18, including why
+a verification rejection reason is sent to the vendor and a deactivation note
+is not.
 
 Example body for `SUBSCRIPTION_EXPIRING`:
 

@@ -22,9 +22,15 @@ const {
   switchSlot,
   bucketLabel,
 } = require("./entitlementSlots");
+const {
+  resolveBrandIdentity,
+  BRAND_IDENTITY_FALLBACK_NAME,
+} = require("./resolveBrandIdentity");
 
 module.exports = {
   resolveActorBrand,
+  resolveBrandIdentity,
+  BRAND_IDENTITY_FALLBACK_NAME,
   assertPublicBrand,
   generateUniqueBrandId,
   generateBrandMerchantId,

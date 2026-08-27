@@ -2,6 +2,11 @@ const mongoose = require("mongoose");
 const Brand = require("../../models/Brand");
 const SystemVerify = require("../../models/SystemVerify");
 const { recordBrandVerificationHistory } = require("../../helpers/brands");
+const {
+  notifyBrandApproved,
+  notifyBrandRejected,
+  notifyBrandApprovalRevoked,
+} = require("../../helpers/notifications");
 const { throwError } = require("../../utils");
 const {
   SYSTEM_VERIFICATION_STATUS,
@@ -492,5 +497,54 @@ exports.reviewBrandVerification = async (
     await session.endSession();
   }
 
-  return result;
+  // ---------------------------------------------------------------------------
+  // After the commit.
+  //
+  // Outside the transaction because a notification must never be able to undo a
+  // decision an admin has already made — and because these do provider I/O
+  // (SMTP, FCM, WhatsApp) that has no business inside a database transaction.
+  //
+  // Only the three outcomes the vendor can act on are announced. REVIEWED and
+  // UNREVIEWED are an internal "seen" toggle; telling a vendor "an admin looked
+  // at your file" is noise, and telling them twice when the flag is flipped back
+  // is worse.
+  //
+  // Every notice helper is fire-and-forget internally and never throws, so this
+  // block cannot fail the request. `isVendorNotified` reports the outcome rather
+  // than hiding it.
+  // ---------------------------------------------------------------------------
+  let notice = null;
+  const brandForNotice = {
+    _id: result.brandId,
+    brandName: result.brandName,
+    uniqueId: result.brandUniqueId,
+    merchantId: result.merchantId,
+  };
+
+  if (result.action === BRAND_VERIFICATION_ACTION.APPROVED) {
+    notice = await notifyBrandApproved({
+      brand: brandForNotice,
+      attemptNumber: result.attemptNumber,
+    });
+  } else if (result.action === BRAND_VERIFICATION_ACTION.REJECTED) {
+    notice = await notifyBrandRejected({
+      brand: brandForNotice,
+      // The admin wrote this for the vendor — unlike a deactivation note, which
+      // is internal. Sending it is the entire point of a rejection notice: a
+      // rejection with no reason leaves the vendor nothing to fix.
+      reason: result.rejectionReason,
+      attemptNumber: result.attemptNumber,
+    });
+  } else if (result.action === BRAND_VERIFICATION_ACTION.REVOKED) {
+    notice = await notifyBrandApprovalRevoked({
+      brand: brandForNotice,
+      reason: result.revokeReason,
+      attemptNumber: result.attemptNumber,
+    });
+  }
+
+  return {
+    ...result,
+    isVendorNotified: Boolean(notice?.created),
+  };
 };

@@ -35,6 +35,21 @@ const NOTIFICATION_TYPES = Object.freeze({
   BRAND_HIDDEN_FROM_CUSTOMERS: "BRAND_HIDDEN_FROM_CUSTOMERS",
   BRAND_VISIBLE_TO_CUSTOMERS: "BRAND_VISIBLE_TO_CUSTOMERS",
 
+  // ---------- onboarding / verification, vendor-facing ----------
+  // Documents submitted and the brand is now queued for a human. The
+  // "we have your application" acknowledgement.
+  BRAND_UNDER_REVIEW: "BRAND_UNDER_REVIEW",
+  // Resubmitted after a rejection — a distinct message, because "received"
+  // and "received again" read differently to someone who has been rejected once.
+  BRAND_RESUBMITTED: "BRAND_RESUBMITTED",
+  // The one that matters. CRITICAL is wrong here — it is good news.
+  BRAND_APPROVED: "BRAND_APPROVED",
+  // Carries the admin's reason. Without it the vendor has nothing to act on.
+  BRAND_REJECTED: "BRAND_REJECTED",
+  // An approval withdrawn after it was granted. Distinct from REJECTED, which
+  // means it was never approved at all.
+  BRAND_APPROVAL_REVOKED: "BRAND_APPROVAL_REVOKED",
+
   // A message an admin composed and sent to a chosen audience. Deliberately
   // generic: it is not tied to any domain, so the same broadcast path serves
   // vendors, customers, and any role added later.
@@ -51,6 +66,12 @@ const NOTIFICATION_TYPES = Object.freeze({
   // A promo code went past its cap because a payment quoted before the code ran
   // out was settled afterwards. Nothing to undo — but somebody should know.
   PROMO_LIMIT_EXCEEDED: "PROMO_LIMIT_EXCEEDED",
+
+  // A brand is waiting on a human decision. Deliberately the only two
+  // vendor-triggered events that reach the admin feed: both mean somebody has
+  // to act. A vendor filling in their PAN does not.
+  BRAND_AWAITING_REVIEW: "BRAND_AWAITING_REVIEW",
+  BRAND_AWAITING_RE_REVIEW: "BRAND_AWAITING_RE_REVIEW",
 });
 
 // Where a notification was actually delivered. IN_APP is always written; the
