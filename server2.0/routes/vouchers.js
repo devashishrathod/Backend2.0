@@ -19,6 +19,8 @@ const {
   previewCustomerVoucher,
   setBanner,
   deleteBanner,
+  reviewSuggestion,
+  getSuggestions,
 } = require("../controllers/vouchers");
 const {
   validateCreateVoucher,
@@ -32,6 +34,8 @@ const {
   validateCustomerVoucherPreview,
   validateSetVoucherBanner,
   validateDeleteVoucherBanner,
+  validateReviewVoucherSuggestion,
+  validateGetSuggestedVouchers,
 } = require("../validator/vouchers");
 
 // Every voucher write consumes a slot from the owning brand's plan, so these
@@ -75,6 +79,24 @@ router.get(
   isVendorOrAdmin,
   validateSchema(validateGetAllVoucherVersions),
   getAllVersions,
+);
+
+// Admin — "Suggestions" curation. One endpoint both ways: `isSuggested: false`
+// removes, and a new `suggestionOrder` on an already-pinned voucher reorders it.
+// Declared before `/:voucherId/banner` so `admin` is never read as a voucher id.
+router.put(
+  "/admin/suggestions/:voucherId",
+  isAdmin,
+  validateSchema(validateReviewVoucherSuggestion),
+  reviewSuggestion,
+);
+// The admin's own view of that list — unlike the customer tab it also shows
+// vouchers that have since expired or been unpublished, so they can be unpinned.
+router.get(
+  "/admin/suggestions",
+  isAdmin,
+  validateSchema(validateGetSuggestedVouchers),
+  getSuggestions,
 );
 
 // Voucher banner (master-level, independent of version/approval flow)

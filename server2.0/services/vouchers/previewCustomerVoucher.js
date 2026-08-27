@@ -5,6 +5,7 @@ const VoucherSubBrand = require("../../models/VoucherSubBrand");
 const SubBrand = require("../../models/SubBrand");
 const { throwError } = require("../../utils");
 const { calculateVoucherOffer } = require("../../helpers/voucherOffers");
+const { getCustomerConfig } = require("../../helpers/settings");
 
 exports.previewCustomerVoucher = async (userId, payload) => {
   const { voucherId, outletId, billAmount } = payload;
@@ -117,10 +118,14 @@ exports.previewCustomerVoucher = async (userId, payload) => {
    * ---------------------------------------
    */
 
+  const { convenienceFee } = await getCustomerConfig();
+
   const calculation = calculateVoucherOffer({
     offers: version.offers || [],
 
     billAmount,
+
+    convenienceFeeConfig: convenienceFee,
   });
 
   /**
@@ -156,8 +161,15 @@ exports.previewCustomerVoucher = async (userId, payload) => {
 
     billAmount: calculation.billAmount,
 
+    // false when the bill is below every offer's minimum, or the voucher has no
+    // offers at all. Not an error — the customer just pays the bill.
+    offerApplied: calculation.offerApplied,
+
     selectedOffer: calculation.selectedOffer,
 
     eligibleOffers: calculation.eligibleOffers,
+
+    // The rows a checkout screen renders, already totalled.
+    pricing: calculation.pricing,
   };
 };

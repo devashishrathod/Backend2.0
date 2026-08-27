@@ -2,7 +2,7 @@
 
 **Purpose:** Har backend endpoint ko uske consumer (Customer Mobile App / Vendor Panel / Super Admin Panel / Global) ke hisaab se categorize karna, taaki 3 alag-alag API documentation files banayi ja sakein.
 
-**Status:** ✅ **Round 3 — full re-scan (2026-08-22).** Code ke against verify kiya gaya, 143 endpoints.
+**Status:** ✅ **Round 4 — security fixes + curation features (2026-08-26).** Code ke against verify kiya gaya, 149 endpoints.
 
 **Base URL:**
 - Local: `http://localhost:8080/trydood/v1`
@@ -10,7 +10,9 @@
 
 **Framework:** Express.js (CommonJS) · **DB:** MongoDB (Mongoose)
 **Route mounting:** `routes/index.js` auto-mounts har file ko uske filename se → `routes/subBrands.js` = `/trydood/v1/subBrands` (camelCase preserved)
-**Scanned:** 2026-08-22 · **Total endpoints:** 143 (+3 utility/non-versioned)
+**Scanned:** 2026-08-26 · **Total endpoints:** 149 (+3 utility/non-versioned)
+
+> Count Express router introspection se nikala gaya hai (har mounted router ka `stack`), route files hand-count karke nahi — is liye ye drift nahi karega.
 
 ---
 
@@ -59,19 +61,56 @@ Ye ownership enforcement ka proper pattern hai:
 
 **3. Shared default password issue fix ho gaya** ✅ — `User.password` ab optional hai (`required: true` hata), `passwordSetAt` field add hui, aur proper `set-password` / `forgot-password` / `reset-password` flow hai. Pehle har OTP account ek hi known password pe banta tha.
 
-### ⚠️ Jo abhi bhi open hai
+> Ye Round 3 ka snapshot hai. Jo tab open tha uska current status neeche Round 4 me hai.
 
-| Finding | Status |
+---
+
+## 🆕 Round 3 → Round 4 me kya badla
+
+**Scan:** 2026-08-26 · 143 → **149 endpoints** (+6)
+
+### ✅ Round 3 ke open findings — ab band
+
+| Finding | Round 3 | Ab |
+|---|---|---|
+| `/auth/register` public + default role `ADMIN` | 🔴 Open | ✅ `isAdmin` gated, `role` required (no default), `ADMIN` self-signup blocked |
+| `/users/get\|update?userId=` IDOR | 🔴 Open | ✅ `userId` ab token se aata hai, query param hata diya |
+| Role gates missing (~35 endpoints) | 🟠 Open | ✅ 149/149 accounted — 10 hi intentionally public (9 auth entry + Razorpay webhook) |
+| `showcase/section/get-all` brand scoping | 🟠 Open | ✅ Vendor apne brand pe pinned, admin global |
+| `/brands/get` PII exposure | 🟠 Open | ✅ `isVendorOrAdmin`; customer ke liye alag `/brands/customer/get/:brandId` |
+| Location IDOR + `userId` spoofing | 🟠 Open | ✅ Per-role ownership `getLocation` / `upsertLocation` me |
+| Signup half-fail (User bane, Brand/Customer nahi) | 🟠 Open | ✅ `session.withTransaction` + orphan self-heal |
+| `isFirst: false` jab OTP na aaye | 🟠 Open | ✅ Ab verification state pe based hai, document existence pe nahi |
+| WhatsApp OTP verify commented out | 🔴 Open | ⏸️ **Deferred** — aapka decision, patch ready hai |
+| `DELETE /users/delete` no-op | 🟡 Open | ⏸️ **Deferred** — [account_deletion_plan.md](./account_deletion_plan.md), full flow ready hone pe |
+
+### Naye middleware
+
+| Name | Kya |
 |---|---|
-| WhatsApp OTP verify commented out (auth bypass) | 🔴 **Open** — `verifyOtpWithWhatsapp.js:12` |
-| `/auth/register` public + default role `ADMIN` | 🔴 **Open** |
-| `/users/get\|update?userId=` IDOR | 🔴 **Open** |
-| Role gates missing: banners, tickers, showcase, locations, brandFeatures, workHours | 🟠 **Open** (~35 endpoints) |
-| `showcase/section/get-all` brand scoping | 🟠 **Open** |
-| `/brands/get` PII exposure | 🟠 **Open** |
-| `DELETE /users/delete` no-op | 🟡 **Open** |
+| `isVendorOrAdmin` | Customer ko vendor/admin shared routes se bahar rakhta hai; vendor ke liye `req.brandId` set karta hai |
+| `isSubVendor` | Outlet-level actor |
 
-Detail → [security_findings.md](./security_findings.md)
+### Naye endpoints — 6
+
+| Method | Endpoint | Gate | Kyu |
+|---|---|---|---|
+| `GET` | `/brands/customer/get/:brandId` | `isCustomer` | Customer brand profile — `/brands/get` ka PII kabhi nahi chhuta |
+| `GET` | `/brands/customer/get-all` | `isCustomer` | Brand directory + "Top Brands" tab (`topOnly`) |
+| `PUT` | `/brands/admin/top-brands/:brandId` | `isAdmin` | Top brand add / remove / reorder |
+| `GET` | `/brands/admin/top-brands` | `isAdmin` | Admin ka top-brands view |
+| `PUT` | `/vouchers/admin/suggestions/:voucherId` | `isAdmin` | Suggested voucher add / remove / reorder |
+| `GET` | `/vouchers/admin/suggestions` | `isAdmin` | Admin ka suggestions view |
+
+### Existing endpoints me naye fields
+
+| Endpoint | Naya |
+|---|---|
+| `GET /vouchers/customer/get-all` | `suggestedOnly` param · `bannerType` · `bannerUrl` · `isSuggested` · `isOutOfRange` |
+| `GET /vouchers/customer/get/:voucherId` | `bannerType` · `bannerUrl` |
+| `POST /vouchers/customer/voucher/preview` | `offerApplied` · `pricing.convenienceFee` · `pricing.promoDiscount` · no-offer fallback (ab error nahi) |
+
+Detail → [security_findings.md](./security_findings.md) · [voucher_brand_features_plan.md](./voucher_brand_features_plan.md)
 
 ---
 
@@ -107,13 +146,13 @@ Intended: <jiske liye banaya gaya hai>  ·  Enforced: <backend actually kya rokt
 | Users | `/users` | 3 | – | – | – | 3 |
 | Device Tokens 🆕 | `/deviceTokens` | 4 | – | – | – | 4 |
 | Notifications 🆕 | `/notifications` | 3 | – | – | 1 | 2 |
-| Brands | `/brands` | 13 | – | 8 | 2 | 3 |
+| Brands | `/brands` | 17 | 2 | 8 | 4 | 3 |
 | Verification (KYC) | `/verification` | 3 | – | 3 | – | – |
 | Sub Brands (Outlets) | `/subBrands` | 3 | – | – | – | 3 |
 | Work Hours | `/workHours` | 1 | – | 1 | – | – |
 | Locations | `/locations` | 6 | 1 | – | – | 5 |
 | Showcase | `/showcase` | 13 | 2 | 9 | – | 2 |
-| Vouchers | `/vouchers` | 11 | 3 | – | 1 | 7 |
+| Vouchers | `/vouchers` | 13 | 3 | – | 3 | 7 |
 | Banners (App-level) | `/banners` | 6 | 1 | – | 5 | – |
 | Promotional Tickers | `/promotionalTickers` | 6 | 1 | – | 5 | – |
 | Brand Features | `/brandFeatures` | 5 | – | – | – | 5 |
@@ -128,19 +167,25 @@ Intended: <jiske liye banaya gaya hai>  ·  Enforced: <backend actually kya rokt
 | Settings | `/settings` | 2 | – | – | 2 | – |
 | Terms & Conditions | `/terms-and-conditions` | 5 | – | – | 3 | 2 |
 | Privacy & Policies | `/privacy-and-policies` | 5 | – | – | 3 | 2 |
-| **TOTAL** | | **143** | **12** | **21** | **49** | **61** |
+| **TOTAL** | | **149** | **14** | **21** | **53** | **61** |
 
 **Per-doc endpoint count:**
 
 | Doc | Endpoints | Breakdown | Status |
 |---|---:|---|---|
-| 📱 `customer_mobile_api_doc.md` | **34** | 12 exclusive + 22 shared | ✅ **v1.1.0 done** — 3,179 lines |
-| 🏪 `vendor_panel_api_doc.md` | **81** | 21 exclusive + 60 shared | ✅ **v1.0.0 done** — 5,936 lines |
-| 🛡️ `super_admin_panel_api_doc.md` | **110** | 49 exclusive + 61 shared | ✅ **v1.0.0 done** — 6,410 lines |
+| 📱 `customer_mobile_api_doc.md` | **35** | 14 exclusive + 21 shared | ✅ **v1.4.0** — live verified, 308 assertions pass |
+| 🏪 `vendor_panel_api_doc.md` | **78** | 21 exclusive + 57 shared | ✅ **v1.2.0** — live verified, 234 assertions pass |
+| 🛡️ `super_admin_panel_api_doc.md` | **114** | 53 exclusive + 61 shared | ⬜ Baaki hai |
 
-> Sum > 143 kyunki shared endpoints multiple docs me aate hain.
+> Sum > 149 kyunki shared endpoints multiple docs me aate hain.
 >
-> **Cross-check:** 143 total − 50 admin-exclusive − 12 customer-exclusive = **81 vendor-accessible** ✓
+> **Cross-check (vendor):** vendor token 81 endpoints tak **pahunch** sakta hai, par unme se 3 customer voucher endpoints hain jo sirf `verifyJwtToken` pe hain — wo vendor panel ke liye nahi. **Vendor-intended = 78.**
+>
+> Breakdown: 6 public auth entry + 21 shared reads + 40 `isVendorOrAdmin` + 11 `isVendor` = 78.
+>
+> ⚠️ Round 4 me composition badli thi: password flow (`set-password`, `forgot-password`, `reset-password`) **admin-only** ho gaya, to wo teen vendor set se nikal gaye.
+>
+> **Cross-check (admin):** 149 − 14 customer-exclusive − 21 vendor-exclusive = **114** ✓
 
 ---
 
@@ -148,9 +193,9 @@ Intended: <jiske liye banaya gaya hai>  ·  Enforced: <backend actually kya rokt
 
 | # | Method | Endpoint | Access | Cat | Notes |
 |---|---|---|---|---|---|
-| 1 | POST | `/auth/register` | Intended: ADMIN · Enforced: **Public** | 🟣 | `role` body param, default `ADMIN`. ⚠️ Public hai — koi bhi admin bana sakta hai |
+| 1 | POST | `/auth/register` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | ✅ Ab gated. `role` **required** hai, koi default nahi. Pehla admin `scripts/seedAdmin.js` se banta hai |
 | 2 | POST | `/auth/login` | Intended: ADMIN · Enforced: Public | 🟣 | Password login. `type`: `EMAIL` \| `MOBILE` \| `USERNAME`. ✅ Ab fail-closed hai — jin accounts ne password set nahi kiya, unpe login fail hota hai |
-| 3 | POST | `/auth/loginOrSignUp-with-whatsapp` | Intended: Customer + Vendor · Enforced: Public | ⚪ | `role` default `CUSTOMER`. Naya number → user + `Customer`/`Brand` auto-create. Returns `isFirst` |
+| 3 | POST | `/auth/loginOrSignUp-with-whatsapp` | Intended: Customer + Vendor · Enforced: Public | ⚪ | `role` default `CUSTOMER`, `ADMIN` **block** hai. Naya number → user + `Customer`/`Brand` ek transaction me. `isFirst` ab verification state pe hai, document existence pe nahi |
 | 4 | POST | `/auth/verify-otp-whatsapp` | Intended: Customer + Vendor · Enforced: Public | ⚪ | OTP verify → JWT. ⚠️ Verify commented out |
 | 5 | POST | `/auth/login-with-email` | Intended: Vendor + Admin · Enforced: Public | ⚪ | Email OTP send (Q21 → Option C) |
 | 6 | POST | `/auth/verify-otp-email` | Intended: Vendor + Admin · Enforced: Public | ⚪ | |
@@ -206,7 +251,7 @@ Global middleware: `router.use(verifyJwtToken)`
 
 ---
 
-## 5. Brands — `/brands` (13)
+## 5. Brands — `/brands` (17)
 
 | # | Method | Endpoint | Access | Cat | Notes |
 |---|---|---|---|---|---|
@@ -220,11 +265,15 @@ Global middleware: `router.use(verifyJwtToken)`
 | 30 | PUT | `/brands/onboarding/update-basic-details` | Intended: VENDOR · Enforced: VENDOR | 🔵 | Review/edit flow |
 | 31 🆕 | GET | `/brands/admin/verifications` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Brand verification queue |
 | 32 🆕 | PUT | `/brands/admin/verifications/:brandId/review` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | approve / reject / revoke / reviewed-toggle |
-| 33 🆕 | GET | `/brands/verifications/history` | Intended: Vendor + Admin · Enforced: Any authenticated | ⚪ | Shared audit trail — admin koi bhi brand, vendor sirf apna (service-level scoping) |
-| 34 | GET | `/brands/get` | Intended: All · Enforced: Any authenticated | ⚪ | ⚠️ PAN/GST/Bank lookups response me — customer ko nahi jaana chahiye |
-| 35 | PUT | `/brands/update` | Intended: Vendor + Admin · Enforced: Any authenticated | ⚪ | ⚠️ Role gate missing |
+| 32a 🆕 | PUT | `/brands/admin/top-brands/:brandId` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Top brand add / remove / reorder — ek hi endpoint dono taraf (`isTopBrand: false` = remove) |
+| 32b 🆕 | GET | `/brands/admin/top-brands` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Admin view — deactivated pinned brands bhi dikhte hain taaki unpin ho sakein |
+| 33 🆕 | GET | `/brands/verifications/history` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | Shared audit trail — admin koi bhi brand, vendor sirf apna (service-level scoping) |
+| 33a 🆕 | GET | `/brands/customer/get/:brandId` | Intended: CUSTOMER · Enforced: **CUSTOMER** | 🟢 | Public brand profile — brand + 10 features + visible showcase + outlets. Koi PII nahi |
+| 33b 🆕 | GET | `/brands/customer/get-all` | Intended: CUSTOMER · Enforced: **CUSTOMER** | 🟢 | Brand directory + "Top Brands" tab (`topOnly`). Geo optional |
+| 34 | GET | `/brands/get` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | ✅ Ab gated. PAN/GST/Bank yahin rehte hain — customer ke liye #33a hai |
+| 35 | PUT | `/brands/update` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | ✅ Ab gated |
 
-> **Customer doc me:** #34 (1)
+> **Customer doc me:** #33a, #33b (2) — #34 ab customer-facing **nahi** hai
 
 ---
 
@@ -309,7 +358,7 @@ Global middleware: `router.use(verifyJwtToken)` — **koi role gate nahi**
 
 ---
 
-## 11. Vouchers — `/vouchers` (11)
+## 11. Vouchers — `/vouchers` (13)
 
 **Lifecycle:** Vendor create → submit review → Admin approve/reject → publish (Vendor ya Admin) → Customer ko visible
 **Note:** Har voucher write brand ke plan ka slot consume karta hai.
@@ -321,12 +370,14 @@ Global middleware: `router.use(verifyJwtToken)` — **koi role gate nahi**
 | 64 | POST | `/vouchers/submit-review/:voucherId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | |
 | 65 | POST | `/vouchers/review/:versionId` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | ✅ Ab properly gated. `APPROVED` \| `REJECTED` |
 | 66 | POST | `/vouchers/publish/:versionId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | Sirf `APPROVED` version |
-| 67 | GET | `/vouchers/versions/get-all` | Intended: Vendor + Admin · Enforced: Any authenticated | ⚪ | ⚠️ Role gate missing |
+| 67 | GET | `/vouchers/versions/get-all` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | ✅ Ab gated |
+| 67a 🆕 | PUT | `/vouchers/admin/suggestions/:voucherId` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Suggested voucher add / remove / reorder — ek hi endpoint dono taraf |
+| 67b 🆕 | GET | `/vouchers/admin/suggestions` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Admin view — expired/unpublished pins bhi dikhte hain taaki unpin ho sakein |
 | 68 | POST | `/vouchers/:voucherId/banner` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | ✅ Master-level banner |
 | 69 | DELETE | `/vouchers/:voucherId/banner` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | ✅ |
-| 70 | GET | `/vouchers/customer/get-all` | Intended: CUSTOMER · Enforced: Any authenticated | 🟢 | Geo-based listing |
-| 71 | GET | `/vouchers/customer/get/:voucherId` | Intended: CUSTOMER · Enforced: Any authenticated | 🟢 | |
-| 72 | POST | `/vouchers/customer/voucher/preview` | Intended: CUSTOMER · Enforced: Any authenticated | 🟢 | Discount calculation |
+| 70 | GET | `/vouchers/customer/get-all` | Intended: CUSTOMER · Enforced: Any authenticated | 🟢 | Geo listing · `suggestedOnly` tab · `bannerType`/`bannerUrl`/`isSuggested` |
+| 71 | GET | `/vouchers/customer/get/:voucherId` | Intended: CUSTOMER · Enforced: Any authenticated | 🟢 | `bannerType`/`bannerUrl` |
+| 72 | POST | `/vouchers/customer/voucher/preview` | Intended: CUSTOMER · Enforced: Any authenticated | 🟢 | Discount + convenience fee. Koi offer valid na ho to error nahi — plain bill |
 
 > **Customer doc me:** #70, #71, #72 (3)
 
@@ -540,7 +591,7 @@ Razorpay subscription payments + webhook operations.
 
 ---
 
-# 📱 Customer Mobile App Doc — 34 Endpoints
+# 📱 Customer Mobile App Doc — 35 Endpoints
 
 | Section | Count | Endpoints |
 |---|---:|---|
@@ -551,17 +602,17 @@ Razorpay subscription payments + webhook operations.
 | 5. Master Data | 4 | `/categories/getAll` · `/get/:id` · `/subCategories/getAll` · `/get/:id` |
 | 6. Home Screen | 2 | `/banners/customer/active` · `/promotionalTickers/customer/active` |
 | 7. Vouchers | 3 | `/vouchers/customer/get-all` · `/get/:voucherId` · `/voucher/preview` |
-| 8. Brand Profile | 5 | `/brands/get` ⚠️ · `/showcase/get-brand-showcase/:brandId` · `/showcase/:brandId/video-clips` · `/brandFeatures/get-all` · `/get/:featureId` |
+| 8. Brand Profile | 6 | `/brands/customer/get/:brandId` 🆕 · `/brands/customer/get-all` 🆕 · `/showcase/get-brand-showcase/:brandId` · `/showcase/:brandId/video-clips` · `/brandFeatures/get-all` · `/get/:featureId` |
 | 9. Engagement | 4 | `/follows/toggle/:brandId` · `/get-all` · `/brandAvoidances/toggle/:brandId` · `/get-all` |
 | 10. Legal | 4 | terms `getAll` + `get/:id` · privacy `getAll` + `get/:id` |
 
 ---
 
-# 🏪 Vendor Panel Doc — 81 Endpoints
+# 🏪 Vendor Panel Doc — 78 Endpoints
 
 | # | Section | Count | Endpoint numbers |
 |---|---|---:|---|
-| 1 | Authentication (WhatsApp/Email/Mobile OTP + password set/forgot/reset + logout) | 10 | 1–10 |
+| 1 | Authentication (WhatsApp/Email/Mobile OTP + logout) — password flow ab admin-only | 7 | 1–10 |
 | 2 | User Profile | 3 | 11–13 |
 | 3 | Push Notifications | 4 | 14–17 |
 | 4 | Notification Feed | 2 | 18–19 |
@@ -580,12 +631,12 @@ Razorpay subscription payments + webhook operations.
 | 17 | Master Data (categories, sub-categories) | 4 | 74–77 |
 | 18 | Legal (reads) | 4 | 78–81 |
 
-> **Vendor ko ye nahi milte:** 12 customer-exclusive + 50 admin-exclusive = 62. `143 − 62 = 81` ✓
-> **Note:** `/vouchers/review/:versionId` admin-only hai, isliye vendor ke vouchers 7 hain (11 total − 3 customer − 1 admin review).
+> **Vendor ko ye nahi milte:** 14 customer-intended + 54 admin-exclusive + 3 password endpoints = 71. `149 − 71 = 78` ✓
+> **Note:** `/vouchers/review/:versionId` aur dono `admin/suggestions` admin-only hain, isliye vendor ke vouchers 7 hi hain (13 total − 3 customer − 3 admin).
 
 ---
 
-# 🛡️ Super Admin Panel Doc — 110 Endpoints
+# 🛡️ Super Admin Panel Doc — 114 Endpoints
 
 | # | Section | Count |
 |---|---|---:|
@@ -594,11 +645,13 @@ Razorpay subscription payments + webhook operations.
 | 3 | Push Notifications | 4 |
 | 4 | Notifications (feed, mark-read, **broadcast**) | 3 |
 | 5 | Brand Verification (queue, review, history) | 3 |
+| 5a 🆕 | Top Brands curation (pin/unpin/reorder, list) | 2 |
 | 6 | Brand Data (get, update) | 2 |
 | 7 | Outlets / Sub-brands | 3 |
 | 8 | Locations | 5 |
 | 9 | Showcase (get-all, reorder) | 2 |
 | 10 | Vouchers (**review/approve**, create, update, submit, publish, versions, banner ×2) | 8 |
+| 10a 🆕 | Voucher Suggestions curation (pin/unpin/reorder, list) | 2 |
 | 11 | Banners (app-level CRUD) | 5 |
 | 12 | Promotional Tickers CRUD | 5 |
 | 13 | Brand Features | 5 |
@@ -612,24 +665,29 @@ Razorpay subscription payments + webhook operations.
 | 21 | Settings | 2 |
 | 22 | Legal CRUD (terms ×5 + privacy ×5) | 10 |
 
-> **Admin ko ye nahi milte:** 12 customer-exclusive + 21 vendor-exclusive (onboarding 8, KYC 3, work hours 1, showcase vendor-CRUD 9) = 33. `143 − 33 = 110` ✓
+> **Admin ko ye nahi milte:** 14 customer-exclusive + 21 vendor-exclusive (onboarding 8, KYC 3, work hours 1, showcase vendor-CRUD 9) = 35. `149 − 35 = 114` ✓
 > **Note:** `POST /transactions/webhook/razorpay` public hai (Razorpay HMAC), par admin doc me reference ke liye document hoga — webhook ops section usi ke around hai.
 
 ---
 
 ## Doc build status
 
-| Doc | Endpoints | Lines | Status |
-|---|---:|---:|---|
-| `endpoints_category.md` | 143 | 616 | ✅ Round 3 — ye file |
-| `security_findings.md` | 16 findings | ~700 | ✅ Re-verified (2 fixed) |
-| `customer_mobile_api_doc.md` | 34 | 3,179 | ✅ v1.1.0 |
-| `vendor_panel_api_doc.md` | 81 | 5,936 | ✅ v1.0.0 |
-| `super_admin_panel_api_doc.md` | 110 | 6,410 | ✅ v1.0.0 |
+| Doc | Endpoints | Status |
+|---|---:|---|
+| `endpoints_category.md` | 149 | ✅ Round 4 — ye file |
+| `security_findings.md` | 3 open (2 deferred) | ✅ Fixed wale clean kar diye |
+| `voucher_brand_features_plan.md` | – | ✅ Sab 6 steps done |
+| `account_deletion_plan.md` | – | ⏸️ Deferred — full flow ready hone pe |
+| `customer_mobile_api_doc.md` | 35 | ✅ v1.4.0 — live verified against a running server |
+| `vendor_panel_api_doc.md` | 78 | ✅ v1.2.0 — live verified against a running server |
+| `super_admin_panel_api_doc.md` | 114 | ⬜ Baaki |
+
+**Postman:** customer (74 requests · 308 assertions) aur vendor (101 requests · 234
+assertions) — dono verified → [postman/README.md](../postman/README.md). Admin phase 3 me.
 
 > `API_DOCUMENTATION.md` aur `CUSTOMER_API_DOC.md` **Romani project ke reference docs** hain — Trydood ke nahi. Inko chheda nahi gaya.
 
-**Ab baaki:** design docs ko current code ke against verify karna.
+**Ab baaki:** vendor doc ke 39 endpoints + poora admin doc.
 
 **Related design docs** (in-scope, alag maintain hote hain):
 [brand_verification_api_doc.md](./brand_verification_api_doc.md) · [brand_rejection_remediation_design.md](./brand_rejection_remediation_design.md) · [brand_verification_future_updates.md](./brand_verification_future_updates.md) · [subscription_lifecycle_design.md](./subscription_lifecycle_design.md) · [subscription_future_updates.md](./subscription_future_updates.md)

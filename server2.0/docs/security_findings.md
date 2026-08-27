@@ -1,11 +1,11 @@
 # Security & Correctness Findings — server2.0
 
-**Last verified:** 2026-08-26 against current code (143 endpoints, 25 route files)
+**Last verified:** 2026-08-26 against current code (149 endpoints, 25 route files)
 **Scope:** Ye dedicated security audit nahi hai — API documentation scan ka by-product hai.
 
 > Jo findings fix ho chuke hain wo is doc se hata diye gaye hain. Kya-kya fix hua uska record → [security_fix_plan.md](./security_fix_plan.md)
 
-**Open:** 3 findings — 1 deferred by decision, 2 design pending
+**Open:** 2 findings — dono aapke decision pe deferred hain
 
 ---
 
@@ -14,8 +14,7 @@
 | # | Finding | Severity | Status |
 |---|---|---|---|
 | 7 | WhatsApp OTP verify hota hi nahi — auth bypass | 🔴 High | ⏸ **DEFERRED** — aapka decision, patch ready |
-| 3 | `/brands/get` PAN/GST/Bank customer ko expose karta hai | 🟠 Medium | 🔵 **IN PROGRESS** — alag customer API ban rahi hai |
-| 5 | `DELETE /users/delete` no-op stub | 🟡 Low | 🔵 **IN PROGRESS** — cascade plan ban raha hai |
+| 5 | `DELETE /users/delete` no-op stub | 🟡 Low | ⏸ **DEFERRED** — plan ready, full flow ke baad |
 
 ---
 
@@ -60,23 +59,7 @@ if (process.env.SKIP_OTP !== "true") {
 
 ---
 
-## 3. 🔵 IN PROGRESS — `/brands/get` PAN/GST/Bank details expose karta hai
-
-**File:** [services/brands/getBrand.js](../services/brands/getBrand.js)
-
-Aggregation 14 lookups karta hai:
-
-`users` · **`pans`** · **`gsts`** · **`banks`** · `locations` · `systemverifies` · `subscribeds` · `categories` · `subcategories` · `workhours` · `subbrands` (+ nested `users`, `locations`, `workhours`)
-
-Customer app ko brand profile page ke liye yahi endpoint chahiye, aur usme brand ka **PAN number, GST number, bank account + IFSC** chala jaata hai. Subscription/billing data bhi.
-
-`users` lookup me `password`, `otp`, `refreshToken` properly excluded hain — bas PAN/GST/Bank pe wo protection nahi.
-
-**Decision:** alag customer endpoint banega (`GET /brands/customer/...`) jisme sirf public fields honge, plus brand features aur showcase. Design abhi discuss ho raha hai — merge karne se performance/scalability pe kya asar padega wo evaluate ho raha hai.
-
----
-
-## 5. 🔵 IN PROGRESS — `DELETE /users/delete` no-op stub
+## 5. ⏸ DEFERRED — `DELETE /users/delete` no-op stub
 
 **File:** [routes/users.js](../routes/users.js)
 
@@ -93,7 +76,7 @@ Kuch delete nahi hota — na soft, na hard. Controller/service exist hi nahi kar
 - Customer "Delete Account" dabayega, success dikhega, account zinda rahega
 - Response format bhi different hai — `sendSuccess` envelope nahi, raw `res.json` (koi `success` field nahi)
 
-**Decision:** Customer + Vendor dono ke liye proper cascade design ban raha hai — kya delete hoga, kya anonymise hoga, kya legal/financial reasons se retain hoga.
+**Decision:** Aapne kaha ki ye tab karenge jab **poora flow ready** ho jayega. Cascade design likha hua hai — kya delete hoga, kya anonymise hoga, kya legal/financial reasons se retain hoga, aur 7 open questions — sab [account_deletion_plan.md](./account_deletion_plan.md) me hai. Wahan se uthakar implement kar sakte hain.
 
 ---
 
@@ -127,7 +110,7 @@ JWT stateless hai — password badalne pe purane tokens chalte rehte hain. `User
 | **JWT expiry policy** | `JWT_EXPIRY` env se aata hai, par koi refresh-token flow nahi. Lamba expiry = lamba exposure window |
 | **File upload MIME validation** | Showcase/banner uploads extension aur declared MIME pe bharosa karte hain; actual file signature check nahi hota |
 | **`Subscribed.isActive` / `isExpired` redundancy** | `status` authoritative hai, par ye flags saath-saath maintain hote hain. Abhi bug nahi hai (dono ek saath likhe jaate hain), par do jagah truth rakhne se drift ka risk hai. Naya code `status` pe check kare |
-| **`brand.isApproved` / `brand.status` kabhi likhe nahi jaate** | Dono fields model me hain par koi code inko set nahi karta — hamesha `false` / `PENDING`. Approval ka actual status `SystemVerify` doc me hai. Customer listing ka `isVerified` isliye hamesha `false` aata hai |
+| **`brand.isApproved` / `brand.status` kabhi likhe nahi jaate** | Dono fields model me hain par koi code inko set nahi karta — hamesha `false` / `PENDING`. Approval ka actual status `SystemVerify` doc me hai. Naye customer brand endpoints (`/brands/customer/get/:brandId`, `/brands/customer/get-all`) `SystemVerify.status` se derive karte hain, par **voucher listing ka `brand.isVerified` abhi bhi `isApproved` padhta hai** — to wahan hamesha `false` aata hai. Ya to inhe SystemVerify pe shift karein, ya approval flow me ye fields likhna shuru karein |
 
 ---
 
@@ -143,6 +126,7 @@ Record ke liye, taaki naye code me ye patterns follow hote rahein:
 - Password login fail-closed hai — jinhone password set nahi kiya, unpe login path fail hota hai
 - JWT error handling proper — expired / malformed / notBefore alag messages
 - `deviceTokens` self-scoped — `unregister` ka filter hamesha `userId` carry karta hai, `test` push sirf caller ke apne devices pe
+- Customer brand endpoints **alag** banaye gaye, `/brands/get` ko role-filter karke nahi. Wo pipeline 14 lookups karti hai jisme PAN/GST/bank/billing hai — usme se 6 joins strip karne wala projection ek edit door hai leak se. Naye endpoints sensitive join **build hi nahi karte**, to strip karne layak kuch bacha hi nahi
 
 **Payments**
 - Razorpay webhook HMAC `crypto.timingSafeEqual` se compare hota hai; secret / signature / raw body teeno missing pe explicit fail

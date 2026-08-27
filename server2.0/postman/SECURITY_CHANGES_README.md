@@ -1,11 +1,11 @@
 # Postman — Security & API Changes (2026-08-26)
 
-Sirf wo endpoints jo security round me **badle**, plus ek naya endpoint. Baaki endpoints
+Sirf wo endpoints jo is round me **badle**, plus 6 naye endpoints. Baaki endpoints
 `trydood-brand-verification` aur `trydood-subscription` collections me hain.
 
 | File | Kya hai |
 |---|---|
-| `trydood-security-changes.postman_collection.json` | Collection — 9 folders, 37 requests, 86 saved examples |
+| `trydood-security-changes.postman_collection.json` | Collection — 12 folders, 49 requests, 106 saved examples |
 | `environments/security-local.postman_environment.json` | `http://localhost:8080/trydood/v1` |
 | `environments/security-staging.postman_environment.json` | `https://backend2-0-4v4i.onrender.com/trydood/v1` |
 | `environments/security-production.postman_environment.json` | Production — **use se pehle confirm karein** |
@@ -79,6 +79,9 @@ bharni hongi, ya doosri collections se aati hain.
 | `06 — Naye role gates` | Banners, tickers, features, work hours, outlets, voucher versions, follows |
 | `07 — Legal (broken → fixed)` | Create endpoints jo **kabhi kaam hi nahi karte the** |
 | `08 — Vouchers` | `FIXED` discount ab calculate hota hai |
+| `09 — Pricing` | ⭐ Convenience fee slabs + no-offer fallback (`400` → `200`) |
+| `10 — Admin curation` | ⭐ Suggested vouchers + top brands — pin / unpin / reorder + admin lists |
+| `11 — Customer lists` | ⭐ Suggestions & Top Brands tabs, voucher banner fields, naya brand directory |
 
 Har request ke description me ek **🔄 Kya badla** banner hai — usse pata chal jayega ki
 wo request is collection me kyun hai.
@@ -112,6 +115,12 @@ wo request is collection me kyun hai.
 | Customer app `/brands/get` pe `403` | Naye `/brands/customer/get/:brandId` pe shift karein |
 | `showcase/section/get-all` ab `brandId` leta hai | Vendor optional, admin narrowing filter |
 | Legal create me `type` **required** | `"VENDOR"` / `"CUSTOMER"` jaisa audience marker |
+| Preview me `"No eligible offer found…"` **ab nahi aata** | `200` + `offerApplied: false` handle karein — offer section chhupa dein |
+| Naya `pricing` block | `pricing.payableAmount` charge karein. **Fee khud calculate mat karein** |
+| Voucher rows pe `bannerType` / `bannerUrl` | Dono saath aate hain — banner na ho to dono `null` |
+| Voucher rows pe `isSuggested` | Badge/highlight ke liye |
+| List response pe top-level `isOutOfRange` | Sirf Suggestions tab pe `true` ho sakta hai — "aas-paas nahi hain" note dikhayein |
+| `suggestedOnly` / `topOnly` params | Tab aur "view more" ek hi endpoint se. **Dedupe mat karein** — rows repeat nahi hote |
 
 ---
 

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "7c3f9a1e-5b2d-4e88-9f21-trydood-secfix",
     "name": "Trydood — Security & API Changes (2026-08-26)",
-    "description": "# Security & API Changes\n\nSirf wo endpoints jo **2026-08-26 ke security round me badle**, plus ek naya endpoint.\nBaaki endpoints doosri collections me hain.\n\nHar request ke description me ek **🔄 Kya badla** banner hai.\n\n---\n\n## Shuru kaise karein\n\n1. Environment import karein (`environments/security-*.postman_environment.json`) aur\n   top-right se select karein.\n2. `admin_password`, `vendor_whatsapp`, `customer_whatsapp` bharein — secrets git me nahi hain.\n3. **`00 — Auth`** folder chalayein. Har request apna token khud environment me likh deti hai.\n\n## Sabse bade changes\n\n| Kya | Kahan |\n|---|---|\n| Naya admin WhatsApp se ban nahi sakta | `00`, `01` |\n| `/auth/register` ab `isAdmin` + `role` required | `01` |\n| Password flow sirf ADMIN | `01` |\n| `isFirst` retry bug fix + naya `isProfileComplete` | `00` |\n| Signup ab atomic (transaction + self-heal) | `00` |\n| `?userId` IDOR band | `02` |\n| Naya customer brand endpoint | `03` |\n| Showcase brand scoping + ownership | `04` |\n| Locations scoping + ownership | `05` |\n| 143/143 routes gated | `06` |\n| Legal create/update fix | `07` |\n| `FIXED` discount fix | `08` |\n\n## Dhyan rakhne layak\n\n- **List endpoints empty pe `404` dete hain**, empty array nahi — shared `pagination`\n  utility throw karti hai. Isko empty state samajhein, error nahi.\n- **WhatsApp OTP abhi verify nahi hota** (deliberate, deferred) — koi bhi 6-digit chalega.\n- **`coordinates` `[longitude, latitude]`** order me hain — maps APIs se ulta.\n- **Pehla admin API se nahi banta** — `node scripts/seedAdmin.js … --apply`\n\n## Regenerate\n\n```bash\nnode postman/generate-security-collection.js\n```\n\nJSON hand-edit **mat** karein — enums `constants/` se aate hain, to hand-edit karne se\ncollection API ke baare me jhooth bolna shuru kar deta hai.",
+    "description": "# Security & API Changes\n\nSirf wo endpoints jo **2026-08-26 ke round me badle**, plus 6 naye endpoints.\nBaaki endpoints doosri collections me hain.\n\nHar request ke description me ek **🔄 Kya badla** banner hai.\n\n---\n\n## Shuru kaise karein\n\n1. Environment import karein (`environments/security-*.postman_environment.json`) aur\n   top-right se select karein.\n2. `admin_password`, `vendor_whatsapp`, `customer_whatsapp` bharein — secrets git me nahi hain.\n3. **`00 — Auth`** folder chalayein. Har request apna token khud environment me likh deti hai.\n\n## Sabse bade changes\n\n| Kya | Kahan |\n|---|---|\n| Naya admin WhatsApp se ban nahi sakta | `00`, `01` |\n| `/auth/register` ab `isAdmin` + `role` required | `01` |\n| Password flow sirf ADMIN | `01` |\n| `isFirst` retry bug fix + naya `isProfileComplete` | `00` |\n| Signup ab atomic (transaction + self-heal) | `00` |\n| `?userId` IDOR band | `02` |\n| Naya customer brand endpoint | `03` |\n| Showcase brand scoping + ownership | `04` |\n| Locations scoping + ownership | `05` |\n| 149/149 routes gated | `06` |\n| Legal create/update fix | `07` |\n| `FIXED` discount fix | `08` |\n| Convenience fee + no-offer fallback | `09` |\n| Admin curation — suggestions & top brands | `10` |\n| Customer tabs + voucher banner fields | `11` |\n\n## Dhyan rakhne layak\n\n- **List endpoints empty pe `404` dete hain**, empty array nahi — shared `pagination`\n  utility throw karti hai. Isko empty state samajhein, error nahi.\n- **WhatsApp OTP abhi verify nahi hota** (deliberate, deferred) — koi bhi 6-digit chalega.\n- **`coordinates` `[longitude, latitude]`** order me hain — maps APIs se ulta.\n- **Pehla admin API se nahi banta** — `node scripts/seedAdmin.js … --apply`\n- **Convenience fee client-side calculate mat karein** — `pricing.convenienceFee` use\n  karein. Slabs `Setting.customer.convenienceFee` se aati hain, admin badal sakta hai.\n- **Curated tabs alag list nahi hain** — `suggestedOnly` / `topOnly` bas usi sorted set\n  ko narrow karte hain, isliye \"view more\" pe rows repeat nahi hote.\n\n## Regenerate\n\n```bash\nnode postman/generate-security-collection.js\n```\n\nJSON hand-edit **mat** karein — enums `constants/` se aate hain, to hand-edit karne se\ncollection API ke baare me jhooth bolna shuru kar deta hai.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -5571,61 +5571,6 @@
               "body": "{\n  \"success\": true,\n  \"message\": \"Voucher preview calculated successfully.\",\n  \"data\": {\n    \"voucher\": {\n      \"id\": \"{{voucher_id}}\",\n      \"name\": \"flat 200 off\"\n    },\n    \"version\": {\n      \"id\": \"…\",\n      \"versionNumber\": 3\n    },\n    \"outlet\": {\n      \"id\": \"{{sub_brand_id}}\",\n      \"storeId\": \"TS-87HD-48L3-PZYW\"\n    },\n    \"billAmount\": 1000,\n    \"selectedOffer\": {\n      \"offerId\": \"…\",\n      \"title\": \"flat 200 off above 500\",\n      \"discountType\": \"FIXED\",\n      \"discountValue\": 200,\n      \"minBillAmount\": 500,\n      \"maxDiscountAmount\": null,\n      \"discountAmount\": 200,\n      \"finalAmount\": 800\n    },\n    \"eligibleOffers\": []\n  }\n}"
             },
             {
-              "name": "400 — bill kam hai",
-              "originalRequest": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"voucherId\": \"{{voucher_id}}\",\n  \"outletId\": \"{{sub_brand_id}}\",\n  \"billAmount\": 1000\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{base_url}}/vouchers/customer/voucher/preview",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "vouchers",
-                    "customer",
-                    "voucher",
-                    "preview"
-                  ]
-                },
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [
-                    {
-                      "key": "token",
-                      "value": "{{customer_token}}",
-                      "type": "string"
-                    }
-                  ]
-                },
-                "description": "### 🔄 Kya badla\n\n**`FIXED` offers ab calculate hote hain.** Pehle wo chup-chaap drop ho jaate the.\n\n---\n\n`discountType`: PERCENTAGE, FIXED, FLAT\n\n**Calculation:**\n- `PERCENTAGE` → `bill × value / 100`, phir `maxDiscountAmount` pe cap\n- `FLAT` / `FIXED` → seedha `discountValue`\n- Dono ke baad `min(discount, billAmount)`\n\n`selectedOffer` = sabse zyada discount. Tie pe zyada `minBillAmount` wala jeeta."
-              },
-              "status": "Bad Request",
-              "code": 400,
-              "_postman_previewlanguage": "json",
-              "header": [
-                {
-                  "key": "Content-Type",
-                  "value": "application/json"
-                }
-              ],
-              "cookie": [],
-              "body": "{\n  \"success\": false,\n  \"message\": \"No eligible offer found for this bill amount.\"\n}"
-            },
-            {
               "name": "400 — outlet linked nahi",
               "originalRequest": {
                 "method": "POST",
@@ -5679,6 +5624,1694 @@
               ],
               "cookie": [],
               "body": "{\n  \"success\": false,\n  \"message\": \"Selected outlet is not linked with this voucher.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "09 — Pricing (convenience fee + no-offer fallback)",
+      "description": "Do changes jo saath chalte hain — dono `previewCustomerVoucher` pe.\n\n### 1. Convenience fee\n\nHar **₹500** (ya uska part) pe **₹5**:\n\n| Bill | Fee |\n|---|---:|\n| ₹1 – ₹500 | ₹5 |\n| ₹501 – ₹1000 | ₹10 |\n| ₹1001 – ₹1500 | ₹15 |\n| ₹1501 – ₹2000 | ₹20 |\n| … har agle ₹500 pe | +₹5 |\n\nFormula: `ceil(bill / 500) × 5`\n\nFee **original bill** pe lagti hai, discount ke baad wale amount pe nahi — warna har offer ke saath fee badalti aur customer ko arbitrary lagti.\n\n⚠️ Ye numbers **defaults** hain. Live values `Setting.customer.convenienceFee` se aati hain — admin slab size, per-slab amount badal sakta hai ya fee band kar sakta hai. **Client ko fee calculate nahi karni — `pricing.convenienceFee` use karein.**\n\n### 2. Koi offer valid na ho to error nahi\n\nPehle bill kisi bhi offer ke `minBillAmount` se kam hone pe `400 \"No eligible offer found for this bill amount.\"` aata tha — customer ko lagta tha uska bill galat hai. Ab `200` + `offerApplied: false`, aur wo sirf apna bill pay karta hai: koi offer, koi promo, **koi convenience fee nahi**.",
+      "item": [
+        {
+          "name": "Preview — offer applies (fee lagti hai)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"voucherId\": \"{{voucher_id}}\",\n  \"outletId\": \"{{sub_brand_id}}\",\n  \"billAmount\": 1200\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/vouchers/customer/voucher/preview",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "customer",
+                "voucher",
+                "preview"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "### 🔄 Kya badla\n\nDo naye fields:\n\n- **`offerApplied`** — boolean. `false` pe client offer section chhupa de.\n- **`pricing`** — checkout ki saari rows, already totalled. Client ko koi arithmetic nahi karni.\n\n---\n\n`pricing.payableAmount` = `billAmount − discountAmount + convenienceFee`. **Yahi charge karna hai.**\n\n`pricing.promoDiscount` abhi hamesha `0` hai — customer-side promo codes wire nahi hue (`PromoCode` sirf vendor subscription checkout serve karta hai). Row isliye rakhi hai ki jab aayein to response shape na badle."
+          },
+          "response": [
+            {
+              "name": "200 — bill ₹1200, 30% off (cap ₹300)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"voucherId\": \"{{voucher_id}}\",\n  \"outletId\": \"{{sub_brand_id}}\",\n  \"billAmount\": 1200\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/vouchers/customer/voucher/preview",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "vouchers",
+                    "customer",
+                    "voucher",
+                    "preview"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nDo naye fields:\n\n- **`offerApplied`** — boolean. `false` pe client offer section chhupa de.\n- **`pricing`** — checkout ki saari rows, already totalled. Client ko koi arithmetic nahi karni.\n\n---\n\n`pricing.payableAmount` = `billAmount − discountAmount + convenienceFee`. **Yahi charge karna hai.**\n\n`pricing.promoDiscount` abhi hamesha `0` hai — customer-side promo codes wire nahi hue (`PromoCode` sirf vendor subscription checkout serve karta hai). Row isliye rakhi hai ki jab aayein to response shape na badle."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Voucher preview calculated successfully.\",\n  \"data\": {\n    \"voucher\": {\n      \"id\": \"{{voucher_id}}\",\n      \"name\": \"flat 30% off on total bill\"\n    },\n    \"version\": {\n      \"id\": \"…\",\n      \"versionNumber\": 3\n    },\n    \"outlet\": {\n      \"id\": \"{{sub_brand_id}}\",\n      \"storeId\": \"TS-87HD-48L3-PZYW\"\n    },\n    \"billAmount\": 1200,\n    \"offerApplied\": true,\n    \"selectedOffer\": {\n      \"offerId\": \"…\",\n      \"title\": \"30% off above 500\",\n      \"discountType\": \"PERCENTAGE\",\n      \"discountValue\": 30,\n      \"minBillAmount\": 500,\n      \"maxDiscountAmount\": 300,\n      \"discountAmount\": 300,\n      \"finalAmount\": 900\n    },\n    \"eligibleOffers\": [\n      \"… same shape, best-first\"\n    ],\n    \"pricing\": {\n      \"billAmount\": 1200,\n      \"discountAmount\": 300,\n      \"promoDiscount\": 0,\n      \"convenienceFee\": 15,\n      \"payableAmount\": 915,\n      \"totalSavings\": 300\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Preview — bill offer minimum se kam (ab 200, error nahi)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"voucherId\": \"{{voucher_id}}\",\n  \"outletId\": \"{{sub_brand_id}}\",\n  \"billAmount\": 300\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/vouchers/customer/voucher/preview",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "customer",
+                "voucher",
+                "preview"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "### 🔄 Kya badla\n\n**Ye pehle `400` deta tha.** Ab `200` + `offerApplied: false` — customer sirf apna bill pay karega.\n\n---\n\nDo case me aisa hota hai:\n\n1. Bill har offer ke `minBillAmount` se kam hai\n2. Voucher version me koi offer hai hi nahi\n\nDono ka jawab same hai — **fee bhi `0`**.\n\nClient ka kaam: `offerApplied === false` pe offer section chhupa dein aur seedha `pricing.payableAmount` dikhayein."
+          },
+          "response": [
+            {
+              "name": "200 — koi offer nahi, plain bill",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"voucherId\": \"{{voucher_id}}\",\n  \"outletId\": \"{{sub_brand_id}}\",\n  \"billAmount\": 300\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/vouchers/customer/voucher/preview",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "vouchers",
+                    "customer",
+                    "voucher",
+                    "preview"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\n**Ye pehle `400` deta tha.** Ab `200` + `offerApplied: false` — customer sirf apna bill pay karega.\n\n---\n\nDo case me aisa hota hai:\n\n1. Bill har offer ke `minBillAmount` se kam hai\n2. Voucher version me koi offer hai hi nahi\n\nDono ka jawab same hai — **fee bhi `0`**.\n\nClient ka kaam: `offerApplied === false` pe offer section chhupa dein aur seedha `pricing.payableAmount` dikhayein."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Voucher preview calculated successfully.\",\n  \"data\": {\n    \"voucher\": {\n      \"id\": \"{{voucher_id}}\",\n      \"name\": \"flat 30% off on total bill\"\n    },\n    \"version\": {\n      \"id\": \"…\",\n      \"versionNumber\": 3\n    },\n    \"outlet\": {\n      \"id\": \"{{sub_brand_id}}\",\n      \"storeId\": \"TS-87HD-48L3-PZYW\"\n    },\n    \"billAmount\": 300,\n    \"offerApplied\": false,\n    \"selectedOffer\": null,\n    \"eligibleOffers\": [],\n    \"pricing\": {\n      \"billAmount\": 300,\n      \"discountAmount\": 0,\n      \"promoDiscount\": 0,\n      \"convenienceFee\": 0,\n      \"payableAmount\": 300,\n      \"totalSavings\": 0\n    }\n  }\n}"
+            },
+            {
+              "name": "400 — bill ≤ 0 ab bhi error hai",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"voucherId\": \"{{voucher_id}}\",\n  \"outletId\": \"{{sub_brand_id}}\",\n  \"billAmount\": 300\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/vouchers/customer/voucher/preview",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "vouchers",
+                    "customer",
+                    "voucher",
+                    "preview"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\n**Ye pehle `400` deta tha.** Ab `200` + `offerApplied: false` — customer sirf apna bill pay karega.\n\n---\n\nDo case me aisa hota hai:\n\n1. Bill har offer ke `minBillAmount` se kam hai\n2. Voucher version me koi offer hai hi nahi\n\nDono ka jawab same hai — **fee bhi `0`**.\n\nClient ka kaam: `offerApplied === false` pe offer section chhupa dein aur seedha `pricing.payableAmount` dikhayein."
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Valid bill amount is required.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10 — Admin curation (suggestions + top brands)",
+      "description": "Admin do curated lists chalata hai: vouchers ki **Suggestions** aur brands ki **Top Brands**. Dono ka pattern bilkul same hai.\n\n### Storage\n\nJoin table nahi, **model pe flag** (`isSuggested` / `isTopBrand` + order + audit stamps). Isse customer listing seedha us flag pe sort karti hai — har page pe ek extra lookup ka kharcha nahi padta.\n\n### Stale entries apne aap chhup jaati hain\n\nCustomer list already sirf `PUBLISHED` + valid-date vouchers aur `isActive` brands dikhati hai. To pinned voucher expire ho jaaye ya brand deactivate ho jaaye, wo customer ko dikhna band ho jaata hai — **admin ko manually hataana nahi padta**.\n\n⚠️ Lekin **admin ke apne view me wo dikhte hain** — warna list se gayab ho jaate aur flag DB me pinned hi reh jaata, jise unpin karna namumkin ho jaata.",
+      "item": [
+        {
+          "name": "Admin — voucher ko suggestions me daalo",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isSuggested\": true,\n  \"suggestionOrder\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/vouchers/admin/suggestions/{{voucher_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "admin",
+                "suggestions",
+                "{{voucher_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "### 🔄 Kya badla\n\nNaya endpoint.\n\n---\n\n**Ek hi endpoint add aur remove dono karta hai** — flag `false` bhejna hi remove hai (jaise `subBrands/update` me `isActive`). Already pinned entry pe naya order bhejna reorder hai.\n\nStamp (`…At` / `…By`) sirf **pehli** baar pin karne pe likha jaata hai — reorder karne se ye nahi badalta, to record rehta hai ki pehle kisne chuna tha.\n\n**Body:**\n\n| Field | Type | Required | Notes |\n|---|---|---|---|\n| `isSuggested` | boolean | ✅ | `false` = remove |\n| `suggestionOrder` | number | ❌ | Integer ≥ 0. Chhota pehle. Sirf pin karte waqt matlab rakhta hai |"
+          },
+          "response": [
+            {
+              "name": "200 — pin ho gaya",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"isSuggested\": true,\n  \"suggestionOrder\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/vouchers/admin/suggestions/{{voucher_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "vouchers",
+                    "admin",
+                    "suggestions",
+                    "{{voucher_id}}"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nNaya endpoint.\n\n---\n\n**Ek hi endpoint add aur remove dono karta hai** — flag `false` bhejna hi remove hai (jaise `subBrands/update` me `isActive`). Already pinned entry pe naya order bhejna reorder hai.\n\nStamp (`…At` / `…By`) sirf **pehli** baar pin karne pe likha jaata hai — reorder karne se ye nahi badalta, to record rehta hai ki pehle kisne chuna tha.\n\n**Body:**\n\n| Field | Type | Required | Notes |\n|---|---|---|---|\n| `isSuggested` | boolean | ✅ | `false` = remove |\n| `suggestionOrder` | number | ❌ | Integer ≥ 0. Chhota pehle. Sirf pin karte waqt matlab rakhta hai |"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Voucher added to suggestions successfully.\",\n  \"data\": {\n    \"_id\": \"{{voucher_id}}\",\n    \"isSuggested\": true,\n    \"suggestionOrder\": 1,\n    \"suggestedAt\": \"2026-08-26T10:12:00.000Z\",\n    \"name\": \"flat 30% off on total bill\",\n    \"voucherCode\": \"VCH-10000001\",\n    \"status\": \"PUBLISHED\"\n  }\n}"
+            },
+            {
+              "name": "404 — voucher nahi mila",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"isSuggested\": true,\n  \"suggestionOrder\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/vouchers/admin/suggestions/{{voucher_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "vouchers",
+                    "admin",
+                    "suggestions",
+                    "{{voucher_id}}"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nNaya endpoint.\n\n---\n\n**Ek hi endpoint add aur remove dono karta hai** — flag `false` bhejna hi remove hai (jaise `subBrands/update` me `isActive`). Already pinned entry pe naya order bhejna reorder hai.\n\nStamp (`…At` / `…By`) sirf **pehli** baar pin karne pe likha jaata hai — reorder karne se ye nahi badalta, to record rehta hai ki pehle kisne chuna tha.\n\n**Body:**\n\n| Field | Type | Required | Notes |\n|---|---|---|---|\n| `isSuggested` | boolean | ✅ | `false` = remove |\n| `suggestionOrder` | number | ❌ | Integer ≥ 0. Chhota pehle. Sirf pin karte waqt matlab rakhta hai |"
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Voucher not found.\"\n}"
+            },
+            {
+              "name": "403 — vendor token se",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"isSuggested\": true,\n  \"suggestionOrder\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/vouchers/admin/suggestions/{{voucher_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "vouchers",
+                    "admin",
+                    "suggestions",
+                    "{{voucher_id}}"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nNaya endpoint.\n\n---\n\n**Ek hi endpoint add aur remove dono karta hai** — flag `false` bhejna hi remove hai (jaise `subBrands/update` me `isActive`). Already pinned entry pe naya order bhejna reorder hai.\n\nStamp (`…At` / `…By`) sirf **pehli** baar pin karne pe likha jaata hai — reorder karne se ye nahi badalta, to record rehta hai ki pehle kisne chuna tha.\n\n**Body:**\n\n| Field | Type | Required | Notes |\n|---|---|---|---|\n| `isSuggested` | boolean | ✅ | `false` = remove |\n| `suggestionOrder` | number | ❌ | Integer ≥ 0. Chhota pehle. Sirf pin karte waqt matlab rakhta hai |"
+              },
+              "status": "Forbidden",
+              "code": 403,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Forbidden: You do not have permission to perform this action.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Admin — voucher ko suggestions se hatao",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isSuggested\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/vouchers/admin/suggestions/{{voucher_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "admin",
+                "suggestions",
+                "{{voucher_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "### 🔄 Kya badla\n\nNaya endpoint — upar wale ka hi doosra rukh.\n\n---\n\nRemove karne pe `suggestionOrder` `0` ho jaata hai aur stamps **clear** ho jaate hain — taaki agli baar pin karne pe fresh stamp bane, purana inherit na ho."
+          },
+          "response": [
+            {
+              "name": "200 — hat gaya",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"isSuggested\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/vouchers/admin/suggestions/{{voucher_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "vouchers",
+                    "admin",
+                    "suggestions",
+                    "{{voucher_id}}"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nNaya endpoint — upar wale ka hi doosra rukh.\n\n---\n\nRemove karne pe `suggestionOrder` `0` ho jaata hai aur stamps **clear** ho jaate hain — taaki agli baar pin karne pe fresh stamp bane, purana inherit na ho."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Voucher removed from suggestions successfully.\",\n  \"data\": {\n    \"_id\": \"{{voucher_id}}\",\n    \"isSuggested\": false,\n    \"suggestionOrder\": 0,\n    \"suggestedAt\": null,\n    \"name\": \"flat 30% off on total bill\",\n    \"voucherCode\": \"VCH-10000001\",\n    \"status\": \"PUBLISHED\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Admin — suggested vouchers list",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/vouchers/admin/suggestions?page=1&limit=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "admin",
+                "suggestions"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "### 🔄 Kya badla\n\nNaya endpoint.\n\n---\n\n**Ye customer wali list nahi hai.** Customer pipeline expire/unpublished vouchers chhupa deti hai — jo app ke liye sahi hai, par admin screen pe wo pin gayab ho jaata jise wo hataana chahta hai.\n\nIsliye yahan **sab** pinned vouchers aate hain. Har row pe `status` batata hai kaunsa abhi live hai.\n\n`banner` object flatten hoke `bannerType` + `bannerUrl` ban jaata hai — wahi shape jo customer list me hai."
+          },
+          "response": [
+            {
+              "name": "200 — list",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/vouchers/admin/suggestions?page=1&limit=10",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "vouchers",
+                    "admin",
+                    "suggestions"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nNaya endpoint.\n\n---\n\n**Ye customer wali list nahi hai.** Customer pipeline expire/unpublished vouchers chhupa deti hai — jo app ke liye sahi hai, par admin screen pe wo pin gayab ho jaata jise wo hataana chahta hai.\n\nIsliye yahan **sab** pinned vouchers aate hain. Har row pe `status` batata hai kaunsa abhi live hai.\n\n`banner` object flatten hoke `bannerType` + `bannerUrl` ban jaata hai — wahi shape jo customer list me hai."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Suggested vouchers fetched successfully.\",\n  \"data\": {\n    \"total\": 2,\n    \"totalPages\": 1,\n    \"page\": 1,\n    \"limit\": 10,\n    \"data\": [\n      {\n        \"_id\": \"{{voucher_id}}\",\n        \"name\": \"flat 30% off on total bill\",\n        \"voucherCode\": \"VCH-10000001\",\n        \"status\": \"PUBLISHED\",\n        \"isActive\": true,\n        \"suggestionOrder\": 1,\n        \"suggestedAt\": \"2026-08-26T10:12:00.000Z\",\n        \"bannerType\": \"IMAGE\",\n        \"bannerUrl\": \"https://res.cloudinary.com/…/banner.jpg\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"cafe mocha\",\n          \"uniqueId\": \"TDB000078\"\n        },\n        \"suggestedByUser\": {\n          \"_id\": \"{{admin_user_id}}\",\n          \"name\": \"super admin\"\n        }\n      },\n      {\n        \"_id\": \"…\",\n        \"name\": \"buy 1 get 1\",\n        \"voucherCode\": \"VCH-10000007\",\n        \"status\": \"EXPIRED\",\n        \"isActive\": true,\n        \"suggestionOrder\": 2,\n        \"suggestedAt\": \"2026-08-20T09:00:00.000Z\",\n        \"bannerType\": null,\n        \"bannerUrl\": null,\n        \"brand\": {\n          \"_id\": \"…\",\n          \"brandName\": \"pizza point\",\n          \"uniqueId\": \"TDB000091\"\n        },\n        \"suggestedByUser\": {\n          \"_id\": \"{{admin_user_id}}\",\n          \"name\": \"super admin\"\n        }\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "404 — koi pin nahi (empty state)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/vouchers/admin/suggestions?page=1&limit=10",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "vouchers",
+                    "admin",
+                    "suggestions"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nNaya endpoint.\n\n---\n\n**Ye customer wali list nahi hai.** Customer pipeline expire/unpublished vouchers chhupa deti hai — jo app ke liye sahi hai, par admin screen pe wo pin gayab ho jaata jise wo hataana chahta hai.\n\nIsliye yahan **sab** pinned vouchers aate hain. Har row pe `status` batata hai kaunsa abhi live hai.\n\n`banner` object flatten hoke `bannerType` + `bannerUrl` ban jaata hai — wahi shape jo customer list me hai."
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"No any voucher found\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Admin — brand ko top brands me daalo",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isTopBrand\": true,\n  \"topOrder\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/brands/admin/top-brands/{{brand_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "brands",
+                "admin",
+                "top-brands",
+                "{{brand_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "### 🔄 Kya badla\n\nNaya endpoint.\n\n---\n\n**Ek hi endpoint add aur remove dono karta hai** — flag `false` bhejna hi remove hai (jaise `subBrands/update` me `isActive`). Already pinned entry pe naya order bhejna reorder hai.\n\nStamp (`…At` / `…By`) sirf **pehli** baar pin karne pe likha jaata hai — reorder karne se ye nahi badalta, to record rehta hai ki pehle kisne chuna tha.\n\n**Body:**\n\n| Field | Type | Required | Notes |\n|---|---|---|---|\n| `isTopBrand` | boolean | ✅ | `false` = remove |\n| `topOrder` | number | ❌ | Integer ≥ 0. Chhota pehle |\n\nDeactivated brand bhi pin ho sakta hai — wo customer tab me nahi dikhega, par admin ke view me rahega."
+          },
+          "response": [
+            {
+              "name": "200 — pin ho gaya",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"isTopBrand\": true,\n  \"topOrder\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/brands/admin/top-brands/{{brand_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "brands",
+                    "admin",
+                    "top-brands",
+                    "{{brand_id}}"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nNaya endpoint.\n\n---\n\n**Ek hi endpoint add aur remove dono karta hai** — flag `false` bhejna hi remove hai (jaise `subBrands/update` me `isActive`). Already pinned entry pe naya order bhejna reorder hai.\n\nStamp (`…At` / `…By`) sirf **pehli** baar pin karne pe likha jaata hai — reorder karne se ye nahi badalta, to record rehta hai ki pehle kisne chuna tha.\n\n**Body:**\n\n| Field | Type | Required | Notes |\n|---|---|---|---|\n| `isTopBrand` | boolean | ✅ | `false` = remove |\n| `topOrder` | number | ❌ | Integer ≥ 0. Chhota pehle |\n\nDeactivated brand bhi pin ho sakta hai — wo customer tab me nahi dikhega, par admin ke view me rahega."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Brand added to top brands successfully.\",\n  \"data\": {\n    \"_id\": \"{{brand_id}}\",\n    \"isTopBrand\": true,\n    \"topOrder\": 1,\n    \"topAddedAt\": \"2026-08-26T10:14:00.000Z\",\n    \"brandName\": \"cafe mocha\",\n    \"uniqueId\": \"TDB000078\",\n    \"isActive\": true\n  }\n}"
+            },
+            {
+              "name": "404 — brand nahi mila",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"isTopBrand\": true,\n  \"topOrder\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/brands/admin/top-brands/{{brand_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "brands",
+                    "admin",
+                    "top-brands",
+                    "{{brand_id}}"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nNaya endpoint.\n\n---\n\n**Ek hi endpoint add aur remove dono karta hai** — flag `false` bhejna hi remove hai (jaise `subBrands/update` me `isActive`). Already pinned entry pe naya order bhejna reorder hai.\n\nStamp (`…At` / `…By`) sirf **pehli** baar pin karne pe likha jaata hai — reorder karne se ye nahi badalta, to record rehta hai ki pehle kisne chuna tha.\n\n**Body:**\n\n| Field | Type | Required | Notes |\n|---|---|---|---|\n| `isTopBrand` | boolean | ✅ | `false` = remove |\n| `topOrder` | number | ❌ | Integer ≥ 0. Chhota pehle |\n\nDeactivated brand bhi pin ho sakta hai — wo customer tab me nahi dikhega, par admin ke view me rahega."
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Brand not found!\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Admin — top brands list",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/brands/admin/top-brands?page=1&limit=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "brands",
+                "admin",
+                "top-brands"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "### 🔄 Kya badla\n\nNaya endpoint.\n\n---\n\nSuggested-vouchers list ka mirror. Isme **deactivated brands bhi** aate hain (`isActive: false`) — customer tab unhe chhupa deta hai, par admin ko unhe unpin karne ke liye dikhna zaruri hai."
+          },
+          "response": [
+            {
+              "name": "200 — list",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/brands/admin/top-brands?page=1&limit=10",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "brands",
+                    "admin",
+                    "top-brands"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nNaya endpoint.\n\n---\n\nSuggested-vouchers list ka mirror. Isme **deactivated brands bhi** aate hain (`isActive: false`) — customer tab unhe chhupa deta hai, par admin ko unhe unpin karne ke liye dikhna zaruri hai."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Top brands fetched successfully.\",\n  \"data\": {\n    \"total\": 1,\n    \"totalPages\": 1,\n    \"page\": 1,\n    \"limit\": 10,\n    \"data\": [\n      {\n        \"_id\": \"{{brand_id}}\",\n        \"brandName\": \"cafe mocha\",\n        \"uniqueId\": \"TDB000078\",\n        \"logo\": \"https://res.cloudinary.com/…/mocha-logo.jpg\",\n        \"followersCount\": 1243,\n        \"isActive\": true,\n        \"topOrder\": 1,\n        \"topAddedAt\": \"2026-08-26T10:14:00.000Z\",\n        \"category\": {\n          \"_id\": \"…\",\n          \"name\": \"food and beverages\"\n        },\n        \"topAddedByUser\": {\n          \"_id\": \"{{admin_user_id}}\",\n          \"name\": \"super admin\"\n        }\n      }\n    ]\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "11 — Customer lists (tabs + banner fields)",
+      "description": "Curation ka customer-facing side, plus voucher banner fields.\n\n### Tab aur \"view more\" ek hi endpoint se\n\n| UI | Call |\n|---|---|\n| Suggestions / Top Brands tab | `?suggestedOnly=true` / `?topOnly=true` |\n| View more (poori list) | *param na bhejein* — pinned upar, phir baaki |\n\n**Pagination apne aap sahi rehti hai.** Ye do lists jodkar nahi banti — ek hi sorted result set hai jisme curated flag pehli sort key hai. Isliye pinned rows page 1 pe upar aate hain aur page 2 pe **dobara nahi**. Client ko dedupe nahi karna padta.",
+      "item": [
+        {
+          "name": "Customer — vouchers (main feed, suggested upar)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/vouchers/customer/get-all?latitude=22.7533&longitude=75.8937&sortBy=DISTANCE&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "customer",
+                "get-all"
+              ],
+              "query": [
+                {
+                  "key": "latitude",
+                  "value": "22.7533"
+                },
+                {
+                  "key": "longitude",
+                  "value": "75.8937"
+                },
+                {
+                  "key": "sortBy",
+                  "value": "DISTANCE"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "### 🔄 Kya badla\n\nNaye fields:\n\n- **`bannerType`** — IMAGE, VIDEO, GIF, ya `null`\n- **`bannerUrl`** — banner ka URL, ya `null`\n- **`isSuggested`** — admin ne pin kiya hai ya nahi\n- **`isOutOfRange`** — top-level flag (rows ke andar nahi)\n\nNaya param: **`suggestedOnly`**.\n\n---\n\n`bannerType` aur `bannerUrl` hamesha **saath** chalte hain — banner ka type set ho par media missing ho to **dono `null`** aate hain. Client ko `bannerUrl` ki alag null-check nahi chahiye.\n\nKey kabhi gayab nahi hoti — banner na ho to bhi `null` value ke saath aati hai."
+          },
+          "response": [
+            {
+              "name": "200 — pinned voucher pehle",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/vouchers/customer/get-all?latitude=22.7533&longitude=75.8937&sortBy=DISTANCE&limit=20",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "vouchers",
+                    "customer",
+                    "get-all"
+                  ],
+                  "query": [
+                    {
+                      "key": "latitude",
+                      "value": "22.7533"
+                    },
+                    {
+                      "key": "longitude",
+                      "value": "75.8937"
+                    },
+                    {
+                      "key": "sortBy",
+                      "value": "DISTANCE"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nNaye fields:\n\n- **`bannerType`** — IMAGE, VIDEO, GIF, ya `null`\n- **`bannerUrl`** — banner ka URL, ya `null`\n- **`isSuggested`** — admin ne pin kiya hai ya nahi\n- **`isOutOfRange`** — top-level flag (rows ke andar nahi)\n\nNaya param: **`suggestedOnly`**.\n\n---\n\n`bannerType` aur `bannerUrl` hamesha **saath** chalte hain — banner ka type set ho par media missing ho to **dono `null`** aate hain. Client ko `bannerUrl` ki alag null-check nahi chahiye.\n\nKey kabhi gayab nahi hoti — banner na ho to bhi `null` value ke saath aati hai."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Vouchers fetched successfully.\",\n  \"data\": {\n    \"total\": 34,\n    \"totalPages\": 2,\n    \"page\": 1,\n    \"limit\": 20,\n    \"isOutOfRange\": false,\n    \"data\": [\n      {\n        \"voucherId\": \"{{voucher_id}}\",\n        \"name\": \"flat 30% off on total bill\",\n        \"bannerType\": \"IMAGE\",\n        \"bannerUrl\": \"https://res.cloudinary.com/…/banner.jpg\",\n        \"isSuggested\": true,\n        \"brand\": {\n          \"id\": \"{{brand_id}}\",\n          \"brandName\": \"cafe mocha\",\n          \"isVerified\": true\n        },\n        \"nearestOutlet\": {\n          \"distance\": {\n            \"meters\": 420,\n            \"kilometers\": 0.42,\n            \"display\": \"420 m\"\n          }\n        },\n        \"outletCount\": 4,\n        \"offerCount\": 3,\n        \"isContainsAd\": false,\n        \"isFavorite\": false\n      },\n      {\n        \"voucherId\": \"…\",\n        \"name\": \"buy 1 get 1 on coffee\",\n        \"bannerType\": null,\n        \"bannerUrl\": null,\n        \"isSuggested\": false,\n        \"brand\": {\n          \"id\": \"…\",\n          \"brandName\": \"brew room\",\n          \"isVerified\": false\n        },\n        \"nearestOutlet\": {\n          \"distance\": {\n            \"meters\": 1800,\n            \"kilometers\": 1.8,\n            \"display\": \"1.8 km\"\n          }\n        },\n        \"outletCount\": 1,\n        \"offerCount\": 1,\n        \"isContainsAd\": false,\n        \"isFavorite\": false\n      }\n    ]\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Customer — Suggestions tab",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/vouchers/customer/get-all?suggestedOnly=true&limit=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "customer",
+                "get-all"
+              ],
+              "query": [
+                {
+                  "key": "suggestedOnly",
+                  "value": "true"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "### 🔄 Kya badla\n\nNaya param `suggestedOnly`, aur naya top-level `isOutOfRange` flag.\n\n---\n\n### `isOutOfRange` kab `true` hota hai\n\nSirf **is tab pe**, aur sirf tab jab customer ke aas-paas **ek bhi** suggested voucher na mile. Us case me backend distance limit hata deta hai aur door wale suggested vouchers bhej deta hai.\n\nWajah: jis sheher me curated brands abhi pahunche hi nahi, wahan tab bilkul khaali dikhta — jo customer ko **toota hua feature** lagta hai, geographic baat nahi.\n\n⚠️ `true` aane pe app ko honest hona chahiye — *\"aapke aas-paas nahi hain\"* jaisa note dikhayein. In rows ka `nearestOutlet.distance` bahut bada hoga.\n\n**Zaruri:** paas me ek bhi pin mil gaya to door wale **nahi** aayenge aur flag `false` rahega. Main feed (bina `suggestedOnly`) me ye fallback **kabhi nahi** chalta — wo hamesha geo-honest hai."
+          },
+          "response": [
+            {
+              "name": "200 — sirf pinned",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/vouchers/customer/get-all?suggestedOnly=true&limit=10",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "vouchers",
+                    "customer",
+                    "get-all"
+                  ],
+                  "query": [
+                    {
+                      "key": "suggestedOnly",
+                      "value": "true"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nNaya param `suggestedOnly`, aur naya top-level `isOutOfRange` flag.\n\n---\n\n### `isOutOfRange` kab `true` hota hai\n\nSirf **is tab pe**, aur sirf tab jab customer ke aas-paas **ek bhi** suggested voucher na mile. Us case me backend distance limit hata deta hai aur door wale suggested vouchers bhej deta hai.\n\nWajah: jis sheher me curated brands abhi pahunche hi nahi, wahan tab bilkul khaali dikhta — jo customer ko **toota hua feature** lagta hai, geographic baat nahi.\n\n⚠️ `true` aane pe app ko honest hona chahiye — *\"aapke aas-paas nahi hain\"* jaisa note dikhayein. In rows ka `nearestOutlet.distance` bahut bada hoga.\n\n**Zaruri:** paas me ek bhi pin mil gaya to door wale **nahi** aayenge aur flag `false` rahega. Main feed (bina `suggestedOnly`) me ye fallback **kabhi nahi** chalta — wo hamesha geo-honest hai."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Vouchers fetched successfully.\",\n  \"data\": {\n    \"total\": 3,\n    \"totalPages\": 1,\n    \"page\": 1,\n    \"limit\": 10,\n    \"isOutOfRange\": false,\n    \"data\": [\n      {\n        \"voucherId\": \"{{voucher_id}}\",\n        \"name\": \"flat 30% off on total bill\",\n        \"isSuggested\": true\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "200 — paas me kuch nahi tha, fallback laga",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/vouchers/customer/get-all?suggestedOnly=true&limit=10",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "vouchers",
+                    "customer",
+                    "get-all"
+                  ],
+                  "query": [
+                    {
+                      "key": "suggestedOnly",
+                      "value": "true"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nNaya param `suggestedOnly`, aur naya top-level `isOutOfRange` flag.\n\n---\n\n### `isOutOfRange` kab `true` hota hai\n\nSirf **is tab pe**, aur sirf tab jab customer ke aas-paas **ek bhi** suggested voucher na mile. Us case me backend distance limit hata deta hai aur door wale suggested vouchers bhej deta hai.\n\nWajah: jis sheher me curated brands abhi pahunche hi nahi, wahan tab bilkul khaali dikhta — jo customer ko **toota hua feature** lagta hai, geographic baat nahi.\n\n⚠️ `true` aane pe app ko honest hona chahiye — *\"aapke aas-paas nahi hain\"* jaisa note dikhayein. In rows ka `nearestOutlet.distance` bahut bada hoga.\n\n**Zaruri:** paas me ek bhi pin mil gaya to door wale **nahi** aayenge aur flag `false` rahega. Main feed (bina `suggestedOnly`) me ye fallback **kabhi nahi** chalta — wo hamesha geo-honest hai."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Vouchers fetched successfully.\",\n  \"data\": {\n    \"total\": 1,\n    \"totalPages\": 1,\n    \"page\": 1,\n    \"limit\": 10,\n    \"isOutOfRange\": true,\n    \"data\": [\n      {\n        \"voucherId\": \"…\",\n        \"name\": \"grill combo\",\n        \"isSuggested\": true,\n        \"nearestOutlet\": {\n          \"distance\": {\n            \"meters\": 1753000,\n            \"kilometers\": 1753,\n            \"display\": \"1753.0 km\"\n          }\n        }\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "404 — kahin bhi koi pin nahi",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/vouchers/customer/get-all?suggestedOnly=true&limit=10",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "vouchers",
+                    "customer",
+                    "get-all"
+                  ],
+                  "query": [
+                    {
+                      "key": "suggestedOnly",
+                      "value": "true"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nNaya param `suggestedOnly`, aur naya top-level `isOutOfRange` flag.\n\n---\n\n### `isOutOfRange` kab `true` hota hai\n\nSirf **is tab pe**, aur sirf tab jab customer ke aas-paas **ek bhi** suggested voucher na mile. Us case me backend distance limit hata deta hai aur door wale suggested vouchers bhej deta hai.\n\nWajah: jis sheher me curated brands abhi pahunche hi nahi, wahan tab bilkul khaali dikhta — jo customer ko **toota hua feature** lagta hai, geographic baat nahi.\n\n⚠️ `true` aane pe app ko honest hona chahiye — *\"aapke aas-paas nahi hain\"* jaisa note dikhayein. In rows ka `nearestOutlet.distance` bahut bada hoga.\n\n**Zaruri:** paas me ek bhi pin mil gaya to door wale **nahi** aayenge aur flag `false` rahega. Main feed (bina `suggestedOnly`) me ye fallback **kabhi nahi** chalta — wo hamesha geo-honest hai."
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"No any voucher found\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Customer — voucher detail (banner fields)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/vouchers/customer/get/{{voucher_id}}?latitude=22.7533&longitude=75.8937",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "customer",
+                "get",
+                "{{voucher_id}}"
+              ],
+              "query": [
+                {
+                  "key": "latitude",
+                  "value": "22.7533"
+                },
+                {
+                  "key": "longitude",
+                  "value": "75.8937"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "### 🔄 Kya badla\n\n`bannerType` + `bannerUrl` — list wali hi shape."
+          },
+          "response": [
+            {
+              "name": "200 — video banner",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/vouchers/customer/get/{{voucher_id}}?latitude=22.7533&longitude=75.8937",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "vouchers",
+                    "customer",
+                    "get",
+                    "{{voucher_id}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "latitude",
+                      "value": "22.7533"
+                    },
+                    {
+                      "key": "longitude",
+                      "value": "75.8937"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\n`bannerType` + `bannerUrl` — list wali hi shape."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Voucher fetched successfully.\",\n  \"data\": {\n    \"voucherId\": \"{{voucher_id}}\",\n    \"name\": \"flat 30% off on total bill\",\n    \"bannerType\": \"VIDEO\",\n    \"bannerUrl\": \"https://res.cloudinary.com/…/banner.mp4\",\n    \"version\": {\n      \"id\": \"…\",\n      \"versionNumber\": 3,\n      \"offers\": [\n        \"… saare offers\"\n      ]\n    },\n    \"selectedOutlet\": null,\n    \"outlets\": [\n      \"… saare outlets, nearest first\"\n    ],\n    \"outletCount\": 4\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Customer — brand directory",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/brands/customer/get-all?limit=20&sortBy=TOP_FIRST",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "brands",
+                "customer",
+                "get-all"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "sortBy",
+                  "value": "TOP_FIRST"
+                },
+                {
+                  "key": "latitude",
+                  "value": "22.7533",
+                  "disabled": true
+                },
+                {
+                  "key": "longitude",
+                  "value": "75.8937",
+                  "disabled": true
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "### 🔄 Kya badla\n\nNaya endpoint. Pehle koi brand-list endpoint tha hi nahi.\n\n---\n\n**Query params:**\n\n| Param | Default | Notes |\n|---|---|---|\n| `page` / `limit` | `1` / `10` | `limit` max 50 |\n| `search` | – | `brandName` pe case-insensitive |\n| `categoryId` / `subCategoryId` | – | Filter |\n| `topOnly` | `false` | `true` → sirf Top Brands tab |\n| `sortBy` | `TOP_FIRST` | `TOP_FIRST` \\| `NEWEST` \\| `FOLLOWERS` \\| `NAME` \\| `DISTANCE` |\n| `latitude` / `longitude` | – | **Dono saath**, warna `422` |\n\n### Geo optional hai\n\nCoordinates do to har row pe `distanceInMeters` aayega (brand ke **sabse paas ke outlet** ki doori) aur `sortBy=DISTANCE` kaam karega. Na do to ye simple directory hai — koi geo kaam hota hi nahi, aur `DISTANCE` chupchaap `NEWEST` ban jaata hai.\n\n⚠️ **Main list me curation proximity se upar hai** — `sortBy=DISTANCE` pe bhi pinned brands pehle aayenge. Purely nearest-first chahiye to pinned block ko UI me alag treat karein.\n\nYe list **card** ke liye hai — features/showcase/outlets detail ke liye `GET /brands/customer/get/:brandId`."
+          },
+          "response": [
+            {
+              "name": "200 — top brand pehle",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/brands/customer/get-all?limit=20&sortBy=TOP_FIRST",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "brands",
+                    "customer",
+                    "get-all"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "20"
+                    },
+                    {
+                      "key": "sortBy",
+                      "value": "TOP_FIRST"
+                    },
+                    {
+                      "key": "latitude",
+                      "value": "22.7533",
+                      "disabled": true
+                    },
+                    {
+                      "key": "longitude",
+                      "value": "75.8937",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nNaya endpoint. Pehle koi brand-list endpoint tha hi nahi.\n\n---\n\n**Query params:**\n\n| Param | Default | Notes |\n|---|---|---|\n| `page` / `limit` | `1` / `10` | `limit` max 50 |\n| `search` | – | `brandName` pe case-insensitive |\n| `categoryId` / `subCategoryId` | – | Filter |\n| `topOnly` | `false` | `true` → sirf Top Brands tab |\n| `sortBy` | `TOP_FIRST` | `TOP_FIRST` \\| `NEWEST` \\| `FOLLOWERS` \\| `NAME` \\| `DISTANCE` |\n| `latitude` / `longitude` | – | **Dono saath**, warna `422` |\n\n### Geo optional hai\n\nCoordinates do to har row pe `distanceInMeters` aayega (brand ke **sabse paas ke outlet** ki doori) aur `sortBy=DISTANCE` kaam karega. Na do to ye simple directory hai — koi geo kaam hota hi nahi, aur `DISTANCE` chupchaap `NEWEST` ban jaata hai.\n\n⚠️ **Main list me curation proximity se upar hai** — `sortBy=DISTANCE` pe bhi pinned brands pehle aayenge. Purely nearest-first chahiye to pinned block ko UI me alag treat karein.\n\nYe list **card** ke liye hai — features/showcase/outlets detail ke liye `GET /brands/customer/get/:brandId`."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Brands fetched successfully\",\n  \"data\": {\n    \"total\": 48,\n    \"totalPages\": 3,\n    \"page\": 1,\n    \"limit\": 20,\n    \"data\": [\n      {\n        \"_id\": \"{{brand_id}}\",\n        \"brandName\": \"cafe mocha\",\n        \"logo\": \"https://res.cloudinary.com/…/mocha-logo.jpg\",\n        \"coverImage\": \"https://res.cloudinary.com/…/mocha-cover.jpg\",\n        \"uniqueId\": \"TDB000078\",\n        \"followersCount\": 1243,\n        \"isTopBrand\": true,\n        \"isVerified\": true,\n        \"outletCount\": 4,\n        \"category\": {\n          \"_id\": \"…\",\n          \"name\": \"food and beverages\"\n        },\n        \"subCategory\": {\n          \"_id\": \"…\",\n          \"name\": \"cafe\"\n        }\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "422 — sirf latitude bheja",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/brands/customer/get-all?limit=20&sortBy=TOP_FIRST",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "brands",
+                    "customer",
+                    "get-all"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "20"
+                    },
+                    {
+                      "key": "sortBy",
+                      "value": "TOP_FIRST"
+                    },
+                    {
+                      "key": "latitude",
+                      "value": "22.7533",
+                      "disabled": true
+                    },
+                    {
+                      "key": "longitude",
+                      "value": "75.8937",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nNaya endpoint. Pehle koi brand-list endpoint tha hi nahi.\n\n---\n\n**Query params:**\n\n| Param | Default | Notes |\n|---|---|---|\n| `page` / `limit` | `1` / `10` | `limit` max 50 |\n| `search` | – | `brandName` pe case-insensitive |\n| `categoryId` / `subCategoryId` | – | Filter |\n| `topOnly` | `false` | `true` → sirf Top Brands tab |\n| `sortBy` | `TOP_FIRST` | `TOP_FIRST` \\| `NEWEST` \\| `FOLLOWERS` \\| `NAME` \\| `DISTANCE` |\n| `latitude` / `longitude` | – | **Dono saath**, warna `422` |\n\n### Geo optional hai\n\nCoordinates do to har row pe `distanceInMeters` aayega (brand ke **sabse paas ke outlet** ki doori) aur `sortBy=DISTANCE` kaam karega. Na do to ye simple directory hai — koi geo kaam hota hi nahi, aur `DISTANCE` chupchaap `NEWEST` ban jaata hai.\n\n⚠️ **Main list me curation proximity se upar hai** — `sortBy=DISTANCE` pe bhi pinned brands pehle aayenge. Purely nearest-first chahiye to pinned block ko UI me alag treat karein.\n\nYe list **card** ke liye hai — features/showcase/outlets detail ke liye `GET /brands/customer/get/:brandId`."
+              },
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"latitude and longitude must be provided together\"\n}"
+            },
+            {
+              "name": "404 — koi match nahi (empty state)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/brands/customer/get-all?limit=20&sortBy=TOP_FIRST",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "brands",
+                    "customer",
+                    "get-all"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "20"
+                    },
+                    {
+                      "key": "sortBy",
+                      "value": "TOP_FIRST"
+                    },
+                    {
+                      "key": "latitude",
+                      "value": "22.7533",
+                      "disabled": true
+                    },
+                    {
+                      "key": "longitude",
+                      "value": "75.8937",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nNaya endpoint. Pehle koi brand-list endpoint tha hi nahi.\n\n---\n\n**Query params:**\n\n| Param | Default | Notes |\n|---|---|---|\n| `page` / `limit` | `1` / `10` | `limit` max 50 |\n| `search` | – | `brandName` pe case-insensitive |\n| `categoryId` / `subCategoryId` | – | Filter |\n| `topOnly` | `false` | `true` → sirf Top Brands tab |\n| `sortBy` | `TOP_FIRST` | `TOP_FIRST` \\| `NEWEST` \\| `FOLLOWERS` \\| `NAME` \\| `DISTANCE` |\n| `latitude` / `longitude` | – | **Dono saath**, warna `422` |\n\n### Geo optional hai\n\nCoordinates do to har row pe `distanceInMeters` aayega (brand ke **sabse paas ke outlet** ki doori) aur `sortBy=DISTANCE` kaam karega. Na do to ye simple directory hai — koi geo kaam hota hi nahi, aur `DISTANCE` chupchaap `NEWEST` ban jaata hai.\n\n⚠️ **Main list me curation proximity se upar hai** — `sortBy=DISTANCE` pe bhi pinned brands pehle aayenge. Purely nearest-first chahiye to pinned block ko UI me alag treat karein.\n\nYe list **card** ke liye hai — features/showcase/outlets detail ke liye `GET /brands/customer/get/:brandId`."
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"No any brand found\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Customer — Top Brands tab",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/brands/customer/get-all?topOnly=true&limit=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "brands",
+                "customer",
+                "get-all"
+              ],
+              "query": [
+                {
+                  "key": "topOnly",
+                  "value": "true"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "### 🔄 Kya badla\n\nNaya endpoint.\n\n---\n\nIs tab me **curation hi ordering hai** — `topOrder` ke hisaab se. `sortBy=DISTANCE` bhejne pe bhi wahi order rahega, kyunki yahan sab rows already curated hain.\n\n⚠️ Deactivated pinned brands yahan **nahi** aate. Admin ke view (`10` folder) me aate hain, taaki unhe unpin kiya ja sake."
+          },
+          "response": [
+            {
+              "name": "200 — sirf pinned",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/brands/customer/get-all?topOnly=true&limit=10",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "brands",
+                    "customer",
+                    "get-all"
+                  ],
+                  "query": [
+                    {
+                      "key": "topOnly",
+                      "value": "true"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "### 🔄 Kya badla\n\nNaya endpoint.\n\n---\n\nIs tab me **curation hi ordering hai** — `topOrder` ke hisaab se. `sortBy=DISTANCE` bhejne pe bhi wahi order rahega, kyunki yahan sab rows already curated hain.\n\n⚠️ Deactivated pinned brands yahan **nahi** aate. Admin ke view (`10` folder) me aate hain, taaki unhe unpin kiya ja sake."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Brands fetched successfully\",\n  \"data\": {\n    \"total\": 6,\n    \"totalPages\": 1,\n    \"page\": 1,\n    \"limit\": 10,\n    \"data\": [\n      {\n        \"_id\": \"{{brand_id}}\",\n        \"brandName\": \"cafe mocha\",\n        \"isTopBrand\": true,\n        \"isVerified\": true,\n        \"outletCount\": 4\n      }\n    ]\n  }\n}"
             }
           ]
         }

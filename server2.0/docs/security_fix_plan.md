@@ -3,7 +3,7 @@
 **Round:** 2026-08-26
 **Open findings** → [security_findings.md](./security_findings.md)
 
-Ye record hai ki kya-kya badla aur **kyun**, taaki baad me koi code padhe to design ka reason mile. Har item verify ho chuka hai — do suites scratch DB pe (real Atlas replica set, real transactions): **34/34** aur **27/27** pass. `Trydood2` ko chhua nahi gaya.
+Ye record hai ki kya-kya badla aur **kyun**, taaki baad me koi code padhe to design ka reason mile. Har item verify ho chuka hai — scratch DB pe (real Atlas replica set, real transactions): **34/34**, **27/27**, **7/7**, **44/44**, **9/9**, **33/33**, **69/69** pass. `Trydood2` ko ek baar bhi chhua nahi gaya.
 
 ---
 
@@ -36,15 +36,15 @@ Ye record hai ki kya-kya badla aur **kyun**, taaki baad me koi code padhe to des
 - **Password hash response se strip** — `helpers/users/sanitizeUser.js`.
 - **`scripts/seedAdmin.js`** — dry-run default, `--apply` chahiye.
 
-### Access control — 143/143 routes gated
+### Access control — 149/149 routes gated
 
 | Gate | Routes |
 |---|---:|
-| `isAdmin` | 49 |
-| `isVendorOrAdmin` | 39 |
-| `verifyJwtToken` *(sab roles ke reads)* | 25 |
+| `isAdmin` | 53 |
+| `isVendorOrAdmin` | 40 |
+| `verifyJwtToken` *(sab roles ke reads)* | 24 |
 | `isVendor` *(onboarding + KYC)* | 11 |
-| `isCustomer` | 9 |
+| `isCustomer` | 11 |
 | Public *(9 auth entry points + Razorpay webhook)* | 10 |
 
 Pehle 35 endpoints bilkul ungated the — customer ke token se app ke banners create/delete ho sakte the, kisi bhi brand ka showcase edit ho sakta tha, `locations/getAll` se platform ke saare addresses mil jaate the.
@@ -67,6 +67,19 @@ Pehle 35 endpoints bilkul ungated the — customer ke token se app ke banners cr
 - **Zipcode validator** — `country` optional documented hai par uska default lagne se **pehle** validator chalta tha, to `country` omit karne pe har zipcode reject ho jaata tha.
 - **`PERCENTAGE` magic string** enum se replace (CLAUDE.md rule).
 
+### Customer-facing (voucher & brand features round)
+
+Poora plan + har decision ka reason → [voucher_brand_features_plan.md](./voucher_brand_features_plan.md)
+
+- **Customer brand endpoints alag banaye** — `/brands/customer/get/:brandId` (profile) aur `/brands/customer/get-all` (directory + Top Brands tab). `/brands/get` ko role-filter karke nahi, kyunki us pipeline se 6 sensitive joins strip karne wala projection ek edit door hai leak se.
+- **Voucher banner fields** — `bannerType` + `bannerUrl` list aur detail dono me. `pickVoucherBanner` helper dono ko **saath** resolve karta hai: type set ho par media missing ho to dono `null`, taaki client ko do alag null-checks na karne padein.
+- **Admin curation** — `isSuggested`/`isTopBrand` model pe **flag** hain, join table nahi. Isse customer listing seedha us flag pe sort karti hai — har page pe extra lookup nahi.
+- **Tab aur "view more" ek hi endpoint se** — `suggestedOnly` / `topOnly` sirf usi sorted set ko narrow karte hain. Do lists concat karne se pinned rows page 2 pe repeat hote aur client ko dedupe karna padta.
+- **Stale curation apne aap chhup jaati hai** — customer list already sirf `PUBLISHED` + valid-date vouchers aur `isActive` brands dikhati hai. Admin ko manually unpin nahi karna padta. **Par admin ke apne view me wo dikhte hain**, warna list se gayab ho jaate aur flag DB me pinned reh jaata — unpin karna hi namumkin ho jaata.
+- **Convenience fee** — `Setting.customer.convenienceFee` se, constants sirf fallback. **Original bill** pe lagti hai, discount ke baad wale pe nahi — warna har offer ke saath fee badalti aur offer comparison ki har row pe alag fee dikhani padti.
+- **No-offer ab error nahi** — `calculateVoucherOffer` bill offer minimum se kam hone pe `400` throw karta tha, jo customer ko *"tumhara bill galat hai"* padhta tha. Ab `200` + `offerApplied: false`, aur fee bhi `0`. `billAmount <= 0` phir bhi `400` hai — wo malformed input hai, business case nahi.
+- **Suggestions tab ka geo fallback** — paas me ek bhi pin na mile to distance limit hat jaati hai aur `isOutOfRange: true` aata hai. Jis sheher me curated brands pahunche hi nahi, wahan khaali tab **toota feature** lagta hai. Main feed me ye fallback kabhi nahi chalta.
+
 ---
 
 ## Frontend ko batane wale changes
@@ -81,3 +94,8 @@ Pehle 35 endpoints bilkul ungated the — customer ke token se app ke banners cr
 | `locations/upsert` body ka `userId` ignore | Bhejna band karein |
 | `showcase/section/get-all` ab `brandId` accept karta hai | Vendor ke liye optional, admin ke liye narrowing filter |
 | Legal create me `type` ab **required** | `"VENDOR"` / `"CUSTOMER"` jaisa audience marker |
+| Customer app `/brands/get` pe ab `403` | `/brands/customer/get/:brandId` pe shift karein |
+| Preview se `"No eligible offer found…"` **hat gaya** | `200` + `offerApplied: false` handle karein |
+| Preview me naya `pricing` block | `pricing.payableAmount` charge karein — fee client-side calculate **mat** karein |
+| Voucher rows pe `bannerType` / `bannerUrl` / `isSuggested` | Additive. Banner na ho to dono `null` |
+| Voucher list pe top-level `isOutOfRange` | Sirf `suggestedOnly=true` pe `true` ho sakta hai — "aas-paas nahi hain" note dikhayein |

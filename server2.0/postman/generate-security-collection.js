@@ -12,8 +12,10 @@ const fs = require("fs");
 const path = require("path");
 
 const { ROLES, LOGIN_TYPES, ADDRESS_TYPES } = require("../constants");
-const { VOUCHER_DISCOUNT_TYPES } = require("../constants/voucher");
+const { VOUCHER_DISCOUNT_TYPES, VOUCHER_SORT_BY } = require("../constants/voucher");
 const { SHOWCASE_SECTION_TYPE } = require("../constants/showcase");
+const { VOUCHER_BANNER_TYPE } = require("../constants/voucherBanner");
+const { CONVENIENCE_FEE_DEFAULTS } = require("../constants/customer");
 
 const OUT = __dirname;
 const ENV_DIR = path.join(OUT, "environments");
@@ -1383,13 +1385,649 @@ const vouchersFolder = folder(
             eligibleOffers: [],
           }),
         },
+        { name: "400 — outlet linked nahi", code: 400, status: "Bad Request", body: err("Selected outlet is not linked with this voucher.") },
+      ],
+    }),
+  ],
+);
+
+// =============================================================== 09 PRICING
+//
+// Slab table is derived from the real defaults, so it cannot drift from
+// constants/customer.js. Note these are only fallbacks — the live numbers come
+// from Setting.customer.convenienceFee.
+const { slabSize, feePerSlab } = CONVENIENCE_FEE_DEFAULTS;
+const feeFor = (bill) => Math.ceil(bill / slabSize) * feePerSlab;
+const FEE_TABLE = [1, 2, 3, 4]
+  .map((n) => {
+    const from = (n - 1) * slabSize + 1;
+    const to = n * slabSize;
+    return `| ₹${from} – ₹${to} | ₹${feeFor(to)} |`;
+  })
+  .join("\n");
+
+const pricingFolder = folder(
+  "09 — Pricing (convenience fee + no-offer fallback)",
+  "Do changes jo saath chalte hain — dono `previewCustomerVoucher` pe.\n\n" +
+    "### 1. Convenience fee\n\n" +
+    `Har **₹${slabSize}** (ya uska part) pe **₹${feePerSlab}**:\n\n` +
+    "| Bill | Fee |\n|---|---:|\n" +
+    FEE_TABLE +
+    `\n| … har agle ₹${slabSize} pe | +₹${feePerSlab} |\n\n` +
+    `Formula: \`ceil(bill / ${slabSize}) × ${feePerSlab}\`\n\n` +
+    "Fee **original bill** pe lagti hai, discount ke baad wale amount pe nahi — warna " +
+    "har offer ke saath fee badalti aur customer ko arbitrary lagti.\n\n" +
+    "⚠️ Ye numbers **defaults** hain. Live values `Setting.customer.convenienceFee` se " +
+    "aati hain — admin slab size, per-slab amount badal sakta hai ya fee band kar sakta hai. " +
+    "**Client ko fee calculate nahi karni — `pricing.convenienceFee` use karein.**\n\n" +
+    "### 2. Koi offer valid na ho to error nahi\n\n" +
+    "Pehle bill kisi bhi offer ke `minBillAmount` se kam hone pe `400 \"No eligible offer " +
+    "found for this bill amount.\"` aata tha — customer ko lagta tha uska bill galat hai. " +
+    "Ab `200` + `offerApplied: false`, aur wo sirf apna bill pay karta hai: koi offer, " +
+    "koi promo, **koi convenience fee nahi**.",
+  [
+    req({
+      name: "Preview — offer applies (fee lagti hai)",
+      method: "POST",
+      segments: ["vouchers", "customer", "voucher", "preview"],
+      token: "customer_token",
+      body: { voucherId: "{{voucher_id}}", outletId: "{{sub_brand_id}}", billAmount: 1200 },
+      changed:
+        "Do naye fields:\n\n" +
+        "- **`offerApplied`** — boolean. `false` pe client offer section chhupa de.\n" +
+        "- **`pricing`** — checkout ki saari rows, already totalled. Client ko koi " +
+        "arithmetic nahi karni.",
+      description:
+        "`pricing.payableAmount` = `billAmount − discountAmount + convenienceFee`. " +
+        "**Yahi charge karna hai.**\n\n" +
+        "`pricing.promoDiscount` abhi hamesha `0` hai — customer-side promo codes wire " +
+        "nahi hue (`PromoCode` sirf vendor subscription checkout serve karta hai). Row " +
+        "isliye rakhi hai ki jab aayein to response shape na badle.",
+      examples: [
         {
-          name: "400 — bill kam hai",
+          name: "200 — bill ₹1200, 30% off (cap ₹300)",
+          code: 200,
+          status: "OK",
+          body: ok("Voucher preview calculated successfully.", {
+            voucher: { id: "{{voucher_id}}", name: "flat 30% off on total bill" },
+            version: { id: "…", versionNumber: 3 },
+            outlet: { id: "{{sub_brand_id}}", storeId: "TS-87HD-48L3-PZYW" },
+            billAmount: 1200,
+            offerApplied: true,
+            selectedOffer: {
+              offerId: "…",
+              title: "30% off above 500",
+              discountType: VOUCHER_DISCOUNT_TYPES.PERCENTAGE,
+              discountValue: 30,
+              minBillAmount: 500,
+              maxDiscountAmount: 300,
+              discountAmount: 300,
+              finalAmount: 900,
+            },
+            eligibleOffers: ["… same shape, best-first"],
+            pricing: {
+              billAmount: 1200,
+              discountAmount: 300,
+              promoDiscount: 0,
+              convenienceFee: feeFor(1200),
+              payableAmount: 1200 - 300 + feeFor(1200),
+              totalSavings: 300,
+            },
+          }),
+        },
+      ],
+    }),
+
+    req({
+      name: "Preview — bill offer minimum se kam (ab 200, error nahi)",
+      method: "POST",
+      segments: ["vouchers", "customer", "voucher", "preview"],
+      token: "customer_token",
+      body: { voucherId: "{{voucher_id}}", outletId: "{{sub_brand_id}}", billAmount: 300 },
+      changed:
+        "**Ye pehle `400` deta tha.** Ab `200` + `offerApplied: false` — customer sirf " +
+        "apna bill pay karega.",
+      description:
+        "Do case me aisa hota hai:\n\n" +
+        "1. Bill har offer ke `minBillAmount` se kam hai\n" +
+        "2. Voucher version me koi offer hai hi nahi\n\n" +
+        "Dono ka jawab same hai — **fee bhi `0`**.\n\n" +
+        "Client ka kaam: `offerApplied === false` pe offer section chhupa dein aur seedha " +
+        "`pricing.payableAmount` dikhayein.",
+      examples: [
+        {
+          name: "200 — koi offer nahi, plain bill",
+          code: 200,
+          status: "OK",
+          body: ok("Voucher preview calculated successfully.", {
+            voucher: { id: "{{voucher_id}}", name: "flat 30% off on total bill" },
+            version: { id: "…", versionNumber: 3 },
+            outlet: { id: "{{sub_brand_id}}", storeId: "TS-87HD-48L3-PZYW" },
+            billAmount: 300,
+            offerApplied: false,
+            selectedOffer: null,
+            eligibleOffers: [],
+            pricing: {
+              billAmount: 300,
+              discountAmount: 0,
+              promoDiscount: 0,
+              convenienceFee: 0,
+              payableAmount: 300,
+              totalSavings: 0,
+            },
+          }),
+        },
+        {
+          name: "400 — bill ≤ 0 ab bhi error hai",
           code: 400,
           status: "Bad Request",
-          body: err("No eligible offer found for this bill amount."),
+          body: err("Valid bill amount is required."),
         },
-        { name: "400 — outlet linked nahi", code: 400, status: "Bad Request", body: err("Selected outlet is not linked with this voucher.") },
+      ],
+    }),
+  ],
+);
+
+// =============================================================== 10 CURATION
+const CURATION_NOTE =
+  "**Ek hi endpoint add aur remove dono karta hai** — flag `false` bhejna hi remove hai " +
+  "(jaise `subBrands/update` me `isActive`). Already pinned entry pe naya order bhejna " +
+  "reorder hai.\n\n" +
+  "Stamp (`…At` / `…By`) sirf **pehli** baar pin karne pe likha jaata hai — reorder karne " +
+  "se ye nahi badalta, to record rehta hai ki pehle kisne chuna tha.";
+
+const curationFolder = folder(
+  "10 — Admin curation (suggestions + top brands)",
+  "Admin do curated lists chalata hai: vouchers ki **Suggestions** aur brands ki " +
+    "**Top Brands**. Dono ka pattern bilkul same hai.\n\n" +
+    "### Storage\n\n" +
+    "Join table nahi, **model pe flag** (`isSuggested` / `isTopBrand` + order + audit " +
+    "stamps). Isse customer listing seedha us flag pe sort karti hai — har page pe ek " +
+    "extra lookup ka kharcha nahi padta.\n\n" +
+    "### Stale entries apne aap chhup jaati hain\n\n" +
+    "Customer list already sirf `PUBLISHED` + valid-date vouchers aur `isActive` brands " +
+    "dikhati hai. To pinned voucher expire ho jaaye ya brand deactivate ho jaaye, wo " +
+    "customer ko dikhna band ho jaata hai — **admin ko manually hataana nahi padta**.\n\n" +
+    "⚠️ Lekin **admin ke apne view me wo dikhte hain** — warna list se gayab ho jaate aur " +
+    "flag DB me pinned hi reh jaata, jise unpin karna namumkin ho jaata.",
+  [
+    req({
+      name: "Admin — voucher ko suggestions me daalo",
+      method: "PUT",
+      segments: ["vouchers", "admin", "suggestions", "{{voucher_id}}"],
+      token: "admin_token",
+      body: { isSuggested: true, suggestionOrder: 1 },
+      changed: "Naya endpoint.",
+      description:
+        CURATION_NOTE +
+        "\n\n**Body:**\n\n" +
+        "| Field | Type | Required | Notes |\n|---|---|---|---|\n" +
+        "| `isSuggested` | boolean | ✅ | `false` = remove |\n" +
+        "| `suggestionOrder` | number | ❌ | Integer ≥ 0. Chhota pehle. Sirf pin karte waqt matlab rakhta hai |",
+      examples: [
+        {
+          name: "200 — pin ho gaya",
+          code: 200,
+          status: "OK",
+          body: ok("Voucher added to suggestions successfully.", {
+            _id: "{{voucher_id}}",
+            isSuggested: true,
+            suggestionOrder: 1,
+            suggestedAt: "2026-08-26T10:12:00.000Z",
+            name: "flat 30% off on total bill",
+            voucherCode: "VCH-10000001",
+            status: "PUBLISHED",
+          }),
+        },
+        {
+          name: "404 — voucher nahi mila",
+          code: 404,
+          status: "Not Found",
+          body: err("Voucher not found."),
+        },
+        {
+          name: "403 — vendor token se",
+          code: 403,
+          status: "Forbidden",
+          body: err("Forbidden: You do not have permission to perform this action."),
+        },
+      ],
+    }),
+
+    req({
+      name: "Admin — voucher ko suggestions se hatao",
+      method: "PUT",
+      segments: ["vouchers", "admin", "suggestions", "{{voucher_id}}"],
+      token: "admin_token",
+      body: { isSuggested: false },
+      changed: "Naya endpoint — upar wale ka hi doosra rukh.",
+      description:
+        "Remove karne pe `suggestionOrder` `0` ho jaata hai aur stamps **clear** ho jaate " +
+        "hain — taaki agli baar pin karne pe fresh stamp bane, purana inherit na ho.",
+      examples: [
+        {
+          name: "200 — hat gaya",
+          code: 200,
+          status: "OK",
+          body: ok("Voucher removed from suggestions successfully.", {
+            _id: "{{voucher_id}}",
+            isSuggested: false,
+            suggestionOrder: 0,
+            suggestedAt: null,
+            name: "flat 30% off on total bill",
+            voucherCode: "VCH-10000001",
+            status: "PUBLISHED",
+          }),
+        },
+      ],
+    }),
+
+    req({
+      name: "Admin — suggested vouchers list",
+      method: "GET",
+      segments: ["vouchers", "admin", "suggestions"],
+      token: "admin_token",
+      query: [{ key: "page", value: "1" }, { key: "limit", value: "10" }],
+      changed: "Naya endpoint.",
+      description:
+        "**Ye customer wali list nahi hai.** Customer pipeline expire/unpublished vouchers " +
+        "chhupa deti hai — jo app ke liye sahi hai, par admin screen pe wo pin gayab ho " +
+        "jaata jise wo hataana chahta hai.\n\n" +
+        "Isliye yahan **sab** pinned vouchers aate hain. Har row pe `status` batata hai " +
+        "kaunsa abhi live hai.\n\n" +
+        "`banner` object flatten hoke `bannerType` + `bannerUrl` ban jaata hai — wahi shape " +
+        "jo customer list me hai.",
+      examples: [
+        {
+          name: "200 — list",
+          code: 200,
+          status: "OK",
+          body: ok("Suggested vouchers fetched successfully.", {
+            total: 2,
+            totalPages: 1,
+            page: 1,
+            limit: 10,
+            data: [
+              {
+                _id: "{{voucher_id}}",
+                name: "flat 30% off on total bill",
+                voucherCode: "VCH-10000001",
+                status: "PUBLISHED",
+                isActive: true,
+                suggestionOrder: 1,
+                suggestedAt: "2026-08-26T10:12:00.000Z",
+                bannerType: VOUCHER_BANNER_TYPE.IMAGE,
+                bannerUrl: "https://res.cloudinary.com/…/banner.jpg",
+                brand: { _id: "{{brand_id}}", brandName: "cafe mocha", uniqueId: "TDB000078" },
+                suggestedByUser: { _id: "{{admin_user_id}}", name: "super admin" },
+              },
+              {
+                _id: "…",
+                name: "buy 1 get 1",
+                voucherCode: "VCH-10000007",
+                status: "EXPIRED",
+                isActive: true,
+                suggestionOrder: 2,
+                suggestedAt: "2026-08-20T09:00:00.000Z",
+                bannerType: null,
+                bannerUrl: null,
+                brand: { _id: "…", brandName: "pizza point", uniqueId: "TDB000091" },
+                suggestedByUser: { _id: "{{admin_user_id}}", name: "super admin" },
+              },
+            ],
+          }),
+        },
+        {
+          name: "404 — koi pin nahi (empty state)",
+          code: 404,
+          status: "Not Found",
+          body: err("No any voucher found"),
+        },
+      ],
+    }),
+
+    req({
+      name: "Admin — brand ko top brands me daalo",
+      method: "PUT",
+      segments: ["brands", "admin", "top-brands", "{{brand_id}}"],
+      token: "admin_token",
+      body: { isTopBrand: true, topOrder: 1 },
+      changed: "Naya endpoint.",
+      description:
+        CURATION_NOTE +
+        "\n\n**Body:**\n\n" +
+        "| Field | Type | Required | Notes |\n|---|---|---|---|\n" +
+        "| `isTopBrand` | boolean | ✅ | `false` = remove |\n" +
+        "| `topOrder` | number | ❌ | Integer ≥ 0. Chhota pehle |\n\n" +
+        "Deactivated brand bhi pin ho sakta hai — wo customer tab me nahi dikhega, par " +
+        "admin ke view me rahega.",
+      examples: [
+        {
+          name: "200 — pin ho gaya",
+          code: 200,
+          status: "OK",
+          body: ok("Brand added to top brands successfully.", {
+            _id: "{{brand_id}}",
+            isTopBrand: true,
+            topOrder: 1,
+            topAddedAt: "2026-08-26T10:14:00.000Z",
+            brandName: "cafe mocha",
+            uniqueId: "TDB000078",
+            isActive: true,
+          }),
+        },
+        { name: "404 — brand nahi mila", code: 404, status: "Not Found", body: err("Brand not found!") },
+      ],
+    }),
+
+    req({
+      name: "Admin — top brands list",
+      method: "GET",
+      segments: ["brands", "admin", "top-brands"],
+      token: "admin_token",
+      query: [{ key: "page", value: "1" }, { key: "limit", value: "10" }],
+      changed: "Naya endpoint.",
+      description:
+        "Suggested-vouchers list ka mirror. Isme **deactivated brands bhi** aate hain " +
+        "(`isActive: false`) — customer tab unhe chhupa deta hai, par admin ko unhe unpin " +
+        "karne ke liye dikhna zaruri hai.",
+      examples: [
+        {
+          name: "200 — list",
+          code: 200,
+          status: "OK",
+          body: ok("Top brands fetched successfully.", {
+            total: 1,
+            totalPages: 1,
+            page: 1,
+            limit: 10,
+            data: [
+              {
+                _id: "{{brand_id}}",
+                brandName: "cafe mocha",
+                uniqueId: "TDB000078",
+                logo: "https://res.cloudinary.com/…/mocha-logo.jpg",
+                followersCount: 1243,
+                isActive: true,
+                topOrder: 1,
+                topAddedAt: "2026-08-26T10:14:00.000Z",
+                category: { _id: "…", name: "food and beverages" },
+                topAddedByUser: { _id: "{{admin_user_id}}", name: "super admin" },
+              },
+            ],
+          }),
+        },
+      ],
+    }),
+  ],
+);
+
+// =============================================================== 11 CUSTOMER LISTS
+const customerListsFolder = folder(
+  "11 — Customer lists (tabs + banner fields)",
+  "Curation ka customer-facing side, plus voucher banner fields.\n\n" +
+    "### Tab aur \"view more\" ek hi endpoint se\n\n" +
+    "| UI | Call |\n|---|---|\n" +
+    "| Suggestions / Top Brands tab | `?suggestedOnly=true` / `?topOnly=true` |\n" +
+    "| View more (poori list) | *param na bhejein* — pinned upar, phir baaki |\n\n" +
+    "**Pagination apne aap sahi rehti hai.** Ye do lists jodkar nahi banti — ek hi sorted " +
+    "result set hai jisme curated flag pehli sort key hai. Isliye pinned rows page 1 pe " +
+    "upar aate hain aur page 2 pe **dobara nahi**. Client ko dedupe nahi karna padta.",
+  [
+    req({
+      name: "Customer — vouchers (main feed, suggested upar)",
+      method: "GET",
+      segments: ["vouchers", "customer", "get-all"],
+      token: "customer_token",
+      query: [
+        { key: "latitude", value: "22.7533" },
+        { key: "longitude", value: "75.8937" },
+        { key: "sortBy", value: VOUCHER_SORT_BY.DISTANCE },
+        { key: "limit", value: "20" },
+      ],
+      changed:
+        "Naye fields:\n\n" +
+        `- **\`bannerType\`** — ${list(VOUCHER_BANNER_TYPE)}, ya \`null\`\n` +
+        "- **`bannerUrl`** — banner ka URL, ya `null`\n" +
+        "- **`isSuggested`** — admin ne pin kiya hai ya nahi\n" +
+        "- **`isOutOfRange`** — top-level flag (rows ke andar nahi)\n\n" +
+        "Naya param: **`suggestedOnly`**.",
+      description:
+        "`bannerType` aur `bannerUrl` hamesha **saath** chalte hain — banner ka type set " +
+        "ho par media missing ho to **dono `null`** aate hain. Client ko `bannerUrl` ki " +
+        "alag null-check nahi chahiye.\n\n" +
+        "Key kabhi gayab nahi hoti — banner na ho to bhi `null` value ke saath aati hai.",
+      examples: [
+        {
+          name: "200 — pinned voucher pehle",
+          code: 200,
+          status: "OK",
+          body: ok("Vouchers fetched successfully.", {
+            total: 34,
+            totalPages: 2,
+            page: 1,
+            limit: 20,
+            isOutOfRange: false,
+            data: [
+              {
+                voucherId: "{{voucher_id}}",
+                name: "flat 30% off on total bill",
+                bannerType: VOUCHER_BANNER_TYPE.IMAGE,
+                bannerUrl: "https://res.cloudinary.com/…/banner.jpg",
+                isSuggested: true,
+                brand: { id: "{{brand_id}}", brandName: "cafe mocha", isVerified: true },
+                nearestOutlet: { distance: { meters: 420, kilometers: 0.42, display: "420 m" } },
+                outletCount: 4,
+                offerCount: 3,
+                isContainsAd: false,
+                isFavorite: false,
+              },
+              {
+                voucherId: "…",
+                name: "buy 1 get 1 on coffee",
+                bannerType: null,
+                bannerUrl: null,
+                isSuggested: false,
+                brand: { id: "…", brandName: "brew room", isVerified: false },
+                nearestOutlet: { distance: { meters: 1800, kilometers: 1.8, display: "1.8 km" } },
+                outletCount: 1,
+                offerCount: 1,
+                isContainsAd: false,
+                isFavorite: false,
+              },
+            ],
+          }),
+        },
+      ],
+    }),
+
+    req({
+      name: "Customer — Suggestions tab",
+      method: "GET",
+      segments: ["vouchers", "customer", "get-all"],
+      token: "customer_token",
+      query: [
+        { key: "suggestedOnly", value: "true" },
+        { key: "limit", value: "10" },
+      ],
+      changed: "Naya param `suggestedOnly`, aur naya top-level `isOutOfRange` flag.",
+      description:
+        "### `isOutOfRange` kab `true` hota hai\n\n" +
+        "Sirf **is tab pe**, aur sirf tab jab customer ke aas-paas **ek bhi** suggested " +
+        "voucher na mile. Us case me backend distance limit hata deta hai aur door wale " +
+        "suggested vouchers bhej deta hai.\n\n" +
+        "Wajah: jis sheher me curated brands abhi pahunche hi nahi, wahan tab bilkul " +
+        "khaali dikhta — jo customer ko **toota hua feature** lagta hai, geographic baat " +
+        "nahi.\n\n" +
+        "⚠️ `true` aane pe app ko honest hona chahiye — *\"aapke aas-paas nahi hain\"* jaisa " +
+        "note dikhayein. In rows ka `nearestOutlet.distance` bahut bada hoga.\n\n" +
+        "**Zaruri:** paas me ek bhi pin mil gaya to door wale **nahi** aayenge aur flag " +
+        "`false` rahega. Main feed (bina `suggestedOnly`) me ye fallback **kabhi nahi** " +
+        "chalta — wo hamesha geo-honest hai.",
+      examples: [
+        {
+          name: "200 — sirf pinned",
+          code: 200,
+          status: "OK",
+          body: ok("Vouchers fetched successfully.", {
+            total: 3,
+            totalPages: 1,
+            page: 1,
+            limit: 10,
+            isOutOfRange: false,
+            data: [{ voucherId: "{{voucher_id}}", name: "flat 30% off on total bill", isSuggested: true }],
+          }),
+        },
+        {
+          name: "200 — paas me kuch nahi tha, fallback laga",
+          code: 200,
+          status: "OK",
+          body: ok("Vouchers fetched successfully.", {
+            total: 1,
+            totalPages: 1,
+            page: 1,
+            limit: 10,
+            isOutOfRange: true,
+            data: [
+              {
+                voucherId: "…",
+                name: "grill combo",
+                isSuggested: true,
+                nearestOutlet: { distance: { meters: 1753000, kilometers: 1753, display: "1753.0 km" } },
+              },
+            ],
+          }),
+        },
+        {
+          name: "404 — kahin bhi koi pin nahi",
+          code: 404,
+          status: "Not Found",
+          body: err("No any voucher found"),
+        },
+      ],
+    }),
+
+    req({
+      name: "Customer — voucher detail (banner fields)",
+      method: "GET",
+      segments: ["vouchers", "customer", "get", "{{voucher_id}}"],
+      token: "customer_token",
+      query: [
+        { key: "latitude", value: "22.7533" },
+        { key: "longitude", value: "75.8937" },
+      ],
+      changed: "`bannerType` + `bannerUrl` — list wali hi shape.",
+      examples: [
+        {
+          name: "200 — video banner",
+          code: 200,
+          status: "OK",
+          body: ok("Voucher fetched successfully.", {
+            voucherId: "{{voucher_id}}",
+            name: "flat 30% off on total bill",
+            bannerType: VOUCHER_BANNER_TYPE.VIDEO,
+            bannerUrl: "https://res.cloudinary.com/…/banner.mp4",
+            version: { id: "…", versionNumber: 3, offers: ["… saare offers"] },
+            selectedOutlet: null,
+            outlets: ["… saare outlets, nearest first"],
+            outletCount: 4,
+          }),
+        },
+      ],
+    }),
+
+    req({
+      name: "Customer — brand directory",
+      method: "GET",
+      segments: ["brands", "customer", "get-all"],
+      token: "customer_token",
+      query: [
+        { key: "limit", value: "20" },
+        { key: "sortBy", value: "TOP_FIRST" },
+        { key: "latitude", value: "22.7533", disabled: true },
+        { key: "longitude", value: "75.8937", disabled: true },
+      ],
+      changed: "Naya endpoint. Pehle koi brand-list endpoint tha hi nahi.",
+      description:
+        "**Query params:**\n\n" +
+        "| Param | Default | Notes |\n|---|---|---|\n" +
+        "| `page` / `limit` | `1` / `10` | `limit` max 50 |\n" +
+        "| `search` | – | `brandName` pe case-insensitive |\n" +
+        "| `categoryId` / `subCategoryId` | – | Filter |\n" +
+        "| `topOnly` | `false` | `true` → sirf Top Brands tab |\n" +
+        "| `sortBy` | `TOP_FIRST` | `TOP_FIRST` \\| `NEWEST` \\| `FOLLOWERS` \\| `NAME` \\| `DISTANCE` |\n" +
+        "| `latitude` / `longitude` | – | **Dono saath**, warna `422` |\n\n" +
+        "### Geo optional hai\n\n" +
+        "Coordinates do to har row pe `distanceInMeters` aayega (brand ke **sabse paas ke " +
+        "outlet** ki doori) aur `sortBy=DISTANCE` kaam karega. Na do to ye simple directory " +
+        "hai — koi geo kaam hota hi nahi, aur `DISTANCE` chupchaap `NEWEST` ban jaata hai.\n\n" +
+        "⚠️ **Main list me curation proximity se upar hai** — `sortBy=DISTANCE` pe bhi " +
+        "pinned brands pehle aayenge. Purely nearest-first chahiye to pinned block ko UI " +
+        "me alag treat karein.\n\n" +
+        "Ye list **card** ke liye hai — features/showcase/outlets detail ke liye " +
+        "`GET /brands/customer/get/:brandId`.",
+      examples: [
+        {
+          name: "200 — top brand pehle",
+          code: 200,
+          status: "OK",
+          body: ok("Brands fetched successfully", {
+            total: 48,
+            totalPages: 3,
+            page: 1,
+            limit: 20,
+            data: [
+              {
+                _id: "{{brand_id}}",
+                brandName: "cafe mocha",
+                logo: "https://res.cloudinary.com/…/mocha-logo.jpg",
+                coverImage: "https://res.cloudinary.com/…/mocha-cover.jpg",
+                uniqueId: "TDB000078",
+                followersCount: 1243,
+                isTopBrand: true,
+                isVerified: true,
+                outletCount: 4,
+                category: { _id: "…", name: "food and beverages" },
+                subCategory: { _id: "…", name: "cafe" },
+              },
+            ],
+          }),
+        },
+        {
+          name: "422 — sirf latitude bheja",
+          code: 422,
+          status: "Unprocessable Entity",
+          body: err("latitude and longitude must be provided together"),
+        },
+        { name: "404 — koi match nahi (empty state)", code: 404, status: "Not Found", body: err("No any brand found") },
+      ],
+    }),
+
+    req({
+      name: "Customer — Top Brands tab",
+      method: "GET",
+      segments: ["brands", "customer", "get-all"],
+      token: "customer_token",
+      query: [{ key: "topOnly", value: "true" }, { key: "limit", value: "10" }],
+      changed: "Naya endpoint.",
+      description:
+        "Is tab me **curation hi ordering hai** — `topOrder` ke hisaab se. `sortBy=DISTANCE` " +
+        "bhejne pe bhi wahi order rahega, kyunki yahan sab rows already curated hain.\n\n" +
+        "⚠️ Deactivated pinned brands yahan **nahi** aate. Admin ke view (`10` folder) me " +
+        "aate hain, taaki unhe unpin kiya ja sake.",
+      examples: [
+        {
+          name: "200 — sirf pinned",
+          code: 200,
+          status: "OK",
+          body: ok("Brands fetched successfully", {
+            total: 6,
+            totalPages: 1,
+            page: 1,
+            limit: 10,
+            data: [{ _id: "{{brand_id}}", brandName: "cafe mocha", isTopBrand: true, isVerified: true, outletCount: 4 }],
+          }),
+        },
       ],
     }),
   ],
@@ -1403,7 +2041,7 @@ const collection = {
     description: [
       "# Security & API Changes",
       "",
-      "Sirf wo endpoints jo **2026-08-26 ke security round me badle**, plus ek naya endpoint.",
+      "Sirf wo endpoints jo **2026-08-26 ke round me badle**, plus 6 naye endpoints.",
       "Baaki endpoints doosri collections me hain.",
       "",
       "Har request ke description me ek **🔄 Kya badla** banner hai.",
@@ -1430,9 +2068,12 @@ const collection = {
       "| Naya customer brand endpoint | `03` |",
       "| Showcase brand scoping + ownership | `04` |",
       "| Locations scoping + ownership | `05` |",
-      "| 143/143 routes gated | `06` |",
+      "| 149/149 routes gated | `06` |",
       "| Legal create/update fix | `07` |",
       "| `FIXED` discount fix | `08` |",
+      "| Convenience fee + no-offer fallback | `09` |",
+      "| Admin curation — suggestions & top brands | `10` |",
+      "| Customer tabs + voucher banner fields | `11` |",
       "",
       "## Dhyan rakhne layak",
       "",
@@ -1441,6 +2082,10 @@ const collection = {
       "- **WhatsApp OTP abhi verify nahi hota** (deliberate, deferred) — koi bhi 6-digit chalega.",
       "- **`coordinates` `[longitude, latitude]`** order me hain — maps APIs se ulta.",
       "- **Pehla admin API se nahi banta** — `node scripts/seedAdmin.js … --apply`",
+      "- **Convenience fee client-side calculate mat karein** — `pricing.convenienceFee` use",
+      "  karein. Slabs `Setting.customer.convenienceFee` se aati hain, admin badal sakta hai.",
+      "- **Curated tabs alag list nahi hain** — `suggestedOnly` / `topOnly` bas usi sorted set",
+      "  ko narrow karte hain, isliye \"view more\" pe rows repeat nahi hote.",
       "",
       "## Regenerate",
       "",
@@ -1463,6 +2108,9 @@ const collection = {
     gatesFolder,
     legalFolder,
     vouchersFolder,
+    pricingFolder,
+    curationFolder,
+    customerListsFolder,
   ],
   event: [
     {

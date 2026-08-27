@@ -8,6 +8,13 @@ const {
 } = require("../../helpers/vouchers");
 const { getVoucherConfig } = require("../../helpers/settings");
 
+/**
+ * Half the Earth's circumference in metres — larger than any real distance
+ * between two points, so `$geoNear` stops filtering by range at all. Used only
+ * for the suggestions fallback below.
+ */
+const EARTH_MAX_DISTANCE_METERS = 20_037_508;
+
 exports.getCustomerVouchers = async (userId, query) => {
   const customer = await Customer.findOne({
     userId,
@@ -72,23 +79,51 @@ exports.getCustomerVouchers = async (userId, query) => {
    * -----------------------------------------
    */
 
-  const pipeline = buildCustomerVoucherPipeline({
-    latitude,
-    longitude,
-    maxDistance,
-    query,
-  });
+  const page = query.page || 1;
+  const limit = query.limit || 10;
 
-  const result = await pagination(
-    SubBrand,
-    pipeline,
-    query.page || 1,
-    query.limit || 10,
-    "voucher",
-  );
+  const run = async (distance) =>
+    pagination(
+      SubBrand,
+      buildCustomerVoucherPipeline({
+        latitude,
+        longitude,
+        maxDistance: distance,
+        query,
+      }),
+      page,
+      limit,
+      "voucher",
+    );
+
+  let result;
+  let isOutOfRange = false;
+
+  try {
+    result = await run(maxDistance);
+  } catch (error) {
+    /**
+     * The Suggestions tab falls back to ignoring distance when nothing the
+     * admin pinned happens to be nearby.
+     *
+     * Without this, a customer in a city the curated brands have not reached
+     * opens the tab to an empty state — which reads as a broken feature rather
+     * than a geographic one. `isOutOfRange` on the response lets the client say
+     * so honestly instead of implying these are around the corner.
+     *
+     * `pagination` throws a 404 on an empty result rather than returning an
+     * empty page, so an empty first pass arrives here as an error.
+     */
+    const isEmptyResult = error?.statusCode === 404;
+    if (!query.suggestedOnly || !isEmptyResult) throw error;
+
+    result = await run(EARTH_MAX_DISTANCE_METERS);
+    isOutOfRange = true;
+  }
 
   return {
     ...result,
+    isOutOfRange,
     data: result.data.map(mapCustomerVoucherListItem),
   };
 };

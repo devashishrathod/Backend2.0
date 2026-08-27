@@ -1,14 +1,47 @@
 # Trydood 2.0 — Vendor Panel API Documentation
 
-**Version:** 1.0.0
+**Version:** 1.2.0
 **Base URL (Local):** `http://localhost:8080/trydood/v1`
 **Base URL (Staging):** `https://backend2-0-4v4i.onrender.com/trydood/v1`
 **Framework:** Express.js (Node.js, CommonJS)
 **Database:** MongoDB (Mongoose ODM)
-**Scope:** Vendor / brand panel ke **81 endpoints**
-**Last verified:** 2026-08-22 against current code · Source: `server2.0` scan (143 total endpoints, categorization → [endpoints_category.md](./endpoints_category.md))
+**Scope:** Vendor / brand panel ke **78 endpoints**
+**Last verified:** 2026-08-27 against current code · Source: `server2.0` scan (149 total endpoints, categorization → [endpoints_category.md](./endpoints_category.md))
 
-> **Note:** Ye doc code se banaya gaya hai, live API testing se nahi. Har request field, error message, aur response shape actual controller/service/validator code se verify kiya gaya hai. Jahan behaviour buggy ya adhoora hai, wahan ⚠️ marker hai.
+> ✅ **v1.2.0 se ye doc live API ke against verify ho chuka hai** — sirf code padhkar nahi likha gaya. Saare 78 endpoints ek chalte hue server pe seeded fixtures ke saath run kiye gaye: **101 requests, 234 assertions, sab pass.** Collection: [`postman/trydood-vendor.postman_collection.json`](../postman/trydood-vendor.postman_collection.json)
+>
+> Jahan behaviour buggy ya adhoora hai, wahan ⚠️ (ya 🔴, agar wo cheez tod deti hai) marker hai.
+
+### 🆕 v1.2.0 me kya naya
+
+Live run ne **teen** aise bugs pakde jo code padhkar nahi dikhte the — teeno ab fix hain:
+
+| Bug | Kya hota tha |
+|---|---|
+| 🔴 `GET /brands/verifications/history` **500** | `isVendor is not defined` — ek `ReferenceError`. Security round me per-role scoping add karte waqt uski declaration hat gayi thi par pipeline me do reads reh gaye. Har vendor request marti thi ([#33](#33-get-brandsverificationshistory)) |
+| 🔴 `PUT /showcase/section/:brandId/reorder` **500** | Service `item.sectionId` padhti thi, validator `id` bhejta hai → `undefined.toString()`. **Endpoint kabhi kaam hi nahi kiya** ([#47](#47-put-showcasesectionbrandidreorder)) |
+| 🔴 `PUT /showcase/section/:sectionId/media/reorder` **500** | Wahi bug (`item.mediaId` vs `id`). **Ye bhi kabhi kaam nahi kiya** ([#51](#51-put-showcasesectionsectionidmediareorder)) |
+
+Aur do response shapes doc me galat likhi thi:
+
+| Fix | Kya galat tha |
+|---|---|
+| Section detail ka `media` block | Doc me flat `medias[]` + top-level pagination tha. Asli me **nested** hai — `data.media.data[]` ([#44](#44-get-showcasesectiongetsectionid)) |
+| Reorder responses | Dono `updated` return karte hain, `modified` nahi |
+
+### v1.1.0 me kya badla tha
+
+Ye **re-verification round** tha — har endpoint ka gate code se dobara nikala gaya, hand-check nahi kiya.
+
+| Change | Detail |
+|---|---|
+| **81 → 78 endpoints** | Password flow (`set-password`, `forgot-password`, `reset-password`) ab **admin-only** hai — [#7–9](#79-password-flow--%E2%9B%94-ab-vendor-ke-liye-nahi) dekhein |
+| **25 Access lines stale thi** ✅ | Doc `"Any authenticated"` claim kar raha tha un routes pe jo ab properly gated hain — brands, locations, showcase, brand features, voucher versions. Sab code se regenerate ki gayi |
+| **Ownership markers** | Jin 24 routes pe service ownership resolve karti hai (`resolveActorBrand` / `resolveSectionForActor`), unpe ab `+ ownership` likha hai — gate kehta hai *"koi vendor"*, ownership kehti hai *"**yahi** vendor"* |
+| **`FIXED` discount ab kaam karta hai** ✅ | Pehle enum me tha par calculate nahi hota tha |
+| **Voucher banner fields** | `bannerType` + `bannerUrl` customer-facing responses me |
+
+> **Vendor-reachable vs vendor-intended:** teen customer voucher endpoints (`/vouchers/customer/*`) sirf `verifyJwtToken` pe hain, to vendor token unpe technically pahunch jaata hai. Wo vendor panel ke liye nahi hain — [Appendix A](#appendix-a--not-for-vendor-panel) me hain.
 
 ---
 
@@ -27,7 +60,7 @@
 
 **Endpoints**
 
-10. [Auth APIs](#auth-apis) — 10
+10. [Auth APIs](#auth-apis) — 7 *(password flow admin-only ho gaya)*
 11. [User Profile APIs](#user-profile-apis) — 3
 12. [Push Notification APIs](#push-notification-apis) — 4
 13. [Notification Feed APIs](#notification-feed-apis) — 2
@@ -511,7 +544,11 @@ Allowed videos: `video/mp4` · `video/webm` · `video/quicktime`
 
 # Auth APIs
 
-Vendor 3 tarah se login kar sakta hai — WhatsApp OTP (primary), Email OTP, ya Mobile OTP. Password login tabhi kaam karta hai jab vendor ne `set-password` se apna password banaya ho.
+Vendor 3 tarah se login kar sakta hai — WhatsApp OTP (primary), Email OTP, ya Mobile OTP.
+
+⚠️ **Password login vendor ke liye hai hi nahi.** `POST /auth/login` aur poora password
+set/reset flow ab ADMIN-only hai — [#7–9](#79-password-flow--%E2%9B%94-ab-vendor-ke-liye-nahi)
+dekhein. Vendor ke paas password banane ka koi raasta nahi, isliye login karne ka bhi nahi.
 
 ## 1. POST /auth/loginOrSignUp-with-whatsapp
 
@@ -751,186 +788,56 @@ Email OTP flow me verification **intact** hai (WhatsApp ke ulta) — actual OTP 
 
 ---
 
-## 7. POST /auth/set-password
+## 7–9. Password flow — ⛔ ab vendor ke liye nahi
 
-Signed-in vendor apna password set ya change karta hai. **Ye flow pehle exist hi nahi karta tha.**
+`POST /auth/set-password` · `POST /auth/forgot-password` · `POST /auth/reset-password`
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** Intended: ADMIN · Enforced: **ADMIN**
 
-### Headers
-| Header | Value | Required |
-|---|---|---|
-| `Authorization` | `Bearer <token>` | ✅ |
-| `Content-Type` | `application/json` | ✅ |
+Ye teeno pehle is doc me the. **Ab vendor inhe use nahi kar sakta** — password
+sign-in ek product decision se admin-only kar diya gaya.
 
-### Body
-| Field | Type | Required | Validation |
-|---|---|---|---|
-| `currentPassword` | string | ⚠️ | **Sirf tab required jab account pe already password ho** — service decide karta hai |
-| `newPassword` | string | ✅ | 8–72 chars, kam se kam 1 uppercase + 1 lowercase + 1 number |
+### Kyun
 
-**Pehli baar set karna:**
-```json
-{ "newPassword": "Mocha@2026" }
-```
+Vendor WhatsApp OTP se sign in karta hai. Uspe password rakhne ka matlab sirf ek
+aur credential hai jo chori ho sakta hai — koi naya access nahi milta. To wo
+option hata diya gaya.
 
-**Change karna:**
-```json
-{ "currentPassword": "Mocha@2026", "newPassword": "Mocha@2027" }
-```
+### Enforcement kahan hai
 
-### Success — `200` (pehli baar)
-```json
-{
-  "success": true,
-  "message": "Password set successfully. You can now sign in with it.",
-  "data": {
-    "userId": "68f1a2b3c4d5e6f7a8b9c0d1",
-    "wasFirstTime": true,
-    "passwordSetAt": "2026-08-22T12:00:00.000Z"
-  }
-}
-```
-
-### Success — `200` (change)
-```json
-{
-  "success": true,
-  "message": "Password changed successfully.",
-  "data": { "userId": "...", "wasFirstTime": false, "passwordSetAt": "2026-08-22T12:05:00.000Z" }
-}
-```
-
-### Errors
-| Status | Message | Kab |
-|---|---|---|
-| `404` | `User not found` | User deleted |
-| `422` | `currentPassword is required to change an existing password.` | Account pe password hai par bheja nahi |
-| `401` | `Current password is incorrect.` | Mismatch |
-| `422` | `The new password must be different from the current one.` | Same password |
-| `422` | `Password must be at least 8 characters` | Chhota |
-| `422` | `Password cannot exceed 72 characters` | bcrypt 72 bytes ke baad silently truncate karta hai |
-| `422` | `Password must include an uppercase letter, a lowercase letter and a number` | Strength fail |
-| `422` | `newPassword is required` | Missing |
-
-### ⚠️ Notes
-
-**1. `wasFirstTime` flag se UI copy decide karein** — "Password set" vs "Password changed".
-
-**2. Pehli baar `currentPassword` maangna nahi chahiye.** OTP-created accounts bina password ke bante hain. UI ko pehle `GET /users/get` se check karna chahiye ki `passwordSetAt` hai ya nahi — na ho to sirf `newPassword` field dikhayein.
-
-**3. Same password reject hota hai** — service ka comment: *"so 'password changed' always means something actually changed."*
-
-**4. Ye kyun zaruri hai:** password set karne se pehle `/auth/login` (password login) kaam **nahi** karega. Wo deliberately fail-closed hai.
-
----
-
-## 8. POST /auth/forgot-password
-
-Password reset ka step 1 — OTP bhejta hai.
-
-**Access:** Intended: All roles · Enforced: **Public**
-
-### Body
-| Field | Type | Required | Validation |
-|---|---|---|---|
-| `type` | string | ✅ | `WHATSAPP` \| `EMAIL` \| `MOBILE` |
-| `target` | string | ✅ | Wahi number ya email |
-| `role` | string | ❌ | ROLES enum — **`"VENDOR"` bhejein** |
-
-```json
-{ "type": "WHATSAPP", "target": "9812345678", "role": "VENDOR" }
-```
-
-### Success — `200`
-```json
-{
-  "success": true,
-  "message": "If an account exists for this contact, a verification code has been sent.",
-  "data": {
-    "message": "If an account exists for this contact, a verification code has been sent.",
-    "type": "WHATSAPP"
-  }
-}
-```
-
-### Errors
-| Status | Message |
+| Endpoint | Kaise block hota hai |
 |---|---|
-| `422` | `type is required` / `type must be one of: WHATSAPP, EMAIL, MOBILE` |
-| `422` | `target (the number or email) is required` |
-| `422` | `role must be one of: ADMIN, VENDOR, SUB_VENDOR, CUSTOMER` |
+| `/auth/set-password` | Route pe `isAdmin` — vendor token pe `403` |
+| `/auth/forgot-password` | Route public hai, par validator me `role` sirf `ADMIN` allow karta hai |
+| `/auth/reset-password` | Wahi — validator me `role` sirf `ADMIN` |
 
-### ⚠️ Notes
-
-**1. Response hamesha same hota hai** — account exist kare ya na kare. Service ka comment: *"Saying 'no such user' here would turn this endpoint into a way to enumerate which phone numbers and emails are registered."*
-
-**Frontend pe iska matlab:** aap confirm nahi kar sakte ki OTP actually gaya. UI ko generic message dikhana chahiye — "Agar account hai to code aa jayega."
-
-**2. `role` matter karta hai** — same number `CUSTOMER` aur `VENDOR` dono me ho sakta hai. Galat role bhejoge to doosre account ka OTP jayega (ya kuch nahi hoga).
-
-**3. OTP ka purpose alag hai** — `"password-reset"`, login ke `"auth"` se different. Login ka OTP yahan replay nahi ho sakta.
-
-**4. Deactivated account pe OTP nahi jaata**, par response phir bhi same rehta hai.
-
----
-
-## 9. POST /auth/reset-password
-
-Step 2 — OTP verify karke naya password set.
-
-**Access:** Intended: All roles · Enforced: **Public**
-
-### Body
-| Field | Type | Required | Validation |
-|---|---|---|---|
-| `type` | string | ✅ | `WHATSAPP` \| `EMAIL` \| `MOBILE` — step 1 jaisa |
-| `target` | string | ✅ | Step 1 jaisa |
-| `otp` | string | ✅ | Jo code aaya |
-| `role` | string | ❌ | Step 1 jaisa |
-| `newPassword` | string | ✅ | 8–72 chars, uppercase + lowercase + number |
+Baad wale do public hi rehte hain (unhe sign-in ki zarurat nahi), par
+`role: "VENDOR"` bhejne pe **`422`** aata hai:
 
 ```json
 {
-  "type": "WHATSAPP",
-  "target": "9812345678",
-  "role": "VENDOR",
-  "otp": "482913",
-  "newPassword": "Mocha@2027"
+  "success": false,
+  "message": "Password sign-in is only available for admin accounts. Customers and vendors sign in with a WhatsApp OTP."
 }
 ```
 
-### Success — `200`
-```json
-{
-  "success": true,
-  "message": "Password updated. Please sign in with your new password.",
-  "data": {
-    "userId": "68f1a2b3c4d5e6f7a8b9c0d1",
-    "passwordSetAt": "2026-08-22T12:10:00.000Z",
-    "message": "Password updated. Please sign in with your new password."
-  }
-}
-```
+Message deliberately actionable hai — bare "Invalid role" ke bajaye ye batata hai
+ki karna kya hai.
 
-### Errors
-| Status | Message | Kab |
-|---|---|---|
-| `401` | `Please resend OTP! OTP is expired or missing` | Code expire ya kabhi bheja hi nahi |
-| `403` | `Max attempts exceeded! Please try again later.` | Attempt cap cross |
-| `401` | `Invalid OTP! Please try again.` | Galat code |
-| `404` | `No account found for this contact.` | OTP sahi tha par account nahi mila |
-| `403` | `Your account is deactivated. Please contact support.` | Deactivated |
-| `422` | `otp is required` | Missing |
-| `422` | *(password strength messages)* | Step 7 jaise |
+### Vendor ke liye sign-in ke raaste
 
-### ⚠️ Notes
+| Flow | Endpoints |
+|---|---|
+| WhatsApp OTP *(primary)* | [#1](#1-post-authloginorsignup-with-whatsapp) → [#2](#2-post-authverify-otp-whatsapp) |
+| Email OTP | [#3](#3-post-authlogin-with-email) → [#4](#4-post-authverify-otp-email) |
+| Mobile OTP | [#5](#5-post-authlogin-with-mobile) → [#6](#6-post-authverify-otp-mobile) |
 
-**1. Yahan "account nahi mila" batana safe hai.** Service ka comment: *"by the time a valid one-time code has been presented, there is nothing left to enumerate."* Step 1 se ulta.
+⚠️ **Vendor `POST /auth/login` (password login) bhi use nahi kar sakta** — uska
+validator bhi `role` ko `ADMIN` tak seemit karta hai. Isliye wo endpoint is doc
+me kabhi tha hi nahi.
 
-**2. Token issue **nahi** hota.** Deliberate — *"resetting a password should not also hand out a session."* Reset ke baad user ko login screen pe bhejein.
-
-**3. OTP single-use hai** — success pe consume ho jaata hai. Dobara wahi code kaam nahi karega.
+> Numbering 7–9 isliye chhodi nahi gayi ki doc ke baaki links tootein na. Agla
+> endpoint #10 hai.
 
 ---
 
@@ -1014,7 +921,7 @@ POST /auth/logout
 
 **1. `currentScreen` se onboarding resume karein** — login ke baad yahi field batati hai vendor kahan tha.
 
-**2. `passwordSetAt` se decide karein** ki `set-password` screen pe `currentPassword` field dikhani hai ya nahi. `null`/absent = pehli baar.
+**2. `passwordSetAt` vendor panel me ignore karein.** Field response me aati hai, par vendor password set kar hi nahi sakta ([#7–9](#79-password-flow--%E2%9B%94-ab-vendor-ke-liye-nahi)) — to vo hamesha `null` rahegi. "Set password" screen mat banayein.
 
 ---
 
@@ -2102,7 +2009,7 @@ Penny-drop verification.
 
 Brand ka poora detail — 14 lookups ke saath.
 
-**Access:** Intended: All roles · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: All roles · Enforced: **VENDOR+ADMIN** ⚠️
 
 ### Query Params
 | Param | Type | Required | Notes |
@@ -2187,7 +2094,7 @@ GET /brands/get
 
 Brand ki public profile update.
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** ⚠️
 
 ### Query Params
 | Param | Type | Required | Notes |
@@ -2259,7 +2166,7 @@ Brand ki public profile update.
 
 Brand ke verification lifecycle ka audit trail.
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** ⚠️
 **Scoping:** Vendor service-level pe apne brand tak scoped hai
 
 ### Query Params
@@ -2456,7 +2363,7 @@ Service ka comment: *"Gate first, so a vendor with no plan gets 'subscribe to co
 
 Outlets ki paginated list.
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** ⚠️
 
 ### Query Params
 | Param | Type | Required | Default | Validation |
@@ -2533,7 +2440,7 @@ GET /subBrands/get-all?brandId=68f1a2b3c4d5e6f7a8b9c3a1&isActive=true&limit=50
 
 Outlet details update.
 
-**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership**
+**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN**
 
 ### Path Params
 | Param | Type | Required |
@@ -2630,7 +2537,7 @@ Outlet details update.
 
 Brand ya outlet ke weekly timings set karta hai. Upsert hai — dobara call karne pe update hota hai.
 
-**Access:** Intended: VENDOR · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: VENDOR · Enforced: **VENDOR+ADMIN** ⚠️
 
 ### Body
 | Field | Type | Required | Validation |
@@ -2728,7 +2635,7 @@ Global middleware: `router.use(verifyJwtToken)` — ⚠️ **koi role gate nahi*
 
 Brand ya outlet ka address banata hai.
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** ⚠️
 
 ### Body
 | Field | Type | Required | Default | Validation |
@@ -2847,7 +2754,7 @@ Brand ya outlet ka address banata hai.
 
 Locations ki paginated list.
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** ⚠️
 
 ### Query Params
 | Param | Type | Required | Default | Notes |
@@ -2916,7 +2823,7 @@ GET /locations/getAll?brandId=68f1a2b3c4d5e6f7a8b9c3a1&isSubBrandAddress=true
 
 ## 40. GET /locations/get/:id
 
-**Access:** Intended: All roles · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: All roles · Enforced: **Any authenticated + ownership** ⚠️
 
 ### Path Params
 | Param | Type | Required |
@@ -2955,7 +2862,7 @@ GET /locations/getAll?brandId=68f1a2b3c4d5e6f7a8b9c3a1&isSubBrandAddress=true
 
 ## 41. PUT /locations/update/:id
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** ⚠️
 
 ### Path Params
 | Param | Type | Required |
@@ -3005,7 +2912,7 @@ GET /locations/getAll?brandId=68f1a2b3c4d5e6f7a8b9c3a1&isSubBrandAddress=true
 
 ## 42. DELETE /locations/delete/:id
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** ⚠️
 
 ### Path Params
 | Param | Type | Required |
@@ -3063,7 +2970,7 @@ Allowed videos: `video/mp4` · `video/webm` · `video/quicktime`
 
 Naya showcase section banata hai.
 
-**Access:** Intended: VENDOR · Enforced: **VENDOR (service)** — `validateBrandVendor(userId)` token se brand resolve karta hai
+**Access:** Intended: VENDOR · Enforced: **VENDOR+ADMIN + ownership** — `validateBrandVendor(userId)` token se brand resolve karta hai
 
 ### Body
 | Field | Type | Required | Default | Validation |
@@ -3139,7 +3046,7 @@ Naya showcase section banata hai.
 
 Ek section + uska media, paginated.
 
-**Access:** Intended: VENDOR · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: VENDOR · Enforced: **VENDOR+ADMIN + ownership** ⚠️
 
 ### Path Params
 | Param | Type | Required |
@@ -3178,29 +3085,33 @@ GET /showcase/section/get/68f1a2b3c4d5e6f7a8b9c5a1?type=VIDEO
     "mediaCount": 5,
     "photoCount": 4,
     "videoCount": 1,
-    "medias": [
-      {
-        "_id": "68f1a2b3c4d5e6f7a8b9c5b1",
-        "type": "PHOTO",
-        "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1.jpg",
-        "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1-thumb.jpg",
-        "title": "seating area",
-        "altText": "cafe seating with wooden tables",
-        "sortOrder": 1,
-        "isShowInVideoClips": true,
-        "isActive": true,
-        "storage": { "provider": "CLOUDINARY", "publicId": "showcase/amb1" },
-        "metadata": { "width": 1920, "height": 1080, "sizeMB": 2.4 },
-        "createdAt": "2026-08-22T16:05:00.000Z"
-      }
-    ],
-    "total": 5,
-    "totalPages": 1,
-    "page": 1,
-    "limit": 10
+    "media": {
+      "page": 1,
+      "limit": 10,
+      "total": 5,
+      "totalPages": 1,
+      "data": [
+        {
+          "_id": "68f1a2b3c4d5e6f7a8b9c5b1",
+          "type": "PHOTO",
+          "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1.jpg",
+          "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1-thumb.jpg",
+          "title": "seating area",
+          "altText": "cafe seating with wooden tables",
+          "sortOrder": 1,
+          "isShowInVideoClips": true,
+          "isActive": true,
+          "storage": { "provider": "CLOUDINARY", "publicId": "showcase/amb1" },
+          "metadata": { "width": 1920, "height": 1080, "sizeMB": 2.4 },
+          "createdAt": "2026-08-22T16:05:00.000Z"
+        }
+      ]
+    }
   }
 }
 ```
+
+> ⚠️ **Media ek nested block hai — `data.media.data[]`, na ki `data.medias[]`.** Pagination bhi usi block me hai, section ke saath flat nahi. Live run me pakda gaya (2026-08-27); doc me pehle flat `medias[]` + top-level `total` likha tha.
 
 ### Errors
 | Status | Message |
@@ -3212,9 +3123,9 @@ GET /showcase/section/get/68f1a2b3c4d5e6f7a8b9c5a1?type=VIDEO
 
 **1. Vendor ko `storage` aur `metadata` dikhte hain** — customer ke response se ye strip ho jaate hain. Vendor panel me file size / dimensions dikhane ke liye useful.
 
-**2. Counts pre-calculated hain** — `mediaCount`, `photoCount`, `videoCount`. Tabs/badges me directly use karein.
+**2. Counts pre-calculated hain** — `mediaCount`, `photoCount`, `videoCount`. Ye **poore album** ke counts hain, us page ke nahi. Tabs/badges me directly use karein.
 
-**3. ⚠️ Ownership check nahi hai** — kisi bhi brand ka `sectionId` daal kar uska section padha ja sakta hai ([Appendix B](#appendix-b--known-issues)).
+**3. ✅ Ownership ab check hoti hai** — `resolveSectionForActor` verify karta hai ki section aapke brand ka hai. Pehle kisi bhi brand ka `sectionId` daal kar uska section padha ja sakta tha.
 
 ---
 
@@ -3222,7 +3133,7 @@ GET /showcase/section/get/68f1a2b3c4d5e6f7a8b9c5a1?type=VIDEO
 
 Sections ki paginated list.
 
-**Access:** Intended: Admin + Vendor · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: Admin + Vendor · Enforced: **VENDOR+ADMIN + ownership** ⚠️
 
 ### Query Params
 | Param | Type | Required | Default | Validation |
@@ -3301,7 +3212,7 @@ Ye security finding #4 hai ([Appendix B](#appendix-b--known-issues)). Fix hone t
 
 ## 46. PUT /showcase/section/update/:sectionId
 
-**Access:** Intended: VENDOR · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: VENDOR · Enforced: **VENDOR+ADMIN + ownership** ⚠️
 
 ### Path Params
 | Param | Type | Required |
@@ -3362,7 +3273,7 @@ Ye security finding #4 hai ([Appendix B](#appendix-b--known-issues)). Fix hone t
 
 Sections ka order badalta hai.
 
-**Access:** Intended: Admin + Vendor · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: Admin + Vendor · Enforced: **VENDOR+ADMIN + ownership** ⚠️
 
 > ✅ Ye route pehle broken tha (leading `/` missing) — ab fix ho chuka hai.
 
@@ -3393,9 +3304,11 @@ Sections ka order badalta hai.
 {
   "success": true,
   "message": "Sections reordered successfully.",
-  "data": { "modified": 3 }
+  "data": { "updated": 3 }
 }
 ```
+
+> 🔴 **Ye endpoint 2026-08-27 se pehle kabhi kaam nahi karta tha.** Service `item.sectionId` padhti thi jabki validator (aur ye doc) `id` accept karte hain — har well-formed request `undefined.toString()` pe `500` de deti thi. Live run me pakda gaya aur fix kar diya gaya. Field ab bhi **`id`** hi hai.
 
 ### Errors
 | Status | Message | Kab |
@@ -3418,7 +3331,7 @@ Sections ka order badalta hai.
 
 Photos/videos upload karta hai. **Multipart request.**
 
-**Access:** Intended: VENDOR · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: VENDOR · Enforced: **VENDOR+ADMIN + ownership** ⚠️
 
 ### Headers
 | Header | Value | Required |
@@ -3510,7 +3423,7 @@ Photos/videos upload karta hai. **Multipart request.**
 
 Media ka metadata update — **file nahi badalti**.
 
-**Access:** Intended: VENDOR · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: VENDOR · Enforced: **VENDOR+ADMIN + ownership** ⚠️
 
 ### Path Params
 | Param | Type | Required |
@@ -3565,7 +3478,7 @@ Media ka metadata update — **file nahi badalti**.
 
 Media file replace karta hai. **Multipart.**
 
-**Access:** Intended: VENDOR · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: VENDOR · Enforced: **VENDOR+ADMIN + ownership** ⚠️
 
 ### Path Params
 | Param | Type | Required |
@@ -3615,7 +3528,7 @@ Media file replace karta hai. **Multipart.**
 
 ## 51. PUT /showcase/section/:sectionId/media/reorder
 
-**Access:** Intended: VENDOR · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: VENDOR · Enforced: **VENDOR+ADMIN + ownership** ⚠️
 
 ### Path Params
 | Param | Type | Required |
@@ -3640,8 +3553,12 @@ Media file replace karta hai. **Multipart.**
 
 ### Success — `200`
 ```json
-{ "success": true, "message": "Media reordered successfully.", "data": { "modified": 2 } }
+{ "success": true, "message": "Media reordered successfully.", "data": { "updated": 2 } }
 ```
+
+> Already sahi order me ho to `{ "updated": 0, "message": "Media already in same order." }` aata hai.
+>
+> 🔴 **Ye bhi 2026-08-27 se pehle kabhi kaam nahi karta tha** — section reorder wala hi bug (service `item.mediaId` padhti thi, payload me `id` aata hai). Live run me pakda gaya aur fix kar diya gaya.
 
 ### Errors
 | Status | Message | Kab |
@@ -3661,7 +3578,7 @@ Media file replace karta hai. **Multipart.**
 
 ## 52. DELETE /showcase/section/:sectionId/media/delete/:mediaId
 
-**Access:** Intended: VENDOR · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: VENDOR · Enforced: **VENDOR+ADMIN + ownership** ⚠️
 
 ### Path Params
 | Param | Type | Required |
@@ -3695,7 +3612,7 @@ Media file replace karta hai. **Multipart.**
 
 Poora section delete — media ke saath.
 
-**Access:** Intended: VENDOR · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: VENDOR · Enforced: **VENDOR+ADMIN + ownership** ⚠️
 
 ### Path Params
 | Param | Type | Required |
@@ -4129,7 +4046,7 @@ Koi nahi.
 
 Voucher versions ki paginated list — vendor ka voucher dashboard.
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** ⚠️
 
 ### Query Params
 | Param | Type | Required | Default | Notes |
@@ -4317,7 +4234,7 @@ Global middleware: `router.use(verifyJwtToken)` — ⚠️ **koi role gate nahi*
 
 **Multipart** (icon mandatory).
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** ⚠️
 
 ### Body (multipart)
 | Field | Type | Required | Default | Validation |
@@ -4485,7 +4402,7 @@ Practically vendor panel me shayad na chahiye — `get-all` (#62) me poora data 
 
 ## 64. PUT /brandFeatures/update/:featureId
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** ⚠️
 
 ### Path Params
 | Param | Type | Required |
@@ -4539,7 +4456,7 @@ Practically vendor panel me shayad na chahiye — `get-all` (#62) me poora data 
 
 ## 65. DELETE /brandFeatures/delete/:featureId
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** ⚠️
 
 ### Path Params
 | Param | Type | Required |
@@ -5699,22 +5616,30 @@ Ye 62 endpoints backend me hain par vendor panel inko use na kare. Zyada tar ab 
 | **Subscription plan writes** | `POST /subscriptions/create` · `PUT /update/:id` · `DELETE /delete/:id` | `isAdmin` |
 | **Master data writes** | `POST /categories/create` · `PUT /update/:id` · `DELETE /delete/:id` · `POST /subCategories/:categoryId/create` · `PUT /update/:id` · `DELETE /delete/:id` | `isAdmin` |
 | **Legal writes** | `POST\|PUT\|DELETE /terms-and-conditions/*` (3) · `POST\|PUT\|DELETE /privacy-and-policies/*` (3) | `isAdmin` |
-| **Admin auth** | `POST /auth/register` · `POST /auth/login` | Public par admin ke liye |
+| **Admin auth** | `POST /auth/register` | `isAdmin` — pehla admin `scripts/seedAdmin.js` se banta hai |
+| **Password sign-in** 🆕 | `POST /auth/login` · `POST /auth/set-password` · `POST /auth/forgot-password` · `POST /auth/reset-password` | ADMIN-only. `login`/`forgot`/`reset` routes public hain par unke validator `role` ko `ADMIN` tak seemit karte hain → vendor ko `422`. `set-password` pe `isAdmin` hai → `403`. [Details](#79-password-flow--%E2%9B%94-ab-vendor-ke-liye-nahi) |
 
-### ⚠️ Gate nahi hai — app khud na call kare
+### ⚠️ Reachable hai, par vendor ke liye nahi — app khud na call kare
+
+Neeche wale endpoints pe koi **role** gate nahi hai (sirf `verifyJwtToken`), to vendor token
+technically pahunch jaata hai. Wo vendor panel ke liye design nahi hue — inhe call karna
+matlab customer ka data ya customer ka behaviour vendor UI me le aana.
 
 | Endpoint | Kyun nahi |
 |---|---|
-| `POST\|PUT\|GET\|DELETE /banners/*` (5) | App-level home banners — admin ka kaam |
-| `POST\|PUT\|GET\|DELETE /promotionalTickers/*` (5) | App-level tickers — admin ka kaam |
-| `GET /banners/customer/active` | Customer app ke liye |
-| `GET /promotionalTickers/customer/active` | Customer app ke liye |
-| `POST /locations/upsert` | Customer-only (service me `role !== CUSTOMER` → 403) |
-| `POST /follows/toggle/:brandId` · `GET /follows/get-all` | Customer engagement |
-| `POST /brandAvoidances/toggle/:brandId` · `GET /brandAvoidances/get-all` | Customer engagement |
-| `GET /vouchers/customer/get-all` · `/get/:voucherId` · `POST /customer/voucher/preview` | Customer voucher browsing |
-| `GET /showcase/get-brand-showcase/:brandId` · `GET /showcase/:brandId/video-clips` | Customer-facing views |
+| `GET /vouchers/customer/get-all` · `/get/:voucherId` · `POST /customer/voucher/preview` | ⚠️ **Sirf ye teen waqai reachable hain.** Customer voucher browsing — geo-scoped feed jo caller ki saved location pe based hai. Vendor ke liye iska koi matlab nahi |
+| `POST\|PUT\|GET\|DELETE /banners/*` (5) | ✅ Ab `isAdmin` — vendor token pe `403` |
+| `POST\|PUT\|GET\|DELETE /promotionalTickers/*` (5) | ✅ Ab `isAdmin` — `403` |
+| `GET /banners/customer/active` · `GET /promotionalTickers/customer/active` | ✅ Ab `isCustomer` — `403` |
+| `POST /locations/upsert` | ✅ Ab `isCustomer` — `403` |
+| `POST /follows/toggle/:brandId` · `GET /follows/get-all` | ✅ Ab `isCustomer` — `403` |
+| `POST /brandAvoidances/toggle/:brandId` · `GET /brandAvoidances/get-all` | ✅ Ab `isCustomer` — `403` |
+| `GET /showcase/get-brand-showcase/:brandId` · `GET /showcase/:brandId/video-clips` | ✅ Ab `isCustomer` — `403` |
 | `POST /transactions/webhook/razorpay` | Razorpay ka endpoint (public, HMAC-verified) |
+
+> Jin rows pe ✅ hai wo pehle **bilkul ungated** the — is doc ke pichhle version me
+> "gate nahi hai, discipline se mat call karo" likha tha. Ab discipline ki zarurat nahi,
+> backend hi refuse karta hai.
 
 Full categorization → [endpoints_category.md](./endpoints_category.md)
 
@@ -5729,9 +5654,9 @@ Ye backend issues hain jo vendor panel ko directly affect karte hain. **Status 2
 ### Shared default password — FIXED
 **Pehle:** har OTP account (vendor + outlet included) ek hi hardcoded password pe banta tha, aur badalne ka koi raasta nahi tha.
 
-**Ab:** `User.password` optional hai — OTP accounts bina password ke bante hain. `POST /auth/set-password` (#7) se vendor apna password banata hai. Password login **fail-closed** hai.
+**Ab:** `User.password` optional hai — OTP accounts bina password ke bante hain, aur password login **fail-closed** hai (jinhone set nahi kiya unpe chalta hi nahi).
 
-**Vendor panel pe impact:** "Set password" screen bana sakte hain. `GET /users/get` ka `passwordSetAt` batata hai ki `currentPassword` field dikhani hai ya nahi.
+**Vendor panel pe impact:** ⚠️ **"Set password" screen mat banayein.** Fix ke baad ek aur decision liya gaya — password sign-in **sirf admin** ke liye rakha gaya, kyunki vendor WhatsApp OTP se aata hai aur uspe password sirf ek chori hone layak credential hota. Poora flow [#7–9](#79-password-flow--%E2%9B%94-ab-vendor-ke-liye-nahi) me hai.
 
 ### Subscription expiry — FIXED
 **Pehle:** `brand.isSubscribed` kabhi `false` nahi hota tha, koi expiry job nahi tha.
@@ -5752,109 +5677,127 @@ Ye backend issues hain jo vendor panel ko directly affect karte hain. **Status 2
 
 ---
 
+## ✅ Pichhle round me jo band ho gaya
+
+Ye sab is doc ke v1.0.0 me **open** listed the. Ab nahi hain — agar aapne inke liye
+frontend me workaround likha tha, wo hata sakte hain.
+
+| Tha | Ab |
+|---|---|
+| **Role enforcement — 35 endpoints ungated** | ✅ 149/149 accounted. Sirf 10 public hain (9 auth entry + Razorpay webhook). Showcase, locations, brandFeatures, workHours, subBrands, voucher versions — sab gated |
+| **`?userId` param se kisi bhi user ka data** | ✅ Param hata diya gaya. `GET|PUT /users/*` hamesha token wale user pe chalte hain |
+| **`GET /brands/get` PAN/GST/Bank customer ko** | ✅ Ab `isVendorOrAdmin`. Customer ke liye alag `/brands/customer/get/:brandId` hai jisme sensitive join **build hi nahi hota** |
+| **`showcase/section/get-all` brand-scoped nahi** | ✅ Vendor apne brand pe pinned, admin global. `brandId` param ab support hota hai. **Ye endpoint ab bharosemand hai** |
+| **Showcase ownership missing** | ✅ `resolveSectionForActor` — saare 11 showcase endpoints ab verify karte hain ki section aapke brand ka hai |
+| **Verification history customer ko dikhti thi** | ✅ Ab `isVendorOrAdmin`, aur service me har role explicitly named hai |
+| **Auth response me password hash** | ✅ `sanitizeUser()` — `password` aur `otp` har auth response se strip |
+| **`FIXED` discount type kaam nahi karta** | ✅ Ab `FLAT` ka alias hai. Voucher offer form me teeno types dikha sakte hain |
+| **Signup adha-adhoora reh jaata tha** | ✅ `User` + `Brand` ek transaction me. Purane toote accounts agli login pe khud repair ho jaate hain |
+| **`isFirst` retry pe `false` ho jaata tha** | ✅ Ab verification state pe based hai. OTP na aaye to retry pe bhi `true` |
+| **`brands/verifications/history` har request pe 500** | ✅ `isVendor is not defined` — live run me pakda gaya, 2026-08-27 |
+| **Dono showcase reorder endpoints har request pe 500** | ✅ `id` vs `sectionId`/`mediaId` mismatch — live run me pakda gaya, 2026-08-27. Ye endpoints **kabhi** kaam nahi kiye the |
+
+---
+
 ## 🔴 Blockers (production se pehle)
 
 ### 1. WhatsApp OTP verify hota hi nahi — auth bypass
 ```js
-// services/auth/loginOrSignUpWithWhatsapp.js:56 — OTP send nahi hota
-// services/auth/verifyOtpWithWhatsapp.js:12     — OTP verify nahi hota
+// services/auth/loginOrSignUpWithWhatsapp.js — OTP send nahi hota
+// services/auth/verifyOtpWithWhatsapp.js     — OTP verify nahi hota
 ```
-Kisi ka WhatsApp number pata ho to koi bhi 6-digit OTP daal ke uske vendor account me login kiya ja sakta hai. **Production blocker.**
+Kisi ka WhatsApp number pata ho to koi bhi 6-digit OTP daal ke uske vendor account me
+login kiya ja sakta hai. **Production blocker.**
 
-**Vendor panel pe impact:** development me convenient. Uncomment hone ke baad naye error cases aayenge — endpoint #2 ke notes me listed hain, unko pehle se handle karein.
+Ye **jaan-boojhkar** deferred hai — patch likha hua hai
+([security_findings.md](./security_findings.md) #7), uncomment karne ka call aapka hai.
+
+⚠️ Ab ye pehle se **zyada** matter karta hai: password login vendor ke liye band ho gaya,
+to WhatsApp OTP hi ekmatra primary entry point hai.
+
+**Vendor panel pe impact:** development me convenient. Uncomment hone ke baad naye error
+cases aayenge — endpoint [#2](#2-post-authverify-otp-whatsapp) ke notes me listed hain,
+unhe pehle se handle karein.
 
 > Email aur Mobile OTP flows me verification **intact** hai — sirf WhatsApp me commented hai.
 
-### 2. Role enforcement — 35 endpoints abhi bhi open
-Bahut sudhar hua hai (108/143 gated), par ye modules abhi bhi sirf `verifyJwtToken` pe hain:
-
-| Module | Vendor panel pe kya matlab |
-|---|---|
-| `showcase` (11) | Kisi bhi brand ka section/media edit ho sakta hai — **apne `sectionId` hi use karein** |
-| `locations` (5) | `getAll` bina `brandId` ke sabke addresses deta hai — **hamesha `brandId` bhejein** |
-| `brandFeatures` (3 writes) | Kisi bhi brand ke features edit ho sakte hain |
-| `workHours` (1) | Kisi bhi brand/outlet ke hours badal sakte hain |
-| `subBrands/get-all` | Bina `brandId` ke sabke outlets — **hamesha `brandId` bhejein** |
-| `vouchers/versions/get-all` | Bina `brandId` ke sabke vouchers — **hamesha `brandId` bhejein** |
-| `brands/get` · `brands/update` | |
-| `brands/verifications/history` | |
-
-**Vendor panel pe impact:** in endpoints pe **hamesha `brandId` explicitly bhejein**, warna platform-wide data aa jayega (aur galti se dusre brand ka data dikha denge).
-
-### 3. `?userId` param se kisi bhi user ka data
-- `GET /users/get?userId=<koi_bhi>` → poora profile
-- `PUT /users/update?userId=<koi_bhi>` → profile update
-
-**Vendor panel pe impact:** ye param **kabhi na bhejein**.
-
 ---
 
-## 🟠 Data access issues
+## 🟠 Ownership — abhi bhi khuli hai
 
-### 4. `GET /brands/get` PAN/GST/Bank expose karta hai
-Vendor ko apna KYC data dikhna sahi hai — problem ye hai ki **customer ko bhi yahi endpoint aur yahi data milta hai**.
+Role gate lag gaya hai (customer ab in pe nahi aa sakta), par **vendor A abhi bhi vendor B
+ka resource** touch kar sakta hai — service sirf ye check karti hai ki caller vendor hai,
+ye nahi ki wo **is** brand ka vendor hai.
 
-**Vendor panel pe impact:** kuch nahi karna. Backend me role-based projection chahiye.
+| Endpoint | Kya ho sakta hai |
+|---|---|
+| `PUT /brandFeatures/update/:featureId` | Kisi bhi brand ka feature edit — service `featureId` se feature uthati hai aur uska `brandId` caller se match nahi karti |
+| `DELETE /brandFeatures/delete/:featureId` | Wahi, delete ke saath |
+| `PUT /locations/update/:id` | Kisi bhi brand/outlet ka address edit |
+| `DELETE /locations/delete/:id` | Wahi, delete ke saath |
+| `POST /vouchers/publish/:versionId` | Kisi bhi brand ka approved voucher publish — `publishVoucher(userId, versionId)` `userId` leta hai par use ownership ke liye **use hi nahi karta** |
 
-### 5. `showcase/section/get-all` brand-scoped nahi hai
-Service me `brandId` filter commented out hai, aur `brandId` query param support hi nahi hota (validator me defined nahi, `stripUnknown` hata deta hai).
+Pattern repo me maujood hai — `resolveActorBrand` aur `resolveSectionForActor` 22
+services me chal rahe hain. In paanch me apply karna baaki hai.
 
-**Vendor panel pe impact:** **is endpoint pe bharosa na karein.** Apne sections ke liye `GET /brands/get` (#31) ya individual `#44` use karein.
-
-### 6. Ownership checks kai jagah missing hain
-Role gate lagne ke baad bhi vendor A, vendor B ka data edit kar sakta hai in pe:
-`showcase/section/update|delete/:sectionId` · saare 5 media endpoints · `brandFeatures/update|delete/:featureId` · `locations/update|delete|get/:id` · `vouchers/publish/:versionId`
-
-`resolveActorBrand` ka pattern repo me exist karta hai (11 services use karte hain) — bas in me apply karna hai.
-
-**Vendor panel pe impact:** apne resources ke ids hi use karein.
-
-### 7. Brand verification history customer ko bhi dikhti hai
-Route pe role gate nahi hai, aur service ki scoping sirf `VENDOR` handle karti hai — `CUSTOMER` `else` branch me chala jaata hai aur koi bhi `brandId` padh sakta hai.
-
-**Vendor panel pe impact:** direct nahi, par jaanein ki aapki KYC history public hai.
-
-### 8. Auth response me password hash
-`POST /auth/loginOrSignUp-with-whatsapp` aur `verify-otp-whatsapp` full Mongoose doc return karte hain. Vendor ne password set kiya ho to bcrypt hash response me aata hai.
-
-**Vendor panel pe impact:** is field ko store/log na karein, response parsing me drop kar dein.
+**Vendor panel pe impact:** apne hi resources ke ids use karein. Ye "defensive coding"
+wali salaah nahi hai — ye batana hai ki backend abhi aapko rok nahi raha, to accidental
+cross-brand id (galat list se copy-paste, stale cache) **chup-chaap kaam kar jayegi**.
 
 ---
 
 ## 🟡 Functional gaps
 
-### 9. `SUB_VENDOR` accounts kuch nahi kar sakte
-Outlet signup pe `SUB_VENDOR` user banta hai aur OTP bhi jaata hai, par **koi route `SUB_VENDOR` role handle nahi karta**. `verifyJwtToken` un ke liye `req.brandId` bhi set nahi karta.
+### 2. `SUB_VENDOR` accounts kuch nahi kar sakte
+Outlet signup pe `SUB_VENDOR` user banta hai aur OTP bhi jaata hai, par **koi route
+`SUB_VENDOR` role handle nahi karta**. `isSubVendor` middleware ab exist karta hai par
+kisi route pe laga nahi hai, aur `verifyJwtToken` un ke liye `req.brandId` set nahi karta.
 
-**Vendor panel pe impact:** outlet-level login screen abhi na banayein. Outlet management vendor ke through hi hogi.
+**Vendor panel pe impact:** outlet-level login screen abhi na banayein. Outlet management
+vendor ke through hi hogi.
 
-### 10. `DELETE /users/delete` no-op hai
-Kuch delete nahi karta, aur standard response envelope bhi use nahi karta (`success` field nahi).
+### 3. `DELETE /users/delete` no-op hai
+Kuch delete nahi karta, aur standard response envelope bhi use nahi karta (`success`
+field hi nahi aati).
+
+Cascade plan likha hua hai ([account_deletion_plan.md](./account_deletion_plan.md)) —
+implement tab hoga jab poora flow ready ho.
 
 **Vendor panel pe impact:** "Delete account" feature disable rakhein.
 
-### 11. `FIXED` discount type kaam nahi karta
-Enum me hai, calculation me handle nahi. Aisa offer customer ko `discountAmount: 0` dega aur eligible list se filter ho jayega — par list view me "best offer" dikh sakta hai.
+### 4. Voucher redemption flow exist nahi karta
+Customer voucher dekh sakta hai aur discount preview kar sakta hai, par redeem nahi kar
+sakta. `VoucherUsage` model bana hai, koi route nahi. `usageType` (`ONCE_PER_USER`)
+enforce nahi hota.
 
-**Vendor panel pe impact:** voucher offer form me **`FIXED` option mat dikhayein**. Sirf `PERCENTAGE` aur `FLAT`.
+**Vendor panel pe impact:** redemption/scan screen abhi ban nahi sakta. Voucher analytics
+bhi limited rahegi. Ye agle phase ka kaam hai.
 
-### 12. Voucher redemption flow exist nahi karta
-Customer voucher dekh sakta hai aur discount preview kar sakta hai, par redeem nahi kar sakta. `VoucherUsage` model bana hai, koi route nahi. `usageType` (`ONCE_PER_USER`) enforce nahi hota.
-
-**Vendor panel pe impact:** redemption/scan screen abhi ban nahi sakta. Voucher analytics bhi limited rahegi.
-
-### 13. Email verification ka endpoint nahi hai
+### 5. Email verification ka endpoint nahi hai
 Email change pe `isEmailVerified: false` ho jaata hai, par verify karne ka raasta nahi.
 
 **Vendor panel pe impact:** email verified badge/flow abhi na banayein.
 
-### 14. `POST /auth/logout` push unregister nahi karta
-**Vendor panel pe impact:** logout pe manually `PUT /deviceTokens/unregister` call karein.
+### 6. `POST /auth/logout` push unregister nahi karta
+Aur token blacklist bhi nahi hai — JWT apni expiry tak valid rehta hai.
 
-### 15. Promo codes abhi off hain
-`isPromoCodeEnabled: false` default hai. Checkout preview `"Promo codes are coming soon"` message deta hai.
+**Vendor panel pe impact:** logout pe `PUT /deviceTokens/unregister` bhi call karein, aur
+token locally delete karein.
 
-**Vendor panel pe impact:** promo code field dikhayein par `preview.promo.supported` check karein — `false` ho to disable ya hide karein.
+### 7. Promo codes vendor checkout pe abhi off hain
+`isPromoCodeEnabled: false` default hai. Checkout preview `"Promo codes are coming soon"`
+message deta hai.
+
+**Vendor panel pe impact:** promo code field dikhayein par `preview.promo.supported`
+check karein — `false` ho to disable ya hide karein.
+
+### 8. `brand.isApproved` aur `brand.status` kabhi likhe nahi jaate
+Dono fields model me hain par koi code inhe set nahi karta — hamesha `false` / `PENDING`.
+Asli verdict `SystemVerify` document me hai.
+
+**Vendor panel pe impact:** approval status ke liye `GET /brands/verifications/history`
+([#33](#33-get-brandsverificationshistory)) ya `systemVerify.status` dekhein —
+`brand.isApproved` pe kabhi bharosa na karein.
 
 ---
 
@@ -5900,7 +5843,7 @@ Email change pe `isEmailVerified: false` ho jaata hai, par verify karne ka raast
 - [ ] **Outlets aur franchises alag pools hain** — `outletType` se decide hota hai
 
 **Vouchers**
-- [ ] **`FIXED` discount type mat dikhayein** — kaam nahi karta
+- [ ] **`FIXED` discount type ab kaam karta hai** — `FLAT` ka alias. Teeno types dikha sakte hain
 - [ ] **Status-wise editability** — `UNDER_REVIEW`/`EXPIRED`/`ARCHIVED` pe edit block
 - [ ] **Update delta-based hai** — `newOffers`/`removedOfferIds`, poori list nahi
 - [ ] **`publish` ko `versionId` chahiye**, `voucherId` nahi
@@ -5913,9 +5856,11 @@ Email change pe `isEmailVerified: false` ho jaata hai, par verify karne ka raast
 - [ ] **Section delete slot release karta hai**, `isActive: false` nahi
 
 **Security discipline**
-- [ ] **`?userId` param kabhi na bhejein**
-- [ ] **`password` field response se drop karein**
-- [ ] **Apne resources ke ids hi use karein** — ownership check kai jagah missing hai
+- [ ] **`?userId` param support hi nahi hota** — hata diya gaya, token se user resolve hota hai
+- [ ] **`password` ab response me aata hi nahi** — `sanitizeUser()` har auth response se strip karta hai
+- [ ] **Apne resources ke ids hi use karein** — 5 endpoints pe ownership check abhi bhi missing hai ([Appendix B](#-ownership--abhi-bhi-khuli-hai))
+- [ ] **Password / "Set password" screen mat banayein** — vendor ke liye wo flow band hai
+- [ ] **`brand.isApproved` pe bharosa na karein** — hamesha `false` rehta hai; `SystemVerify.status` dekhein
 - [ ] **Appendix A ke endpoints kabhi call na karein**
 
 **Push notifications**
@@ -5926,7 +5871,7 @@ Email change pe `isEmailVerified: false` ho jaata hai, par verify karne ka raast
 
 ---
 
-**Doc version:** 1.0.0 · **Last verified:** 2026-08-22 against current code
+**Doc version:** 1.2.0 · **Last verified:** 2026-08-27 against a running server (101 requests · 234 assertions · all pass)
 **Related docs:** [endpoints_category.md](./endpoints_category.md) · [security_findings.md](./security_findings.md) · [brand_verification_api_doc.md](./brand_verification_api_doc.md) · [subscription_lifecycle_design.md](./subscription_lifecycle_design.md) · [brand_rejection_remediation_design.md](./brand_rejection_remediation_design.md) · [customer_mobile_api_doc.md](./customer_mobile_api_doc.md)
 **Pending:** Super admin panel doc (phase 3)
 

@@ -17,10 +17,14 @@ exports.reorderAllSections = async (actor, payload) => {
   const brand = await resolveActorBrand(actor, brandId);
   brandId = brand._id;
 
-  validateUniqueIds(sections);
+  // The request field is `id` — that is what the validator accepts and what the
+  // docs publish. This read `sectionId` instead, a key the payload never has,
+  // so `validateUniqueIds` dereferenced `undefined` and the endpoint answered
+  // every well-formed request with a 500. It has never worked.
+  validateUniqueIds(sections, "id");
   validateUniqueSortOrders(sections);
   sections = normalizeSortOrder(sections);
-  const ids = sections.map((item) => item.sectionId);
+  const ids = sections.map((item) => item.id);
   const total = await ShowcaseSection.countDocuments({
     brandId,
     isDeleted: false,
@@ -33,7 +37,7 @@ exports.reorderAllSections = async (actor, payload) => {
     sections.map((item) => ({
       updateOne: {
         filter: {
-          _id: item.sectionId,
+          _id: item.id,
           brandId,
         },
         update: {

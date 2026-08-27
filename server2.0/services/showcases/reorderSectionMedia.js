@@ -22,7 +22,10 @@ exports.reorderSectionMedia = async (actor, payload) => {
     throwError(400, "Media list is required.");
   }
 
-  validateUniqueIds(medias, "mediaId");
+  // `id`, not `mediaId` — same mismatch the section reorder had. The validator
+  // accepts `id` and the docs publish `id`, but every read below used
+  // `mediaId`, so a well-formed request died on `undefined.toString()`.
+  validateUniqueIds(medias, "id");
   validateUniqueSortOrders(medias, "sortOrder");
   medias = normalizeSortOrder(medias);
 
@@ -53,14 +56,14 @@ exports.reorderSectionMedia = async (actor, payload) => {
   });
 
   for (const item of medias) {
-    if (!activeMediaMap.has(item.mediaId.toString())) {
-      throwError(400, `Invalid media id : ${item.mediaId}`);
+    if (!activeMediaMap.has(item.id.toString())) {
+      throwError(400, `Invalid media id : ${item.id}`);
     }
   }
 
   const sortOrderMap = new Map();
   medias.forEach((item) => {
-    sortOrderMap.set(item.mediaId.toString(), item.sortOrder);
+    sortOrderMap.set(item.id.toString(), item.sortOrder);
   });
 
   let isModified = false;
