@@ -2970,18 +2970,19 @@ Allowed videos: `video/mp4` · `video/webm` · `video/quicktime`
 
 Naya showcase section banata hai.
 
-**Access:** Intended: VENDOR · Enforced: **VENDOR+ADMIN + ownership** — `validateBrandVendor(userId)` token se brand resolve karta hai
+**Access:** Intended: VENDOR · Enforced: **VENDOR+ADMIN + ownership** — vendor apna brand, admin `brandId` de kar kisi ka bhi
 
 ### Body
 | Field | Type | Required | Default | Validation |
 |---|---|---|---|---|
-| `title` | string | ✅ | – | 2–60 chars. **Lowercase me store hota hai** |
+| `brandId` | ObjectId | admin ke liye ✅ | – | Vendor ke liye optional (apna brand auto) |
+| `title` | string | ✅ | – | 2–60 chars. **Jaisa likha waisa store hota hai** (pehle lowercase hota tha) |
 | `description` | string | ❌ | – | Max 500 chars, `""` allowed |
 | `sortOrder` | number | ❌ | auto (last + 1) | Integer ≥ 1 |
 | `sectionType` | string | ❌ | `CUSTOM` | `CUSTOM` \| `SYSTEM` |
-| `isActive` | boolean | ❌ | – | |
-| `isVisible` | boolean | ❌ | – | |
-| `isShowVideosInClips` | boolean | ❌ | – | Is section ke videos customer ke reels feed me aayein ya nahi |
+| `isActive` | boolean | ❌ | `true` | |
+| `isVisible` | boolean | ❌ | `true` | `false` bhejein to section hidden banega |
+| `isShowVideosInClips` | boolean | ❌ | `true` | Is section ke videos customer ke reels feed me aayein ya nahi |
 
 ```json
 {
@@ -2999,20 +3000,23 @@ Naya showcase section banata hai.
   "data": {
     "_id": "68f1a2b3c4d5e6f7a8b9c5a1",
     "brandId": "68f1a2b3c4d5e6f7a8b9c3a1",
-    "title": "ambience",
+    "title": "Ambience",
     "slug": "ambience",
     "description": "Our cozy interiors",
+    "coverImageMode": "AUTO",
     "sortOrder": 1,
     "sectionType": "CUSTOM",
-    "medias": [],
     "isActive": true,
     "isVisible": true,
     "isShowVideosInClips": true,
     "isDeleted": false,
+    "mediaCount": 0,
     "createdAt": "2026-08-22T16:00:00.000Z"
   }
 }
 ```
+
+> `medias: []` ki jagah ab `mediaCount` aata hai — create/update response me media array bhejne ka koi matlab nahi tha.
 
 ### Errors
 | Status | Message | Kab |
@@ -3030,15 +3034,17 @@ Naya showcase section banata hai.
 
 **1. Order of checks:** subscription gate → duplicate title → slug generate → **slot reserve (sabse last)**. Service ka comment: *"Claimed as late as possible — after the duplicate-title and slug checks."* Matlab duplicate title pe slot waste nahi hota.
 
-**2. `title` lowercase me store hota hai.** Duplicate check case-insensitive hai — `"Ambience"` aur `"ambience"` same maane jayenge (409).
+**2. `title` original case me store hota hai** (naya) — customer app wahi render karta hai. Duplicate check case-insensitive hi hai, to `"Ambience"` aur `"ambience"` ek saath nahi rah sakte (409).
 
 **3. `slug` auto-generate hota hai** brand ke andar unique — same title dobara nahi ho sakta, par slug collision handle ho jaata hai.
 
 **4. `sortOrder` na do to auto** — last section ka `sortOrder + 1`.
 
-**5. `isShowVideosInClips` reels feed control karta hai.** Customer ka `/showcase/:brandId/video-clips` **double opt-in** maangta hai: section pe ye flag **aur** media pe `isShowInVideoClips` — dono `true` hone chahiye.
+**5. ✅ Teeno toggle ab actually apply hote hain** (naya) — `isActive` / `isVisible` / `isShowVideosInClips` validator accept karta tha par service inhe drop kar deti thi, to hidden section banane ki koshish karne pe bhi visible section banta tha.
 
-**6. Section khali banta hai** — media alag se `POST /showcase/section/:sectionId/add-media` (#48) se add karni hoti hai.
+**6. `isShowVideosInClips` reels feed control karta hai.** Customer ka `/showcase/:brandId/video-clips` **double opt-in** maangta hai: section pe ye flag **aur** media pe `isShowInVideoClips` — dono `true` hone chahiye. Media wala flag **sirf videos** pe lagta hai.
+
+**7. Section khali banta hai** — media alag se `POST /showcase/section/:sectionId/add-media` (#48) se add karni hoti hai.
 
 ---
 
@@ -3060,6 +3066,7 @@ Ek section + uska media, paginated.
 | `limit` | number | ❌ | `10` | Integer 1–100 |
 | `search` | string | ❌ | – | Max 100 chars — media title/altText me |
 | `type` | string | ❌ | – | `PHOTO` \| `VIDEO` |
+| `isActive` | boolean | ❌ | – | **Naya.** Default me on aur off dono media aati hain; ye ek side pe filter karta hai |
 
 ```http
 GET /showcase/section/get/68f1a2b3c4d5e6f7a8b9c5a1?type=VIDEO
@@ -3079,12 +3086,14 @@ GET /showcase/section/get/68f1a2b3c4d5e6f7a8b9c5a1?type=VIDEO
     "coverImage": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb-cover.jpg",
     "sortOrder": 1,
     "sectionType": "CUSTOM",
+    "coverImageMode": "AUTO",
     "isActive": true,
     "isVisible": true,
     "isShowVideosInClips": true,
     "mediaCount": 5,
     "photoCount": 4,
     "videoCount": 1,
+    "inactiveMediaCount": 1,
     "media": {
       "page": 1,
       "limit": 10,
@@ -3099,11 +3108,26 @@ GET /showcase/section/get/68f1a2b3c4d5e6f7a8b9c5a1?type=VIDEO
           "title": "seating area",
           "altText": "cafe seating with wooden tables",
           "sortOrder": 1,
-          "isShowInVideoClips": true,
           "isActive": true,
           "storage": { "provider": "CLOUDINARY", "publicId": "showcase/amb1" },
           "metadata": { "width": 1920, "height": 1080, "sizeMB": 2.4 },
-          "createdAt": "2026-08-22T16:05:00.000Z"
+          "createdAt": "2026-08-22T16:05:00.000Z",
+          "updatedAt": "2026-08-22T16:05:00.000Z"
+        },
+        {
+          "_id": "68f1a2b3c4d5e6f7a8b9c5b2",
+          "type": "VIDEO",
+          "url": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/showcase/amb-tour.mp4",
+          "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb-tour-thumb.jpg",
+          "title": "cafe walkthrough",
+          "altText": "video tour",
+          "sortOrder": 2,
+          "isActive": true,
+          "isShowInVideoClips": true,
+          "storage": { "provider": "CLOUDINARY", "publicId": "showcase/amb-tour" },
+          "metadata": { "width": 1080, "height": 1920, "duration": 24, "sizeMB": 18.2 },
+          "createdAt": "2026-08-22T16:06:00.000Z",
+          "updatedAt": "2026-08-22T16:06:00.000Z"
         }
       ]
     }
@@ -3116,16 +3140,22 @@ GET /showcase/section/get/68f1a2b3c4d5e6f7a8b9c5a1?type=VIDEO
 ### Errors
 | Status | Message |
 |---|---|
-| `404` | `Section not found.` |
+| `404` | `Showcase section not found.` |
 | `422` | *(Joi message)* — invalid `sectionId`, `limit > 100`, invalid `type` |
 
 ### ⚠️ Notes
 
 **1. Vendor ko `storage` aur `metadata` dikhte hain** — customer ke response se ye strip ho jaate hain. Vendor panel me file size / dimensions dikhane ke liye useful.
 
-**2. Counts pre-calculated hain** — `mediaCount`, `photoCount`, `videoCount`. Ye **poore album** ke counts hain, us page ke nahi. Tabs/badges me directly use karein.
+**2. 🔴 `isActive: false` media ab bhi aati hai** (naya). Pehle wo list se gayab ho jaati thi — matlab off karne ke baad usko wapas on karne ka koi rasta hi nahi bachta tha. Ab sirf soft-deleted media chhupti hai. Ek side chahiye to `?isActive=true|false`.
 
-**3. ✅ Ownership ab check hoti hai** — `resolveSectionForActor` verify karta hai ki section aapke brand ka hai. Pehle kisi bhi brand ka `sectionId` daal kar uska section padha ja sakta tha.
+**3. `isShowInVideoClips` sirf `VIDEO` rows pe aata hai** (naya). Photo pe ye key hoti hi nahi — wo video-only switch hai, to photo pe toggle mat dikhayein.
+
+**4. Section ke teeno switch ab response me hain** — `isVisible`, `isShowVideosInClips`, `isActive` (aur `slug`, `coverImageMode`). Ye doc pehle se inhe list karta tha, par service bhejti nahi thi — ab bhejti hai.
+
+**5. Counts pre-calculated hain** — `mediaCount`, `photoCount`, `videoCount`, `inactiveMediaCount`. Ye **poore album** ke counts hain (soft-deleted chhod kar), `type`/`search`/`isActive` filter inhe nahi badalta — filter sirf `media.data[]` page ko narrow karta hai.
+
+**6. ✅ Ownership check hoti hai** — `resolveSectionForActor` verify karta hai ki section aapke brand ka hai.
 
 ---
 
@@ -3138,11 +3168,12 @@ Sections ki paginated list.
 ### Query Params
 | Param | Type | Required | Default | Validation |
 |---|---|---|---|---|
+| `brandId` | ObjectId | ❌ | – | Vendor: sirf apna brand chalega. Admin: kisi bhi brand pe narrow karne ke liye |
 | `page` | number | ❌ | `1` | Integer ≥ 1 |
 | `limit` | number | ❌ | `10` | Integer 1–100 |
 | `search` | string | ❌ | – | Title me match, `""` allowed |
-| `isActive` | boolean | ❌ | `true` | |
-| `isVisible` | boolean | ❌ | `true` | |
+| `isActive` | boolean | ❌ | *(koi default nahi)* | Bheja to filter, na bheja to on+off dono |
+| `isVisible` | boolean | ❌ | *(koi default nahi)* | Bheja to filter, na bheja to visible+hidden dono |
 | `sortBy` | string | ❌ | `sortOrder` | `title` \| `sortOrder` \| `createdAt` \| `updatedAt` |
 | `order` | string | ❌ | `asc` | `asc` \| `desc` — **note: `order` hai, `sortOrder` nahi** |
 
@@ -3150,7 +3181,7 @@ Sections ki paginated list.
 ```json
 {
   "success": true,
-  "message": "Sections fetched successfully.",
+  "message": "Showcase sections fetched successfully.",
   "data": {
     "total": 3,
     "totalPages": 1,
@@ -3159,15 +3190,21 @@ Sections ki paginated list.
     "data": [
       {
         "_id": "68f1a2b3c4d5e6f7a8b9c5a1",
-        "title": "ambience",
+        "brandId": "68f1a2b3c4d5e6f7a8b9c3a1",
+        "title": "Ambience",
+        "slug": "ambience",
         "description": "Our cozy interiors",
         "coverImage": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb-cover.jpg",
+        "coverImageMode": "AUTO",
         "sectionType": "CUSTOM",
         "sortOrder": 1,
         "isActive": true,
+        "isVisible": true,
+        "isShowVideosInClips": true,
         "mediaCount": 5,
         "photoCount": 4,
         "videoCount": 1,
+        "inactiveMediaCount": 0,
         "createdAt": "2026-08-22T16:00:00.000Z",
         "updatedAt": "2026-08-22T16:05:00.000Z"
       }
@@ -3182,31 +3219,19 @@ Sections ki paginated list.
 | `404` | `No any showcasesection found` | Empty — **empty-state** |
 | `422` | *(Joi message)* — `limit > 100`, invalid `sortBy`/`order` |
 
-### 🔴 ⚠️ CRITICAL — ye endpoint brand-scoped NAHI hai
+### ⚠️ Notes
 
-Service me brand filter **commented out** hai:
+**1. ✅ Brand scoping fix ho chuki hai.** Pehle service me brand filter commented out tha — vendor ko **platform ke saare brands ke sections** mil jaate the (security finding #4). Ab:
+- **VENDOR** apne brand pe pinned hai. `brandId` bhejein to `resolveActorBrand` verify karta hai ki wo aapka hi hai, warna `403`.
+- **ADMIN** global hai — `brandId` na bhejein to sab brands, bhejein to us brand ke sections.
 
-```js
-// services/showcases/getAllSections.js
-// const { validateVendorBrand } = require("../../helpers/showcase/common");
+**2. 🔴 `isActive` / `isVisible` ke default filter hata diye gaye hain** (naya). Pehle default `true`/`true` tha, matlab jis section ko aapne abhi hide kiya wo aapki apni list se hi gayab ho jaata tha — usko dubara dhoondh kar on karne ka koi tareeka nahi bachta tha. Ab managed list me **sirf soft-deleted** sections chhupte hain.
 
-exports.getAllSections = async (userId, query) => {
-  // const brand = await validateVendorBrand(userId);
-  const match = {
-    // brandId: brand._id,          ← commented out
-    isActive: …, isVisible: …, isDeleted: false
-  };
-```
+Panel me "Hidden" tab chahiye to `?isVisible=false` bhejein.
 
-**Matlab:** vendor ye call kare to **platform ke saare brands ke sections** aa jaate hain, sirf apne nahi.
+**3. Counts soft-deleted media ko chhod kar sab count karte hain** — `isActive: false` media bhi `mediaCount` me hai, aur `inactiveMediaCount` alag se batata hai kitni off hain.
 
-**Aur `brandId` filter kaam nahi karega** — do wajah se:
-1. Service `brandId` destructure hi nahi karta
-2. Validator me `brandId` defined nahi hai, aur `stripUnknown: true` usko request se hata deta hai
-
-**Vendor panel ke liye workaround:** apne sections dikhane ke liye `GET /brands/get` (#31) use karein — uska `subbrands`/showcase data brand-scoped hota hai. Ya har section ka `_id` yaad rakhein aur `#44` se individually fetch karein.
-
-Ye security finding #4 hai ([Appendix B](#appendix-b--known-issues)). Fix hone tak is endpoint pe bharosa na karein.
+**4. Search case-insensitive hai** aur title pe chalta hai.
 
 ---
 
@@ -3223,8 +3248,8 @@ Ye security finding #4 hai ([Appendix B](#appendix-b--known-issues)). Fix hone t
 | Field | Type | Validation |
 |---|---|---|
 | `title` | string | 2–60 chars |
-| `description` | string | Max 500 chars |
-| `sortOrder` | number | Integer ≥ 0 |
+| `description` | string | Max 500 chars, `""` bhej kar clear kar sakte hain |
+| `sortOrder` | number | Integer ≥ **1** (pehle `0` bhi allowed tha — ab create/reorder ke saath consistent) |
 | `sectionType` | string | `CUSTOM` \| `SYSTEM` |
 | `isActive` | boolean | – |
 | `isVisible` | boolean | – |
@@ -3241,13 +3266,25 @@ Ye security finding #4 hai ([Appendix B](#appendix-b--known-issues)). Fix hone t
   "message": "Section updated successfully.",
   "data": {
     "_id": "68f1a2b3c4d5e6f7a8b9c5a1",
-    "title": "ambience",
+    "brandId": "68f1a2b3c4d5e6f7a8b9c3a1",
+    "title": "Ambience",
+    "slug": "ambience",
     "description": "Our cozy interiors, refreshed",
+    "coverImage": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb-cover.jpg",
+    "coverImageMode": "AUTO",
+    "sectionType": "CUSTOM",
+    "sortOrder": 1,
+    "isActive": true,
+    "isVisible": true,
     "isShowVideosInClips": false,
+    "mediaCount": 5,
+    "createdAt": "2026-08-22T16:00:00.000Z",
     "updatedAt": "2026-08-22T16:20:00.000Z"
   }
 }
 ```
+
+> `medias[]` array response me **nahi** aata (naya) — title badalne pe poori media list wapas bhejne ka koi matlab nahi tha. Media ke liye #44 hai.
 
 ### Errors
 | Status | Message | Kab |
@@ -3261,11 +3298,21 @@ Ye security finding #4 hai ([Appendix B](#appendix-b--known-issues)). Fix hone t
 
 **1. Body khali nahi ho sakti** — validator pe `.min(1)` hai.
 
-**2. `isActive: false` karne se customer ko section dikhna band ho jaata hai** — delete nahi karna padta. Ye slot bhi release nahi karta (slot sirf delete pe release hota hai).
+**2. Teen alag-alag switch hain, confuse na karein:**
 
-**3. `isShowVideosInClips: false` karne se us section ke videos reels feed se hat jaate hain**, par section me dikhte rehte hain.
+| Field | Customer pe asar | Vendor list (#45) pe asar | Slot |
+|---|---|---|---|
+| `isVisible: false` | Section brand profile aur gallery dono se hat jaata hai | Dikhta rehta hai | Release nahi |
+| `isActive: false` | Section customer ko dikhna band | Dikhta rehta hai | Release nahi |
+| `isShowVideosInClips: false` | Sirf reels feed se videos hatte hain, album me rehte hain | Dikhta rehta hai | Release nahi |
 
-**4. ⚠️ Ownership check nahi hai** ([Appendix B](#appendix-b--known-issues)).
+Section poora hatana ho tabhi delete (#53) — wohi slot release karta hai.
+
+**3. `title` original case me store hota hai** (naya) — pehle sab lowercase ho jaata tha. Uniqueness ab bhi case-insensitive hai, to "Ambience" aur "ambience" ek saath nahi rah sakte (`409`).
+
+**4. ✅ Rename pe slug ab drift nahi karta** (naya) — pehle har rename `ambience` → `ambience-2` → `ambience-3` karta chala jaata tha, kyunki section apne hi slug se "duplicate" match kar jaata tha.
+
+**5. ✅ Ownership check hoti hai** — `resolveSectionForActor`.
 
 ---
 
@@ -3313,15 +3360,16 @@ Sections ka order badalta hai.
 ### Errors
 | Status | Message | Kab |
 |---|---|---|
-| `400` | `Invalid section list.` | Empty ya malformed array |
-| `404` | `Section not found.` | Koi `id` us brand ka nahi |
+| `400` | `Invalid section list.` | Koi `id` us brand ka nahi |
+| `400` | `Please send the complete section order — N sections expected, M received.` | ⚠️ **Naya** — partial list ab reject hoti hai |
+| `400` | `Duplicate id found.` / `Duplicate sort order found.` | |
 | `422` | *(Joi message)* | Invalid `brandId` / missing `sortOrder` |
 
 ### ⚠️ Notes
 
-**1. `sortOrder` `1` se start hota hai** (`0` nahi) — media reorder (#51) se different, jahan `0` allowed hai.
+**1. `sortOrder` `1` se start hota hai** — media reorder (#51) bhi ab yehi hai (pehle wahan `0` allowed tha).
 
-**2. Poori list bhejein** — sirf badle hue sections nahi. Warna gaps/duplicates ban sakte hain.
+**2. 🔴 Poori list mandatory hai** (naya) — pehle partial list accept ho jaati thi, par service list ko `1..n` renumber karti hai, to chhod diye gaye sections ke saath positions takra jaati thi (do sections `sortOrder: 1` pe). Ab #51 ki tarah complete list maangi jaati hai. Drag-and-drop UI ke paas poori list hoti hi hai.
 
 **3. Customer ko sections isi `sortOrder` me dikhte hain** (ascending).
 
@@ -3348,7 +3396,7 @@ Photos/videos upload karta hai. **Multipart request.**
 | Field | Type | Required | Default | Notes |
 |---|---|---|---|---|
 | *(files)* | file[] | ✅ | – | Ek ya multiple images/videos |
-| `isShowInVideoClips` | boolean | ❌ | `true` | Video reels feed me aaye ya nahi |
+| `isShowInVideoClips` | boolean | ❌ | `true` | **Sirf batch ki videos pe lagta hai.** Photos pe hamesha `false` store hota hai |
 
 ### Success — `201`
 ```json
@@ -3364,7 +3412,7 @@ Photos/videos upload karta hai. **Multipart request.**
         "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1.jpg",
         "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1-thumb.jpg",
         "sortOrder": 1,
-        "isShowInVideoClips": true,
+        "isShowInVideoClips": false,
         "isActive": true,
         "storage": { "provider": "CLOUDINARY", "publicId": "showcase/amb1" },
         "metadata": { "width": 1920, "height": 1080, "sizeMB": 2.4 }
@@ -3407,15 +3455,19 @@ Photos/videos upload karta hai. **Multipart request.**
 
 **2. Rollback on failure** — koi bhi file fail ho to **saari** uploaded files Cloudinary se delete ho jaati hain. Partial upload nahi hota.
 
-**3. Cover image auto-set hoti hai** — pehli `PHOTO` ka thumbnail section ka `coverImage` ban jaata hai, **agar pehle se koi cover na ho**. Baad me upload karne se cover nahi badalta.
+**3. `isShowInVideoClips` sirf videos pe apply hota hai** (naya). Photos par hamesha `false` store hota hai — response me bhi `false` dikhega. Pehle har media pe `true` chala jaata tha, jiska koi asar nahi hota tha (clips feed type pe filter karta hai) par panel me ek bekaar toggle dikh jaata tha.
 
-**4. Video thumbnail auto-generate hota hai** Cloudinary se.
+**4. Cover image auto-set hoti hai** — batch ki pehli media ka `thumbnail`, **agar pehle se koi cover na ho** aur `coverImageMode` `AUTO` ho. Video bhi cover ban sakta hai (uska poster frame use hota hai, `.mp4` link nahi).
 
-**5. `sortOrder` auto-assign hota hai** — existing ke baad append.
+**5. Video thumbnail auto-generate hota hai** Cloudinary se.
 
-**6. Limits admin-configurable hain** — `Setting.vendor.showcase` se. Upar diye defaults hain; live values alag ho sakti hain. Error message me actual value aati hai.
+**6. `sortOrder` auto-assign hota hai** — existing ke baad append.
 
-**7. Plan limit yahan nahi lagti** — media pe koi entitlement bucket nahi hai, sirf section pe hai.
+**7. Limits admin-configurable hain** — `Setting.vendor.showcase` se. Upar diye defaults hain; live values alag ho sakti hain. Error message me actual value aati hai.
+
+**8. Plan limit yahan nahi lagti** — media pe koi entitlement bucket nahi hai, sirf section pe hai.
+
+**9. Validation errors ab sahi status ke saath aate hain** (naya) — unsupported format jaisi cheezein pehle outer catch me `500 Failed to add media…` ban jaati thi; ab original `400` + asli message milta hai.
 
 ---
 
@@ -3431,14 +3483,16 @@ Media ka metadata update — **file nahi badalti**.
 | `sectionId` | ObjectId | ✅ |
 | `mediaId` | ObjectId | ✅ |
 
-### Body — sab optional
+### Body — sab optional (multipart bhi ho sakta hai, `thumbnail` file ke liye)
 | Field | Type | Validation |
 |---|---|---|
-| `title` | string | Max 100 chars |
-| `altText` | string | Max 150 chars |
-| `isShowInVideoClips` | boolean | – |
-| `sortOrder` | number | Integer ≥ 1 |
+| `title` | string | Max 100 chars, `""` se clear |
+| `altText` | string | Max 150 chars, `""` se clear |
+| `isShowInVideoClips` | boolean | ⚠️ **Sirf VIDEO pe** — photo pe bhejne se `422` |
 | `isActive` | boolean | – |
+| *(file)* `thumbnail` | file | ⚠️ **Sirf VIDEO pe** — image format, max 10 MB |
+
+> 🔴 **`sortOrder` hata diya gaya hai** (naya). Position ab sirf reorder endpoint (#51) badalta hai. Yahan se set karne pe do media ek hi `sortOrder` pe aa jaati thi aur order arbitrary ho jaata tha.
 
 ```json
 { "title": "Seating area", "altText": "Cafe seating with wooden tables", "isShowInVideoClips": false }
@@ -3450,27 +3504,51 @@ Media ka metadata update — **file nahi badalti**.
   "success": true,
   "message": "Media info updated successfully.",
   "data": {
-    "_id": "68f1a2b3c4d5e6f7a8b9c5b1",
-    "title": "Seating area",
-    "altText": "Cafe seating with wooden tables",
-    "isShowInVideoClips": false
+    "_id": "68f1a2b3c4d5e6f7a8b9c5b2",
+    "type": "VIDEO",
+    "url": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/showcase/amb-tour.mp4",
+    "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/custom-poster.jpg",
+    "title": "Cafe walkthrough",
+    "altText": "Video tour",
+    "sortOrder": 2,
+    "isActive": true,
+    "isShowInVideoClips": false,
+    "storage": { "provider": "CLOUDINARY", "publicId": "showcase/amb-tour" },
+    "metadata": { "width": 1080, "height": 1920, "duration": 24 },
+    "createdAt": "2026-08-22T16:06:00.000Z",
+    "updatedAt": "2026-08-27T11:00:00.000Z"
   }
 }
 ```
 
 ### Errors
-| Status | Message |
-|---|---|
-| `404` | `Media not found.` |
-| `422` | *(Joi message)* — invalid ids, title/altText limit cross |
+| Status | Message | Kab |
+|---|---|---|
+| `400` | `Please provide at least one field to update.` | Na koi field, na thumbnail file |
+| `404` | `Media not found.` | Media nahi, ya soft-deleted hai |
+| `422` | `isShowInVideoClips applies to video media only. This media is a photo.` | **Naya** |
+| `422` | `A custom thumbnail can only be set on video media. This media is a photo.` | **Naya** |
+| `400` | `Thumbnail must be an image in a supported format.` | **Naya** — thumbnail ab validate hoti hai |
+| `400` | `Thumbnail exceeds maximum image size of 10 MB.` | **Naya** |
+| `422` | *(Joi message)* | invalid ids, title/altText limit cross |
 
 ### ⚠️ Notes
 
-**1. File replace karne ke liye `PUT .../media/replace/:mediaId` (#50) use karein** — ye sirf metadata badalta hai.
+**1. File replace karne ke liye `PUT .../media/replace/:mediaId` (#50) use karein** — ye metadata aur (video ka) poster badalta hai.
 
 **2. `altText` accessibility ke liye hai** — customer app screen readers ke liye use kar sakta hai.
 
-**3. `isActive: false` karne se media customer ko dikhna band** — delete nahi karna padta.
+**3. `isActive: false` karne se media customer ko dikhna band** — delete nahi karna padta, aur ab wo vendor list (#44) me bhi dikhti rehti hai to wapas on kar sakte hain.
+
+**4. 🔴 `isShowInVideoClips` sirf video ka switch hai** (naya) — photo pe bhejne pe `422` aata hai. Panel me photo ke liye ye toggle dikhayein hi nahi (#44 photo rows me ye key bhejta hi nahi).
+
+**5. 🔴 Custom thumbnail bhi sirf video pe** (naya) — photo apna hi thumbnail hai. Pehle ye check nahi tha, aur photo pe thumbnail set karne se photo ka apna asset delete hone ka risk tha.
+
+**6. ✅ Purana custom poster ab actually delete hota hai** (naya) — pehle ek galat condition ki wajah se Cloudinary pe orphan files chhut jaati thi. Auto-generated poster (video ke apne public id se bana) delete **nahi** hota — wo video ke saath hi jaata hai.
+
+**7. ✅ Thumbnail upload fail hone pe ab request fail hoti hai** (naya) — pehle error swallow ho jaata tha aur `200` aa jaata tha, jabki poster badla hi nahi hota tha.
+
+**8. Cover image auto-sync hoti hai** — poster ya `isActive` badalne se section ka cover shift ho sakta hai (jab tak `coverImageMode: MANUAL` na ho).
 
 ---
 
@@ -3510,19 +3588,21 @@ Media file replace karta hai. **Multipart.**
 ### Errors
 | Status | Message | Kab |
 |---|---|---|
-| `404` | `Media not found.` | Section ya media nahi |
+| `404` | `Media not found.` | Section ya media nahi, ya media inactive/deleted hai |
 | `400` | `Please upload exactly one media file.` | Zero ya multiple files |
+| `400` | `Only photo replacement is allowed for this media.` | Type mismatch — **upload se pehle** check hota hai |
 | `400` | *(format/size errors)* | #48 jaise |
-| `500` | `Failed to replace media.` | Upload fail |
-| `500` | `Failed to replace media` | Outer catch |
+| `500` | `Failed to replace media` | Upload fail — file rollback ho jaati hai |
 
 ### ⚠️ Notes
 
-**1. Purani file Cloudinary se delete ho jaati hai** — sirf new upload succeed hone ke baad.
+**1. Purani file Cloudinary se delete ho jaati hai** — sirf new upload succeed **aur** document save hone ke baad. Video ka custom poster bhi saath me hat jaata hai.
 
-**2. `_id` aur `sortOrder` same rehte hain** — position nahi badalti.
+**2. `_id`, `sortOrder`, `isActive` aur `isShowInVideoClips` same rehte hain** — sirf file badalti hai.
 
-**3. Type badal sakta hai** — `PHOTO` ko `VIDEO` se replace karne pe section ke video limits check honge.
+**3. 🔴 Type badal NAHI sakta** — photo ki jagah photo, video ki jagah video. (Ye rule pehle bhi tha par upload ke **baad** check hota tha, aur uska `400` outer catch me `500` ban jaata tha. Ab mime type se pehle hi check hota hai — na bekaar upload, na galat status code.)
+
+**4. Cover image auto-sync hoti hai** — agar ye media cover thi to naya poster cover ban jaata hai (`coverImageMode: MANUAL` na ho to).
 
 ---
 
@@ -3538,9 +3618,9 @@ Media file replace karta hai. **Multipart.**
 ### Body
 | Field | Type | Required | Validation |
 |---|---|---|---|
-| `medias` | array | ✅ | Min 1 item |
+| `medias` | array | ✅ | Min 1 item — **section ki saari live media** |
 | `medias[].id` | ObjectId | ✅ | |
-| `medias[].sortOrder` | number | ✅ | Integer ≥ **0** |
+| `medias[].sortOrder` | number | ✅ | Integer ≥ **1** (pehle `0` allowed tha; ab section reorder ke saath consistent) |
 
 ```json
 {
@@ -3553,7 +3633,14 @@ Media file replace karta hai. **Multipart.**
 
 ### Success — `200`
 ```json
-{ "success": true, "message": "Media reordered successfully.", "data": { "updated": 2 } }
+{
+  "success": true,
+  "message": "Media reordered successfully.",
+  "data": {
+    "updated": 2,
+    "coverImage": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb-tour-thumb.jpg"
+  }
+}
 ```
 
 > Already sahi order me ho to `{ "updated": 0, "message": "Media already in same order." }` aata hai.
@@ -3565,14 +3652,16 @@ Media file replace karta hai. **Multipart.**
 |---|---|---|
 | `400` | `Media list is required.` | Empty |
 | `404` | `Showcase section not found.` | |
-| `400` | `Please send complete media order.` | ⚠️ **Section ki saari media bhejni hoti hai**, sirf badli hui nahi |
-| `400` | `Invalid media id : <id>` | Koi id us section ki nahi |
+| `400` | `Please send the complete media order — N media expected, M received.` | ⚠️ **Section ki saari live media bhejni hoti hai**, sirf badli hui nahi |
+| `400` | `Invalid media id : <id>` | Koi id us section ki nahi (ya inactive/deleted hai) |
 
 ### ⚠️ Notes
 
-**1. ⚠️ Poori list mandatory hai.** Partial reorder allowed nahi — `"Please send complete media order."` aayega. Section ki saari media ids bhejni hongi.
+**1. ⚠️ Poori list mandatory hai.** Partial reorder allowed nahi. Error message ab batata hai kitni expected thi aur kitni mili.
 
-**2. `sortOrder` `0` se start ho sakta hai** — section reorder (#47) se different, jahan minimum `1` hai.
+**2. `sortOrder` `1` se start hota hai** — #47 ke saath ab consistent.
+
+**3. Cover image order ke saath move karti hai** — pehli media ka thumbnail cover ban jaata hai, isliye response me naya `coverImage` bhi aata hai. `coverImageMode: MANUAL` ho to cover nahi badalta. (Pehle cover ke liye media ka `url` prefer hota tha — video pehle number pe aa jaaye to cover ek `.mp4` link ban jaati thi aur UI me broken image dikhti thi. Ab hamesha `thumbnail` prefer hota hai.)
 
 ---
 
@@ -3588,23 +3677,31 @@ Media file replace karta hai. **Multipart.**
 
 ### Success — `200`
 ```json
-{ "success": true, "message": "Media deleted successfully.", "data": { "deleted": true } }
+{
+  "success": true,
+  "message": "Media deleted successfully.",
+  "data": {
+    "deletedMediaId": "68f1a2b3c4d5e6f7a8b9c5b1",
+    "coverImage": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb2.jpg"
+  }
+}
 ```
 
 ### Errors
 | Status | Message | Kab |
 |---|---|---|
-| `404` | `Media not found.` | Section ya media nahi |
-| `400` | `At least one media is required in this section.` | ⚠️ **Aakhri media delete nahi kar sakte** |
-| `500` | `Failed to delete media.` | |
+| `404` | `Media not found.` | Section ya media nahi, ya pehle se deleted/inactive |
+| `400` | `At least one media is required in this section.` | ⚠️ **Aakhri live media delete nahi kar sakte** |
 
 ### ⚠️ Notes
 
 **1. ⚠️ Section khali nahi ho sakta.** Aakhri media delete karne ki koshish pe `400` aayega. Section hi hatana ho to `DELETE /showcase/section/delete/:sectionId` (#53) use karein.
 
-**2. Cloudinary se file bhi delete hoti hai** — sirf DB se nahi.
+**2. 🔴 Ab soft delete hai** (naya) — media document `isDeleted: true` + `deletedAt` ke saath rehta hai, array se `$pull` nahi hoti. Ye is domain ka aakhri hard delete tha. Kisi bhi API me wo media ab nahi aayegi (vendor list me bhi nahi).
 
-**3. Agar deleted media section ka `coverImage` tha**, to cover stale reh sakta hai — UI me handle karein.
+**3. Cloudinary se file phir bhi delete hoti hai** — storage cost bachane ke liye. Matlab soft delete ek **audit record** hai, restore point nahi.
+
+**4. ✅ Cover image ab khud sudhar jaati hai** (naya) — deleted media cover thi to bachi hui pehli media ka thumbnail cover ban jaata hai, aur naya `coverImage` response me aata hai. Pehle cover stale reh jaati thi (comparison `url` se hoti thi jabki cover `thumbnail` se set hui thi).
 
 ---
 
@@ -3625,11 +3722,16 @@ Poora section delete — media ke saath.
   "success": true,
   "message": "Section deleted successfully.",
   "data": {
-    "deleted": true,
-    "usage": { "showcase": { "used": 2, "limit": 5, "isUnlimited": false } }
+    "deletedSectionId": "68f1a2b3c4d5e6f7a8b9c5a1",
+    "deletedMediaIds": [
+      "68f1a2b3c4d5e6f7a8b9c5b1",
+      "68f1a2b3c4d5e6f7a8b9c5b2"
+    ]
   }
 }
 ```
+
+> `deletedMediaIds` me ab sach me **ids** aati hain (naya) — pehle is key me poore media documents (storage, metadata sameta) chale jaate the.
 
 ### Errors
 | Status | Message |
@@ -3641,9 +3743,9 @@ Poora section delete — media ke saath.
 
 **1. ✅ Plan slot release ho jaata hai** — `releaseSlot(brandId, SHOWCASE)`. Delete karke naya section bana sakte hain.
 
-**2. Soft delete hai** — `isDeleted: true`. Media Cloudinary pe rehti hai.
+**2. Soft delete hai** — section aur uski saari media pe `isDeleted: true`. **Cloudinary files delete ho jaati hain** (doc me pehle ulta likha tha) — to restore possible nahi, ye audit record hai.
 
-**3. Sirf hide karna ho to `isActive: false` (#46) use karein** — wo slot release **nahi** karta, par customer ko dikhna band ho jaata hai.
+**3. Sirf hide karna ho to `isVisible: false` ya `isActive: false` (#46) use karein** — wo slot release **nahi** karte, par customer ko dikhna band ho jaata hai aur file bhi safe rehti hai.
 
 ---
 

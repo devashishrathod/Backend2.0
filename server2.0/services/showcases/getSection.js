@@ -1,134 +1,93 @@
-const mongoose = require("mongoose");
-const ShowcaseSection = require("../../models/ShowcaseSection");
-const { throwError } = require("../../utils");
-const { escapeRegex } = require("../../validator/common");
+const { SHOWCASE_MEDIA_TYPE } = require("../../constants/showcase");
 const {
   resolveSectionForActor,
+  formatManagedMedia,
 } = require("../../helpers/showcases");
 
+/** Case-insensitive substring test that tolerates a missing field. */
+const matchesKeyword = (value, keyword) =>
+  (value || "").toLowerCase().includes(keyword);
+
+/**
+ * One section with its media, for the vendor or admin who owns it.
+ *
+ * Two things changed here.
+ *
+ * Ownership: reading another brand's section metadata is a leak too, so the
+ * same `resolveSectionForActor` gate the write paths use runs first. It also
+ * *returns* the document now — this service used to prove ownership with one
+ * query and then run a second aggregation over the very same section.
+ *
+ * Visibility: the media list used to drop anything with `isActive: false`, so a
+ * vendor who switched a photo off could no longer see it, let alone switch it
+ * back on. The managed view now excludes only soft-deleted media, and `isActive`
+ * becomes an optional filter instead of a silent default.
+ *
+ * The array is bounded by `Setting.vendor.showcase.maxItemsPerSection` (15 by
+ * default), so filtering, sorting and paging it in JS is cheaper than a second
+ * round trip to Mongo.
+ *
+ * @param {{ userId: string, role: string, brandId?: string }} actor
+ */
 exports.getSection = async (actor, query) => {
-  // Reading another brand section metadata is still a leak, so the same
-  // ownership rule applies to the read path.
-  await resolveSectionForActor(actor, query.sectionId, {
-    projection: { brandId: 1 },
+  const { sectionId, type, search, isActive } = query;
+  const page = query.page || 1;
+  const limit = query.limit || 10;
+  const skip = (page - 1) * limit;
+
+  const section = await resolveSectionForActor(actor, sectionId, {
+    lean: true,
   });
 
-  let { sectionId, page, limit, type, search } = query;
-  page = page || 1;
-  limit = limit || 10;
-  const skip = (page - 1) * limit;
-  const mediaFilter = {
-    $and: [
-      { $eq: ["$$media.isActive", true] },
-      { $eq: ["$$media.isDeleted", false] },
-    ],
-  };
-  if (type) {
-    mediaFilter.$and.push({
-      $eq: ["$$media.type", type],
-    });
-  }
-  if (search?.trim()) {
-    const keyword = escapeRegex(search.trim().toLowerCase());
-    mediaFilter.$and.push({
-      $or: [
-        {
-          $regexMatch: {
-            input: {
-              $toLower: {
-                $ifNull: ["$$media.title", ""],
-              },
-            },
-            regex: keyword,
-          },
-        },
-        {
-          $regexMatch: {
-            input: {
-              $toLower: {
-                $ifNull: ["$$media.altText", ""],
-              },
-            },
-            regex: keyword,
-          },
-        },
-      ],
-    });
-  }
+  const managed = (section.medias || [])
+    .filter((media) => !media.isDeleted)
+    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
-  const pipeline = [
-    {
-      $match: {
-        _id: new mongoose.Types.ObjectId(sectionId),
-        //   brandId: brand._id,
-        isDeleted: false,
-      },
-    },
-    {
-      $project: {
-        title: 1,
-        description: 1,
-        coverImage: 1,
-        sectionType: 1,
-        sortOrder: 1,
-        isActive: 1,
-        createdAt: 1,
-        updatedAt: 1,
-        medias: {
-          $filter: {
-            input: "$medias",
-            as: "media",
-            cond: mediaFilter,
-          },
-        },
-      },
-    },
-    {
-      $addFields: {
-        mediaCount: {
-          $size: "$medias",
-        },
-        photoCount: {
-          $size: {
-            $filter: {
-              input: "$medias",
-              as: "media",
-              cond: {
-                $eq: ["$$media.type", "PHOTO"],
-              },
-            },
-          },
-        },
-        videoCount: {
-          $size: {
-            $filter: {
-              input: "$medias",
-              as: "media",
-              cond: {
-                $eq: ["$$media.type", "VIDEO"],
-              },
-            },
-          },
-        },
-      },
-    },
-  ];
+  const keyword = search?.trim().toLowerCase();
+  const filtered = managed.filter((media) => {
+    if (type && media.type !== type) return false;
+    if (isActive !== undefined && media.isActive !== isActive) return false;
+    if (
+      keyword &&
+      !matchesKeyword(media.title, keyword) &&
+      !matchesKeyword(media.altText, keyword)
+    ) {
+      return false;
+    }
+    return true;
+  });
 
-  const sections = await ShowcaseSection.aggregate(pipeline);
-  if (!sections.length) throwError(404, "Section not found.");
-  const section = sections[0];
-  section.medias.sort((a, b) => a.sortOrder - b.sortOrder);
-  const paginatedMedia = section.medias.slice(skip, skip + limit);
-  const media = paginatedMedia.map(({ storage, ...item }) => item);
-  delete section.medias;
+  const data = filtered.slice(skip, skip + limit).map(formatManagedMedia);
+
   return {
-    ...section,
+    _id: section._id,
+    brandId: section.brandId,
+    title: section.title,
+    slug: section.slug,
+    description: section.description,
+    coverImage: section.coverImage,
+    coverImageMode: section.coverImageMode,
+    sectionType: section.sectionType,
+    sortOrder: section.sortOrder,
+    isActive: section.isActive,
+    isVisible: section.isVisible,
+    isShowVideosInClips: section.isShowVideosInClips,
+    createdAt: section.createdAt,
+    updatedAt: section.updatedAt,
+    // Whole-album counts, as the vendor docs describe — unaffected by the
+    // `type` / `search` / `isActive` filters, which only narrow the page below.
+    mediaCount: managed.length,
+    photoCount: managed.filter((m) => m.type === SHOWCASE_MEDIA_TYPE.PHOTO)
+      .length,
+    videoCount: managed.filter((m) => m.type === SHOWCASE_MEDIA_TYPE.VIDEO)
+      .length,
+    inactiveMediaCount: managed.filter((m) => !m.isActive).length,
     media: {
       page,
       limit,
-      total: section.mediaCount,
-      totalPages: Math.ceil(section.mediaCount / limit),
-      data: media,
+      total: filtered.length,
+      totalPages: Math.ceil(filtered.length / limit) || 1,
+      data,
     },
   };
 };

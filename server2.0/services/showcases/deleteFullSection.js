@@ -1,38 +1,38 @@
-const ShowcaseSection = require("../../models/ShowcaseSection");
-const { throwError } = require("../../utils");
-//const { validateBrandVendor } = require("../../helpers/brands");
 const { deleteAllMedia } = require("../../helpers/showcases");
 const { releaseSlot } = require("../../helpers/brands");
 const { ENTITLEMENT_BUCKETS } = require("../../constants/subscription");
-const {
-  resolveSectionForActor,
-} = require("../../helpers/showcases");
+const { resolveSectionForActor } = require("../../helpers/showcases");
 
+/**
+ * Soft-delete a section and everything in it.
+ *
+ * The Cloudinary assets are destroyed for real — a deleted album should stop
+ * costing storage — so the soft delete is an audit record, not a restore point.
+ * A failure there must not block the delete, hence the swallowed error.
+ *
+ * @param {{ userId: string, role: string, brandId?: string }} actor
+ */
 exports.deleteFullSection = async (actor, payload) => {
-  await resolveSectionForActor(actor, payload.sectionId, {
-    projection: { brandId: 1 },
+  // One read, reused: this used to resolve ownership and then fetch the same
+  // section again for its media.
+  const section = await resolveSectionForActor(actor, payload.sectionId, {
+    projection: { medias: 1 },
   });
 
-  // const brand = await validateVendorBrand(userId);
-  const section = await ShowcaseSection.findOne(
-    {
-      _id: payload.sectionId,
-      isDeleted: false,
-    },
-    { medias: 1, brandId: 1 },
-  );
-  if (!section) throwError(404, "Showcase section not found.");
   try {
     await deleteAllMedia(section.medias);
   } catch (err) {
     console.error("Cloudinary delete failed:", err.message);
   }
-  const updateMedia = section.medias.map((media) => {
+
+  const deletedAt = new Date();
+  const deletedMediaIds = section.medias.map((media) => media._id);
+
+  section.medias.forEach((media) => {
     media.isActive = false;
     media.isDeleted = true;
-    return media;
+    media.deletedAt = deletedAt;
   });
-  section.medias = updateMedia;
   section.isActive = false;
   section.isDeleted = true;
   await section.save();
@@ -40,5 +40,7 @@ exports.deleteFullSection = async (actor, payload) => {
   // Deleting a section frees its slot in the plan's showcase pool.
   await releaseSlot(section.brandId, ENTITLEMENT_BUCKETS.SHOWCASE);
 
-  return { deletedSectionId: payload.sectionId, deletedMediaIds: updateMedia };
+  // Ids, not whole documents. This used to return the media subdocuments under
+  // a key called `deletedMediaIds`.
+  return { deletedSectionId: section._id, deletedMediaIds };
 };

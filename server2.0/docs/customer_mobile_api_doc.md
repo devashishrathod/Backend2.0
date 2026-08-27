@@ -237,7 +237,7 @@ Matlab: **404 ko "error" treat na karein** in list endpoints pe — wo "koi data
 
 Har list endpoint ka exact 404 message alag hai (entity name ke hisaab se) — har endpoint ke section me diya hai.
 
-**Exception:** `GET /showcase/get-brand-showcase/:brandId` empty pe `200` + `sections: []` deta hai (404 nahi).
+**Exception:** `GET /showcase/get-brand-showcase/:brandId` empty pe `200` + `sections: []` deta hai (404 nahi). Us endpoint pe `404` ka matlab alag hai — brand hi nahi mila (deleted/deactivated), jo genuine error hai.
 
 ---
 
@@ -2105,7 +2105,7 @@ Brand profile screen ka **single call** — brand, features, visible showcase pr
 - `hasMoreMedia: true` matlab "See all" button dikhana chahiye
 - `mediaPreviewLimit` batata hai cap kitna hai (abhi 6) — hardcode mat karein
 
-**3. Sirf wahi albums aate hain jo vendor ne dikhane chune hain** — `isVisible: true` filter lagta hai. ⚠️ Purana `/showcase/get-brand-showcase` ye filter **nahi** karta, to wahan chhupaye hue sections bhi aa jaate hain.
+**3. Sirf wahi albums aate hain jo vendor ne dikhane chune hain** — `isVisible: true` filter lagta hai. ✅ Ab `/showcase/get-brand-showcase` ([#19](#19-get-showcaseget-brand-showcasebrandid)) bhi yehi filter lagata hai — dono endpoints ek hi shared projection use karte hain, to shape aur rules kabhi alag nahi honge.
 
 **4. `isVerified` ab sahi aata hai.** Pehle `brand.isApproved` document hota tha jo **hamesha `false`** rehta hai (code me kahin set hi nahi hota). Ab ye `SystemVerify.status === "APPROVED"` se derive hota hai — verified badge ab actually kaam karega.
 
@@ -2255,12 +2255,18 @@ Na bhejein to ye simple directory hai — koi `distanceInMeters` field nahi aaye
 
 Brand ka photo/video gallery, sections me organized.
 
-**Access:** Intended: CUSTOMER · Enforced: **Any authenticated**
+**Access:** Public (koi token nahi chahiye) — `/brands/customer/*` ki tarah
 
 ### Path Params
 | Param | Type | Required |
 |---|---|---|
 | `brandId` | ObjectId | ✅ |
+
+### Query Params
+| Param | Type | Required | Default | Validation |
+|---|---|---|---|---|
+| `page` | number | ❌ | `1` | Integer ≥ 1 |
+| `limit` | number | ❌ | `50` | Integer 1–50 — **sections** pe lagta hai, media pe nahi |
 
 ### Success — `200`
 ```json
@@ -2269,10 +2275,14 @@ Brand ka photo/video gallery, sections me organized.
   "message": "Showcase fetched successfully.",
   "data": {
     "brandId": "68f1a2b3c4d5e6f7a8b9c3a1",
+    "total": 2,
+    "page": 1,
+    "limit": 50,
+    "totalPages": 1,
     "sections": [
       {
         "_id": "68f1a2b3c4d5e6f7a8b9c5a1",
-        "title": "ambience",
+        "title": "Ambience",
         "description": "our cozy interiors",
         "coverImage": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/ambience-cover.jpg",
         "sortOrder": 1,
@@ -2285,12 +2295,10 @@ Brand ka photo/video gallery, sections me organized.
             "_id": "68f1a2b3c4d5e6f7a8b9c5b1",
             "type": "PHOTO",
             "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1.jpg",
-            "thumbnail": null,
+            "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1.jpg",
             "title": "seating area",
             "altText": "cafe seating with wooden tables",
             "sortOrder": 1,
-            "isActive": true,
-            "isShowInVideoClips": true,
             "createdAt": "2026-06-01T10:00:00.000Z"
           },
           {
@@ -2301,15 +2309,15 @@ Brand ka photo/video gallery, sections me organized.
             "title": "cafe walkthrough",
             "altText": "video tour",
             "sortOrder": 2,
-            "isActive": true,
-            "isShowInVideoClips": true,
-            "createdAt": "2026-06-01T10:05:00.000Z"
+            "createdAt": "2026-06-01T10:05:00.000Z",
+            "duration": 24,
+            "resolution": { "width": 1080, "height": 1920 }
           }
         ]
       },
       {
         "_id": "68f1a2b3c4d5e6f7a8b9c5a2",
-        "title": "signature dishes",
+        "title": "Signature dishes",
         "description": "must-try items",
         "coverImage": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/dishes-cover.jpg",
         "sortOrder": 2,
@@ -2324,40 +2332,53 @@ Brand ka photo/video gallery, sections me organized.
 }
 ```
 
-### Success — `200` (koi showcase nahi)
+### Success — `200` (brand hai, par koi visible album nahi)
 ```json
 {
   "success": true,
   "message": "Showcase fetched successfully.",
   "data": {
     "brandId": "68f1a2b3c4d5e6f7a8b9c3a1",
+    "total": 0,
+    "page": 1,
+    "limit": 50,
+    "totalPages": 1,
     "sections": []
   }
 }
 ```
 
-> ✅ **Ye endpoint 404 nahi deta** — empty pe `sections: []`. Baaki list endpoints se different behaviour.
+> ✅ **Album na hone pe 404 nahi aata** — `sections: []`. 404 sirf tab jab brand hi na mile.
 
 ### Errors
 | Status | Message | Kab |
 |---|---|---|
-| `422` | *(Joi message)* | `brandId` valid ObjectId nahi |
-
-> Invalid/non-existent `brandId` pe bhi `200` + `sections: []` aata hai (404 nahi) — brand existence verify nahi hota.
+| `404` | `Brand not found` | brandId exist nahi karta, ya brand deactivate/delete ho chuka hai |
+| `422` | *(Joi message)* | `brandId` valid ObjectId nahi, ya `limit > 50` |
 
 ### ⚠️ Notes
 
-**1. Sirf active content aata hai** — `isActive: true`, `isDeleted: false` wale sections aur medias. Vendor ne kuch hide kiya to customer ko nahi dikhega.
+**1. 🔴 Sirf `isVisible: true` sections aate hain** (naya). Pehle ye filter **nahi** lagta tha — vendor ne section chhupaya ho tab bhi yahan aa jaata tha, jabki brand profile (#18) me nahi aata tha. Ab dono screen ek jaisa behave karti hain.
 
-**2. Sorting handled hai** — sections `sortOrder` ascending, aur har section ke `medias` bhi `sortOrder` ascending. Jo order mile usi me dikhayein.
+Poora filter: section pe `isVisible && isActive && !isDeleted`, media pe `isActive && !isDeleted`.
 
-**3. `storage` aur `metadata` fields strip ho jaate hain** (Cloudinary internals, video dimensions). Ye customer response se hata diye jaate hain — accha hai.
+**2. `isShowInVideoClips` yahan filter NAHI karta.** Wo sirf reels feed (#20) ka switch hai — jis video ko vendor ne clips se hataya ho, wo apne album me phir bhi dikhega. Ye jaan-boojh kar hai.
 
-**4. `thumbnail` `PHOTO` ke liye `null` hota hai**, `VIDEO` ke liye actual thumbnail URL. Video player pe placeholder ke liye use karein.
+**3. Brand check hota hai** (naya) — deleted ya deactivated brand ki gallery ab public nahi rehti, `404` aata hai. Pehle aise brand pe bhi `200` + `sections: []` milta tha.
 
-**5. Counts pre-calculated hain** (`mediaCount`, `photoCount`, `videoCount`) — tabs/badges me directly use karein, khud count karne ki zarurat nahi.
+**4. Sorting handled hai** — sections `sortOrder` ascending, aur har section ke `medias` bhi `sortOrder` ascending. Jo order mile usi me dikhayein.
 
-**6. Pagination nahi hai** — poora showcase ek call me. Bahut zyada media wale brand pe response bada ho sakta hai.
+**5. Response strict whitelist hai** — `storage`, `metadata`, `isActive` aur `isShowInVideoClips` ab response me **nahi** aate (pehle aakhri do aate the). Ye vendor ke internal toggles hain.
+
+**6. `duration` aur `resolution` sirf `VIDEO` rows pe aate hain** (naya) — photo pe ye keys hoti hi nahi. Player ke aspect ratio aur progress bar ke liye use karein; `duration` seconds me.
+
+**7. `thumbnail` hamesha image URL hota hai** — PHOTO ke liye apni hi optimized URL, VIDEO ke liye poster frame.
+
+**8. Counts pre-calculated hain** (`mediaCount`, `photoCount`, `videoCount`) — tabs/badges me directly use karein.
+
+**9. Sections pe pagination hai** (naya) — default 50 sections tak. Media pura aata hai (section cap 15 items), preview chahiye to #18 use karein.
+
+**10. Title ab original case me aata hai** — pehle sab lowercase store hota tha (`"ambience"`), ab jaise vendor ne likha (`"Ambience"`). **Purane sections lowercase hi rahenge** jab tak vendor unhe rename na kare.
 
 ---
 
@@ -2365,7 +2386,7 @@ Brand ka photo/video gallery, sections me organized.
 
 Brand ke videos ka flat, paginated feed — reels/stories style UI ke liye.
 
-**Access:** Intended: CUSTOMER · Enforced: **Any authenticated**
+**Access:** Public (koi token nahi chahiye)
 
 ### Path Params
 | Param | Type | Required |
@@ -2420,6 +2441,7 @@ GET /showcase/68f1a2b3c4d5e6f7a8b9c3a1/video-clips?page=1&limit=10
 ### Errors
 | Status | Message | Kab |
 |---|---|---|
+| `404` | `Brand not found` | brandId exist nahi karta, ya brand deactivate/delete ho chuka hai |
 | `404` | `No video clips found for this brand` | Koi eligible video nahi — **empty-state dikhayein** |
 | `422` | *(Joi message)* | `brandId` invalid, ya `limit > 50` |
 
@@ -2429,15 +2451,19 @@ GET /showcase/68f1a2b3c4d5e6f7a8b9c3a1/video-clips?page=1&limit=10
 - Section pe `isShowVideosInClips: true`
 - Media pe `isShowInVideoClips: true`
 
+Iske upar section ka `isVisible: true` bhi chahiye — chhupaya hua section clips me bhi nahi aata.
+
 Matlab showcase (#19) me video dikhe par clips feed me na aaye — ye normal hai, vendor ne opt-out kiya hoga.
 
-**2. `resolution` aur `duration` aate hain** (showcase endpoint me `metadata` strip ho jaata hai). Player aspect ratio aur progress bar ke liye useful. `duration` seconds me, missing ho to `0`.
+**2. Yahan sirf `type: "VIDEO"` aata hai, hamesha.** `isShowInVideoClips` **sirf video** ka switch hai — photo pe ye flag store hi nahi hota (`false` rehta hai), aur feed type pe bhi filter karta hai. Purane data me kisi photo pe `true` pada ho to bhi wo yahan kabhi nahi aayega.
 
-**3. `thumbnail` ka fallback section ka `coverImage` hai** — video ka apna thumbnail na ho to section cover use hota hai. Isliye ye field practically kabhi `null` nahi hota.
+**3. `resolution` aur `duration` aate hain.** Player aspect ratio aur progress bar ke liye useful. `duration` seconds me, missing ho to `0`.
 
-**4. Sorting:** section `sortOrder` → media `sortOrder` → `createdAt` descending.
+**4. `thumbnail` ka fallback section ka `coverImage` hai** — video ka apna thumbnail na ho to section cover use hota hai. Isliye ye field practically kabhi `null` nahi hota.
 
-**5. `sectionTitle` context deta hai** — video kis section ka hai, UI pe caption me dikha sakte hain.
+**5. Sorting:** section `sortOrder` → media `sortOrder` → `createdAt` descending.
+
+**6. `sectionTitle` context deta hai** — video kis section ka hai, UI pe caption me dikha sakte hain.
 
 ---
 

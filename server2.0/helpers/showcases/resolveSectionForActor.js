@@ -14,17 +14,30 @@ const { throwError } = require("../../utils");
  * Ownership is confirmed against `Brand.userId` rather than the token's cached
  * `brandId`, matching `resolveActorBrand` — a stale token cannot widen access.
  *
+ * **Callers must use the returned document.** Each service used to re-read the
+ * same section straight after this call, paying for two identical queries on
+ * every write; `projection` is here so one read serves both purposes.
+ *
  * @param {{ userId: string, role: string, brandId?: string }} actor
  * @param {string} sectionId
  * @param {object} [options]
- * @param {object} [options.projection] passed straight to `findOne`
+ * @param {object} [options.projection]    passed straight to `findOne`
+ * @param {boolean} [options.lean]         return a plain object, for read paths
+ * @param {boolean} [options.requireActive] 404 unless the section is active
  * @returns {Promise<object>} the ShowcaseSection document
  */
 exports.resolveSectionForActor = async (actor = {}, sectionId, options = {}) => {
-  const query = ShowcaseSection.findOne(
-    { _id: sectionId, isDeleted: false },
-    options.projection,
-  );
+  const filter = { _id: sectionId, isDeleted: false };
+  if (options.requireActive) filter.isActive = true;
+
+  // `brandId` is what ownership is decided on, so it is always read back even
+  // when a caller's projection forgot to ask for it.
+  const projection = options.projection
+    ? { ...options.projection, brandId: 1 }
+    : undefined;
+
+  const query = ShowcaseSection.findOne(filter, projection);
+  if (options.lean) query.lean();
 
   const section = await query;
   if (!section) throwError(404, "Showcase section not found.");

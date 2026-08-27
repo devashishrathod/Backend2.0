@@ -1,39 +1,45 @@
 const ShowcaseSection = require("../../models/ShowcaseSection");
 const { throwError } = require("../../utils");
-// const { validateVendorBrand } = require("../../helpers/showcase/common");
+const { SHOWCASE_COVER_IMAGE_MODE } = require("../../constants/showcase");
 const {
   normalizeFiles,
   validateMediaFiles,
   prepareMediaDocuments,
   getExistingMediaCounts,
   getNextMediaSortOrder,
+  getMediaCoverImage,
   uploadMultipleMedia,
   rollbackUploads,
-} = require("../../helpers/showcases");
-const { getShowcaseConfig } = require("../../helpers/settings");
-const {
   resolveSectionForActor,
 } = require("../../helpers/showcases");
+const { getShowcaseConfig } = require("../../helpers/settings");
 
+/**
+ * Upload media into a section.
+ *
+ * `isShowInVideoClips` applies to the videos in the batch only — it is a
+ * video-only switch, and `prepareMediaDocuments` stores `false` on every photo
+ * regardless of what was sent.
+ *
+ * @param {{ userId: string, role: string, brandId?: string }} actor
+ */
 exports.addSectionMedia = async (actor, payload, files) => {
-  await resolveSectionForActor(actor, payload.sectionId, {
-    projection: { brandId: 1 },
+  // One read, reused. Ownership and the "is this section usable" check used to
+  // be two separate queries for the same document.
+  const section = await resolveSectionForActor(actor, payload.sectionId, {
+    projection: { medias: 1, coverImage: 1, coverImageMode: 1 },
+    requireActive: true,
   });
 
-  // let brand = await validateVendorBrand(userId);
-  const section = await ShowcaseSection.findOne({
-    _id: payload.sectionId,
-    isDeleted: false,
-    isActive: true,
-  }).select("medias coverImage");
-  if (!section) throwError(404, "Showcase section not found.");
   const uploadedFiles = normalizeFiles(files?.files);
   if (!uploadedFiles.length) {
     throwError(400, "Please upload at least one media.");
   }
+
   const config = await getShowcaseConfig();
   const { images, videos } = getExistingMediaCounts(section.medias);
   validateMediaFiles(uploadedFiles, config, images, videos);
+
   let uploaded = [];
   try {
     uploaded = await uploadMultipleMedia(uploadedFiles);
@@ -43,13 +49,20 @@ exports.addSectionMedia = async (actor, payload, files) => {
       startSortOrder,
       payload.isShowInVideoClips,
     );
-    let coverImage = null;
-    const firstImage = medias.find((item) => item.type === "PHOTO");
-    if (firstImage) coverImage = firstImage.thumbnail;
+
     const update = { $push: { medias: { $each: medias } } };
-    if (coverImage && !section.coverImage) {
-      update.$set = { coverImage };
+
+    // First cover only, and only while the section has none — a vendor who
+    // reorders or pins a cover keeps it. `getMediaCoverImage` prefers the
+    // thumbnail, so a video-first section gets its poster frame rather than a
+    // link to the .mp4.
+    const isAutoCover =
+      section.coverImageMode !== SHOWCASE_COVER_IMAGE_MODE.MANUAL;
+    if (isAutoCover && !section.coverImage) {
+      const coverImage = getMediaCoverImage(medias[0]);
+      if (coverImage) update.$set = { coverImage };
     }
+
     await ShowcaseSection.updateOne({ _id: section._id }, update);
     return {
       uploaded: medias.length,
@@ -57,6 +70,10 @@ exports.addSectionMedia = async (actor, payload, files) => {
     };
   } catch (error) {
     await rollbackUploads(uploaded);
+    // A validation failure raised inside this block — an unsupported mime type
+    // from `uploadSingleMedia`, say — used to be rewritten as a 500 on the way
+    // out, so the client saw "Failed to add media" instead of the real reason.
+    if (error.statusCode) throw error;
     console.error("Error adding media to showcase section:", error);
     throwError(
       500,

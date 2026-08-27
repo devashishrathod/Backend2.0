@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b41d7e60-9a2c-4f18-8d33-trydood-customer",
     "name": "Trydood — Customer Mobile App",
-    "description": "# Customer Mobile App API\n\nCustomer app ke **35 endpoints**, 74 requests me — happy paths,\nbehaviour-changing edge cases, aur access-control negative tests.\n\nCompanion doc: `docs/customer_mobile_api_doc.md`\n\n---\n\n## Shuru kaise karein\n\n1. `environments/customer-*.postman_environment.json` import karein aur top-right\n   se **select** karein.\n2. Sirf **`customer_whatsapp`** bharein. Baaki sab `00 — Setup & Auth` se aage\n   apne aap bharta jaata hai.\n3. Poora collection **Collection Runner** me chalayein, ya folder-wise. Order\n   matter karta hai — baad wale folders pehle wale ke capture kiye ids use karte hain.\n\n```bash\n# CLI se\nnewman run postman/trydood-customer.postman_collection.json \\\n  -e postman/environments/customer-local.postman_environment.json\n```\n\n## Ye collection kaise likhi gayi hai\n\n- **Happy path aur behaviour badalne wale edge cases alag requests hain** — poora\n  folder runnable hai aur waqai API test karta hai, sirf document nahi karta.\n- **Per-field Joi rejections saved examples hain**, jo unhi requests pe lage hain\n  jinse wo belong karte hain.\n- **Har request pe assertions hain** — total 308 `pm.test` blocks.\n  Status, response envelope, aur documented field shape.\n\n## Fixture kya chahiye\n\nEk chalta hua environment jisme:\n\n| Chahiye | Kis liye |\n|---|---|\n| Kam se kam ek category + sub-category | `03` |\n| Ek active banner aur ticker | `04` (na ho to bhi 200 aayega) |\n| Ek PUBLISHED voucher, active outlet ke saath, Indore ke paas | `05` |\n| Ek active brand, showcase + features ke saath | `06`, `07` |\n| Ek terms aur ek privacy document | `08` |\n\nFixture na ho to un folders me `404` aayega — jo empty state hai, bug nahi.\n\n## Dhyan rakhne layak\n\n- **List endpoints khaali pe `404` dete hain**, empty array nahi — shared\n  `pagination` utility throw karti hai. Isko empty state samajhein.\n  Do exceptions: `/banners/customer/active` (`null` deta hai) aur\n  `/promotionalTickers/customer/active` (`[]` deta hai).\n- **`coordinates` `[longitude, latitude]`** order me hain — Maps APIs se ulta.\n- **WhatsApp OTP abhi verify nahi hota** (deliberate, deferred) — koi bhi 6-digit chalega.\n- **`DELETE /users/delete` kuch nahi karta** — folder `01` dekhein.\n- **Convenience fee client-side calculate mat karein** — `pricing.convenienceFee` use karein.\n\n## Regenerate\n\n```bash\nnode postman/generate-customer-collection.js\n```\n\n**JSON hand-edit mat karein** — enums aur limits `constants/` se seedhe padhe jaate\nhain, to hand-edit karne se collection API ke baare me jhooth bolna shuru kar deti hai.",
+    "description": "# Customer Mobile App API\n\nCustomer app ke **35 endpoints**, 74 requests me — happy paths,\nbehaviour-changing edge cases, aur access-control negative tests.\n\nCompanion doc: `docs/customer_mobile_api_doc.md`\n\n---\n\n## Shuru kaise karein\n\n1. `environments/customer-*.postman_environment.json` import karein aur top-right\n   se **select** karein.\n2. Sirf **`customer_whatsapp`** bharein. Baaki sab `00 — Setup & Auth` se aage\n   apne aap bharta jaata hai.\n3. Poora collection **Collection Runner** me chalayein, ya folder-wise. Order\n   matter karta hai — baad wale folders pehle wale ke capture kiye ids use karte hain.\n\n```bash\n# CLI se\nnewman run postman/trydood-customer.postman_collection.json \\\n  -e postman/environments/customer-local.postman_environment.json\n```\n\n## Ye collection kaise likhi gayi hai\n\n- **Happy path aur behaviour badalne wale edge cases alag requests hain** — poora\n  folder runnable hai aur waqai API test karta hai, sirf document nahi karta.\n- **Per-field Joi rejections saved examples hain**, jo unhi requests pe lage hain\n  jinse wo belong karte hain.\n- **Har request pe assertions hain** — total 309 `pm.test` blocks.\n  Status, response envelope, aur documented field shape.\n\n## Fixture kya chahiye\n\nEk chalta hua environment jisme:\n\n| Chahiye | Kis liye |\n|---|---|\n| Kam se kam ek category + sub-category | `03` |\n| Ek active banner aur ticker | `04` (na ho to bhi 200 aayega) |\n| Ek PUBLISHED voucher, active outlet ke saath, Indore ke paas | `05` |\n| Ek active brand, showcase + features ke saath | `06`, `07` |\n| Ek terms aur ek privacy document | `08` |\n\nFixture na ho to un folders me `404` aayega — jo empty state hai, bug nahi.\n\n## Dhyan rakhne layak\n\n- **List endpoints khaali pe `404` dete hain**, empty array nahi — shared\n  `pagination` utility throw karti hai. Isko empty state samajhein.\n  Do exceptions: `/banners/customer/active` (`null` deta hai) aur\n  `/promotionalTickers/customer/active` (`[]` deta hai).\n- **`coordinates` `[longitude, latitude]`** order me hain — Maps APIs se ulta.\n- **WhatsApp OTP abhi verify nahi hota** (deliberate, deferred) — koi bhi 6-digit chalega.\n- **`DELETE /users/delete` kuch nahi karta** — folder `01` dekhein.\n- **Convenience fee client-side calculate mat karein** — `pricing.convenienceFee` use karein.\n\n## Regenerate\n\n```bash\nnode postman/generate-customer-collection.js\n```\n\n**JSON hand-edit mat karein** — enums aur limits `constants/` se seedhe padhe jaate\nhain, to hand-edit karne se collection API ke baare me jhooth bolna shuru kar deti hai.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -4798,11 +4798,11 @@
                 }
               ]
             },
-            "description": "**Access:** `isCustomer`\n\nPoore albums — har section ke **saare** media (brand profile wale 6 ke preview\nke ulta).\n\n⚠️ **Ye `isVisible` filter nahi karta.** Brand profile endpoint karta hai. Matlab\nyahan wo albums bhi aa sakte hain jo vendor ne chhupa rakhe hain. Jab tak ye theek\nnahi hota, gallery screen ko brand profile ke `showcase.sections` pe hi bharosa\nkarna chahiye, ya section ids match karke filter karna chahiye.\n\nKuch na ho to **`200` + `sections: []`** — `404` nahi."
+            "description": "**Access:** `isCustomer`\n\nPoore albums — har section ke **saare** media (brand profile wale 6 ke preview\nke ulta).\n\n✅ **`isVisible` filter ab lagta hai** — brand profile ke saath ek jaisa. Dono\nendpoints ek hi shared projection use karte hain, to chhupaya hua album kahin\nnahi dikhega.\n\nMedia ka `isShowInVideoClips` yahan filter **nahi** karta — wo sirf reels feed ka\nswitch hai, album me video phir bhi dikhti hai.\n\nSections pe optional `page` / `limit` (default 50). Response me `total`, `page`,\n`limit`, `totalPages` bhi aate hain.\n\nKuch na ho to **`200` + `sections: []`**. `404` sirf tab jab brand hi na mile\n(deleted / deactivated)."
           },
           "response": [
             {
-              "name": "200 — brand ka koi showcase nahi",
+              "name": "200 — brand ka koi visible album nahi",
               "originalRequest": {
                 "method": "GET",
                 "header": [],
@@ -4827,7 +4827,7 @@
                     }
                   ]
                 },
-                "description": "**Access:** `isCustomer`\n\nPoore albums — har section ke **saare** media (brand profile wale 6 ke preview\nke ulta).\n\n⚠️ **Ye `isVisible` filter nahi karta.** Brand profile endpoint karta hai. Matlab\nyahan wo albums bhi aa sakte hain jo vendor ne chhupa rakhe hain. Jab tak ye theek\nnahi hota, gallery screen ko brand profile ke `showcase.sections` pe hi bharosa\nkarna chahiye, ya section ids match karke filter karna chahiye.\n\nKuch na ho to **`200` + `sections: []`** — `404` nahi."
+                "description": "**Access:** `isCustomer`\n\nPoore albums — har section ke **saare** media (brand profile wale 6 ke preview\nke ulta).\n\n✅ **`isVisible` filter ab lagta hai** — brand profile ke saath ek jaisa. Dono\nendpoints ek hi shared projection use karte hain, to chhupaya hua album kahin\nnahi dikhega.\n\nMedia ka `isShowInVideoClips` yahan filter **nahi** karta — wo sirf reels feed ka\nswitch hai, album me video phir bhi dikhti hai.\n\nSections pe optional `page` / `limit` (default 50). Response me `total`, `page`,\n`limit`, `totalPages` bhi aate hain.\n\nKuch na ho to **`200` + `sections: []`**. `404` sirf tab jab brand hi na mile\n(deleted / deactivated)."
               },
               "status": "OK",
               "code": 200,
@@ -4839,7 +4839,47 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"message\": \"Showcase fetched successfully.\",\n  \"data\": {\n    \"brandId\": \"{{brand_id}}\",\n    \"sections\": []\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"message\": \"Showcase fetched successfully.\",\n  \"data\": {\n    \"brandId\": \"{{brand_id}}\",\n    \"total\": 0,\n    \"page\": 1,\n    \"limit\": 50,\n    \"totalPages\": 1,\n    \"sections\": []\n  }\n}"
+            },
+            {
+              "name": "404 — brand nahi mila ya inactive",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/showcase/get-brand-showcase/{{brand_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "showcase",
+                    "get-brand-showcase",
+                    "{{brand_id}}"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "**Access:** `isCustomer`\n\nPoore albums — har section ke **saare** media (brand profile wale 6 ke preview\nke ulta).\n\n✅ **`isVisible` filter ab lagta hai** — brand profile ke saath ek jaisa. Dono\nendpoints ek hi shared projection use karte hain, to chhupaya hua album kahin\nnahi dikhega.\n\nMedia ka `isShowInVideoClips` yahan filter **nahi** karta — wo sirf reels feed ka\nswitch hai, album me video phir bhi dikhti hai.\n\nSections pe optional `page` / `limit` (default 50). Response me `total`, `page`,\n`limit`, `totalPages` bhi aate hain.\n\nKuch na ho to **`200` + `sections: []`**. `404` sirf tab jab brand hi na mile\n(deleted / deactivated)."
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Brand not found\"\n}"
             }
           ],
           "event": [
@@ -4889,11 +4929,27 @@
                   "  });",
                   "});",
                   "",
-                  "pm.test(\"storage / metadata strip ho gaye\", function () {",
+                  "pm.test(\"internal fields strip ho gaye\", function () {",
                   "  pm.response.json().data.sections.forEach(function (s) {",
                   "    (s.medias || []).forEach(function (m) {",
                   "      pm.expect(m).to.not.have.property(\"storage\");",
                   "      pm.expect(m).to.not.have.property(\"metadata\");",
+                  "      pm.expect(m).to.not.have.property(\"isActive\");",
+                  "      pm.expect(m).to.not.have.property(\"isShowInVideoClips\");",
+                  "    });",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test(\"duration / resolution sirf VIDEO pe aate hain\", function () {",
+                  "  pm.response.json().data.sections.forEach(function (s) {",
+                  "    (s.medias || []).forEach(function (m) {",
+                  "      if (m.type === \"VIDEO\") {",
+                  "        pm.expect(m, \"video \" + m._id).to.have.property(\"duration\");",
+                  "        pm.expect(m, \"video \" + m._id).to.have.property(\"resolution\");",
+                  "      } else {",
+                  "        pm.expect(m, \"photo \" + m._id).to.not.have.property(\"duration\");",
+                  "        pm.expect(m, \"photo \" + m._id).to.not.have.property(\"resolution\");",
+                  "      }",
                   "    });",
                   "  });",
                   "});",
@@ -4939,7 +4995,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isCustomer`\n\nSirf wo videos jo clips feed ke liye marked hain. **Teen** flags saath chahiye:\n\n- Section: `isVisible: true` **aur** `isShowVideosInClips: true`\n- Media: `type: VIDEO`, `isActive`, `isShowInVideoClips: true`\n\n`limit` max **50**.\n\n`thumbnail` na ho to section ka `coverImage` fallback ban jaata hai. `duration`\nna ho to `0`.\n\n⚠️ Ye endpoint apni pagination khud banata hai (shared utility nahi) — par khaali\npe phir bhi `404` deta hai, alag message ke saath."
+            "description": "**Access:** `isCustomer`\n\nSirf wo videos jo clips feed ke liye marked hain. **Teen** flags saath chahiye:\n\n- Section: `isVisible: true` **aur** `isShowVideosInClips: true`\n- Media: `type: VIDEO`, `isActive`, `isShowInVideoClips: true`\n\n`isShowInVideoClips` **sirf video** ka switch hai — photo pe wo `false` store hota\nhai, aur feed type pe bhi filter karta hai. To yahan kabhi photo nahi aayegi,\npurane data me kisi photo pe `true` pada ho tab bhi.\n\n`limit` max **50**.\n\n`thumbnail` na ho to section ka `coverImage` fallback ban jaata hai. `duration`\nna ho to `0`.\n\n⚠️ Ye endpoint apni pagination khud banata hai (shared utility nahi) — par khaali\npe phir bhi `404` deta hai, alag message ke saath. Brand hi na mile to bhi `404`,\nmessage `Brand not found`."
           },
           "response": [],
           "event": [

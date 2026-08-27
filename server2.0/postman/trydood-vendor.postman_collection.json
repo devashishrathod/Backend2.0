@@ -3498,6 +3498,18 @@
                 {
                   "key": "sortBy",
                   "value": "sortOrder"
+                },
+                {
+                  "key": "isVisible",
+                  "value": "false",
+                  "disabled": true,
+                  "description": "Panel ke \"Hidden\" tab ke liye — default me visible+hidden dono aate hain"
+                },
+                {
+                  "key": "isActive",
+                  "value": "false",
+                  "disabled": true,
+                  "description": "Default me on+off dono aate hain"
                 }
               ]
             },
@@ -3511,7 +3523,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` + ownership\n\n`brandId` vendor ke liye optional hai — service apne brand pe pin kar deti hai.\nDoosre brand ka `brandId` bhejne pe **reject** hota hai, chup-chaap ignore nahi.\n\n`{brandId: 1, isActive: 1}` index already tha, to ye scoping pehle se **tez** bhi hai."
+            "description": "**Access:** `isVendorOrAdmin` + ownership\n\n`brandId` vendor ke liye optional hai — service apne brand pe pin kar deti hai.\nDoosre brand ka `brandId` bhejne pe **reject** hota hai, chup-chaap ignore nahi.\n\n🔴 `isActive` / `isVisible` ke **default filter hata diye gaye hain**. Pehle\ndono ka default `true` tha, matlab abhi-abhi hide kiya section apni hi list se\ngayab ho jaata tha aur wapas on karne ka rasta nahi bachta tha. Ab sirf\nsoft-deleted sections chhupte hain; ye do query params filter ki tarah kaam\nkarte hain.\n\nResponse me `isVisible`, `isShowVideosInClips`, `slug`, `coverImageMode` aur\n`inactiveMediaCount` bhi aate hain — panel ke toggles inhi se render karein."
           },
           "response": [],
           "event": [
@@ -3543,6 +3555,14 @@
                   "  const mine = String(pm.environment.get(\"brand_id\"));",
                   "  pm.response.json().data.data.forEach(function (s) {",
                   "    if (s.brandId) pm.expect(String(s.brandId), s.title).to.eql(mine);",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test(\"toggles response me aate hain\", function () {",
+                  "  const rows = pm.response.json().data.data;",
+                  "  rows.forEach(function (s) {",
+                  "    pm.expect(s, s.title).to.have.property(\"isVisible\");",
+                  "    pm.expect(s, s.title).to.have.property(\"isShowVideosInClips\");",
                   "  });",
                   "});",
                   ""
@@ -3581,6 +3601,12 @@
                   "value": "",
                   "disabled": true,
                   "description": "PHOTO | VIDEO"
+                },
+                {
+                  "key": "isActive",
+                  "value": "false",
+                  "disabled": true,
+                  "description": "Default me on+off dono media aati hain"
                 }
               ]
             },
@@ -3594,7 +3620,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` + ownership\n\n⚠️ Media ek **nested paginated block** me aati hai — `data.media.data[]`, na ki\n`data.medias[]`. Section ke apne counts (`mediaCount` / `photoCount` /\n`videoCount`) us page ke nahi, **poore** album ke hain.\n\n`type` se `PHOTO` ya `VIDEO` filter kar sakte hain."
+            "description": "**Access:** `isVendorOrAdmin` + ownership\n\n⚠️ Media ek **nested paginated block** me aati hai — `data.media.data[]`, na ki\n`data.medias[]`. Section ke apne counts (`mediaCount` / `photoCount` /\n`videoCount` / `inactiveMediaCount`) us page ke nahi, **poore** album ke hain —\n`type` / `search` / `isActive` filter inhe nahi badalte.\n\n🔴 `isActive: false` media ab bhi list me aati hai (pehle gayab ho jaati thi, to\nusko wapas on karne ka koi rasta nahi tha). Sirf soft-deleted chhupti hai.\n\n`isShowInVideoClips` sirf **VIDEO** rows pe aata hai — photo pe wo key hi nahi\nhoti, to photo ke liye panel me toggle mat dikhayein."
           },
           "response": [],
           "event": [
@@ -3629,6 +3655,16 @@
                   "  pm.expect(d.media, \"media\").to.be.an(\"object\");",
                   "  pm.expect(d.media.data, \"media.data\").to.be.an(\"array\");",
                   "  pm.expect(d.mediaCount, \"mediaCount poore album ka\").to.be.a(\"number\");",
+                  "});",
+                  "",
+                  "pm.test(\"isShowInVideoClips sirf video pe\", function () {",
+                  "  pm.response.json().data.media.data.forEach(function (m) {",
+                  "    if (m.type === \"VIDEO\") {",
+                  "      pm.expect(m, \"video \" + m._id).to.have.property(\"isShowInVideoClips\");",
+                  "    } else {",
+                  "      pm.expect(m, \"photo \" + m._id).to.not.have.property(\"isShowInVideoClips\");",
+                  "    }",
+                  "  });",
                   "});",
                   ""
                 ]
@@ -3797,7 +3833,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` + ownership\n\n⚠️ `isVisible: false` karne pe wo album customer ke **brand profile** se gayab ho jaata hai — par purana `get-brand-showcase` endpoint us filter ko nahi lagata."
+            "description": "**Access:** `isVendorOrAdmin` + ownership\n\n`isVisible: false` karne pe album customer ke **brand profile** aur **full gallery** dono se gayab ho jaata hai (pehle gallery endpoint ye filter nahi lagata tha). Vendor ki apni list (#get-all) me wo phir bhi dikhta hai, taaki wapas on kiya ja sake."
           },
           "response": [],
           "event": [
@@ -3856,7 +3892,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` + ownership\n\nField ka naam **`id`** hai (`sectionId` nahi). `sections` array me **har**\nsection ka naya `sortOrder` bhejein — service `countDocuments` se match karti\nhai, to adhoori list `400 \"Invalid section list.\"` deti hai.\n\n`brandId` path me hai par ownership `resolveActorBrand` se resolve hoti hai —\ndoosre brand ka id daalne pe reject.\n\n🔴 **Ye endpoint pehle kabhi kaam hi nahi karta tha** — service `item.sectionId`\npadhti thi jabki payload me `id` aata hai, to har well-formed request\n`undefined.toString()` pe `500` ho jaati thi. Fix 2026-08-27 ko hua."
+            "description": "**Access:** `isVendorOrAdmin` + ownership\n\nField ka naam **`id`** hai (`sectionId` nahi). `sections` array me brand ke\n**saare** sections ka naya `sortOrder` bhejein — service list ko `1..n`\nrenumber karti hai, to adhoori list positions se takra jaati. Ab wo\n`400 \"Please send the complete section order — N sections expected, M received.\"`\ndeti hai; galat id pe `400 \"Invalid section list.\"`.\n\n`brandId` path me hai par ownership `resolveActorBrand` se resolve hoti hai —\ndoosre brand ka id daalne pe reject.\n\n🔴 **Ye endpoint pehle kabhi kaam hi nahi karta tha** — service `item.sectionId`\npadhti thi jabki payload me `id` aata hai, to har well-formed request\n`undefined.toString()` pe `500` ho jaati thi. Fix 2026-08-27 ko hua."
           },
           "response": [
             {
@@ -3900,7 +3936,62 @@
                     }
                   ]
                 },
-                "description": "**Access:** `isVendorOrAdmin` + ownership\n\nField ka naam **`id`** hai (`sectionId` nahi). `sections` array me **har**\nsection ka naya `sortOrder` bhejein — service `countDocuments` se match karti\nhai, to adhoori list `400 \"Invalid section list.\"` deti hai.\n\n`brandId` path me hai par ownership `resolveActorBrand` se resolve hoti hai —\ndoosre brand ka id daalne pe reject.\n\n🔴 **Ye endpoint pehle kabhi kaam hi nahi karta tha** — service `item.sectionId`\npadhti thi jabki payload me `id` aata hai, to har well-formed request\n`undefined.toString()` pe `500` ho jaati thi. Fix 2026-08-27 ko hua."
+                "description": "**Access:** `isVendorOrAdmin` + ownership\n\nField ka naam **`id`** hai (`sectionId` nahi). `sections` array me brand ke\n**saare** sections ka naya `sortOrder` bhejein — service list ko `1..n`\nrenumber karti hai, to adhoori list positions se takra jaati. Ab wo\n`400 \"Please send the complete section order — N sections expected, M received.\"`\ndeti hai; galat id pe `400 \"Invalid section list.\"`.\n\n`brandId` path me hai par ownership `resolveActorBrand` se resolve hoti hai —\ndoosre brand ka id daalne pe reject.\n\n🔴 **Ye endpoint pehle kabhi kaam hi nahi karta tha** — service `item.sectionId`\npadhti thi jabki payload me `id` aata hai, to har well-formed request\n`undefined.toString()` pe `500` ho jaati thi. Fix 2026-08-27 ko hua."
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Please send the complete section order — 5 sections expected, 1 received.\"\n}"
+            },
+            {
+              "name": "400 — koi id is brand ka nahi",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"sections\": [\n    {\n      \"id\": \"{{section_id}}\",\n      \"sortOrder\": 1\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/showcase/section/{{brand_id}}/reorder",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "showcase",
+                    "section",
+                    "{{brand_id}}",
+                    "reorder"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{vendor_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "**Access:** `isVendorOrAdmin` + ownership\n\nField ka naam **`id`** hai (`sectionId` nahi). `sections` array me brand ke\n**saare** sections ka naya `sortOrder` bhejein — service list ko `1..n`\nrenumber karti hai, to adhoori list positions se takra jaati. Ab wo\n`400 \"Please send the complete section order — N sections expected, M received.\"`\ndeti hai; galat id pe `400 \"Invalid section list.\"`.\n\n`brandId` path me hai par ownership `resolveActorBrand` se resolve hoti hai —\ndoosre brand ka id daalne pe reject.\n\n🔴 **Ye endpoint pehle kabhi kaam hi nahi karta tha** — service `item.sectionId`\npadhti thi jabki payload me `id` aata hai, to har well-formed request\n`undefined.toString()` pe `500` ho jaati thi. Fix 2026-08-27 ko hua."
               },
               "status": "Bad Request",
               "code": 400,
@@ -3921,24 +4012,20 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"HTTP 200\", function () {",
-                  "  pm.response.to.have.status(200);",
-                  "});",
-                  "",
-                  "pm.test(\"success envelope\", function () {",
+                  "pm.test(\"200 (poori list) ya 400 (adhoori list refusal)\", function () {",
+                  "  pm.expect([200, 400]).to.include(pm.response.code);",
                   "  const b = pm.response.json();",
-                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
-                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
-                  "  pm.expect(b, \"data key\").to.have.property(\"data\");",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(b.success).to.eql(true);",
+                  "    pm.expect(b.data.updated, \"updated\").to.be.a(\"number\").and.to.be.above(0);",
+                  "  } else {",
+                  "    pm.expect(b.success).to.eql(false);",
+                  "    pm.expect(String(b.message)).to.match(/complete section order|Invalid section list/);",
+                  "  }",
                   "});",
                   "",
-                  "pm.test(\"message is \\\"Sections reordered successfully.\\\"\", function () {",
-                  "  pm.expect(pm.response.json().message).to.eql(\"Sections reordered successfully.\");",
-                  "});",
-                  "",
-                  "pm.test(\"kitne update hue wo bataya\", function () {",
-                  "  const d = pm.response.json().data;",
-                  "  pm.expect(d.updated, \"updated\").to.be.a(\"number\").and.to.be.above(0);",
+                  "pm.test(\"500 nahi hai — id field sahi padhi ja rahi hai\", function () {",
+                  "  pm.expect(String(pm.response.json().message || \"\")).to.not.include(\"toString\");",
                   "});",
                   ""
                 ]
@@ -4037,7 +4124,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"postman media title\",\n  \"altText\": \"postman alt text\",\n  \"isShowInVideoClips\": true\n}",
+              "raw": "{\n  \"title\": \"postman media title\",\n  \"altText\": \"postman alt text\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4068,7 +4155,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` + ownership\n\nSirf metadata — file replace karne ke liye alag endpoint hai. `isShowInVideoClips` clips feed ko control karta hai."
+            "description": "**Access:** `isVendorOrAdmin` + ownership\n\nSirf metadata — file replace karne ke liye alag endpoint hai.\n\n⚠️ `isShowInVideoClips` **sirf VIDEO** pe bheja ja sakta hai; photo pe `422`\naata hai. Custom `thumbnail` file bhi sirf video pe (image, max 10 MB).\n\n🔴 `sortOrder` yahan se hata diya gaya hai — position sirf reorder endpoint\nbadalta hai (warna do media ek hi position pe aa jaati thi)."
           },
           "response": [],
           "event": [
@@ -4127,7 +4214,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` + ownership\n\n**Multipart.** Purani file Cloudinary se delete ho jaati hai, `sortOrder` wahi rehta hai."
+            "description": "**Access:** `isVendorOrAdmin` + ownership\n\n**Multipart.** Purani file (aur video ka custom poster) Cloudinary se delete ho\njaate hain — sirf naya upload **aur** save succeed hone ke baad.\n\n`_id`, `sortOrder`, `isActive`, `isShowInVideoClips` wahi rehte hain. Type badal\nnahi sakta — photo ki jagah photo, video ki jagah video (check upload se pehle\nhi mime type pe hota hai, to reject hone pe file upload hi nahi hoti)."
           },
           "response": [],
           "event": [
@@ -4198,7 +4285,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` + ownership\n\nField ka naam **`id`** hai (`mediaId` nahi).\n\n⚠️ **Poori list bhejein** — service section ke active media count se compare\nkarti hai, aur adhoori list pe `400 \"Please send complete media order.\"` deti hai.\n\nSeeded section me 8 media hain, to ek-item wali list yahan **deliberately** wo\nrefusal trigger karti hai — aur yahi assert bhi hota hai.\n\n🔴 Section reorder wala hi bug isme bhi tha (`item.mediaId` vs `id`) — 2026-08-27 ko fix hua."
+            "description": "**Access:** `isVendorOrAdmin` + ownership\n\nField ka naam **`id`** hai (`mediaId` nahi). `sortOrder` min **1** (pehle `0`\nallowed tha).\n\n⚠️ **Poori list bhejein** — service section ke live media count se compare karti\nhai, aur adhoori list pe `400 \"Please send the complete media order — N media\nexpected, M received.\"` deti hai.\n\nSeeded section me 8 media hain, to ek-item wali list yahan **deliberately** wo\nrefusal trigger karti hai — aur yahi assert bhi hota hai.\n\n🔴 Section reorder wala hi bug isme bhi tha (`item.mediaId` vs `id`) — 2026-08-27 ko fix hua."
           },
           "response": [
             {
@@ -4243,7 +4330,7 @@
                     }
                   ]
                 },
-                "description": "**Access:** `isVendorOrAdmin` + ownership\n\nField ka naam **`id`** hai (`mediaId` nahi).\n\n⚠️ **Poori list bhejein** — service section ke active media count se compare\nkarti hai, aur adhoori list pe `400 \"Please send complete media order.\"` deti hai.\n\nSeeded section me 8 media hain, to ek-item wali list yahan **deliberately** wo\nrefusal trigger karti hai — aur yahi assert bhi hota hai.\n\n🔴 Section reorder wala hi bug isme bhi tha (`item.mediaId` vs `id`) — 2026-08-27 ko fix hua."
+                "description": "**Access:** `isVendorOrAdmin` + ownership\n\nField ka naam **`id`** hai (`mediaId` nahi). `sortOrder` min **1** (pehle `0`\nallowed tha).\n\n⚠️ **Poori list bhejein** — service section ke live media count se compare karti\nhai, aur adhoori list pe `400 \"Please send the complete media order — N media\nexpected, M received.\"` deti hai.\n\nSeeded section me 8 media hain, to ek-item wali list yahan **deliberately** wo\nrefusal trigger karti hai — aur yahi assert bhi hota hai.\n\n🔴 Section reorder wala hi bug isme bhi tha (`item.mediaId` vs `id`) — 2026-08-27 ko fix hua."
               },
               "status": "OK",
               "code": 200,
@@ -4274,8 +4361,8 @@
                   "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
                   "});",
                   "",
-                  "pm.test(\"message mentions \\\"Please send complete media order.\\\"\", function () {",
-                  "  pm.expect(String(pm.response.json().message)).to.include(\"Please send complete media order.\");",
+                  "pm.test(\"message mentions \\\"complete media order\\\"\", function () {",
+                  "  pm.expect(String(pm.response.json().message)).to.include(\"complete media order\");",
                   "});",
                   "",
                   "pm.test(\"500 nahi hai — id field ab sahi padhi ja rahi hai\", function () {",
@@ -4316,7 +4403,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` + ownership\n\n⚠️ **Aakhri media delete nahi hoti** — section ko media chahiye. Poora album\nhataana ho to section hi delete karein."
+            "description": "**Access:** `isVendorOrAdmin` + ownership\n\n⚠️ **Aakhri media delete nahi hoti** — section ko media chahiye. Poora album\nhataana ho to section hi delete karein.\n\n🔴 Ab **soft delete** hai — media `isDeleted: true` + `deletedAt` ke saath rehti\nhai, array se hard `$pull` nahi hoti (is domain ka aakhri hard delete tha).\nCloudinary file phir bhi delete hoti hai, to ye audit record hai, restore point\nnahi.\n\nResponse me `deletedMediaId` aur **naya** `coverImage` aata hai — deleted media\ncover thi to cover khud shift ho jaata hai."
           },
           "response": [
             {
@@ -4348,7 +4435,7 @@
                     }
                   ]
                 },
-                "description": "**Access:** `isVendorOrAdmin` + ownership\n\n⚠️ **Aakhri media delete nahi hoti** — section ko media chahiye. Poora album\nhataana ho to section hi delete karein."
+                "description": "**Access:** `isVendorOrAdmin` + ownership\n\n⚠️ **Aakhri media delete nahi hoti** — section ko media chahiye. Poora album\nhataana ho to section hi delete karein.\n\n🔴 Ab **soft delete** hai — media `isDeleted: true` + `deletedAt` ke saath rehti\nhai, array se hard `$pull` nahi hoti (is domain ka aakhri hard delete tha).\nCloudinary file phir bhi delete hoti hai, to ye audit record hai, restore point\nnahi.\n\nResponse me `deletedMediaId` aur **naya** `coverImage` aata hai — deleted media\ncover thi to cover khud shift ho jaata hai."
               },
               "status": "Bad Request",
               "code": 400,
@@ -4360,7 +4447,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": false,\n  \"message\": \"Cannot delete the last media of a section.\"\n}"
+              "body": "{\n  \"success\": false,\n  \"message\": \"At least one media is required in this section.\"\n}"
             }
           ],
           "event": [
@@ -4371,6 +4458,9 @@
                 "exec": [
                   "pm.test(\"200 ya 'last media' refusal\", function () {",
                   "  pm.expect([200, 400, 404]).to.include(pm.response.code);",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(pm.response.json().data, \"data\").to.have.property(\"deletedMediaId\");",
+                  "  }",
                   "});",
                   ""
                 ]
@@ -4405,7 +4495,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` + ownership\n\nPlan ka showcase slot **release** karta hai — `isActive: false` karne se wo release nahi hota."
+            "description": "**Access:** `isVendorOrAdmin` + ownership\n\nPlan ka showcase slot **release** karta hai — `isVisible` / `isActive: false`\nkarne se wo release nahi hota.\n\nSoft delete hai, par Cloudinary files delete ho jaati hain. Response me\n`deletedSectionId` aur `deletedMediaIds` (sirf ids) aate hain."
           },
           "response": [],
           "event": [
@@ -4416,6 +4506,11 @@
                 "exec": [
                   "pm.test(\"200 ya 404\", function () {",
                   "  pm.expect([200, 404]).to.include(pm.response.code);",
+                  "  if (pm.response.code === 200) {",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d, \"data\").to.have.property(\"deletedSectionId\");",
+                  "    pm.expect(d.deletedMediaIds, \"deletedMediaIds\").to.be.an(\"array\");",
+                  "  }",
                   "});",
                   ""
                 ]

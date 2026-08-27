@@ -12,6 +12,7 @@ const {
 const { recordRemediationUpdate } = require("./recordRemediationUpdate");
 const { applyPlanEntitlements } = require("./applyPlanEntitlements");
 const { resolveActorBrand } = require("./resolveActorBrand");
+const { assertPublicBrand } = require("./assertPublicBrand");
 const { recountBrandUsage } = require("./recountBrandUsage");
 const { summarizeUsage } = require("./summarizeUsage");
 const {
@@ -23,6 +24,7 @@ const {
 
 module.exports = {
   resolveActorBrand,
+  assertPublicBrand,
   generateUniqueBrandId,
   generateBrandMerchantId,
   validateBrandVendor,
