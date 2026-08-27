@@ -9,6 +9,11 @@ const {
   notifySubscriptionExpired,
   notifySubscriptionCancelled,
 } = require("./subscriptionNotices");
+const {
+  notifyBrandDeactivated,
+  notifyBrandActivated,
+  notifyBrandCustomerVisibilityChanged,
+} = require("./brandStatusNotices");
 
 module.exports = {
   notify,
@@ -20,4 +25,7 @@ module.exports = {
   notifySubscriptionExpiring,
   notifySubscriptionExpired,
   notifySubscriptionCancelled,
+  notifyBrandDeactivated,
+  notifyBrandActivated,
+  notifyBrandCustomerVisibilityChanged,
 };

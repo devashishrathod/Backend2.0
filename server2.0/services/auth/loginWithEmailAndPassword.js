@@ -1,13 +1,22 @@
 const User = require("../../models/User");
 const { ROLES } = require("../../constants");
 const { throwError } = require("../../utils");
+const { assertAccountAccess } = require("../../helpers/auth");
 
 exports.loginWithEmailAndPassword = async (payload) => {
   let { email, password, role } = payload;
   email = email.toLowerCase();
   role = role?.toUpperCase() || ROLES.ADMIN;
-  const user = await User.findOne({ email, role });
+  // `isDeleted` was missing here, so a soft-deleted account could still sign in.
+  // Filtering it in the query rather than checking after means a deleted account
+  // is indistinguishable from one that never existed.
+  const user = await User.findOne({ email, role, isDeleted: false });
   if (!user) throwError(404, "Invalid credentials! User not found");
+  // Minting a token for a deactivated account was the last way around the auth
+  // gate: every request would then be refused, but the token should never have
+  // been issued. Checked before the password so a suspended account cannot be
+  // probed for a valid password either.
+  assertAccountAccess(user);
   // Fail closed on an account that never chose a password. Without this an
   // OTP-only account would be reachable by whatever default it was seeded with.
   if (!user.hasPassword()) {

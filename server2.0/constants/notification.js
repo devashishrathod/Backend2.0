@@ -24,6 +24,17 @@ const NOTIFICATION_TYPES = Object.freeze({
   SUBSCRIPTION_CANCELLED: "SUBSCRIPTION_CANCELLED",
   LIMIT_REACHED: "LIMIT_REACHED",
 
+  // An admin switched the vendor's account off or back on. CRITICAL on the way
+  // off — the vendor loses all access the moment it lands, so this is the only
+  // notice explaining why.
+  BRAND_DEACTIVATED: "BRAND_DEACTIVATED",
+  BRAND_ACTIVATED: "BRAND_ACTIVATED",
+  // An admin de-listed the brand from the customer app, or put it back. A
+  // separate switch from the two above: the vendor keeps (or keeps losing)
+  // access either way, and this is about what customers can see.
+  BRAND_HIDDEN_FROM_CUSTOMERS: "BRAND_HIDDEN_FROM_CUSTOMERS",
+  BRAND_VISIBLE_TO_CUSTOMERS: "BRAND_VISIBLE_TO_CUSTOMERS",
+
   // A message an admin composed and sent to a chosen audience. Deliberately
   // generic: it is not tied to any domain, so the same broadcast path serves
   // vendors, customers, and any role added later.

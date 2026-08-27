@@ -4,6 +4,7 @@ const { validateBrandVendor } = require("./validateBrandVendor");
 const {
   recordBrandVerificationHistory,
 } = require("./recordBrandVerificationHistory");
+const { recordBrandStatusHistory } = require("./recordBrandStatusHistory");
 const {
   resolveOnboardingEditWindow,
   assertOnboardingEditable,
@@ -29,6 +30,7 @@ module.exports = {
   generateBrandMerchantId,
   validateBrandVendor,
   recordBrandVerificationHistory,
+  recordBrandStatusHistory,
   resolveOnboardingEditWindow,
   assertOnboardingEditable,
   isRemediation,

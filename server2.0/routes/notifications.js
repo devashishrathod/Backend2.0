@@ -5,6 +5,7 @@ const {
   validateSchema,
   isAdmin,
   isVendorOrAdmin,
+  isVendorOrAdminEvenIfDeactivated,
 } = require("../middlewares");
 const { getAll, markRead, broadcast } = require("../controllers/notifications");
 const {
@@ -16,9 +17,14 @@ const {
 // A vendor is scoped to their own brand inside the service; an admin may pass
 // any brandId, or omit it to read the admin-audience feed.
 
+// Deliberately reachable by a deactivated account — read-only, and scoped to the
+// caller's own brand. This is where the notice explaining the suspension lands,
+// so refusing it would leave a vendor locked out with no in-app explanation.
+// `mark-read` below is not exempt: it is a write, and a suspended account has no
+// business writing.
 router.get(
   "/get-all",
-  isVendorOrAdmin,
+  isVendorOrAdminEvenIfDeactivated,
   validateSchema(validateGetAllNotifications),
   getAll,
 );
