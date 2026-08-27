@@ -1,12 +1,26 @@
 const Joi = require("joi");
 
+// Same reasoning as the terms schema — legal copy does not fit in 300 chars.
+const MAX_DESCRIPTION = 50000;
+
+const typeRule = Joi.string().trim().max(40).messages({
+  "string.max": "Type cannot exceed {#limit} characters",
+});
+
 exports.validateCreatePrivacyAndPolicy = (data) => {
   const createSchema = Joi.object({
     title: Joi.string().min(3).max(120).required().messages({
       "string.min": "Title has minimum {#limit} characters",
       "string.max": "Title cannot exceed {#limit} characters",
+      "any.required": "Title is required",
     }),
-    description: Joi.string().allow("").max(300).messages({
+    // Mandatory on the model but absent here, so every create failed on
+    // "Path `type` is required." — see validator/termsAndConditions.js.
+    type: typeRule.required().messages({
+      "any.required": "Type is required",
+      "string.max": "Type cannot exceed {#limit} characters",
+    }),
+    description: Joi.string().allow("").max(MAX_DESCRIPTION).messages({
       "string.max": "Description cannot exceed {#limit} characters",
     }),
     isActive: Joi.boolean().optional(),
@@ -20,11 +34,16 @@ exports.validateUpdatePrivacyAndPolicy = (payload) => {
       "string.min": "Title has minimum {#limit} characters",
       "string.max": "Title cannot exceed {#limit} characters",
     }),
-    description: Joi.string().allow("").max(300).messages({
+    type: typeRule.optional(),
+    description: Joi.string().allow("").max(MAX_DESCRIPTION).messages({
       "string.max": "Description cannot exceed {#limit} characters",
     }),
     isActive: Joi.boolean().optional(),
-  });
+  })
+    .min(1)
+    .messages({
+      "object.min": "Please provide at least one field to update.",
+    });
   return updateSchema.validate(payload, { abortEarly: false });
 };
 
@@ -34,6 +53,7 @@ exports.validateGetAllPrivacyAndPoliciesQuery = (payload) => {
     limit: Joi.number().integer().min(1).optional(),
     search: Joi.string().optional(),
     title: Joi.string().optional(),
+    type: typeRule.optional(),
     isActive: Joi.alternatives().try(Joi.string(), Joi.boolean()).optional(),
     fromDate: Joi.date().iso().optional(),
     toDate: Joi.date().iso().optional(),
@@ -42,3 +62,5 @@ exports.validateGetAllPrivacyAndPoliciesQuery = (payload) => {
   });
   return getAllQuerySchema.validate(payload, { abortEarly: false });
 };
+
+exports.MAX_DESCRIPTION = MAX_DESCRIPTION;

@@ -2,7 +2,10 @@ const { asyncWrapper, sendSuccess } = require("../../utils");
 const { getAllSections } = require("../../services/showcases");
 
 exports.getAll = asyncWrapper(async (req, res) => {
-  const result = await getAllSections(req.userId, req.validatedData);
+  const result = await getAllSections(
+    { userId: req.userId, role: req.role, brandId: req.brandId },
+    req.validatedData,
+  );
   return sendSuccess(
     res,
     200,

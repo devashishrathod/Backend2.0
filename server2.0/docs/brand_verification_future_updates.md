@@ -4,7 +4,7 @@ Running list of everything **deliberately deferred** on the brand verification /
 approval flow. Nothing here is implemented yet — add to this file instead of
 leaving TODOs scattered in the code.
 
-Last updated: 2026-08-23
+Last updated: 2026-08-23 · Verified against code 2026-08-22 (notification layer note refreshed)
 
 ---
 
@@ -39,8 +39,26 @@ Notes for whoever picks this up:
   inside it — a failed email must not roll back an approval.
 - The history row is the natural trigger source; consider a worker that tails
   `brandverificationhistories` rather than firing inline, so retries are free.
-- `nodeMailer` helpers already exist under `helpers/nodeMailer/`. Push has no
-  helper yet.
+- ~~`nodeMailer` helpers already exist under `helpers/nodeMailer/`. Push has no
+  helper yet.~~ **Updated 2026-08-22 — the notification layer now exists and this
+  is the only domain still not using it.** Reuse it rather than building anything:
+  - `helpers/notifications/notify.js` — the single entry point (in-app row +
+    email + push, per-channel kill switches from `Setting.vendor.subscription`)
+  - `helpers/notifications/notifyAudience.js` · `resolveAudience.js` — declarative
+    targeting (`userIds` / `roles` / `brandIds` / `customerIds` / `subBrandIds` / `all`)
+  - `helpers/notifications/notifyAdmins.js` — for the `RESUBMITTED` admin ping
+  - `helpers/push/dispatchPush.js` — FCM multicast, 500 tokens per batch
+  - `models/Notification.js` + `models/DeviceToken.js`
+
+  `helpers/notifications/subscriptionNotices.js` is the pattern to copy — it wraps
+  `notify` per event and is called from `adminCancelSubscription`,
+  `expireSubscriptions`, `sendExpiryReminders` and `handleRazorpayWebhook`, always
+  **after** the state change commits.
+
+  Two enum entries need adding to `constants/notification.js` first
+  (`NOTIFICATION_TYPES` has no brand-verification members yet) — something like
+  `BRAND_APPROVED`, `BRAND_REJECTED`, `BRAND_REVOKED`, plus an admin-audience
+  `BRAND_RESUBMITTED`.
 
 ## 2. Vendor screen handling for failure states — **PENDING**
 

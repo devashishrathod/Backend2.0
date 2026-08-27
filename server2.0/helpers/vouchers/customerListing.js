@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const { VOUCHER_SORT_BY } = require("../../constants/voucher");
 const { buildAggregateLookup } = require("../../database");
+const { pickVoucherBanner } = require("./pickVoucherBanner");
 
 exports.buildCustomerVoucherPipeline = ({
   latitude,
@@ -183,6 +184,13 @@ exports.buildCustomerVoucherPipeline = ({
             subCategoryId: 1,
             createdAt: 1,
             brandId: 1,
+            // The master-level promo banner. Lives on the Voucher, not the
+            // version, so it is unaffected by the approval flow.
+            banner: 1,
+            // Admin curation — drives the "Suggestions" tab and the pinned
+            // rows at the top of the main list.
+            isSuggested: 1,
+            suggestionOrder: 1,
             ...(useRelevance ? { relevanceScore: { $meta: "textScore" } } : {}),
           },
         },
@@ -246,6 +254,12 @@ exports.buildCustomerVoucherPipeline = ({
    * 5. Optional category filter
    * ------------------------------------------------
    */
+
+  // The "Suggestions" tab. Without it the same endpoint returns everything with
+  // the suggestions pinned on top, which is what "view more" needs.
+  if (query.suggestedOnly) {
+    pipeline.push({ $match: { "voucher.isSuggested": true } });
+  }
 
   if (query.categoryId) {
     pipeline.push({
@@ -462,6 +476,12 @@ exports.buildCustomerVoucherPipeline = ({
 
       createdAt: "$voucher.createdAt",
 
+      banner: "$voucher.banner",
+
+      isSuggested: { $ifNull: ["$voucher.isSuggested", false] },
+
+      suggestionOrder: { $ifNull: ["$voucher.suggestionOrder", 0] },
+
       version: 1,
 
       brand: 1,
@@ -491,6 +511,19 @@ exports.buildCustomerVoucherPipeline = ({
    */
 
   const sortStage = {};
+
+  // Admin-suggested vouchers ride on top of whatever ordering follows.
+  //
+  // Sorting rather than a separate query is what makes "view more" work: the
+  // suggestions lead page 1 and then simply do not reappear, because it is one
+  // sorted result set rather than two lists stitched together. No dedupe pass
+  // is needed. `suggestedOnly` narrows to just the tab.
+  if (!query.suggestedOnly) {
+    sortStage.isSuggested = -1;
+    sortStage.suggestionOrder = 1;
+  } else {
+    sortStage.suggestionOrder = 1;
+  }
 
   if (useRelevance) {
     sortStage.relevanceScore = -1;
@@ -988,6 +1021,8 @@ exports.buildCustomerVoucherDetailPipeline = ({
 
         name: 1,
 
+        banner: 1,
+
         // categoryId: 1,
 
         // subCategoryId: 1,
@@ -1093,6 +1128,7 @@ exports.mapCustomerVoucherListItem = (item) => {
     categoryId: item.categoryId,
     subCategoryId: item.subCategoryId,
     createdAt: item.createdAt,
+    ...pickVoucherBanner(item.banner),
     brand: item.brand
       ? {
           id: item.brand._id,
@@ -1144,6 +1180,9 @@ exports.mapCustomerVoucherListItem = (item) => {
     outletCount: item.outletCount,
     offerCount: item.offerCount || 0,
     isAppliedOnAllOutlets: item.isAppliedOnAllOutlets ?? false,
+    // Admin-pinned. Lets the client badge the row and keep the pinned block
+    // visually distinct from the rest of the list.
+    isSuggested: item.isSuggested ?? false,
     isContainsAd: false,
     isFavorite: false,
     ...(item.relevanceScore !== undefined
@@ -1159,6 +1198,7 @@ exports.mapCustomerVoucherDetail = (data) => {
     name: data.name,
     categoryId: data.categoryId,
     subCategoryId: data.subCategoryId,
+    ...pickVoucherBanner(data.banner),
     version: data.version
       ? {
           id: data.version._id,

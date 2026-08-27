@@ -1,14 +1,56 @@
 # Trydood 2.0 — Customer Mobile App API Documentation
 
-**Version:** 1.0.0
+**Version:** 1.4.0
 **Base URL (Local):** `http://localhost:8080/trydood/v1`
 **Base URL (Staging):** `https://backend2-0-4v4i.onrender.com/trydood/v1`
 **Framework:** Express.js (Node.js, CommonJS)
 **Database:** MongoDB (Mongoose ODM)
-**Scope:** Customer mobile app ke 30 endpoints
-**Generated:** 2026-08-22 · Source: `server2.0` codebase scan (108 total endpoints, categorization → `endpoints_category.md`)
+**Scope:** Customer mobile app ke **35 endpoints**
+**Last verified:** 2026-08-26 against current code · Source: `server2.0` scan (149 total endpoints, categorization → [endpoints_category.md](./endpoints_category.md))
 
-> **Note:** Ye doc code se banaya gaya hai, live API testing se nahi. Har request field, error message, aur response shape actual controller/service/validator code se verify kiya gaya hai. Jahan behaviour buggy ya adhoora hai, wahan ⚠️ marker hai.
+> ✅ **v1.4.0 se ye doc live API ke against verify ho chuka hai** — sirf code padhkar nahi likha gaya. Saare 35 endpoints ek chalte hue server pe seeded fixtures ke saath run kiye gaye: **74 requests, 308 assertions, sab pass.** Collection: [`postman/trydood-customer.postman_collection.json`](../postman/trydood-customer.postman_collection.json)
+>
+> Jahan behaviour buggy ya adhoora hai, wahan ⚠️ (ya 🔴, agar wo cheez tod deti hai) marker hai.
+
+### 🆕 v1.4.0 me kya naya
+
+Doc me koi naya endpoint nahi — ye **live verification round** tha. Teen jagah doc code se match nahi kar raha tha:
+
+| Fix | Kya galat tha |
+|---|---|
+| 🔴 **`currentScreen` warning** | Enum me koi customer screen hai hi nahi, aur galat value **poori login call `422`** kar deti hai. Pehle isko sirf "generally zarurat nahi" likha tha ([details](#screens-onboarding-step-tracking--currentscreen-field)) |
+| **`nearestOutlet.subBrandId`** | Doc me `_id` likha tha. Pipeline ka `$group` use `subBrandId` rename kar deta hai — `_id` field hai hi nahi ([#15](#15-get-voucherscustomerget-all)) |
+| **Device list ke fields** | `userId`, `role`, `updatedAt` example me the par service unhe project hi nahi karti ([#33](#33-get-devicetokensget-mine)) |
+
+### v1.3.0 me kya aaya tha
+
+| Change | Detail |
+|---|---|
+| **Naya brand list endpoint** | `GET /brands/customer/get-all` — directory + "Top Brands" tab, geo optional ([#18a](#18a-get-brandscustomerget-all-)) |
+| **Voucher banner fields** | `bannerType` + `bannerUrl` list aur detail dono me. Banner na ho to dono `null` ([#15](#15-get-voucherscustomerget-all), [#16](#16-get-voucherscustomergetvoucherid)) |
+| **Suggestions tab** | `?suggestedOnly=true` — admin ke pin kiye vouchers. Bina param ke wahi list, pinned upar ([#15](#15-get-voucherscustomerget-all)) |
+| **Convenience fee** | Har ₹500 pe ₹5, original bill pe. Naya `pricing` block ([#17](#17-post-voucherscustomervoucherpreview)) |
+| **No-offer ab error nahi** ✅ | Bill kisi offer ke minimum se kam ho to `200` + `offerApplied: false` — customer sirf bill pay karega. Do error messages hat gaye |
+| **`FIXED` discount fix** ✅ | Enum me tha par calculate nahi hota tha. Ab `FLAT` ka alias hai |
+
+### v1.2.0 me kya aaya tha
+
+| Change | Detail |
+|---|---|
+| **Naya brand endpoint** | `GET /brands/customer/get/:brandId` — brand + features + showcase preview + outlets, ek call me ([#18](#18-get-brandscustomergetbrandid)) |
+| **Purana `/brands/get` band** ✅ | Ab `isVendorOrAdmin` hai. Wo PAN/GSTIN/bank/subscription expose karta tha — [Appendix B](#appendix-b--known-issues) #7 resolved |
+| **`isVerified` ab sahi** | `brand.isApproved` hamesha `false` tha; ab `SystemVerify` se derive hota hai |
+| **Hidden albums ab hidden hain** | Naya endpoint `isVisible` filter karta hai |
+| **Doc correction** ⚠️ | Lookup fields **singular objects** hain, plural arrays nahi — `pan` not `pans`, `firstSubBrand` not `subbrands`. Pehle galat documented tha |
+
+### v1.1.0 me kya aaya tha
+
+| Change | Detail |
+|---|---|
+| **+4 endpoints** | Naya `/deviceTokens/*` module — push notifications ([Section 17](#push-notification-apis)) |
+| **Security fix** ✅ | Shared default password issue fix ho gaya — OTP accounts ab bina password ke bante hain. [Appendix B](#appendix-b--known-issues) #6 |
+| **Backend grew** | Platform 108 → 143 endpoints. Naye modules (`/promoCodes`, `/subscribeds`, `/notifications`) vendor/admin ke liye hain — customer app ko nahi chahiye |
+| **Role gates** | Vouchers, transactions, subBrands pe ab proper role checks hain. Customer-facing endpoints pe koi change nahi |
 
 ---
 
@@ -45,7 +87,8 @@
     - [GET /vouchers/customer/get/:voucherId](#16-get-voucherscustomergetvoucherid)
     - [POST /vouchers/customer/voucher/preview](#17-post-voucherscustomervoucherpreview)
 14. [Brand Profile APIs](#brand-profile-apis)
-    - [GET /brands/get](#18-get-brandsget)
+    - [GET /brands/customer/get/:brandId](#18-get-brandscustomergetbrandid)
+    - [GET /brands/customer/get-all](#18a-get-brandscustomerget-all-) 🆕
     - [GET /showcase/get-brand-showcase/:brandId](#19-get-showcaseget-brand-showcasebrandid)
     - [GET /showcase/:brandId/video-clips](#20-get-showcasebrandidvideo-clips)
     - [GET /brandFeatures/get-all](#21-get-brandfeaturesget-all)
@@ -60,14 +103,19 @@
     - [GET /terms-and-conditions/get/:id](#28-get-terms-and-conditionsgetid)
     - [GET /privacy-and-policies/getAll](#29-get-privacy-and-policiesgetall)
     - [GET /privacy-and-policies/get/:id](#30-get-privacy-and-policiesgetid)
-17. [Appendix A — Not For Customer App](#appendix-a--not-for-customer-app)
-18. [Appendix B — Known Issues](#appendix-b--known-issues)
+17. [Push Notification APIs 🆕](#push-notification-apis)
+    - [POST /deviceTokens/register](#31-post-devicetokensregister)
+    - [PUT /deviceTokens/unregister](#32-put-devicetokensunregister)
+    - [GET /deviceTokens/get-mine](#33-get-devicetokensget-mine)
+    - [POST /deviceTokens/test](#34-post-devicetokenstest)
+18. [Appendix A — Not For Customer App](#appendix-a--not-for-customer-app)
+19. [Appendix B — Known Issues](#appendix-b--known-issues)
 
 ---
 
 ## Overview
 
-Customer mobile app 9 functional areas cover karta hai:
+Customer mobile app 10 functional areas cover karta hai:
 
 | Area | Endpoints | Kya karta hai |
 |---|---:|---|
@@ -77,13 +125,15 @@ Customer mobile app 9 functional areas cover karta hai:
 | Master Data | 4 | Categories + Sub-categories |
 | Home Screen | 2 | Active banner + promotional tickers |
 | Vouchers | 3 | Nearby vouchers list, detail, discount preview |
-| Brand Profile | 5 | Brand detail, showcase gallery, video clips, features |
+| Brand Profile | 6 | Brand list, brand detail, showcase gallery, video clips, features |
 | Engagement | 4 | Follow / Avoid brand + unki lists |
 | Legal | 4 | Terms & Conditions, Privacy Policy |
+| Push Notifications 🆕 | 4 | Device register/unregister, my devices, test push |
 
 **Important architecture notes:**
 
-- **Sab endpoints pe `role` check nahi hai.** Sirf `verifyJwtToken` lagta hai — matlab customer token se vendor/admin endpoints bhi technically call ho sakte hain. Har endpoint pe **Intended** (kis role ke liye banaya) aur **Enforced** (backend actually kya rokta hai) dono likha hai. Details → [Appendix B](#appendix-b--known-issues)
+- **Customer-facing endpoints pe `role` check nahi hai.** Un pe sirf `verifyJwtToken` lagta hai — matlab customer token se kuch vendor/admin endpoints bhi technically call ho sakte hain. Har endpoint pe **Intended** (kis role ke liye banaya) aur **Enforced** (backend actually kya rokta hai) dono likha hai. Details → [Appendix B](#appendix-b--known-issues)
+  > Backend me role gates lagne shuru ho gaye hain — vouchers ke vendor endpoints, transactions, subBrands, aur saare naye modules ab properly gated hain. Dono naye brand endpoints (`/brands/customer/get/:brandId`, `/brands/customer/get-all`) pe **`isCustomer`** hai. Baaki customer-facing endpoints pe abhi `verifyJwtToken` hi hai.
 - **Soft delete pattern** — kuch bhi actually delete nahi hota, `isDeleted: true` set hota hai
 - **Lowercase normalization** — names, addresses, city/state/country DB me lowercase store hote hain. UI pe capitalize karna frontend ka kaam hai
 - **Voucher listing geo-based hai** — customer ke coordinates chahiye (query me ya saved location se)
@@ -272,9 +322,15 @@ Saare enum values **UPPERCASE** hain (payment ke alawa).
 > `RELEVANCE` sirf tab kaam karta hai jab `search` param bhi ho. Bina search ke ye automatically `NEWEST` ban jaata hai.
 
 ### VOUCHER_DISCOUNT_TYPES
-`PERCENTAGE` · `FLAT` · ~~`FIXED`~~
+`PERCENTAGE` · `FLAT` · `FIXED`
 
-⚠️ `FIXED` enum me define hai par calculation logic me **handle nahi hota** — aisa offer `discountAmount: 0` dega aur eligible list se filter ho jayega. Practically sirf `PERCENTAGE` aur `FLAT` kaam karte hain.
+✅ Teeno kaam karte hain. `FIXED` pehle calculate hi nahi hota tha (`discountAmount: 0` deta tha aur filter ho jaata tha) — ab wo `FLAT` ka alias hai.
+
+### VOUCHER_BANNER_TYPE 🆕
+`IMAGE` · `VIDEO` · `GIF`
+
+> Voucher list aur detail me `bannerType` field pe aata hai. Banner na ho to `null`.
+> ⚠️ Note: showcase media `PHOTO`/`VIDEO` use karta hai, banner `IMAGE`/`VIDEO`/`GIF` — dono alag enums hain, mix mat karein.
 
 ### VOUCHER_USAGE_TYPE
 `ONCE_PER_USER` · `MULTIPLE`
@@ -285,12 +341,29 @@ Saare enum values **UPPERCASE** hain (payment ke alawa).
 ### VOUCHER_STATUSES (reference — customer ko sirf `PUBLISHED` dikhte hain)
 `DRAFT` · `UNDER_REVIEW` · `APPROVED` · `PUBLISHED` · `REJECTED` · `EXPIRED` · `PAUSED` · `ARCHIVED`
 
+### DEVICE_PLATFORMS 🆕
+`ANDROID` · `IOS` · `WEB`
+> Push device register karte waqt mandatory. Auto-uppercase hota hai, to `"android"` bhi chalega.
+
+### NOTIFICATION_CHANNELS (reference)
+`IN_APP` · `EMAIL` · `PUSH` · `WHATSAPP`
+> `IN_APP` hamesha likha jaata hai; baaki tab attempt hote hain jab destination ho aur channel enabled ho. `WHATSAPP` abhi **reserved** hai — provider OTP ke liye hai, par WhatsApp Business har message type ke liye pre-approved template maangta hai.
+
 ### SHOWCASE_MEDIA_TYPE
 `PHOTO` · `VIDEO`
 
 ### SCREENS (onboarding step tracking — `currentScreen` field)
 `BUSINESS_NAME` · `REGISTRATION_STATUS` · `REGISTRATION_ENTITY_TYPE` · `PAN_VERIFICATION` · `GST_VERIFICATION` · `BANK_VERIFICATION` · `SYSTEM_VERIFICATION` · `PARTNERSHIP_DEED` · `SUBSCRIBE_PLAN` · `OUTLET_PAGE` · `UNDER_REVIEW` · `DASHBOARD`
-> Ye mostly vendor onboarding ke liye hai. Customer app ko generally iski zarurat nahi.
+
+> 🔴 **Customer app se `currentScreen` bhejna hi nahi hai.** Is enum me **ek bhi customer screen nahi** hai — sab vendor onboarding ke steps hain.
+>
+> Aur galat value chup-chaap ignore nahi hoti: Joi ise koi bhi string maan leta hai, par model pe enum lagi hai, to `"HOME"` bhejne pe **poora `/auth/verify-otp-whatsapp` `422` ho jaata hai** aur user login hi nahi kar paata. Error bhi raw mongoose message hota hai:
+>
+> ```json
+> { "success": false, "message": "`HOME` is not a valid enum value for path `currentScreen`." }
+> ```
+>
+> Verify karke confirm kiya gaya (2026-08-26).
 
 ### ZIP code validation (country-wise)
 `zipcode` field ka format `country` field pe depend karta hai:
@@ -417,7 +490,7 @@ OTP verify karke JWT token deta hai. **Yahi se app ka token milta hai.**
 | `whatsappNumber` | string | ✅ | – | 10 digits, first `6-9` |
 | `otp` | string | ✅ | – | Exactly 6 characters (string, number nahi) |
 | `role` | string | ❌ | `CUSTOMER` | ROLES enum, auto-uppercase |
-| `currentScreen` | string | ❌ | – | SCREENS enum (auto-uppercase + trim) |
+| `currentScreen` | string | ❌ | – | 🔴 **Customer app se bhejein hi nahi.** Enum me sirf vendor onboarding screens hain — koi bhi doosri value poori login call `422` kar deti hai. [Details](#screens-onboarding-step-tracking--currentscreen-field) |
 
 ```json
 {
@@ -472,7 +545,11 @@ Matlab `"000000"` bhi valid token de dega. Ye **auth bypass** hai → [Appendix 
 
 **2. `otp` string hona chahiye, number nahi.** `Joi.string().length(6)` hai — `123456` (number) bhejne pe Joi convert kar dega (`convert: true`), par safe raha ke liye string bhejein: `"123456"`.
 
-**3. `currentScreen` pe validator loose hai.** Joi sirf `Joi.string()` check karta hai (enum nahi), par Mongoose model me SCREENS enum hai. Matlab galat value Joi se pass ho jayegi aur Mongoose pe `422` throw karegi. Customer app ko ye field generally bhejna hi nahi chahiye.
+**3. 🔴 `currentScreen` pe validator loose hai — aur galti login hi tod deti hai.** Joi sirf `Joi.string()` check karta hai (enum nahi), par Mongoose model pe SCREENS enum lagi hai. Matlab galat value Joi se pass ho jaati hai aur Mongoose pe `422` throw karti hai — user login hi nahi kar paata.
+
+Aur SCREENS me **koi customer screen hai hi nahi** (sab vendor onboarding steps hain), to customer app ke paas bhejne layak koi valid value hai hi nahi. **Ye field bhejein hi nahi.**
+
+Live verify kiya (2026-08-26): `{"currentScreen": "HOME"}` → `422 "`HOME` is not a valid enum value for path `currentScreen`."`
 
 **4. Response me `password` hash aata hai** — same issue as endpoint #1.
 
@@ -1329,6 +1406,7 @@ Nearby vouchers ki paginated list. Home/deals screen ka main feed.
 | `search` | string | ❌ | – | Max 100 chars. Voucher name/description/tags pe text match |
 | `categoryId` | ObjectId | ❌ | – | Category filter |
 | `subCategoryId` | ObjectId | ❌ | – | Sub-category filter |
+| `suggestedOnly` 🆕 | boolean | ❌ | `false` | **Suggestions tab.** `true` → sirf admin ke pin kiye vouchers |
 | `sortBy` | string | ❌ | `DISTANCE` | `DISTANCE` \| `NEWEST` \| `EXPIRING_SOON` \| `RELEVANCE` |
 | `sortOrder` | string | ❌ | *(preset-wise)* | `asc` \| `desc`. Na do to sortBy ka natural direction |
 | `latitude` | number | ❌ | saved location | -90 to 90 |
@@ -1336,7 +1414,21 @@ Nearby vouchers ki paginated list. Home/deals screen ka main feed.
 
 ```http
 GET /vouchers/customer/get-all?latitude=22.7533&longitude=75.8937&sortBy=DISTANCE&limit=20
+GET /vouchers/customer/get-all?suggestedOnly=true&limit=10
 ```
+
+### 🆕 Suggestions tab aur "view more" — ek hi endpoint
+
+Admin kuch vouchers ko **suggestions** me pin karta hai. UI do jagah dikhta hai, par API **ek hi** hai:
+
+| UI | Call | Kya milta hai |
+|---|---|---|
+| **Suggestions tab** | `?suggestedOnly=true` | Sirf pinned, `suggestionOrder` ke order me |
+| **View more / main feed** | *(param na bhejein)* | **Sab** vouchers — pinned **upar**, phir baaki |
+
+**Pagination apne aap sahi rehti hai.** Ye do alag lists jodkar nahi banti — ek hi sorted result set hai, jisme `isSuggested` pehle sort key hai. Isliye pinned vouchers page 1 pe upar aate hain aur page 2 pe **dobara nahi** aate. App ko dedupe nahi karna padega.
+
+Har row pe `isSuggested` boolean aata hai — usse badge/highlight kar sakte hain.
 
 ### Location resolution — important
 
@@ -1356,6 +1448,7 @@ GET /vouchers/customer/get-all?latitude=22.7533&longitude=75.8937&sortBy=DISTANC
     "totalPages": 2,
     "page": 1,
     "limit": 20,
+    "isOutOfRange": false,
     "data": [
       {
         "voucherId": "68f1a2b3c4d5e6f7a8b9c2a1",
@@ -1363,6 +1456,9 @@ GET /vouchers/customer/get-all?latitude=22.7533&longitude=75.8937&sortBy=DISTANC
         "categoryId": "68f1a2b3c4d5e6f7a8b9c0e1",
         "subCategoryId": "68f1a2b3c4d5e6f7a8b9c0f1",
         "createdAt": "2026-08-10T06:00:00.000Z",
+        "bannerType": "IMAGE",
+        "bannerUrl": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-mocha.jpg",
+        "isSuggested": true,
         "brand": {
           "id": "68f1a2b3c4d5e6f7a8b9c3a1",
           "brandName": "cafe mocha",
@@ -1400,7 +1496,7 @@ GET /vouchers/customer/get-all?latitude=22.7533&longitude=75.8937&sortBy=DISTANC
           "endAt": "2026-09-10T23:59:59.000Z"
         },
         "nearestOutlet": {
-          "_id": "68f1a2b3c4d5e6f7a8b9c4a1",
+          "subBrandId": "68f1a2b3c4d5e6f7a8b9c4a1",
           "uniqueId": "TDS000201",
           "storeId": "MOCHA-VN-01",
           "logo": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/brands/mocha-logo.jpg",
@@ -1442,6 +1538,9 @@ GET /vouchers/customer/get-all?latitude=22.7533&longitude=75.8937&sortBy=DISTANC
 |---|---|---|
 | `voucherId` | ObjectId | Detail endpoint (#16) me isko bhejein |
 | `name` | string | Voucher ka naam (lowercase) |
+| `bannerType` 🆕 | string\|null | `IMAGE` \| `VIDEO` \| `GIF`. Banner na ho to **`null`** — key gayab nahi hoti |
+| `bannerUrl` 🆕 | string\|null | Banner ka URL. `bannerType` ke saath hi aata hai — dono `null` ya dono set |
+| `isSuggested` 🆕 | boolean | Admin ne pin kiya hai ya nahi. Badge/highlight ke liye |
 | `brand` | object\|null | Brand summary. `isVerified` = brand approved hai ya nahi |
 | `brand.subscriptionPlan` | string\|null | `FREE`/`BASIC`/`PREMIUM`/`FAMILY` ya `null` |
 | `version.bestOffer` | object\|null | **Display heuristic** — sabse zyada `discountValue` wala active offer. Ye actual discount nahi hai (bill amount ke bina calculate nahi ho sakta). Real discount ke liye endpoint #17 |
@@ -1488,6 +1587,23 @@ GET /vouchers/customer/get-all?latitude=22.7533&longitude=75.8937&sortBy=DISTANC
 
 **7. Empty results common hain** (new city, kam vendors) — 404 handling zaruri hai.
 
+**8. 🆕 `bannerType` ke bina `bannerUrl` kabhi nahi aata.** Backend dono ko ek saath resolve karta hai — agar banner ka type set hai par uska media missing hai, to **dono `null`** aate hain. App ko `bannerUrl` ki alag se null-check karne ki zarurat nahi, `bannerType` dekh lena kaafi hai.
+
+**9. 🆕 `isOutOfRange` — sirf Suggestions tab pe matter karta hai.**
+
+Response me ye **top-level** flag hai (`data.isOutOfRange`, rows ke andar nahi):
+
+| Value | Matlab |
+|---|---|
+| `false` | Normal — sab results max radius ke andar se hain |
+| `true` | **Sirf `suggestedOnly=true` pe aata hai.** Customer ke paas koi bhi suggested voucher nahi tha, to backend ne distance limit hata di aur door wale suggested vouchers bhej diye |
+
+Aisa isliye hai ki jis sheher me curated brands abhi pahunche hi nahi, wahan tab bilkul khaali dikhta — jo customer ko toota hua feature lagta hai, geographic baat nahi.
+
+⚠️ **`true` aane pe app ko honest hona chahiye** — "aapke aas-paas nahi hain" jaisa note dikhayein. In vouchers ka `nearestOutlet.distance` bahut bada hoga (100+ km).
+
+**Zaruri:** agar paas me **ek bhi** suggested voucher mil gaya, to door wale **nahi** aayenge aur flag `false` rahega. Geo tabhi ignore hota hai jab tab **poori** khaali ho. Main feed (`suggestedOnly` ke bina) me ye fallback **kabhi nahi** chalta — wo hamesha geo-honest hai.
+
 ---
 
 ## 16. GET /vouchers/customer/get/:voucherId
@@ -1522,6 +1638,8 @@ GET /vouchers/customer/get/68f1a2b3c4d5e6f7a8b9c2a1?latitude=22.7533&longitude=7
     "name": "flat 30% off on total bill",
     "categoryId": "68f1a2b3c4d5e6f7a8b9c0e1",
     "subCategoryId": "68f1a2b3c4d5e6f7a8b9c0f1",
+    "bannerType": "VIDEO",
+    "bannerUrl": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/vouchers/banner-mocha.mp4",
     "version": {
       "id": "68f1a2b3c4d5e6f7a8b9c2b1",
       "versionNumber": 3,
@@ -1687,6 +1805,7 @@ Bill amount pe **actual discount** calculate karta hai. Ye batata hai user ko ki
       "storeId": "MOCHA-VN-01"
     },
     "billAmount": 1200,
+    "offerApplied": true,
     "selectedOffer": {
       "offerId": "68f1a2b3c4d5e6f7a8b9c2d1",
       "title": "30% off above 500",
@@ -1694,6 +1813,8 @@ Bill amount pe **actual discount** calculate karta hai. Ye batata hai user ko ki
       "discountValue": 30,
       "minBillAmount": 500,
       "maxDiscountAmount": 300,
+      "usageType": "ONCE_PER_USER",
+      "discountApplicableOn": "SUBTOTAL",
       "discountAmount": 300,
       "finalAmount": 900
     },
@@ -1705,6 +1826,8 @@ Bill amount pe **actual discount** calculate karta hai. Ye batata hai user ko ki
         "discountValue": 30,
         "minBillAmount": 500,
         "maxDiscountAmount": 300,
+        "usageType": "ONCE_PER_USER",
+        "discountApplicableOn": "SUBTOTAL",
         "discountAmount": 300,
         "finalAmount": 900
       },
@@ -1715,13 +1838,56 @@ Bill amount pe **actual discount** calculate karta hai. Ye batata hai user ko ki
         "discountValue": 150,
         "minBillAmount": 800,
         "maxDiscountAmount": null,
+        "usageType": "MULTIPLE",
+        "discountApplicableOn": "FINAL_BILL",
         "discountAmount": 150,
         "finalAmount": 1050
       }
-    ]
+    ],
+    "pricing": {
+      "billAmount": 1200,
+      "discountAmount": 300,
+      "promoDiscount": 0,
+      "convenienceFee": 15,
+      "payableAmount": 915,
+      "totalSavings": 300
+    }
   }
 }
 ```
+
+### 🆕 `pricing` — checkout screen ki rows
+
+Ye block seedha render karne ke liye hai. **App ko koi arithmetic nahi karni** — backend already total kar chuka hai.
+
+| Field | Type | Notes |
+|---|---|---|
+| `billAmount` | number | Jo user ne enter kiya |
+| `discountAmount` | number | `selectedOffer` ka discount. Koi offer na lage to `0` |
+| `promoDiscount` | number | ⚠️ **Abhi hamesha `0`** — customer-side promo codes wire nahi hue. Row isliye hai ki jab aayein to shape na badle |
+| `convenienceFee` | number | Neeche slab table dekhein. Offer na lage to `0` |
+| `payableAmount` | number | `billAmount − discountAmount + convenienceFee`. **Yahi charge karna hai** |
+| `totalSavings` | number | Jitna bacha — abhi `discountAmount` ke barabar |
+
+> Sab values 2 decimal places pe rounded hain.
+
+### 🆕 Convenience fee — slabs
+
+Har **₹500** (ya uska part) pe **₹5**. Fee **original bill** pe lagti hai, discount ke baad wale amount pe nahi — isse fee stable rehti hai chahe koi bhi offer chune:
+
+| Bill amount | Fee |
+|---|---:|
+| ₹1 – ₹500 | ₹5 |
+| ₹501 – ₹1000 | ₹10 |
+| ₹1001 – ₹1500 | ₹15 |
+| ₹1501 – ₹2000 | ₹20 |
+| … har agle ₹500 pe | +₹5 |
+
+Formula: `ceil(billAmount / 500) × 5`
+
+**Ye hardcoded nahi hai** — `Setting.customer.convenienceFee` se aata hai (`isEnabled`, `slabSize`, `feePerSlab`, `maxFee`). Admin slab size ya per-slab amount badal sakta hai, ya poori fee band kar sakta hai. Upar wale numbers defaults hain. **App ko fee calculate nahi karni — `pricing.convenienceFee` hi use karein.**
+
+⚠️ **Koi offer apply na ho to fee bhi `0`.** Customer sirf apna bill pay karega.
 
 ### Calculation logic
 
@@ -1752,6 +1918,42 @@ discount = discountValue
 
 > `eligibleOffers` bhi isi order me sorted aata hai — `selectedOffer` hamesha `eligibleOffers[0]` hi hota hai.
 
+### 🆕 Koi offer valid na ho to — ab error **nahi**
+
+Pehle jab bill kisi bhi offer ke `minBillAmount` se kam hota tha, to `400 "No eligible offer found for this bill amount."` aata tha. **Ab wo error nahi aata.** Response `200` hi hota hai, bas offer applied nahi hota:
+
+```json
+{
+  "success": true,
+  "message": "Voucher preview calculated successfully.",
+  "data": {
+    "voucher": { "id": "68f1a2b3c4d5e6f7a8b9c2a1", "name": "flat 30% off on total bill" },
+    "version": { "id": "68f1a2b3c4d5e6f7a8b9c2b1", "versionNumber": 3 },
+    "outlet":  { "id": "68f1a2b3c4d5e6f7a8b9c4a1", "uniqueId": "TDS000201" },
+    "billAmount": 300,
+    "offerApplied": false,
+    "selectedOffer": null,
+    "eligibleOffers": [],
+    "pricing": {
+      "billAmount": 300,
+      "discountAmount": 0,
+      "promoDiscount": 0,
+      "convenienceFee": 0,
+      "payableAmount": 300,
+      "totalSavings": 0
+    }
+  }
+}
+```
+
+**Customer sirf apna bill pay karega** — koi offer nahi, koi promo nahi, **koi convenience fee nahi**.
+
+Ye do case me hota hai:
+1. Bill har offer ke `minBillAmount` se kam hai (bill ₹300, offer ₹500 se shuru)
+2. Voucher version me koi offer hai hi nahi
+
+**App ka kaam:** `offerApplied` check karein. `false` ho to offer wala section chhupa dein aur seedha `pricing.payableAmount` dikhayein. Chahein to nudge dikha sakte hain — *"₹500 se upar ke bill pe 30% off milega"* — kyunki offers ka `minBillAmount` endpoint #16 se already pata hai.
+
 ### Errors
 | Status | Message | Kab |
 |---|---|---|
@@ -1761,21 +1963,19 @@ discount = discountValue
 | `400` | `Voucher is not currently available.` | Koi `PUBLISHED` version nahi jo abhi valid ho |
 | `400` | `Selected outlet is not linked with this voucher.` | Outlet is version se mapped nahi |
 | `400` | `Selected outlet is currently unavailable.` | Outlet inactive/deleted |
-| `400` | `Valid bill amount is required.` | Amount ≤ 0 ya non-numeric |
-| `400` | `No offers available for this voucher.` | Version me offers array empty |
-| `400` | `No eligible offer found for this bill amount.` | ⚠️ **Sabse common** — bill kisi bhi offer ke `minBillAmount` se kam hai |
+| `400` | `Valid bill amount is required.` | Amount ≤ 0 ya non-numeric. **Ye ab bhi error hai** — malformed input hai, business case nahi |
 | `422` | `Voucher ID is required.` / `Outlet ID is required.` / `Bill amount is required.` | Missing fields |
 | `422` | `Bill amount must be greater than zero.` | Negative/zero |
 
+> 🔄 **v1.3.0 me hate:** `No offers available for this voucher.` aur `No eligible offer found for this bill amount.` — dono ab `200` + `offerApplied: false` dete hain.
+
 ### ⚠️ Edge cases & notes
 
-**1. `"No eligible offer found for this bill amount."` error hai, empty result nahi.** Ye tab aata hai jab user ka bill kisi bhi offer ke minimum se kam ho. Frontend ko `400` ko friendly message me convert karna chahiye — jaise *"₹500 se upar ke bill pe offer available hai"*. Iske liye offers ka `minBillAmount` (endpoint #16 se) pehle se pata hona chahiye, taaki API call se pehle hi user ko guide kar sakein.
+**1. Ye endpoint kuch save nahi karta** — pure calculation hai. Koi redemption record nahi banta, koi usage count nahi badhta. Baar-baar call kar sakte hain.
 
-**2. Ye endpoint kuch save nahi karta** — pure calculation hai. Koi redemption record nahi banta, koi usage count nahi badhta. Baar-baar call kar sakte hain.
+**2. 🆕 `FIXED` discount type ab kaam karta hai.** Pehle enum me tha par calculation me handle nahi tha — aisa offer `0` discount deta tha aur eligible list se filter ho jaata tha, jisse user ko lagta tha ki uska bill galat hai. Ab `FLAT` ka alias hai. `PERCENTAGE`, `FLAT`, `FIXED` — teeno valid hain.
 
-**3. `FIXED` discount type kaam nahi karta.** Enum me hai par calculation me handle nahi — aisa offer `discountAmount: 0` dega aur eligible list se filter ho jayega. Practically `PERCENTAGE` aur `FLAT` hi valid hain.
-
-**4. Location check nahi hota.** Baaki voucher endpoints radius check karte hain, ye nahi. Matlab 100 km door ke outlet ka preview bhi mil jayega. Frontend ko outlet selection #16 ke `outlets` list se hi karna chahiye.
+**3. Location check nahi hota.** Baaki voucher endpoints radius check karte hain, ye nahi. Matlab 100 km door ke outlet ka preview bhi mil jayega. Frontend ko outlet selection #16 ke `outlets` list se hi karna chahiye.
 
 **5. Sirf latest `PUBLISHED` version use hota hai** (highest `versionNumber` jo abhi valid ho). Purane versions ignore.
 
@@ -1787,30 +1987,25 @@ discount = discountValue
 
 # Brand Profile APIs
 
-## 18. GET /brands/get
+## 18. GET /brands/customer/get/:brandId
 
-Brand ka poora detail. Brand profile screen ka main call.
+Brand profile screen ka **single call** — brand, features, visible showcase preview aur outlets, sab ek saath.
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** Intended: CUSTOMER · Enforced: **CUSTOMER**
 
-> ⚠️ **Ye endpoint customer ke liye dedicated nahi hai** — vendor apna brand dekhne ke liye bhi yahi use karta hai. Isliye response me business-sensitive data aata hai jo customer ko nahi chahiye. Detail niche.
+> 🔄 **v1.2.0 me badla.** Pehle yahan `GET /brands/get?brandId=` document tha. Wo endpoint ab **customer ke liye band hai** (`isVendorOrAdmin`) — wo brand ka PAN, GSTIN, bank account aur subscription billing return karta tha. Ye naya endpoint sirf wahi banata hai jo profile screen render karti hai, to usme strip karne layak kuch hai hi nahi.
 
 ### Headers
 | Header | Value | Required |
 |---|---|---|
 | `Authorization` | `Bearer <token>` | ✅ |
 
-### Query Params
-| Param | Type | Required | Notes |
-|---|---|---|---|
-| `brandId` | ObjectId | ⚠️ | Customer ke liye **effectively required** — na do to token ka `brandId` use hota hai, jo customer ke paas nahi hota → `400` |
-
-```http
-GET /brands/get?brandId=68f1a2b3c4d5e6f7a8b9c3a1
-```
+### Path Params
+| Param | Type | Required |
+|---|---|---|
+| `brandId` | ObjectId | ✅ |
 
 ### Success — `200`
-
 ```json
 {
   "success": true,
@@ -1818,98 +2013,241 @@ GET /brands/get?brandId=68f1a2b3c4d5e6f7a8b9c3a1
   "data": {
     "_id": "68f1a2b3c4d5e6f7a8b9c3a1",
     "brandName": "cafe mocha",
-    "legalBusinessName": "mocha hospitality pvt ltd",
     "description": "artisanal coffee and continental bites",
     "logo": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/brands/mocha-logo.jpg",
     "coverImage": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/brands/mocha-cover.jpg",
-    "email": "hello@cafemocha.in",
-    "whatsappNumber": "9812345678",
     "uniqueId": "TDB000078",
-    "merchantId": "TDM000078",
     "followersCount": 1240,
-    "avoidanceCount": 12,
     "joinedDate": "2026-03-15T00:00:00.000Z",
-    "isApproved": true,
-    "isActive": true,
-    "categoryId": "68f1a2b3c4d5e6f7a8b9c0e1",
-    "subCategoryId": "68f1a2b3c4d5e6f7a8b9c0f1",
-    "user": [ { "_id": "...", "role": "VENDOR", "name": "..." } ],
-    "categories": [ { "_id": "...", "name": "food & beverages" } ],
-    "subcategories": [ { "_id": "...", "name": "cafe" } ],
-    "locations": [ { "_id": "...", "formattedAddress": "...", "geo": {} } ],
-    "workhours": [ { "monday": {}, "tuesday": {} } ],
-    "subbrands": [
+    "isVerified": true,
+
+    "category":    { "_id": "…", "name": "food & beverages", "image": "https://…/food.jpg" },
+    "subCategory": { "_id": "…", "name": "cafe",             "image": "https://…/cafe.jpg" },
+
+    "location": {
+      "_id": "…",
+      "addressLine1": "301, corporate tower",
+      "city": "indore", "district": "indore", "state": "madhya pradesh",
+      "country": "india", "zipcode": "452001",
+      "formattedAddress": "301, corporate tower, indore, madhya pradesh, 452001, india",
+      "geo": { "type": "Point", "coordinates": [75.8577, 22.7196] }
+    },
+
+    "workHours": {
+      "monday":  { "isOpen": true,  "start": "09:00", "end": "23:00" },
+      "sunday":  { "isOpen": false, "start": null,    "end": null }
+    },
+
+    "features": [
+      { "_id": "…", "title": "free wifi",    "description": "high speed internet", "icon": "https://…/wifi.png" },
+      { "_id": "…", "title": "pet friendly", "description": "furry friends welcome", "icon": "https://…/pet.png" }
+    ],
+
+    "showcase": {
+      "totalSections": 2,
+      "mediaPreviewLimit": 6,
+      "sections": [
+        {
+          "_id": "68f1a2b3c4d5e6f7a8b9c5a1",
+          "title": "ambience",
+          "description": "our cozy interiors",
+          "coverImage": "https://…/ambience-cover.jpg",
+          "sectionType": "CUSTOM",
+          "sortOrder": 1,
+          "mediaCount": 12,
+          "photoCount": 9,
+          "videoCount": 3,
+          "hasMoreMedia": true,
+          "medias": [
+            {
+              "_id": "…",
+              "type": "PHOTO",
+              "url": "https://…/amb1.jpg",
+              "thumbnail": null,
+              "title": "seating area",
+              "altText": "cafe seating with wooden tables",
+              "sortOrder": 1
+            }
+          ]
+        }
+      ]
+    },
+
+    "outlets": [
       {
         "_id": "68f1a2b3c4d5e6f7a8b9c4a1",
-        "storeId": "MOCHA-VN-01",
+        "storeId": "TS-87HD-48L3-PZYW",
         "uniqueId": "TDS000201",
-        "user": [],
-        "locations": [],
-        "workhours": []
+        "description": "vijay nagar outlet",
+        "outletType": "OUTLET",
+        "location": { "…": "outlet ka address + geo" },
+        "workHours": { "…": "outlet ki timings" }
       }
-    ],
-    "pans": [ ],
-    "gsts": [ ],
-    "banks": [ ],
-    "systemverifies": [ ],
-    "subscribeds": [ ],
-    "createdAt": "2026-03-15T00:00:00.000Z",
-    "updatedAt": "2026-08-20T10:00:00.000Z"
+    ]
   }
 }
 ```
 
-### 🟢 Customer app ko ye fields use karne chahiye
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `400` | `Invalid brand ID` | `brandId` valid ObjectId nahi |
+| `404` | `Brand not found` | Brand exist nahi karta, deleted hai, ya inactive |
+| `422` | `Brand ID is required` / `Invalid brandId` | Path param missing/galat |
+| `403` | `Forbidden: You do not have permission to perform this action.` | Token customer ka nahi |
 
-| Field | Use |
-|---|---|
-| `brandName`, `description` | Header |
-| `logo`, `coverImage` | Images |
-| `followersCount` | Social proof |
-| `isApproved` | "Verified" badge |
-| `joinedDate` | "Member since" |
-| `categories`, `subcategories` | Category tags |
-| `locations` | Brand ka main address |
-| `workhours` | Timings |
-| `subbrands` | Outlet list (`storeId`, `locations`, `workhours`) |
+### ⚠️ Edge cases & notes
 
-### 🔴 Customer app ko ye fields IGNORE karne chahiye
+**1. Ek call me poori screen ban jaati hai** — pehle 3 alag calls lagti thi (`/brands/get`, `/brandFeatures/get-all`, `/showcase/get-brand-showcase`). Backend chaar indexed queries **parallel** me chalata hai.
 
-⚠️ **Ye business-sensitive data hai jo API galti se bhej rahi hai:**
+**2. Showcase me sirf preview aata hai — har section me pehle 6 media.** Poora album chahiye to `GET /showcase/get-brand-showcase/:brandId` ([#19](#19-get-showcaseget-brand-showcasebrandid)) call karein.
+- `mediaCount` / `photoCount` / `videoCount` **poore** album ke counts hain, sirf preview ke nahi
+- `hasMoreMedia: true` matlab "See all" button dikhana chahiye
+- `mediaPreviewLimit` batata hai cap kitna hai (abhi 6) — hardcode mat karein
 
-| Field | Kya hai |
-|---|---|
-| `pans` | **PAN number** aur PAN holder details |
-| `gsts` | **GST number** aur registration details |
-| `banks` | **Bank account number + IFSC** |
-| `systemverifies` | KYC verification internal status/history |
-| `subscribeds` | Brand ka subscription/billing data |
-| `user` | Vendor ka personal account (email, mobile) |
+**3. Sirf wahi albums aate hain jo vendor ne dikhane chune hain** — `isVisible: true` filter lagta hai. ⚠️ Purana `/showcase/get-brand-showcase` ye filter **nahi** karta, to wahan chhupaye hue sections bhi aa jaate hain.
 
-**Frontend ko in fields ko:**
-- Kabhi UI pe display nahi karna
-- Local cache/storage me save nahi karna
-- Logs me print nahi karna
+**4. `isVerified` ab sahi aata hai.** Pehle `brand.isApproved` document hota tha jo **hamesha `false`** rehta hai (code me kahin set hi nahi hota). Ab ye `SystemVerify.status === "APPROVED"` se derive hota hai — verified badge ab actually kaam karega.
 
-Backend fix chahiye (role-based response filtering). → [Appendix B](#appendix-b--known-issues)
+**5. Response chhota hai** — typical brand ~4 KB, max plan limits pe bhi ~20 KB. Screen pe ek baar call karke cache kar sakte hain.
+
+**6. Features max 10 hote hain** (backend limit), sirf `isActive: true` wale aate hain.
+
+**7. Outlets me sirf active outlets** aate hain, aur unme koi `userId` ya internal field nahi hota.
+
+**8. `workHours` ke din top-level keys hain** — koi `workingHours` wrapper nahi. Jo din set nahi hua wo absent ho sakta hai.
+
+**9. Jo bhi join na mile wo field absent ya `null` hoga** — brand ne category/location/workHours set na kiya ho to. Render se pehle check karein.
+
+---
+
+## 18a. GET /brands/customer/get-all 🆕
+
+Brand directory ki paginated list — aur **"Top Brands" tab** bhi isi se.
+
+**Access:** Intended: CUSTOMER · Enforced: **CUSTOMER**
+
+> 🆕 **v1.3.0 me naya.** Pehle koi brand-list endpoint tha hi nahi.
+
+### Headers
+| Header | Value | Required |
+|---|---|---|
+| `Authorization` | `Bearer <token>` | ✅ |
+
+### Query Params
+| Param | Type | Required | Default | Validation |
+|---|---|---|---|---|
+| `page` | number | ❌ | `1` | Integer ≥ 1 |
+| `limit` | number | ❌ | `10` | Integer 1–**50** |
+| `search` | string | ❌ | – | Max 100 chars. `brandName` pe case-insensitive match |
+| `categoryId` | ObjectId | ❌ | – | Category filter |
+| `subCategoryId` | ObjectId | ❌ | – | Sub-category filter |
+| `topOnly` | boolean | ❌ | `false` | **Top Brands tab.** `true` → sirf admin ke pin kiye brands |
+| `sortBy` | string | ❌ | `TOP_FIRST` | `TOP_FIRST` \| `NEWEST` \| `FOLLOWERS` \| `NAME` \| `DISTANCE` |
+| `sortOrder` | string | ❌ | *(preset-wise)* | `asc` \| `desc` |
+| `latitude` | number | ❌ | – | -90..90. **`longitude` ke saath hi** |
+| `longitude` | number | ❌ | – | -180..180. **`latitude` ke saath hi** |
+
+```http
+GET /brands/customer/get-all?limit=20
+GET /brands/customer/get-all?topOnly=true
+GET /brands/customer/get-all?latitude=22.7533&longitude=75.8937&sortBy=DISTANCE
+```
+
+### Top Brands tab aur "view more" — wahi pattern jo vouchers me hai
+
+| UI | Call | Kya milta hai |
+|---|---|---|
+| **Top Brands tab** | `?topOnly=true` | Sirf pinned, `topOrder` ke order me |
+| **View more / poori directory** | *(param na bhejein)* | **Sab** brands — pinned **upar**, phir baaki |
+
+Ek hi sorted result set hai, isliye pinned brands page 2 pe **dobara nahi** aayenge. Har row pe `isTopBrand` boolean hai.
+
+### Geo optional hai
+
+`latitude` + `longitude` **dono** bhejein to:
+- Har row pe `distanceInMeters` aayega (brand ke **sabse paas ke outlet** ki doori)
+- `sortBy=DISTANCE` kaam karega
+
+Na bhejein to ye simple directory hai — koi `distanceInMeters` field nahi aayegi, aur `sortBy=DISTANCE` chupchaap `NEWEST` ban jayega.
+
+⚠️ Ek bhejna aur doosra chhodna **`422`** hai — dono saath, ya dono nahi.
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Brands fetched successfully",
+  "data": {
+    "total": 48,
+    "totalPages": 3,
+    "page": 1,
+    "limit": 20,
+    "data": [
+      {
+        "_id": "68f1a2b3c4d5e6f7a8b9c3a1",
+        "brandName": "cafe mocha",
+        "description": "artisanal coffee and continental bites",
+        "logo": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/brands/mocha-logo.jpg",
+        "coverImage": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/brands/mocha-cover.jpg",
+        "uniqueId": "TDB000078",
+        "followersCount": 1243,
+        "joinedDate": "2026-03-15T00:00:00.000Z",
+        "isTopBrand": true,
+        "isVerified": true,
+        "outletCount": 4,
+        "distanceInMeters": 420,
+        "category": {
+          "_id": "68f1a2b3c4d5e6f7a8b9c0e1",
+          "name": "food and beverages",
+          "image": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/categories/fnb.png"
+        },
+        "subCategory": {
+          "_id": "68f1a2b3c4d5e6f7a8b9c0f1",
+          "name": "cafe",
+          "image": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/subcategories/cafe.png"
+        }
+      }
+    ]
+  }
+}
+```
+
+### Response fields — detail
+
+| Field | Type | Notes |
+|---|---|---|
+| `_id` | ObjectId | Detail endpoint ([#18](#18-get-brandscustomergetbrandid)) me isko bhejein |
+| `isTopBrand` | boolean | Admin ne pin kiya hai ya nahi |
+| `isVerified` | boolean | `SystemVerify.status === "APPROVED"` se derive. `brand.isApproved` **nahi** — wo hamesha `false` rehta hai |
+| `outletCount` | number | Kitne active outlets hain |
+| `distanceInMeters` | number | **Sirf coordinates bhejne pe.** Sabse paas ke outlet ki doori, metres me, rounded |
+| `category` / `subCategory` | object\|null | Singular object hai, array nahi |
 
 ### Errors
 | Status | Message | Kab |
 |---|---|---|
-| `400` | `Invalid brand ID` | `brandId` galat format **ya** customer ne bheja hi nahi (token me brandId nahi hota) |
-| `404` | *(empty result)* | Brand nahi mila ya soft-deleted |
+| `404` | `No any brand found` | ⚠️ Koi match nahi — **empty-state dikhayein, error nahi** |
+| `422` | `latitude and longitude must be provided together` | Sirf ek bheja |
+| `422` | `Invalid category ID` / `Invalid subCategory ID` | ObjectId format |
+| `422` | *(Joi message)* | `limit > 50`, coordinates range se bahar, etc. |
+| `403` | – | Customer ke alawa koi aur role |
 
-### ⚠️ Notes
+### ⚠️ Edge cases & notes
 
-**1. `brandId` bhejna mandatory hai customer app ke liye.** Controller ka logic `req.query.brandId || req.brandId` hai — customer token me `brandId` nahi hota (wo sirf vendor ke liye set hota hai), to `undefined` pass hoga aur `400 "Invalid brand ID"` aayega.
+**1. `404` empty state hai, error nahi.** `search=xyz` pe kuch na mile to `404` hi aayega. Isko "koi brand nahi mila" screen me convert karein.
 
-**2. Response bhaari hai** — 14 aggregation lookups. Brand profile screen pe ek hi baar call karein, aur result cache karein.
+**2. Sirf active brands aate hain.** `isActive: false` brand list me nahi aata — chahe admin ne use top brands me pin kar rakha ho. (Admin ke apne view me wo dikhta hai taaki unpin kar sake.)
 
-**3. Lookup arrays hamesha arrays hote hain**, single object nahi — even 1 record ho to `[{...}]`. Empty ho to `[]`.
+**3. `topOnly=true` pe curation hi ordering hai** — `topOrder` ke hisaab se. `sortBy=DISTANCE` bhejne pe bhi wahi order rahega, kyunki us tab me sab rows already curated hain.
 
-**4. Nested outlets:** `subbrands[]` ke andar bhi `user`, `locations`, `workhours` arrays hote hain.
+**4. Main list me curation proximity se upar hai.** `sortBy=DISTANCE` pe bhi pinned brands **pehle** aayenge, phir baaki distance ke order me. Agar aapko purely nearest-first chahiye to `topOnly` mat use karein aur pinned block ko UI me alag treat karein.
 
-**5. `avoidanceCount` bhi aata hai** — kitne customers ne is brand ko avoid kiya. Customer UI pe ye dikhana probably nahi chahiye.
+**5. Distance approximate hai.** Directory sorting ke liye equirectangular approximation use hota hai — sheher-bhar ke distances pe error ek percent se bhi kam hai. Exact distance voucher endpoints (#15/#16) se aati hai.
+
+**6. Bina coordinates wale outlets skip ho jaate hain** distance calculation me. Brand ke saare outlets bina geo ke hon to `distanceInMeters` `null` aayega — sort me wo neeche chala jayega.
+
+**7. Ye list card ke liye hai.** Features, showcase, outlets ki detail nahi aati — uske liye [#18](#18-get-brandscustomergetbrandid).
 
 ---
 
@@ -2668,6 +3006,275 @@ Same as [#27](#27-get-terms-and-conditionsgetall).
 
 ---
 
+# Push Notification APIs
+
+🆕 **v1.1.0 me naya module.** Push notifications ke liye device registration.
+
+**Role-agnostic by design** — model ka comment: *"a vendor, a customer, a sub-vendor and any role added later all register here the same way, so push targeting never needs to know what kind of user it is addressing."*
+
+Global middleware: `router.use(verifyJwtToken)` — chaaron endpoints pe.
+
+**Kaise kaam karta hai:** App FCM se token leta hai → yahan register karta hai → backend `DeviceToken` row banata hai (userId + role denormalized) → jab koi notification bhejni ho, backend user ke active tokens nikal kar FCM pe multicast karta hai.
+
+⚠️ **Customer ke liye in-app notification feed abhi nahi hai.** `/notifications/get-all` sirf Vendor+Admin ke liye gated hai. Customer ko sirf push milega — history dekhne ka koi endpoint nahi. Agar app me notification inbox chahiye to backend change lagega.
+
+---
+
+## 31. POST /deviceTokens/register
+
+Device ko push ke liye register karta hai. **App start pe aur token refresh pe call karein.**
+
+**Access:** Intended: All roles · Enforced: **Any authenticated**
+
+### Headers
+| Header | Value | Required |
+|---|---|---|
+| `Authorization` | `Bearer <token>` | ✅ |
+| `Content-Type` | `application/json` | ✅ |
+
+### Body
+| Field | Type | Required | Validation | Notes |
+|---|---|---|---|---|
+| `token` | string | ✅ | 20–4096 chars | FCM registration token. Ceiling deliberately generous hai — provider ne pehle length badli hai, aur valid token reject hone ka matlab hai device chup-chaap notifications miss karega |
+| `platform` | string | ✅ | `ANDROID` \| `IOS` \| `WEB` | Auto-uppercase |
+| `deviceId` | string | ❌ | Max 128 chars | **Bhejna chahiye** — isse reinstall apna purana token replace kar deta hai, dead row nahi chhodta |
+| `deviceName` | string | ❌ | Max 128 chars | Jaise `"Pixel 8"` — `get-mine` me user ko dikhane ke liye |
+| `appVersion` | string | ❌ | Max 32 chars | Debugging ke liye |
+
+```json
+{
+  "token": "fMEp8kQ2S0aBcDeFgHiJkL:APA91bH...very-long-fcm-token",
+  "platform": "ANDROID",
+  "deviceId": "a1b2c3d4e5f6",
+  "deviceName": "Pixel 8",
+  "appVersion": "1.4.2"
+}
+```
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Device registered for push notifications",
+  "data": {
+    "device": {
+      "_id": "68f1a2b3c4d5e6f7a8b9d001",
+      "userId": "68f1a2b3c4d5e6f7a8b9c0d1",
+      "role": "CUSTOMER",
+      "token": "fMEp8kQ2S0aBcDeFgHiJkL:APA91bH...",
+      "platform": "ANDROID",
+      "deviceId": "a1b2c3d4e5f6",
+      "deviceName": "Pixel 8",
+      "appVersion": "1.4.2",
+      "isActive": true,
+      "lastSeenAt": "2026-08-22T12:00:00.000Z",
+      "failureCount": 0,
+      "createdAt": "2026-08-22T12:00:00.000Z",
+      "updatedAt": "2026-08-22T12:00:00.000Z"
+    },
+    "activeDevices": 2
+  }
+}
+```
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `401` | `Authentication is required to register a device.` | Token context missing |
+| `422` | `token is required` | Missing |
+| `422` | `token does not look like a valid push token` | 20 chars se chhota |
+| `422` | `platform is required` | Missing |
+| `422` | `platform must be one of: ANDROID, IOS, WEB` | Invalid enum |
+
+### ⚠️ Edge cases & notes
+
+**1. Idempotent hai — baar-baar call karna safe hai.** `token` pe upsert hota hai. Same token dobara bhejo to naya row nahi banta, existing refresh ho jaata hai.
+
+**2. Token ownership transfer handle hota hai.** `token` **unique** hai (`(userId, token)` combo nahi). Model ka reasoning: ek provider token ek device install ko identify karta hai, aur wo install haath badal sakta hai — shared phone, reinstall, logout-and-login as someone else. Isliye already-registered token dobara register karne pe wo **reassign** ho jaata hai. Agar aisa na hota to purana owner naye owner ki notifications receive karta rehta.
+
+**3. `deviceId` bhejne ka faayda:** register pe backend pehle usi `deviceId` ke purane active tokens ko retire kar deta hai (`"Replaced by a newer token from the same device"`), phir naya register karta hai. Bina `deviceId` ke har reinstall ek dead row chhod jaata hai.
+
+**4. Dead token revive ho jaata hai.** Jo token pehle fail hone ki wajah se deactivate hua tha, wo dobara register hone pe `isActive: true` ho jaata hai aur `failureCount` `0` reset ho jaata hai — service ka comment: *"the reason it failed before may well be gone."*
+
+**5. `role` denormalize hota hai** aur har register pe refresh hota hai. Isse role-targeted broadcasts ko har dispatch pe join nahi karna padta.
+
+**6. Kab call karein:**
+- App launch pe (token FCM se leke)
+- FCM `onTokenRefresh` pe
+- Login ke turant baad (taaki `role` sahi user pe map ho)
+
+---
+
+## 32. PUT /deviceTokens/unregister
+
+Device ko push se hata deta hai. **Logout pe call karna zaruri hai.**
+
+**Access:** Intended: All roles · Enforced: **Any authenticated**
+
+### Body
+| Field | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `token` | string | ⚠️ | – | 20–4096 chars. Is device ka token |
+| `allDevices` | boolean | ⚠️ | `false` | `true` = "sign out everywhere" |
+
+⚠️ **Dono me se ek dena mandatory hai** (Joi `.or("token", "allDevices")`). Kuch na bhejo to `422`.
+
+```json
+{ "token": "fMEp8kQ2S0aBcDeFgHiJkL:APA91bH..." }
+```
+```json
+{ "allDevices": true }
+```
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Device unregistered from push notifications",
+  "data": {
+    "deactivated": 1,
+    "activeDevices": 1
+  }
+}
+```
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `401` | *(auth error)* | Token context missing |
+| `422` | `Provide a token, or set allDevices to true.` | Dono missing |
+
+### ⚠️ Notes
+
+**1. Row delete nahi hoti, deactivate hoti hai.** `isActive: false` + `deactivatedAt` + `deactivatedReason` (`"Signed out on this device"` ya `"Signed out of all devices"`). Model ka comment: *"Rows are kept rather than deleted so delivery history stays explicable."*
+
+**2. Self-scoped hai — koi doosre ka device band nahi kar sakta.** Service ka filter hamesha `userId` carry karta hai: *"so one user cannot silence another's device."* Kisi aur ka token bhej doge to `deactivated: 0` aayega, error nahi.
+
+**3. `deactivated: 0` error nahi hai** — matlab us filter pe koi active row nahi mili (already unregistered, ya token kisi aur ka).
+
+**4. Logout flow me ye zaruri hai** — `POST /auth/logout` push ko touch nahi karta. Sirf logout call karoge to device notifications receive karta rahega. Sahi order:
+```
+PUT /deviceTokens/unregister  { token }
+POST /auth/logout
+→ local token + cache clear
+```
+
+---
+
+## 33. GET /deviceTokens/get-mine
+
+Caller ke apne registered devices. "Logged-in devices" screen ke liye.
+
+**Access:** Intended: All roles · Enforced: **Any authenticated**
+
+### Query Params
+| Param | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `includeInactive` | boolean\|string | ❌ | `false` | `true` bhejo to retired devices bhi aayenge. Debugging ke liye — "push kyun nahi aa raha" |
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Registered devices fetched successfully",
+  "data": {
+    "devices": [
+      {
+        "_id": "68f1a2b3c4d5e6f7a8b9d001",
+        "platform": "ANDROID",
+        "deviceId": "a1b2c3d4e5f6",
+        "deviceName": "Pixel 8",
+        "appVersion": "1.4.2",
+        "isActive": true,
+        "lastSeenAt": "2026-08-22T12:00:00.000Z",
+        "lastPushAt": "2026-08-22T11:30:00.000Z",
+        "failureCount": 0,
+        "tokenTail": "…APA91bH",
+        "createdAt": "2026-08-20T09:00:00.000Z"
+      }
+    ],
+    "activeDevices": 1,
+    "total": 1
+  }
+}
+```
+
+### Errors
+| Status | Message |
+|---|---|
+| `401` | *(auth error)* |
+| `422` | *(Joi message)* — `includeInactive` invalid |
+
+### ⚠️ Notes
+
+**1. Poora `token` kabhi nahi aata.** Uski jagah `tokenTail` aata hai — aakhri 8 characters. Service ka comment: *"Enough to identify the row, not enough to send with."* Achha design hai — leaked response se koi aur push nahi bhej sakta.
+
+> `userId`, `role` aur `updatedAt` bhi **nahi** aate — service ka `.select()` unhe include nahi karta. List already caller ki hi hai, to `userId` dobara bhejne ka matlab nahi. Apni row pehchanne ke liye `tokenTail` ko locally stored token ke aakhri 8 chars se match karein.
+
+**2. Empty pe `404` nahi aata** — `devices: []`, `activeDevices: 0`, `total: 0` milta hai. Baaki list endpoints se different (achhi baat).
+
+**3. Sorting:** active devices pehle, phir `lastSeenAt` descending (sabse recent upar).
+
+**4. `lastPushAt` `null` ho sakta hai** — agar us device pe kabhi push nahi gaya.
+
+**5. `failureCount`** consecutive send failures batata hai. Zyada value = wo token probably dead hai.
+
+---
+
+## 34. POST /deviceTokens/test
+
+Test push bhejta hai — **sirf caller ke apne devices pe**. Setup verify karne ke liye.
+
+**Access:** Intended: All roles · Enforced: **Any authenticated**
+
+### Body — dono optional
+| Field | Type | Required | Default | Validation |
+|---|---|---|---|---|
+| `title` | string | ❌ | `"Test notification"` | Max 160 chars |
+| `body` | string | ❌ | `"If you can read this, push notifications are working."` | Max 1000 chars |
+
+```json
+{ "title": "Test", "body": "Checking push setup" }
+```
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Test push dispatched",
+  "data": {
+    "devices": 2,
+    "sent": 2,
+    "failed": 0,
+    "delivered": true
+  }
+}
+```
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `401` | *(auth error)* | Token context missing |
+| `422` | `Push credentials were rejected by the provider: <reason>` | Server ka FCM setup galat hai — **aapki galti nahi** |
+| `404` | `You have no active devices registered. Call POST /deviceTokens/register from the app first.` | Pehle register karo |
+| `422` | *(Joi message)* | `title`/`body` limit cross |
+
+### ⚠️ Notes
+
+**1. Sirf apne devices pe jaata hai** — `dispatchPush([actor.userId], ...)`. Kisi aur ko test push bhejne ka koi tareeka nahi.
+
+**2. `delivered` flag dekho, `success` nahi.** Service ka comment batata hai kyun: *"The interesting answer is not 'did the request succeed' but 'did a phone light up', and those are different things."*
+- `success: true` + `delivered: true` → phone pe notification aayi
+- `success: true` + `delivered: false` (`sent: 0`) → request theek gayi par kisi device pe nahi pahunchi (dead tokens)
+
+**3. Credentials error alag se handle hota hai.** Service pehle `probeFcmAuth()` chalata hai — comment: *"Separates 'credentials are wrong' from 'the token is dead', which otherwise both look like a failed send."* `422` = server config issue, `404` = koi device nahi.
+
+**4. Push payload me `data: { type: "TEST" }` jaata hai** — app isse test notification ko normal se distinguish kar sakta hai.
+
+**5. Ye debugging tool hai, production feature nahi.** App ke settings/developer screen me rakhein, normal user flow me nahi.
+
+---
+
 # Appendix A — Not For Customer App
 
 Ye endpoints backend me exist karte hain par **customer app inko use na kare**. Zyada tar pe role check nahi hai, matlab customer token se call ho jayenge — par ye vendor/admin functionality hai. Galti se call karne pe data corrupt ho sakta hai.
@@ -2709,7 +3316,19 @@ Ye endpoints backend me exist karte hain par **customer app inko use na kare**. 
 ### Legal writes (6)
 `POST|PUT|DELETE /terms-and-conditions/*` (3) · `POST|PUT|DELETE /privacy-and-policies/*` (3)
 
-**Total not-for-customer:** 78 endpoints (108 total − 30 customer)
+### 🆕 Naye modules (v1.1.0) — customer app inko use na kare
+
+| Module | Endpoints | Kiske liye |
+|---|---:|---|
+| `/promoCodes/*` | 6 | **Admin only** (`router.use(isAdmin)`). Subscription promo codes ka management. Vendor bhi manage nahi karta — wo sirf `/transactions/subscribe/preview` me code redeem karta hai |
+| `/subscribeds/*` | 8 | Admin (6) + Vendor (2). Brand subscription lifecycle — grant, cancel, resync, forfeit compensation |
+| `/notifications/*` | 3 | Vendor + Admin. In-app notification feed + admin broadcast. ⚠️ **Customer ke liye feed abhi nahi hai** — customer ko sirf push milega |
+| `/auth/set-password` · `/forgot-password` · `/reset-password` | 3 | Technically role-agnostic hain, par customer app WhatsApp OTP se login karta hai — password flow ki zarurat nahi |
+| `/transactions/*` | 9 | Vendor + Admin payments, Razorpay webhook, dispute worklist |
+| `/brands/admin/verifications*` · `/brands/verifications/history` | 3 | Brand KYC review queue aur audit trail |
+| `/brands/onboarding/acknowledge-approval` | 1 | Vendor onboarding step |
+
+**Total not-for-customer:** 114 endpoints (149 total − 35 customer)
 
 Full categorization → [endpoints_category.md](./endpoints_category.md)
 
@@ -2717,29 +3336,68 @@ Full categorization → [endpoints_category.md](./endpoints_category.md)
 
 # Appendix B — Known Issues
 
-Ye backend issues hain jo customer app ko directly affect karte hain. Full technical detail + suggested fixes → [security_findings.md](./security_findings.md)
+Ye backend issues hain jo customer app ko directly affect karte hain. **Status 2026-08-26 ko verify kiya gaya.** Full technical detail + suggested fixes → [security_findings.md](./security_findings.md)
+
+## ✅ Jo fix ho gaya
+
+### "No eligible offer" error — FIXED (v1.3.0)
+**Pehle:** bill kisi bhi offer ke `minBillAmount` se kam ho to preview `400` deta tha. Customer ko lagta tha uska bill hi galat hai, jabki wo bas chhota tha.
+
+**Ab:** `200` + `offerApplied: false`. Customer sirf apna bill pay karega — koi offer, promo ya convenience fee nahi. `pricing.payableAmount` render kar dein.
+
+---
+
+### `isFirst` retry pe galat aata tha — FIXED
+**Pehle:** OTP na aane pe user dobara signup call karta tha, to `isFirst: false` aa jaata tha — kyunki flag User document ke **hone** pe based tha, verify hone pe nahi. App use returning user samajh leta tha.
+
+**Ab:** `isFirst` verification state pe based hai (`!user.isMobileVerified`). Jitni baar bhi retry karein, jab tak verify nahi hua `true` hi rahega.
+
+---
+
+### Signup adha-adhoora reh jaata tha — FIXED
+**Pehle:** User ban jaata tha par `Customer` document banne me error aa jaaye to account orphan reh jaata tha — aur kyunki agli baar `isFirst: false` aata tha, user kabhi recover hi nahi kar paata tha.
+
+**Ab:** dono ek **transaction** me bante hain. Aur agar purana orphan account mile to wo apne aap repair ho jaata hai.
+
+---
+
+### Shared default password — FIXED
+**Pehle:** har OTP account (customer included) ek hi hardcoded password pe banta tha (`DEFAULT_PASSWORD` ya `"Trydood@123"`), aur badalne ka koi tareeka nahi tha.
+
+**Ab:** `User.password` optional hai — OTP accounts **bina password ke** bante hain. `passwordSetAt` field track karti hai ki user ne kab apna password chuna. **Password login fail-closed hai** — jinhone set nahi kiya, unpe `/auth/login` chalega hi nahi.
+
+**App pe impact:** kuch karna nahi hai. Customer app WhatsApp OTP se login karta hai, wo waise hi chalega. Bas ab pata hai ki customer account password-login se compromise nahi ho sakta.
+
+---
 
 ## 🔴 Blockers (production se pehle fix hone chahiye)
 
-### 1. OTP verify hota hi nahi — auth bypass
-Dono OTP lines commented out hain:
+### 1. OTP verify hota hi nahi — auth bypass · 🔴 abhi bhi OPEN
+Dono OTP lines abhi bhi commented out hain:
 ```js
-// services/auth/loginOrSignUpWithWhatsapp.js:51 — OTP send nahi hota
-// services/auth/verifyOtpWithWhatsapp.js:11    — OTP verify nahi hota
+// services/auth/loginOrSignUpWithWhatsapp.js:56 — OTP send nahi hota
+// services/auth/verifyOtpWithWhatsapp.js:12     — OTP verify nahi hota
 ```
 **Matlab:** kisi ka bhi WhatsApp number pata ho to koi bhi 6-digit OTP daal ke uske account me login kiya ja sakta hai. **Production blocker.**
 
+> ⚠️ Ye ab **pehle se zyada serious** hai — password login fix hone ke baad WhatsApp OTP hi primary entry point hai.
+
 **App pe impact:** development me convenient (koi bhi OTP chalega), par live jaane se pehle uncomment hona zaruri hai. Uncomment hone ke baad naye error cases aayenge — endpoint #2 ke note 6 me listed hain, unko app me pehle se handle karke rakhein.
 
-### 2. Role enforcement missing (88 endpoints)
-108 me se sirf 20 endpoints pe role check hai. Customer token se admin endpoints call ho sakte hain (`POST /banners/create`, `POST /vouchers/review/:versionId`).
+### 2. Role enforcement — 🟡 partially fixed, 35 endpoints abhi bhi open
+**Pehle:** 108 me se sirf 20 gated the.
+**Ab:** 143 me se **108 gated hain**. Vouchers ke vendor endpoints, transactions, subBrands, aur saare naye modules (`/promoCodes`, `/subscribeds`, `/notifications`) properly gated hain.
 
-**App pe impact:** app ko khud discipline rakhni hogi — Appendix A ke endpoints kabhi call na karein. Backend nahi rokega.
+**Abhi bhi open:** `banners` (5), `promotionalTickers` (5), `showcase` section/media (11), `locations` (5), `brandFeatures` (3), `workHours` (1), plus `subBrands/get-all`, `vouchers/versions/get-all`, `brands/get`, `brands/update`, `brands/verifications/history`.
 
-### 3. Password hash API response me aa raha hai
-Endpoints #1 aur #2 ka `user` object full Mongoose document hai — bcrypt `password` hash bhi response me aata hai.
+**App pe impact:** app ko khud discipline rakhni hogi — Appendix A ke endpoints kabhi call na karein. Backend abhi bhi in 35 pe nahi rokega.
 
-**App pe impact:** is field ko kabhi store/log na karein. Ideally response parsing me hi drop kar dein.
+### 3. Password hash API response me aa raha hai · 🟡 impact kam hua
+Endpoints #1 aur #2 ka `user` object abhi bhi full Mongoose document hai — koi field exclusion nahi.
+
+**Kyun kam:** ab OTP accounts bina password ke bante hain, to naye customers ke response me `password` field hoti hi nahi. Hash sirf tab aata hai jab user ne khud `/auth/set-password` se password set kiya ho — jo customer app ke flow me hota hi nahi.
+
+**App pe impact:** phir bhi is field ko kabhi store/log na karein. Ideally response parsing me hi drop kar dein.
 
 ## 🟠 Data access issues (app ko discipline rakhni hogi)
 
@@ -2759,10 +3417,10 @@ Koi bhi location ID se koi bhi address fetch ho jaata hai.
 
 **App pe impact:** sirf apni location ID use karein (`GET /users/get` ke `data.customerId.locationId._id` se).
 
-### 7. `GET /brands/get` PAN/GST/Bank expose karta hai
-Detail endpoint #18 me hai. `pans`, `gsts`, `banks`, `systemverifies`, `subscribeds`, `user` — sab customer ko mil jaate hain.
+### 7. ✅ RESOLVED — `/brands/get` PAN/GST/Bank expose karta tha
+Ab wo endpoint `isVendorOrAdmin` ke peeche hai. Customer ke liye naya [`GET /brands/customer/get/:brandId`](#18-get-brandscustomergetbrandid) hai, jisme sirf public fields hain — sensitive lookup wahan build hi nahi hota.
 
-**App pe impact:** in fields ko display/cache/log na karein. Backend me role-based filtering chahiye.
+**App pe impact:** naye endpoint pe shift kar dijiye. Purana ab `403` dega.
 
 ## 🟡 Functional gaps (feature adhoora hai)
 
@@ -2786,15 +3444,27 @@ Email change karne pe `isEmailVerified: false` ho jaata hai, par verify karne ka
 
 **App pe impact:** email verified badge/flow abhi na banayein.
 
-### 12. `FIXED` discount type kaam nahi karta
-Enum me hai, calculation me handle nahi. Aisa offer `discountAmount: 0` dega aur filter ho jayega.
+### ~~12. `FIXED` discount type kaam nahi karta~~ ✅ FIXED (v1.3.0)
+Enum me tha, calculation me handle nahi tha — aisa offer `discountAmount: 0` deta tha aur eligible list se filter ho jaata tha. Customer ko `"No eligible offer found for this bill amount"` dikhta tha, jaise uska bill hi galat ho.
 
-**App pe impact:** practically sirf `PERCENTAGE` aur `FLAT` handle karein.
+Ab `FIXED` ko `FLAT` ka alias treat kiya jaata hai — teeno discount types kaam karte hain.
 
 ### 13. Public app config endpoint nahi hai
 Min app version, force-update flag, support contact, feature flags — inke liye koi endpoint nahi (`GET /settings/get` admin-only hai).
 
 **App pe impact:** force-update / remote config abhi possible nahi. Hardcode karna padega ya Firebase Remote Config jaisa alag solution use karein.
+
+### 14. 🆕 Customer ke liye in-app notification feed nahi hai
+`/notifications/get-all` `isVendorOrAdmin` ke peeche gated hai. Customer ko sirf **push** milega — notification history dekhne ka koi endpoint nahi.
+
+Aur `NOTIFICATION_TYPES` enum me abhi jo types hain wo mostly subscription/admin events hain (`SUBSCRIPTION_ACTIVATED`, `WEBHOOK_FAILED`, `PAYMENT_DISPUTED`…). Customer-facing type sirf `ANNOUNCEMENT` hai (admin broadcast ke through).
+
+**App pe impact:** notification inbox screen abhi ban nahi sakta. Push aayega par history nahi. Chahiye to backend change lagega.
+
+### 15. 🆕 `POST /auth/logout` push unregister nahi karta
+Logout endpoint sirf success message deta hai — na token invalidate karta hai, na device token deactivate karta hai.
+
+**App pe impact:** logout pe **manually** `PUT /deviceTokens/unregister` call karein, warna logged-out device notifications receive karta rahega. Sahi order [endpoint #32](#32-put-devicetokensunregister) me hai.
 
 ---
 
@@ -2802,25 +3472,41 @@ Min app version, force-update flag, support contact, feature flags — inke liye
 
 Doc padhne ke baad ye points dhyaan me rakhein:
 
+**Response handling**
 - [ ] **404 = empty list** — list endpoints pe 404 ko error toast na dikhayein, empty-state dikhayein
+- [ ] **Nested `data.data`** — pagination responses me
+- [ ] **`DELETE /users/delete` standard envelope use nahi karta** — koi `success` field nahi
+- [ ] **Token expiry pe login screen** — `401 "Your session has expired..."`
+
+**Request formatting**
 - [ ] **Coordinates `[longitude, latitude]`** order me — ulta karna sabse common bug hai
 - [ ] **`limit` default 10 hai** — categories/vouchers pe explicitly badhayein
 - [ ] **`isActive=true` bhejein** master data + features + legal endpoints pe
-- [ ] **Nested `data.data`** — pagination responses me
 - [ ] **Enums UPPERCASE** hain, `sortBy` values bhi (`DISTANCE`, `NEWEST`)
-- [ ] **Sab text lowercase** aata hai DB se — display pe capitalize karein
 - [ ] **Voucher APIs ko coordinates chahiye** — GPS bhejein ya pehle location save karein
+
+**Display**
+- [ ] **Sab text lowercase** aata hai DB se — display pe capitalize karein
 - [ ] **`bestOffer` real discount nahi hai** — actual ke liye preview endpoint (#17)
 - [ ] **Banner ka media `type` pe depend karta hai** — `image`/`video`/`gif`
 - [ ] **`redirect.targetId`/`url` null ho sakte hain** — navigate se pehle check
 - [ ] **HTML content** terms/privacy `description` me — WebView use karein
+
+**Security discipline**
 - [ ] **`?userId` param aur body ka `userId` kabhi na bhejein**
 - [ ] **PAN/GST/Bank fields ignore karein** `/brands/get` response me
-- [ ] **`DELETE /users/delete` no-op hai** aur standard envelope use nahi karta
-- [ ] **Token expiry pe login screen** — `401 "Your session has expired..."`
+- [ ] **`password` field response se drop karein** (jab aaye)
+- [ ] **Appendix A ke endpoints kabhi call na karein** — 35 pe backend abhi bhi nahi rokega
+
+**Push notifications 🆕**
+- [ ] **Login ke baad `register` call karein** — role sahi map hone ke liye
+- [ ] **`deviceId` zaroor bhejein** — reinstall pe dead rows na bane
+- [ ] **FCM `onTokenRefresh` pe dobara register karein**
+- [ ] **Logout pe `unregister` + `logout` dono** — sirf logout kaafi nahi
+- [ ] **`test` endpoint pe `delivered` flag dekho**, `success` nahi
 
 ---
 
-**Doc version:** 1.0.0 · **Generated:** 2026-08-22
-**Related docs:** [endpoints_category.md](./endpoints_category.md) · [security_findings.md](./security_findings.md) · [queries.md](./queries.md)
+**Doc version:** 1.1.0 · **Last verified:** 2026-08-22 against current code
+**Related docs:** [endpoints_category.md](./endpoints_category.md) · [security_findings.md](./security_findings.md) · [queries.md](./queries.md) · [authorization_plan.md](./authorization_plan.md)
 **Pending:** Vendor panel doc (phase 2) · Super admin panel doc (phase 3)

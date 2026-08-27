@@ -49,10 +49,24 @@ const validateRoles = (...allowedRoles) =>
 const isAdmin = validateRoles(ROLES.ADMIN);
 const isCustomer = validateRoles(ROLES.CUSTOMER);
 const isVendor = validateRoles(ROLES.VENDOR);
+const isSubVendor = validateRoles(ROLES.SUB_VENDOR);
+
+/**
+ * Vendor tooling that an admin may also drive on a brand's behalf.
+ *
+ * Defined here rather than in each router: five route files were each
+ * declaring their own `validateRoles(ROLES.VENDOR, ROLES.ADMIN)`, so the pair
+ * could drift apart one file at a time. Ownership within the brand is still
+ * the service's job — `helpers/brands/resolveActorBrand.js` — this gate only
+ * keeps customers out of vendor tooling.
+ */
+const isVendorOrAdmin = validateRoles(ROLES.VENDOR, ROLES.ADMIN);
 
 module.exports = {
   validateRoles,
   isAdmin,
   isCustomer,
   isVendor,
+  isSubVendor,
+  isVendorOrAdmin,
 };

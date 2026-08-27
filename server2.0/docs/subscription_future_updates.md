@@ -502,9 +502,10 @@ When either is added, it needs exactly two things:
 - **`generateUniqueInvoiceId` collision risk.** 5-digit random over a 90k space
   with a `while (true)` retry. Replace with `models/Counter.js` for a monotonic
   sequence — GST filings prefer gap-free invoice numbers anyway.
-- **`DEFAULT_PASSWORD` fallback.** `signUpSubBrandWithWhatsapp` still falls back
-  to a literal `"Trydood@123"` when the env var is unset (pre-existing). Should
-  be a generated secret or a hard failure.
+- ~~**`DEFAULT_PASSWORD` fallback.** `signUpSubBrandWithWhatsapp` still falls back
+  to a literal `"Trydood@123"` when the env var is unset.~~ **DONE** — superseded
+  by §9. `signUpSubBrandWithWhatsapp` no longer sets a password at all; the
+  account is OTP-only until the user chooses one via `POST /auth/set-password`.
 - **Admin job trigger.** `jobs/index.js` exports `runJobNow(name)` but nothing
   calls it. A small `POST /admin/jobs/run/:name` would let support force a sweep.
 - **GST state-code map.** With no brand GSTIN, place of supply falls back to a
@@ -560,8 +561,20 @@ and still work.
 - **Rate limiting.** No middleware limits attempts on `/auth/login`,
   `/auth/forgot-password` or OTP verification. The OTP itself caps verify
   attempts, but nothing caps how many codes can be requested.
-- **`passwordSetAt` is not surfaced.** A client cannot currently tell whether to
-  show "Set a password" or "Change password" without attempting one.
+- ~~**`passwordSetAt` is not surfaced.**~~ **DONE** — `getUserById` uses an
+  exclusion projection (`.select("-password -otp -isDeleted")`), so
+  `GET /users/get` already returns `passwordSetAt`. A client can branch on it to
+  show "Set a password" vs "Change password" without attempting one.
+
+- **⚠️ WhatsApp signup still accepts `role: "ADMIN"`.** Found 2026-08-22 while
+  writing the panel API docs. `loginOrSignUpWithWhatsapp` validates `role`
+  against the whole `ROLES` enum and creates whatever is asked for, so
+  `{ whatsappNumber, role: "ADMIN" }` mints an admin account — and because
+  `verifyOtpWithWhatsapp` still has its `verifyOtp` call commented out, any
+  6-digit string then returns that admin's token. This is a second, easier path
+  to the same place `/auth/register` opens. Restrict the validator to
+  `CUSTOMER` + `VENDOR` on both WhatsApp endpoints. See
+  [security_findings.md](./security_findings.md) #15 and #7.
 
 ---
 

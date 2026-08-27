@@ -365,6 +365,42 @@ exports.validateCustomerGetAllVouchers = {
     sortOrder: Joi.string().valid("asc", "desc").optional(),
     latitude: Joi.number().min(-90).max(90).optional(),
     longitude: Joi.number().min(-180).max(180).optional(),
+    // true  -> the "Suggestions" tab: only what an admin pinned.
+    // false -> everything, with the pinned ones leading. That single sorted set
+    //          is what makes "view more" paginate without repeating them.
+    suggestedOnly: Joi.alternatives()
+      .try(Joi.boolean(), Joi.string().valid("true", "false"))
+      .optional(),
+  }),
+};
+
+// ---------------------------------------------------------------
+// ADMIN — voucher suggestions (the customer app's "Suggestions" tab)
+// ---------------------------------------------------------------
+exports.validateReviewVoucherSuggestion = {
+  params: {
+    voucherId: objectId().required().messages({
+      "any.required": "Voucher ID is required.",
+      "any.invalid": "Invalid voucher ID.",
+    }),
+  },
+  body: Joi.object({
+    // One call both ways — false removes it from the list.
+    isSuggested: Joi.boolean().required().messages({
+      "any.required": "isSuggested is required",
+      "boolean.base": "isSuggested must be a boolean",
+    }),
+    // Lower sorts first. Only meaningful when pinning.
+    suggestionOrder: Joi.number().integer().min(0).optional().messages({
+      "number.min": "suggestionOrder cannot be negative",
+    }),
+  }),
+};
+
+exports.validateGetSuggestedVouchers = {
+  query: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(10),
   }),
 };
 

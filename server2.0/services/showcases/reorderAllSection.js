@@ -1,19 +1,30 @@
 const ShowcaseSection = require("../../models/ShowcaseSection");
 const { throwError } = require("../../utils");
-//const { validateVendorBrand } = require("../../helpers/showcase/common");
+const { resolveActorBrand } = require("../../helpers/brands");
 const {
   validateUniqueIds,
   validateUniqueSortOrders,
   normalizeSortOrder,
 } = require("../../helpers/showcases");
 
-exports.reorderAllSections = async (userId, payload) => {
-  //  const brand = await validateVendorBrand(user);
+exports.reorderAllSections = async (actor, payload) => {
   let { sections, brandId } = payload;
-  validateUniqueIds(sections);
+
+  // `brandId` comes off the path, so it was previously whatever the caller
+  // typed — a vendor could reorder another brand's showcase. Resolving it
+  // through the actor pins a vendor to their own brand and still lets an admin
+  // name any.
+  const brand = await resolveActorBrand(actor, brandId);
+  brandId = brand._id;
+
+  // The request field is `id` — that is what the validator accepts and what the
+  // docs publish. This read `sectionId` instead, a key the payload never has,
+  // so `validateUniqueIds` dereferenced `undefined` and the endpoint answered
+  // every well-formed request with a 500. It has never worked.
+  validateUniqueIds(sections, "id");
   validateUniqueSortOrders(sections);
   sections = normalizeSortOrder(sections);
-  const ids = sections.map((item) => item.sectionId);
+  const ids = sections.map((item) => item.id);
   const total = await ShowcaseSection.countDocuments({
     brandId,
     isDeleted: false,
@@ -26,7 +37,7 @@ exports.reorderAllSections = async (userId, payload) => {
     sections.map((item) => ({
       updateOne: {
         filter: {
-          _id: item.sectionId,
+          _id: item.id,
           brandId,
         },
         update: {

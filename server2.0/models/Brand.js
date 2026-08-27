@@ -160,6 +160,20 @@ const brandSchema = new mongoose.Schema(
     isApproved: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
+
+    // ---------------------------------------------------------------------
+    // Admin curation — the "Top Brands" tab on the customer app.
+    //
+    // Same shape and reasoning as Voucher.isSuggested: a flag the brand
+    // listing can sort on directly, and one that never overrides visibility.
+    // A deactivated or deleted brand stays out of the customer list whatever
+    // this says, so a stale pick disappears without anyone tidying it.
+    // ---------------------------------------------------------------------
+    isTopBrand: { type: Boolean, default: false, index: true },
+    // Lower sorts first among top brands.
+    topOrder: { type: Number, default: 0 },
+    topAddedAt: { type: Date, default: null },
+    topAddedBy: userField,
   },
   { timestamps: true, versionKey: false },
 );

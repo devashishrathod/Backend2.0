@@ -119,6 +119,34 @@ const voucherSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+
+    // ---------------------------------------------------------------------
+    // Admin curation — the "Suggestions" tab on the customer app.
+    //
+    // A flag on the voucher rather than a join table, so the customer listing
+    // sorts on it directly instead of paying for another lookup on every page.
+    //
+    // Nothing here forces a voucher to be visible: the customer pipeline still
+    // only surfaces PUBLISHED versions inside their validity window, so a
+    // suggested voucher that expires or gets unpublished drops out of the feed
+    // on its own and no admin has to go tidy the list.
+    // ---------------------------------------------------------------------
+    isSuggested: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    // Lower sorts first among suggested vouchers.
+    suggestionOrder: {
+      type: Number,
+      default: 0,
+    },
+    suggestedAt: {
+      type: Date,
+      default: null,
+    },
+    suggestedBy: userField,
+
     // Independent of the version/approval flow entirely — a single "current
     // banner" slot on the master voucher for brand offer promotion. Adding,
     // replacing, or removing it never touches status/approval/versions.

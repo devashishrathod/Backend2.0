@@ -1,14 +1,16 @@
 const express = require("express");
 const router = express.Router();
 
-const { verifyJwtToken, validateSchema } = require("../middlewares");
+const { validateSchema, isCustomer } = require("../middlewares");
 const { toggle, getAll } = require("../controllers/brandAvoidances");
 const {
   validateToggleBrandAvoidance,
   validateGetAllBrandAvoidances,
 } = require("../validator/brandAvoidance");
 
-router.use(verifyJwtToken);
+// Customer-only, same as follows — the service resolves a Customer from the
+// token, so the role gate just fails faster and more clearly.
+router.use(isCustomer);
 
 router.post(
   "/toggle/:brandId",

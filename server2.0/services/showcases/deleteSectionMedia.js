@@ -2,8 +2,15 @@ const ShowcaseSection = require("../../models/ShowcaseSection");
 const { throwError } = require("../../utils");
 // const { validateVendorBrand } = require("../../helpers/showcase/common");
 const { deleteMedia } = require("../../helpers/showcases");
+const {
+  resolveSectionForActor,
+} = require("../../helpers/showcases");
 
-exports.deleteSectionMedia = async (userId, payload) => {
+exports.deleteSectionMedia = async (actor, payload) => {
+  await resolveSectionForActor(actor, payload.sectionId, {
+    projection: { brandId: 1 },
+  });
+
   // const brand = await validateVendorBrand(userId);
   const section = await ShowcaseSection.findOne(
     {

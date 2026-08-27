@@ -1,5 +1,8 @@
 const ShowcaseSection = require("../../models/ShowcaseSection");
 const { throwError } = require("../../utils");
+const {
+  resolveSectionForActor,
+} = require("../../helpers/showcases");
 //const { validateVendorBrand } = require("../../helpers/showcase/common");
 const {
   normalizeSortOrder,
@@ -8,14 +11,21 @@ const {
   syncSectionCoverImage,
 } = require("../../helpers/showcases");
 
-exports.reorderSectionMedia = async (userId, payload) => {
+exports.reorderSectionMedia = async (actor, payload) => {
+  await resolveSectionForActor(actor, payload.sectionId, {
+    projection: { brandId: 1 },
+  });
+
   // const brand = await validateVendorBrand(userId);
   let { sectionId, medias } = payload;
   if (!Array.isArray(medias) || medias.length === 0) {
     throwError(400, "Media list is required.");
   }
 
-  validateUniqueIds(medias, "mediaId");
+  // `id`, not `mediaId` — same mismatch the section reorder had. The validator
+  // accepts `id` and the docs publish `id`, but every read below used
+  // `mediaId`, so a well-formed request died on `undefined.toString()`.
+  validateUniqueIds(medias, "id");
   validateUniqueSortOrders(medias, "sortOrder");
   medias = normalizeSortOrder(medias);
 
@@ -46,14 +56,14 @@ exports.reorderSectionMedia = async (userId, payload) => {
   });
 
   for (const item of medias) {
-    if (!activeMediaMap.has(item.mediaId.toString())) {
-      throwError(400, `Invalid media id : ${item.mediaId}`);
+    if (!activeMediaMap.has(item.id.toString())) {
+      throwError(400, `Invalid media id : ${item.id}`);
     }
   }
 
   const sortOrderMap = new Map();
   medias.forEach((item) => {
-    sortOrderMap.set(item.mediaId.toString(), item.sortOrder);
+    sortOrderMap.set(item.id.toString(), item.sortOrder);
   });
 
   let isModified = false;

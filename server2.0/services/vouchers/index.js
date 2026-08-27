@@ -9,6 +9,8 @@ const { getCustomerSingleVoucher } = require("./getCustomerSingleVoucher");
 const { previewCustomerVoucher } = require("./previewCustomerVoucher");
 const { setVoucherBanner } = require("./setVoucherBanner");
 const { deleteVoucherBanner } = require("./deleteVoucherBanner");
+const { reviewVoucherSuggestion } = require("./reviewVoucherSuggestion");
+const { getSuggestedVouchers } = require("./getSuggestedVouchers");
 const { expireVouchers } = require("./expireVouchers");
 
 module.exports = {
@@ -24,4 +26,6 @@ module.exports = {
   previewCustomerVoucher,
   setVoucherBanner,
   deleteVoucherBanner,
+  reviewVoucherSuggestion,
+  getSuggestedVouchers,
 };

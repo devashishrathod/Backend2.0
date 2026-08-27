@@ -124,6 +124,77 @@ exports.validateGetBrand = {
   }),
 };
 
+// The customer profile screen addresses a brand by path, never by an implicit
+// "my brand" — a customer has no brand of their own to fall back to.
+exports.validateGetCustomerBrand = {
+  params: {
+    brandId: objectId().required().messages({
+      "any.required": "Brand ID is required",
+      "any.invalid": "Invalid brandId",
+    }),
+  },
+};
+
+exports.validateGetAllCustomerBrands = {
+  query: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(50).default(10),
+    search: Joi.string().trim().max(100).optional(),
+    categoryId: objectId().optional().messages({
+      "any.invalid": "Invalid category ID",
+    }),
+    subCategoryId: objectId().optional().messages({
+      "any.invalid": "Invalid subCategory ID",
+    }),
+    // true  -> the "Top Brands" tab.
+    // false -> everything, top brands leading.
+    topOnly: Joi.alternatives()
+      .try(Joi.boolean(), Joi.string().valid("true", "false"))
+      .optional(),
+    sortBy: Joi.string()
+      .uppercase()
+      .valid("TOP_FIRST", "NEWEST", "FOLLOWERS", "NAME", "DISTANCE")
+      .default("TOP_FIRST"),
+    sortOrder: Joi.string().valid("asc", "desc").optional(),
+    // Optional. Supplied together they enable DISTANCE sorting and add a
+    // `distance` field to each row; omitted, the listing is a plain directory.
+    latitude: Joi.number().min(-90).max(90).optional(),
+    longitude: Joi.number().min(-180).max(180).optional(),
+  })
+    .and("latitude", "longitude")
+    .messages({
+      "object.and": "latitude and longitude must be provided together",
+    }),
+};
+
+// ---------------------------------------------------------------
+// ADMIN — top brands (the customer app's "Top Brands" tab)
+// ---------------------------------------------------------------
+exports.validateReviewTopBrand = {
+  params: {
+    brandId: objectId().required().messages({
+      "any.required": "Brand ID is required",
+      "any.invalid": "Invalid Brand ID format",
+    }),
+  },
+  body: Joi.object({
+    isTopBrand: Joi.boolean().required().messages({
+      "any.required": "isTopBrand is required",
+      "boolean.base": "isTopBrand must be a boolean",
+    }),
+    topOrder: Joi.number().integer().min(0).optional().messages({
+      "number.min": "topOrder cannot be negative",
+    }),
+  }),
+};
+
+exports.validateGetTopBrands = {
+  query: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(10),
+  }),
+};
+
 exports.validateUpdateBrand = {
   query: {
     brandId: objectId().optional().messages({
