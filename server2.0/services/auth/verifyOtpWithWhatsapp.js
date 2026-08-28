@@ -2,6 +2,7 @@ const User = require("../../models/User");
 const { ROLES } = require("../../constants");
 const { verifyOtp } = require("../../services/otps");
 const { throwError } = require("../../utils");
+const { assertAccountAccess } = require("../../helpers/auth");
 const { sanitizeUser } = require("../../helpers/users");
 
 exports.verifyOtpWithWhatsapp = async (body) => {
@@ -13,10 +14,10 @@ exports.verifyOtpWithWhatsapp = async (body) => {
   if (!user) throwError(404, "Invalid Whatsapp number, user not found!");
 
   // Step one refuses to *create* a deactivated account's role, but an account
-  // can be deactivated between requesting a code and presenting it.
-  if (!user.isActive) {
-    throwError(403, "Your account is deactivated. Please contact support.");
-  }
+  // can be deactivated between requesting a code and presenting it. Same shared
+  // gate as the middlewares, so the refusal carries `details.code` and the
+  // client branches on one value everywhere.
+  assertAccountAccess(user);
 
   //  await verifyOtp(whatsappNumber, otp);
 

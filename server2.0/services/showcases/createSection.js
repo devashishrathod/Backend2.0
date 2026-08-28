@@ -2,7 +2,10 @@ const ShowcaseSection = require("../../models/ShowcaseSection");
 const { escapeRegex } = require("../../validator/common");
 const { throwError } = require("../../utils");
 const { SHOWCASE_SECTION_TYPE } = require("../../constants/showcase");
-const { generateUniqueSlug } = require("../../helpers/showcases");
+const {
+  generateUniqueSlug,
+  formatSectionSummary,
+} = require("../../helpers/showcases");
 const {
   resolveActorBrand,
   reserveSlot,
@@ -27,17 +30,22 @@ exports.createSection = async (actor, payload) => {
   // subscribe rather than getting a validation error about the section.
   await assertActiveSubscription(brand._id);
 
-  payload.title = payload.title.toLowerCase().trim();
+  // The title is stored as the vendor typed it — it is what the customer app
+  // renders. It used to be lowercased on the way in, which is why every album
+  // on the brand profile read "ambience" instead of "Ambience". Uniqueness is
+  // still case-insensitive, so "Ambience" and "ambience" cannot coexist.
+  const title = payload.title.trim();
+
   const exists = await ShowcaseSection.exists({
     brandId: brand._id,
     isDeleted: false,
     title: {
-      $regex: new RegExp(`^${escapeRegex(payload.title)}$`, "i"),
+      $regex: new RegExp(`^${escapeRegex(title)}$`, "i"),
     },
   });
   if (exists) throwError(409, "Section title already exists.");
 
-  const slug = await generateUniqueSlug(brand._id, payload.title);
+  const slug = await generateUniqueSlug(brand._id, title);
   let sortOrder = payload.sortOrder;
 
   if (!sortOrder) {
@@ -56,14 +64,22 @@ exports.createSection = async (actor, payload) => {
   await reserveSlot(brand._id, ENTITLEMENT_BUCKETS.SHOWCASE);
 
   try {
-    return await ShowcaseSection.create({
+    // The three toggles are accepted by the validator, and were being dropped
+    // here — a vendor who created a section as hidden got a visible one.
+    const section = await ShowcaseSection.create({
       brandId: brand._id,
-      title: payload.title,
+      title,
       slug,
       description: payload.description?.trim(),
       sortOrder,
       sectionType: payload.sectionType || SHOWCASE_SECTION_TYPE.CUSTOM,
+      ...(payload.isActive !== undefined && { isActive: payload.isActive }),
+      ...(payload.isVisible !== undefined && { isVisible: payload.isVisible }),
+      ...(payload.isShowVideosInClips !== undefined && {
+        isShowVideosInClips: payload.isShowVideosInClips,
+      }),
     });
+    return formatSectionSummary(section);
   } catch (error) {
     // Give the slot back rather than letting a failed insert eat it.
     await releaseSlot(brand._id, ENTITLEMENT_BUCKETS.SHOWCASE);

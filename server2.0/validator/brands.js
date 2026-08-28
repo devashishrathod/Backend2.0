@@ -14,6 +14,11 @@ const {
   BRAND_VERIFICATION_SORT_ORDER,
   BRAND_VERIFICATION_LIMITS,
 } = require("../constants/brandVerification");
+const {
+  BRAND_STATUS_LIMITS,
+  BRAND_LIST_SORT_BY,
+  BRAND_LIST_SORT_ORDER,
+} = require("../constants/brandStatus");
 
 exports.validateAddBasicDetails = Joi.object({
   currentScreen: Joi.string()
@@ -195,6 +200,161 @@ exports.validateGetTopBrands = {
   }),
 };
 
+// ---------------------------------------------------------------
+// ADMIN — brand directory + the account on/off switch
+// ---------------------------------------------------------------
+const booleanFlag = (label) =>
+  Joi.alternatives()
+    .try(Joi.boolean(), Joi.string().valid("true", "false"))
+    .optional()
+    .messages({
+      "alternatives.match": `${label} must be true or false`,
+    });
+
+exports.validateGetAllAdminBrands = {
+  query: Joi.object({
+    page: Joi.number().integer().min(1).default(1).messages({
+      "number.min": "Page must be at least 1",
+    }),
+    limit: Joi.number().integer().min(1).max(100).default(10).messages({
+      "number.min": "Limit must be at least 1",
+      "number.max": "Limit cannot exceed 100",
+    }),
+    // Brand name, legal name, brand id, merchant id, email, mobile, WhatsApp.
+    search: Joi.string().trim().max(120).optional().messages({
+      "string.max": "Search cannot exceed 120 characters",
+    }),
+
+    // Two separate switches, so two separate filters. Omit both to see
+    // everything — an admin has to be able to *find* a deactivated account in
+    // order to switch it back on.
+    //
+    //   accountActive → the vendor's `User.isActive` (can they sign in)
+    //   isActive      → the brand's customer visibility (`Brand.isActive`)
+    accountActive: booleanFlag("accountActive"),
+    isActive: booleanFlag("isActive"),
+
+    status: Joi.string()
+      .uppercase()
+      .valid(...Object.values(SYSTEM_VERIFICATION_STATUS))
+      .optional()
+      .messages({
+        "any.only": `Status must be one of ${Object.values(SYSTEM_VERIFICATION_STATUS).join(", ")}`,
+      }),
+    isApproved: booleanFlag("isApproved"),
+    isReviewed: booleanFlag("isReviewed"),
+    isRejected: booleanFlag("isRejected"),
+    isRevoked: booleanFlag("isRevoked"),
+    isSubscribed: booleanFlag("isSubscribed"),
+    isTopBrand: booleanFlag("isTopBrand"),
+
+    categoryId: objectId().optional().messages({
+      "any.invalid": "Invalid category ID",
+    }),
+    subCategoryId: objectId().optional().messages({
+      "any.invalid": "Invalid subCategory ID",
+    }),
+    businessEntityType: Joi.string()
+      .trim()
+      .valid(...Object.values(BUSINESS_ENTITY_TYPE))
+      .optional()
+      .messages({
+        "any.only": `Business Entity Type must be one of ${Object.values(BUSINESS_ENTITY_TYPE).join(", ")}`,
+      }),
+    businessRegistrationStatus: Joi.string()
+      .trim()
+      .valid(...Object.values(BUSINESS_REGISTRATION_STATUS))
+      .optional()
+      .messages({
+        "any.only": `Business Registration Status must be one of ${Object.values(BUSINESS_REGISTRATION_STATUS).join(", ")}`,
+      }),
+    // Where an unfinished onboarding stopped — the "who is stuck" worklist.
+    currentScreen: Joi.string()
+      .uppercase()
+      .valid(...Object.values(SCREENS))
+      .optional()
+      .messages({
+        "any.only": `Current screen must be one of ${Object.values(SCREENS).join(", ")}`,
+      }),
+
+    // Both inclusive, applied to `joinedDate`.
+    fromDate: Joi.date().iso().optional(),
+    toDate: Joi.date().iso().min(Joi.ref("fromDate")).optional().messages({
+      "date.min": "To date cannot be earlier than from date",
+    }),
+
+    sortBy: Joi.string()
+      .uppercase()
+      .valid(...Object.values(BRAND_LIST_SORT_BY))
+      .default(BRAND_LIST_SORT_BY.NEWEST)
+      .messages({
+        "any.only": `Sort by must be one of ${Object.values(BRAND_LIST_SORT_BY).join(", ")}`,
+      }),
+    // Ignored for NEWEST / OLDEST, which are directions in themselves.
+    sortOrder: Joi.string()
+      .uppercase()
+      .valid(...Object.values(BRAND_LIST_SORT_ORDER))
+      .optional()
+      .messages({
+        "any.only": `Sort order must be one of ${Object.values(BRAND_LIST_SORT_ORDER).join(", ")}`,
+      }),
+  }),
+};
+
+/**
+ * Two independent switches.
+ *
+ * `isActive` is the vendor's **account** (`User.isActive`) and is required — a
+ * switch in a panel always knows which way it is going, and stating it makes the
+ * call idempotent: two admins tapping at once cannot land the account in the
+ * state neither of them chose. It is also what lets `reason` be constrained
+ * below, since the direction has to be known before "only when deactivating"
+ * means anything.
+ *
+ * `hideFromCustomers` is **customer visibility** (`Brand.isActive`) and is
+ * optional — omit it and visibility is left exactly as it was. Deactivating an
+ * account does not hide the brand: existing pages and vouchers keep serving
+ * customers unless this is sent too.
+ */
+exports.validateToggleBrandStatus = {
+  params: {
+    brandId: objectId().required().messages({
+      "any.required": "Brand ID is required",
+      "any.invalid": "Invalid Brand ID format",
+    }),
+  },
+  body: Joi.object({
+    isActive: Joi.boolean().required().messages({
+      "any.required": "isActive is required",
+      "boolean.base": "isActive must be a boolean",
+    }),
+    // Not defaulted. A default here would mean any call that simply did not
+    // mention visibility silently re-listed (or de-listed) the brand — the same
+    // bug `validator/subBrands.js` documents for outlet `isActive`.
+    hideFromCustomers: Joi.boolean().optional().messages({
+      "boolean.base": "hideFromCustomers must be a boolean",
+    }),
+    // Internal note, kept out of the vendor-facing notification. Optional when
+    // switching the account off; forbidden when switching it on, where there is
+    // nothing to give a reason for.
+    reason: Joi.string()
+      .trim()
+      .max(BRAND_STATUS_LIMITS.MAX_REASON_LENGTH)
+      .when("isActive", {
+        is: false,
+        then: Joi.optional(),
+        otherwise: Joi.forbidden().messages({
+          "any.unknown":
+            "A reason is only accepted when deactivating an account",
+        }),
+      })
+      .messages({
+        "string.empty": "Reason cannot be empty",
+        "string.max": `Reason cannot exceed ${BRAND_STATUS_LIMITS.MAX_REASON_LENGTH} characters`,
+      }),
+  }),
+};
+
 exports.validateUpdateBrand = {
   query: {
     brandId: objectId().optional().messages({
@@ -217,7 +377,20 @@ exports.validateUpdateBrand = {
     description: Joi.string().trim().optional().messages({
       "string.empty": "Description can't be empty",
     }),
-    isActive: Joi.alternatives().try(Joi.string(), Joi.boolean()).optional(),
+    // `isActive` used to be accepted here. It was a second, weaker way to
+    // switch a brand off — no audit row, no notification, and it never touched
+    // the vendor's own account, so the two could silently disagree. Both
+    // switches now live on `PUT /brands/admin/:brandId/status`, which records
+    // and notifies. A generic update is the wrong place to hide a moderation
+    // action.
+    //
+    // `forbidden()` rather than just dropping it: `stripUnknown` would let a
+    // panel keep sending `isActive`, get a 200, and believe the brand had been
+    // switched off. A 422 naming the right endpoint is the louder, safer answer.
+    isActive: Joi.forbidden().messages({
+      "any.unknown":
+        "isActive is not settable here. Use PUT /brands/admin/:brandId/status — `isActive` for the vendor's account, `hideFromCustomers` for customer visibility.",
+    }),
     isOnboarding: Joi.boolean().optional().default(false),
     subCategoryId: Joi.when("isOnboarding", {
       is: true,

@@ -1,4 +1,5 @@
 const { SHOWCASE_MEDIA_TYPE } = require("../../constants/showcase");
+const { getOptimizedImageUrl } = require("../cloudinary");
 const {
   uploadImageWithMetadata,
   uploadVideoWithMetadata,
@@ -60,6 +61,42 @@ exports.deleteMedia = async (media) => {
     }
   } catch (error) {
     console.error(`Failed to delete media: ${media?.url}`, error.message);
+  }
+};
+
+/**
+ * Did the vendor upload this thumbnail themselves?
+ *
+ * A PHOTO's thumbnail *is* its own delivery URL, and a VIDEO's default poster is
+ * a transformation of the video's own public id — destroying either of those
+ * would take the media itself down with it. Only a separately uploaded poster
+ * is safe to delete, and this is how the two are told apart.
+ */
+exports.isCustomThumbnail = (media) => {
+  const thumbnail = media?.thumbnail;
+  if (!thumbnail || thumbnail === media.url) return false;
+
+  const publicId = media?.storage?.publicId;
+  if (publicId && thumbnail === getOptimizedImageUrl(publicId)) return false;
+
+  return true;
+};
+
+/**
+ * Delete a thumbnail the vendor uploaded, and only that.
+ *
+ * `updateSectionMedia` guarded this with `if (thumbnail.image)` — a property no
+ * upload object has — so the old poster was never actually removed and every
+ * thumbnail change left an orphan asset behind on Cloudinary.
+ */
+exports.deleteCustomThumbnail = async (media) => {
+  if (!exports.isCustomThumbnail(media)) return false;
+  try {
+    return await deleteImage(media.thumbnail);
+  } catch (error) {
+    // Best effort: an orphaned poster is not worth failing the request over.
+    console.error("Old thumbnail delete failed:", error.message);
+    return false;
   }
 };
 

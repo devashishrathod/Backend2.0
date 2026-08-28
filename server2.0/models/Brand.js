@@ -24,6 +24,7 @@ const {
   BRAND_SYSTEM_VERIFY_UPDATED_BY,
 } = require("../constants");
 const { BRAND_VERIFICATION_LIMITS } = require("../constants/brandVerification");
+const { BRAND_STATUS_LIMITS } = require("../constants/brandStatus");
 
 const brandSchema = new mongoose.Schema(
   {
@@ -158,8 +159,48 @@ const brandSchema = new mongoose.Schema(
     isSubscribed: { type: Boolean, default: false },
     // True only after an admin has both reviewed and approved the brand.
     isApproved: { type: Boolean, default: false },
+    // ---------------------------------------------------------------------
+    // Customer visibility.
+    //
+    // `false` de-lists the brand from the customer app: the profile page
+    // (`getCustomerBrand`), the directory and Top Brands tab
+    // (`getAllCustomerBrands`) and the showcase (`assertPublicBrand`) all filter
+    // on it. Note that it does **not** hide the brand's vouchers — that listing
+    // runs SubBrand → VoucherSubBrand → VoucherVersion → Voucher and only
+    // projects the brand.
+    //
+    // This is *not* the vendor's account switch. A suspended vendor's brand
+    // stays visible unless this is flipped too, which is the whole point: their
+    // existing content keeps serving customers while they lose access. The
+    // account switch is `User.isActive`.
+    // ---------------------------------------------------------------------
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
+
+    // ---------------------------------------------------------------------
+    // Admin switches — latest flip only, denormalised for the admin list.
+    //
+    // `account*` mirrors what happened to `User.isActive` (the vendor's access);
+    // `customerVisibility*` mirrors `Brand.isActive` above. Both are written
+    // only by services/brands/toggleBrandStatus.js, and the full trail — every
+    // flip, who, when, why — lives in BrandStatusHistory. These fields exist so
+    // the directory can render current state without joining that collection.
+    //
+    // Named `account*` rather than plain `deactivatedAt` on purpose: this
+    // document also carries `isActive`, and a bare `deactivatedAt` next to it
+    // reads as belonging to that flag when it does not.
+    // ---------------------------------------------------------------------
+    accountDeactivatedAt: { type: Date },
+    accountDeactivatedByAdminId: userField,
+    accountDeactivationReason: {
+      type: String,
+      trim: true,
+      maxlength: BRAND_STATUS_LIMITS.MAX_REASON_LENGTH,
+    },
+    accountActivatedAt: { type: Date },
+    accountActivatedByAdminId: userField,
+    customerVisibilityUpdatedAt: { type: Date },
+    customerVisibilityUpdatedByAdminId: userField,
 
     // ---------------------------------------------------------------------
     // Admin curation — the "Top Brands" tab on the customer app.

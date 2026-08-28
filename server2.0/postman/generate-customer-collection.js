@@ -1885,12 +1885,18 @@ const brandFolder = folder(
         "Poore albums — har section ke **saare** media (brand profile wale 6 ke preview",
         "ke ulta).",
         "",
-        "⚠️ **Ye `isVisible` filter nahi karta.** Brand profile endpoint karta hai. Matlab",
-        "yahan wo albums bhi aa sakte hain jo vendor ne chhupa rakhe hain. Jab tak ye theek",
-        "nahi hota, gallery screen ko brand profile ke `showcase.sections` pe hi bharosa",
-        "karna chahiye, ya section ids match karke filter karna chahiye.",
+        "✅ **`isVisible` filter ab lagta hai** — brand profile ke saath ek jaisa. Dono",
+        "endpoints ek hi shared projection use karte hain, to chhupaya hua album kahin",
+        "nahi dikhega.",
         "",
-        "Kuch na ho to **`200` + `sections: []`** — `404` nahi.",
+        "Media ka `isShowInVideoClips` yahan filter **nahi** karta — wo sirf reels feed ka",
+        "switch hai, album me video phir bhi dikhti hai.",
+        "",
+        "Sections pe optional `page` / `limit` (default 50). Response me `total`, `page`,",
+        "`limit`, `totalPages` bhi aate hain.",
+        "",
+        "Kuch na ho to **`200` + `sections: []`**. `404` sirf tab jab brand hi na mile",
+        "(deleted / deactivated).",
       ].join("\n"),
       capture: [["section_id", "d.sections[0]._id"]],
       assert: [
@@ -1907,24 +1913,49 @@ const brandFolder = folder(
           `  pm.expect(s.photoCount + s.videoCount, "photo+video for " + s.title).to.be.at.most(s.mediaCount);`,
           `});`,
         ]),
-        ...A.custom("storage / metadata strip ho gaye", [
+        ...A.custom("internal fields strip ho gaye", [
           `pm.response.json().data.sections.forEach(function (s) {`,
           `  (s.medias || []).forEach(function (m) {`,
           `    pm.expect(m).to.not.have.property("storage");`,
           `    pm.expect(m).to.not.have.property("metadata");`,
+          `    pm.expect(m).to.not.have.property("isActive");`,
+          `    pm.expect(m).to.not.have.property("isShowInVideoClips");`,
+          `  });`,
+          `});`,
+        ]),
+        ...A.custom("duration / resolution sirf VIDEO pe aate hain", [
+          `pm.response.json().data.sections.forEach(function (s) {`,
+          `  (s.medias || []).forEach(function (m) {`,
+          `    if (m.type === "VIDEO") {`,
+          `      pm.expect(m, "video " + m._id).to.have.property("duration");`,
+          `      pm.expect(m, "video " + m._id).to.have.property("resolution");`,
+          `    } else {`,
+          `      pm.expect(m, "photo " + m._id).to.not.have.property("duration");`,
+          `      pm.expect(m, "photo " + m._id).to.not.have.property("resolution");`,
+          `    }`,
           `  });`,
           `});`,
         ]),
       ],
       examples: [
         {
-          name: "200 — brand ka koi showcase nahi",
+          name: "200 — brand ka koi visible album nahi",
           code: 200,
           status: "OK",
           body: ok("Showcase fetched successfully.", {
             brandId: "{{brand_id}}",
+            total: 0,
+            page: 1,
+            limit: 50,
+            totalPages: 1,
             sections: [],
           }),
+        },
+        {
+          name: "404 — brand nahi mila ya inactive",
+          code: 404,
+          status: "Not Found",
+          body: err("Brand not found"),
         },
       ],
     }),
@@ -1945,13 +1976,18 @@ const brandFolder = folder(
         "- Section: `isVisible: true` **aur** `isShowVideosInClips: true`",
         "- Media: `type: VIDEO`, `isActive`, `isShowInVideoClips: true`",
         "",
+        "`isShowInVideoClips` **sirf video** ka switch hai — photo pe wo `false` store hota",
+        "hai, aur feed type pe bhi filter karta hai. To yahan kabhi photo nahi aayegi,",
+        "purane data me kisi photo pe `true` pada ho tab bhi.",
+        "",
         "`limit` max **50**.",
         "",
         "`thumbnail` na ho to section ka `coverImage` fallback ban jaata hai. `duration`",
         "na ho to `0`.",
         "",
         "⚠️ Ye endpoint apni pagination khud banata hai (shared utility nahi) — par khaali",
-        "pe phir bhi `404` deta hai, alag message ke saath.",
+        "pe phir bhi `404` deta hai, alag message ke saath. Brand hi na mile to bhi `404`,",
+        "message `Brand not found`.",
       ].join("\n"),
       assert: [
         ...A.custom("200 ya 404 (dono valid hain)", [
@@ -2582,8 +2618,208 @@ const pushFolder = folder(
 // ===========================================================================
 // 10 — Access control
 // ===========================================================================
+// ===========================================================================
+// 10 — Guest (no token at all)
+// ===========================================================================
+//
+// Built from the route table rather than a hand-kept list: `guestGet` asserts
+// that the endpoint really is reachable without a token, so if someone puts a
+// gate back on one of these the test fails here instead of in the app.
+const guestGet = ({ name, segments, query, description, assert = [] }) =>
+  req({
+    // Prefixed because several of these exercise the same endpoint as a
+    // signed-in request elsewhere, and example capture keys on the request
+    // name — `lib/assertUniqueNames.js` refuses the collection otherwise.
+    name: `Guest — ${name}`,
+    method: "GET",
+    segments,
+    query,
+    // No `token` — this is the whole point of the folder.
+    description,
+    assert: [
+      ...A.custom("guest ke liye khula hai (401/403 nahi)", [
+        `pm.expect([401, 403], "auth gate wapas lag gaya?").to.not.include(pm.response.code);`,
+      ]),
+      ...assert,
+    ],
+  });
+
+const guestFolder = folder(
+  "10 — Guest (bina token)",
+  [
+    "App store ki requirement hai ki user **sign-up se pehle** app dekh sake, isliye",
+    "browse endpoints se auth hata di gayi hai. Ye folder unhe bina kisi token ke chalata",
+    "hai — har request ka pass hona matlab guest flow zinda hai.",
+    "",
+    "### Do tarah ke \"khula\" hai",
+    "",
+    "| Gate | Matlab |",
+    "|---|---|",
+    "| **Public** | Token dekha hi nahi jaata. Response sabke liye ek jaisa |",
+    "| **`optionalAuth`** | Token ho to decode hota hai aur response personalise hota hai; na ho to guest. **Galat token phir bhi reject hota hai** — expired token ko chup-chaap guest bana dena user ko galat feed dikha deta aur usse dobara login karne ko kabhi kehta hi nahi |",
+    "",
+    "### ⚠️ Guest ko coordinates khud bhejne padte hain",
+    "",
+    "Voucher feed signed-in user ke liye uske **saved address** pe gir jaata hai. Guest ka",
+    "koi saved address nahi hota, to usse `latitude` + `longitude` bhejne padte hain —",
+    "warna saaf `400` aata hai, `404 \"Customer not found.\"` nahi.",
+    "",
+    "> 🔴 **Ye pehle toota hua tha.** Auth hatane par `req.userId` set hona band ho gaya,",
+    "> aur service pehle hi step me `Customer` dhoondhti thi — to feed **har** user ke liye",
+    "> `404` deta tha, guest aur signed-in dono. `optionalAuth` gate aur guest-tolerant",
+    "> service ne 2026-08-27 ko ise theek kiya.",
+  ].join("\n"),
+  [
+    guestGet({
+      name: "Voucher feed ⭐ (coordinates ke saath)",
+      segments: ["vouchers", "customer", "get-all"],
+      query: [
+        { key: "latitude", value: "22.7533" },
+        { key: "longitude", value: "75.8937" },
+        { key: "limit", value: "5" },
+      ],
+      description:
+        "Guest ka main screen. Signed-in feed jaisa hi data — bas personalisation nahi (saved address, aur aage chalke favourites).",
+      assert: [
+        ...A.status(200),
+        ...A.ok("Vouchers fetched successfully."),
+        ...A.paged(),
+      ],
+    }),
+
+    guestGet({
+      name: "Voucher feed — bina coordinates → 400",
+      segments: ["vouchers", "customer", "get-all"],
+      query: [{ key: "limit", value: "5" }],
+      description: [
+        "Guest ke paas saved address nahi hota, to coordinates mandatory hain.",
+        "",
+        "Message deliberately batata hai ki **dono** raaste kya hain — coordinates bhejo,",
+        "ya address save karo — kyunki caller signed-in bhi ho sakta hai jiska address",
+        "abhi set nahi hua.",
+      ].join("\n"),
+      assert: [
+        ...A.status(400),
+        ...A.err("Location is required."),
+      ],
+    }),
+
+    req({
+      name: "Guest — Voucher feed, galat token → 403 (guest nahi banta)",
+      method: "GET",
+      segments: ["vouchers", "customer", "get-all"],
+      query: [
+        { key: "latitude", value: "22.7533" },
+        { key: "longitude", value: "75.8937" },
+      ],
+      headers: [{ key: "Authorization", value: "Bearer not.a.real.jwt" }],
+      description: [
+        "`optionalAuth` ka **ek token bheja to wo valid hona chahiye** wala hissa.",
+        "",
+        "Isse chup-chaap guest bana dena zyada 'friendly' lagta hai, par tab expired-token",
+        "wale user ko anonymous feed dikhta rehta aur app usse kabhi dobara login karne ko",
+        "nahi kehti. Isliye bheja hua token galat ho to wahi error aata hai jo har doosre",
+        "gate pe aata.",
+      ].join("\n"),
+      assert: [
+        ...A.status(403),
+        ...A.err("Invalid or malformed token. Please log in again."),
+      ],
+    }),
+
+    guestGet({
+      name: "Brand directory",
+      segments: ["brands", "customer", "get-all"],
+      query: [{ key: "limit", value: "5" }],
+      assert: [...A.status(200), ...A.paged()],
+    }),
+
+    guestGet({
+      name: "Brand profile",
+      segments: ["brands", "customer", "get", "{{brand_id}}"],
+      description:
+        "Poora profile screen — brand + features + visible showcase + outlets, ek call me.",
+      assert: [...A.status(200), ...A.ok("Brand details fetched successfully")],
+    }),
+
+    guestGet({
+      name: "Brand showcase (gallery)",
+      segments: ["showcase", "get-brand-showcase", "{{brand_id}}"],
+      assert: [...A.status(200), ...A.ok("Showcase fetched successfully.")],
+    }),
+
+    guestGet({
+      name: "Video clips (reels)",
+      segments: ["showcase", "{{brand_id}}", "video-clips"],
+      query: [{ key: "limit", value: "5" }],
+      assert: [
+        ...A.custom("200 ya 404 (koi clip-eligible video nahi)", [
+          `pm.expect([200, 404]).to.include(pm.response.code);`,
+        ]),
+      ],
+    }),
+
+    guestGet({
+      name: "Brand features",
+      segments: ["brandFeatures", "get-all"],
+      query: [
+        { key: "brandId", value: "{{brand_id}}" },
+        { key: "limit", value: "20" },
+      ],
+      assert: [...A.status(200), ...A.paged()],
+    }),
+
+    guestGet({
+      name: "Categories",
+      segments: ["categories", "getAll"],
+      query: [{ key: "limit", value: "20" }],
+      assert: [...A.status(200), ...A.paged()],
+    }),
+
+    guestGet({
+      name: "Sub-categories",
+      segments: ["subCategories", "getAll"],
+      query: [{ key: "limit", value: "20" }],
+      assert: [...A.status(200), ...A.paged()],
+    }),
+
+    guestGet({
+      name: "Home banner",
+      segments: ["banners", "customer", "active"],
+      description:
+        "Ek hi banner aata hai (ya `null`). Dated banner pehle, warna undated fallback.",
+      assert: [...A.status(200)],
+    }),
+
+    guestGet({
+      name: "Promotional tickers",
+      segments: ["promotionalTickers", "customer", "active"],
+      assert: [...A.status(200), ...A.ok("Active promotional tickers fetched successfully.")],
+    }),
+
+    guestGet({
+      name: "Terms & conditions",
+      segments: ["terms-and-conditions", "getAll"],
+      query: [{ key: "limit", value: "10" }],
+      description:
+        "Sign-up screen pe consent link ke liye — isiliye ye login se pehle khula hona zaruri hai.",
+      assert: [...A.status(200), ...A.paged()],
+    }),
+
+    guestGet({
+      name: "Privacy policy",
+      segments: ["privacy-and-policies", "getAll"],
+      query: [{ key: "limit", value: "10" }],
+      assert: [...A.status(200), ...A.paged()],
+    }),
+  ],
+);
+
+// ===========================================================================
+// 11 — Access control
+// ===========================================================================
 const gateFolder = folder(
-  "10 — Access control (customer token refuse hona chahiye)",
+  "11 — Access control (customer token refuse hona chahiye)",
   [
     "Ye folder **negative tests** ka hai — har request ka pass hona matlab gate kaam kar",
     "raha hai. Sab customer ke apne token se chalti hain, koi extra setup nahi chahiye.",
@@ -2721,6 +2957,7 @@ const items = [
   engagementFolder,
   legalFolder,
   pushFolder,
+  guestFolder,
   gateFolder,
 ];
 

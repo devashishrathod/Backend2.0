@@ -1,5 +1,8 @@
 const ShowcaseSection = require("../../models/ShowcaseSection");
 
+/** How many `-2`, `-3`, … suffixes to try before giving up on a base slug. */
+const MAX_SLUG_ATTEMPTS = 50;
+
 exports.generateSlug = (title = "") => {
   return title
     .trim()
@@ -8,18 +11,32 @@ exports.generateSlug = (title = "") => {
     .replace(/\s+/g, "-");
 };
 
-exports.generateUniqueSlug = async (brandId, title) => {
-  const baseSlug = exports.generateSlug(title);
-  let slug = baseSlug;
-  let count = 1;
-  while (true) {
-    const exists = await ShowcaseSection.exists({
-      brandId,
-      slug,
-      isDeleted: false,
-    });
+/**
+ * A slug that is free within one brand.
+ *
+ * `excludeId` is the section being renamed. `updateSection` has always passed
+ * it, but this helper only accepted two arguments and dropped it — so a section
+ * matched its own slug, was told it was taken, and every rename walked the
+ * title one suffix further (`ambience` → `ambience-2` → `ambience-3`) even when
+ * the title had not really changed.
+ *
+ * @param {string|object} brandId
+ * @param {string} title
+ * @param {string|object} [excludeId] section id to ignore while checking
+ */
+exports.generateUniqueSlug = async (brandId, title, excludeId) => {
+  const baseSlug = exports.generateSlug(title) || "section";
+
+  for (let attempt = 1; attempt <= MAX_SLUG_ATTEMPTS; attempt++) {
+    const slug = attempt === 1 ? baseSlug : `${baseSlug}-${attempt}`;
+    const filter = { brandId, slug, isDeleted: false };
+    if (excludeId) filter._id = { $ne: excludeId };
+
+    const exists = await ShowcaseSection.exists(filter);
     if (!exists) return slug;
-    count++;
-    slug = `${baseSlug}-${count}`;
   }
+
+  // Unreachable in practice — a brand is capped at a handful of sections by its
+  // plan. Falling back keeps the create path alive instead of looping forever.
+  return `${baseSlug}-${Math.random().toString(36).slice(2, 8)}`;
 };

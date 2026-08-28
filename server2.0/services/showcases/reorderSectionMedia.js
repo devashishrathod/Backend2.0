@@ -1,22 +1,21 @@
-const ShowcaseSection = require("../../models/ShowcaseSection");
 const { throwError } = require("../../utils");
 const {
   resolveSectionForActor,
-} = require("../../helpers/showcases");
-//const { validateVendorBrand } = require("../../helpers/showcase/common");
-const {
   normalizeSortOrder,
   validateUniqueIds,
   validateUniqueSortOrders,
   syncSectionCoverImage,
 } = require("../../helpers/showcases");
 
+/**
+ * Re-number the live media of one section from a full ordered list.
+ *
+ * The complete list is required: positions are renumbered 1..n, so a partial
+ * list would collide with the media left out of it.
+ *
+ * @param {{ userId: string, role: string, brandId?: string }} actor
+ */
 exports.reorderSectionMedia = async (actor, payload) => {
-  await resolveSectionForActor(actor, payload.sectionId, {
-    projection: { brandId: 1 },
-  });
-
-  // const brand = await validateVendorBrand(userId);
   let { sectionId, medias } = payload;
   if (!Array.isArray(medias) || medias.length === 0) {
     throwError(400, "Media list is required.");
@@ -29,50 +28,30 @@ exports.reorderSectionMedia = async (actor, payload) => {
   validateUniqueSortOrders(medias, "sortOrder");
   medias = normalizeSortOrder(medias);
 
-  const section = await ShowcaseSection.findOne({
-    _id: sectionId,
-    isDeleted: false,
-  }).select({
-    medias: 1,
-    coverImage: 1,
-    coverImageMode: 1,
-    brandId: 1,
+  // One read, reused — ownership and the reorder work on the same document.
+  const section = await resolveSectionForActor(actor, sectionId, {
+    projection: { medias: 1, coverImage: 1, coverImageMode: 1 },
   });
 
-  if (!section) throwError(404, "Showcase section not found.");
-
-  const activeMediaCount = section.medias.filter(
-    (media) => media.isActive && !media.isDeleted,
-  ).length;
-  if (activeMediaCount !== medias.length) {
-    throwError(400, "Please send complete media order.");
-  }
-  const activeMediaMap = new Map();
+  const liveMedias = new Map();
   section.medias.forEach((media) => {
-    if (media.isDeleted || !media.isActive) {
-      return;
-    }
-    activeMediaMap.set(media._id.toString(), media);
+    if (media.isDeleted || !media.isActive) return;
+    liveMedias.set(String(media._id), media);
   });
 
-  for (const item of medias) {
-    if (!activeMediaMap.has(item.id.toString())) {
-      throwError(400, `Invalid media id : ${item.id}`);
-    }
+  if (liveMedias.size !== medias.length) {
+    throwError(
+      400,
+      `Please send the complete media order — ${liveMedias.size} media expected, ${medias.length} received.`,
+    );
   }
-
-  const sortOrderMap = new Map();
-  medias.forEach((item) => {
-    sortOrderMap.set(item.id.toString(), item.sortOrder);
-  });
 
   let isModified = false;
-  for (const media of section.medias) {
-    if (media.isDeleted || !media.isActive) continue;
-    const newSortOrder = sortOrderMap.get(media._id.toString());
-    if (newSortOrder === undefined) continue;
-    if (media.sortOrder !== newSortOrder) {
-      media.sortOrder = newSortOrder;
+  for (const item of medias) {
+    const media = liveMedias.get(String(item.id));
+    if (!media) throwError(400, `Invalid media id : ${item.id}`);
+    if (media.sortOrder !== item.sortOrder) {
+      media.sortOrder = item.sortOrder;
       isModified = true;
     }
   }
@@ -84,7 +63,9 @@ exports.reorderSectionMedia = async (actor, payload) => {
     };
   }
 
+  // The cover follows the first media, so it moves with the order — unless the
+  // vendor pinned it (`coverImageMode: MANUAL`).
   syncSectionCoverImage(section);
   await section.save();
-  return { updated: medias.length };
+  return { updated: medias.length, coverImage: section.coverImage };
 };

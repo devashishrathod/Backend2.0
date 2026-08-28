@@ -18,14 +18,29 @@ exports.validateCreateSection = Joi.object({
     "string.max": "Section title cannot exceed 60 characters.",
     "any.required": "Section title is required.",
   }),
-  description: Joi.string().trim().allow("").max(500).optional(),
-  sortOrder: Joi.number().integer().min(1).optional(),
+  description: Joi.string().trim().allow("").max(500).optional().messages({
+    "string.max": "Description cannot exceed 500 characters.",
+  }),
+  sortOrder: Joi.number().integer().min(1).optional().messages({
+    "number.min": "Sort order must be at least 1.",
+  }),
   sectionType: Joi.string()
     .valid(...Object.values(SHOWCASE_SECTION_TYPE))
-    .default(SHOWCASE_SECTION_TYPE.CUSTOM),
-  isActive: Joi.boolean().optional(),
-  isVisible: Joi.boolean().optional(),
-  isShowVideosInClips: Joi.boolean().optional(),
+    .default(SHOWCASE_SECTION_TYPE.CUSTOM)
+    .messages({
+      "any.only": "Section type must be either CUSTOM or SYSTEM.",
+    }),
+  isActive: Joi.boolean().optional().messages({
+    "boolean.base": "isActive must be true or false.",
+  }),
+  // Customer-facing switch: false creates the section hidden from the brand
+  // profile and the gallery, visible only in the vendor's own list.
+  isVisible: Joi.boolean().optional().messages({
+    "boolean.base": "isVisible must be true or false.",
+  }),
+  isShowVideosInClips: Joi.boolean().optional().messages({
+    "boolean.base": "isShowVideosInClips must be true or false.",
+  }),
 });
 
 exports.validateGetSection = {
@@ -38,7 +53,16 @@ exports.validateGetSection = {
     search: Joi.string().trim().max(100).optional(),
     type: Joi.string()
       .valid(...Object.values(SHOWCASE_MEDIA_TYPE))
-      .optional(),
+      .optional()
+      .messages({
+        "any.only": "Media type must be either PHOTO or VIDEO.",
+      }),
+    // The managed view returns every media that is not deleted, switched-off
+    // ones included, so the vendor can switch them back on. This narrows to one
+    // side when the panel wants a tab for it.
+    isActive: Joi.boolean().optional().messages({
+      "boolean.base": "isActive must be true or false.",
+    }),
   },
 };
 
@@ -67,15 +91,34 @@ exports.validateUpdateSection = {
     sectionId: objectId().required(),
   },
   body: Joi.object({
-    title: Joi.string().trim().min(2).max(60).optional(),
-    description: Joi.string().trim().max(500).optional(),
-    sortOrder: Joi.number().integer().min(0).optional(),
+    title: Joi.string().trim().min(2).max(60).optional().messages({
+      "string.empty": "Section title cannot be empty.",
+      "string.min": "Section title must contain at least 2 characters.",
+      "string.max": "Section title cannot exceed 60 characters.",
+    }),
+    // `""` clears the description — the service now honours it.
+    description: Joi.string().trim().allow("").max(500).optional().messages({
+      "string.max": "Description cannot exceed 500 characters.",
+    }),
+    // Min 1, matching create and reorder. It used to allow 0 here only.
+    sortOrder: Joi.number().integer().min(1).optional().messages({
+      "number.min": "Sort order must be at least 1.",
+    }),
     sectionType: Joi.string()
       .valid(...Object.values(SHOWCASE_SECTION_TYPE))
-      .optional(),
-    isActive: Joi.boolean().optional(),
-    isVisible: Joi.boolean().optional(),
-    isShowVideosInClips: Joi.boolean().optional(),
+      .optional()
+      .messages({
+        "any.only": "Section type must be either CUSTOM or SYSTEM.",
+      }),
+    isActive: Joi.boolean().optional().messages({
+      "boolean.base": "isActive must be true or false.",
+    }),
+    isVisible: Joi.boolean().optional().messages({
+      "boolean.base": "isVisible must be true or false.",
+    }),
+    isShowVideosInClips: Joi.boolean().optional().messages({
+      "boolean.base": "isShowVideosInClips must be true or false.",
+    }),
   })
     .min(1)
     .messages({
@@ -83,15 +126,32 @@ exports.validateUpdateSection = {
     }),
 };
 
+// Customer — the full gallery. Pagination is optional: without it the service
+// returns the brand's sections up to a bounded default, which covers every
+// plan's section cap.
 exports.validateGetBrandShowcase = {
   params: { brandId: objectId().required() },
+  query: {
+    page: Joi.number().integer().min(1).default(1).messages({
+      "number.min": "Page must be at least 1.",
+    }),
+    limit: Joi.number().integer().min(1).max(50).optional().messages({
+      "number.min": "Limit must be at least 1.",
+      "number.max": "Limit cannot exceed 50.",
+    }),
+  },
 };
 
 exports.validateGetVideoClips = {
   params: { brandId: objectId().required() },
   query: {
-    page: Joi.number().integer().min(1).default(1),
-    limit: Joi.number().integer().min(1).max(50).default(10),
+    page: Joi.number().integer().min(1).default(1).messages({
+      "number.min": "Page must be at least 1.",
+    }),
+    limit: Joi.number().integer().min(1).max(50).default(10).messages({
+      "number.min": "Limit must be at least 1.",
+      "number.max": "Limit cannot exceed 50.",
+    }),
   },
 };
 
@@ -101,6 +161,8 @@ exports.validateDeleteSection = {
   },
 };
 
+// The complete order, every time — the service renumbers 1..n, so a partial
+// list would collide with the sections left out of it.
 exports.validateReorderSections = {
   params: { brandId: objectId().required() },
   body: {
@@ -110,9 +172,16 @@ exports.validateReorderSections = {
       .items(
         Joi.object({
           id: objectId().required(),
-          sortOrder: Joi.number().integer().min(1).required(),
+          sortOrder: Joi.number().integer().min(1).required().messages({
+            "number.min": "Sort order must be at least 1.",
+            "any.required": "Sort order is required for every section.",
+          }),
         }),
-      ),
+      )
+      .messages({
+        "array.min": "Please send at least one section.",
+        "any.required": "Section order list is required.",
+      }),
   },
 };
 
@@ -122,7 +191,11 @@ exports.validateAddMedia = {
     sectionId: objectId().required(),
   },
   body: Joi.object({
-    isShowInVideoClips: Joi.boolean().default(true),
+    // Applies to the videos in the batch. Photos are always stored with the
+    // flag off — see `prepareMediaDocuments`.
+    isShowInVideoClips: Joi.boolean().default(true).messages({
+      "boolean.base": "isShowInVideoClips must be true or false.",
+    }),
   }),
 };
 
@@ -131,12 +204,25 @@ exports.validateUpdateMedia = {
     sectionId: objectId().required(),
     mediaId: objectId().required(),
   },
+  // `sortOrder` is deliberately absent. Positions are owned by the reorder
+  // endpoint, which renumbers the whole section and needs them unique; setting
+  // one here let two media share a position and made the order arbitrary.
   body: Joi.object({
-    title: Joi.string().trim().max(100).optional(),
-    altText: Joi.string().trim().max(150).optional(),
-    isShowInVideoClips: Joi.boolean().optional(),
-    sortOrder: Joi.number().integer().min(1).optional(),
-    isActive: Joi.boolean().optional(),
+    title: Joi.string().trim().allow("").max(100).optional().messages({
+      "string.max": "Media title cannot exceed 100 characters.",
+    }),
+    altText: Joi.string().trim().allow("").max(150).optional().messages({
+      "string.max": "Alt text cannot exceed 150 characters.",
+    }),
+    // Rejected by the service on a photo — it is a video-only switch.
+    isShowInVideoClips: Joi.boolean().optional().messages({
+      "boolean.base": "isShowInVideoClips must be true or false.",
+    }),
+    isActive: Joi.boolean().optional().messages({
+      "boolean.base": "isActive must be true or false.",
+    }),
+    // No `.min(1)` here: a thumbnail-only update arrives as a file with an
+    // empty body, and that is a legitimate request.
   }),
 };
 
@@ -154,6 +240,7 @@ exports.validateDeleteMedia = {
   },
 };
 
+// Same rule as the section reorder: the complete list of live media.
 exports.validateReorderMedias = {
   params: { sectionId: objectId().required() },
   body: {
@@ -161,10 +248,17 @@ exports.validateReorderMedias = {
       .items(
         Joi.object({
           id: objectId().required(),
-          sortOrder: Joi.number().integer().min(0).required(),
+          sortOrder: Joi.number().integer().min(1).required().messages({
+            "number.min": "Sort order must be at least 1.",
+            "any.required": "Sort order is required for every media.",
+          }),
         }),
       )
       .min(1)
-      .required(),
+      .required()
+      .messages({
+        "array.min": "Please send at least one media.",
+        "any.required": "Media order list is required.",
+      }),
   },
 };

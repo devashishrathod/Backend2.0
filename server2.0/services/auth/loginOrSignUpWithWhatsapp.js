@@ -4,6 +4,7 @@ const Brand = require("../../models/Brand");
 const Customer = require("../../models/Customer");
 const { ROLES, LOGIN_TYPES } = require("../../constants");
 const { throwError } = require("../../utils");
+const { assertAccountAccess } = require("../../helpers/auth");
 const { sendOtp } = require("../../services/otps");
 const { generateUniqueCustomerId } = require("../../helpers/customers");
 const {
@@ -162,9 +163,10 @@ exports.loginOrSignUpWithWhatsapp = async (body) => {
 
   let user = await User.findOne({ whatsappNumber, role, isDeleted: false });
 
-  if (user && !user.isActive) {
-    throwError(403, "Your account is deactivated. Please contact support.");
-  }
+  // Same gate the auth middlewares use, so a deactivated account is refused with
+  // the same status and the same `details.code` at the login screen as it is
+  // mid-session. New accounts have nothing to check yet.
+  if (user) assertAccountAccess(user);
 
   if (!user) {
     if (!SELF_SIGNUP_ROLES.includes(role)) {

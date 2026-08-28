@@ -3,6 +3,7 @@ const { throwError } = require("../../utils");
 const { verifyOtp } = require("../otps");
 const { sendOtpVerificationSuccessMail } = require("../../helpers/nodeMailer");
 const { LOGIN_TYPES, ROLES } = require("../../constants");
+const { assertAccountAccess } = require("../../helpers/auth");
 
 exports.verifyEmailOTP = async (body) => {
   let { otp, email, role, currentScreen } = body;
@@ -12,6 +13,10 @@ exports.verifyEmailOTP = async (body) => {
     "-password",
   );
   if (!user) throwError(404, "User not found with this email");
+  // An account can be deactivated between requesting a code and presenting it,
+  // and this is a token-issuing path — so the check belongs here too, not only
+  // on the step that sent the OTP.
+  assertAccountAccess(user);
   const result = await verifyOtp(email, otp);
   if (result.ok) {
     user.loginType = LOGIN_TYPES.EMAIL;

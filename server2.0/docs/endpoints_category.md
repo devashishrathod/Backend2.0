@@ -678,8 +678,8 @@ Razorpay subscription payments + webhook operations.
 | `security_findings.md` | 3 open (2 deferred) | ✅ Fixed wale clean kar diye |
 | `voucher_brand_features_plan.md` | – | ✅ Sab 6 steps done |
 | `account_deletion_plan.md` | – | ⏸️ Deferred — full flow ready hone pe |
-| `customer_mobile_api_doc.md` | 35 | ✅ v1.4.0 — live verified against a running server |
-| `vendor_panel_api_doc.md` | 78 | ✅ v1.2.0 — live verified against a running server |
+| `customer_mobile_api_doc.md` | 35 | ✅ v1.5.0 — live verified · 132 captured examples · guest access documented |
+| `vendor_panel_api_doc.md` | 78 | ✅ v1.2.1 — live verified · 105 captured examples |
 | `super_admin_panel_api_doc.md` | 114 | ⬜ Baaki |
 
 **Postman:** customer (74 requests · 308 assertions) aur vendor (101 requests · 234

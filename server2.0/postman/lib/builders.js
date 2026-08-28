@@ -10,6 +10,8 @@
  * from `constants/` by the callers, never hard-coded.
  */
 
+const { gateFor, gateNameFor } = require("./routeGates");
+
 // ---------------------------------------------------------------- primitives
 
 const json = (obj) => JSON.stringify(obj, null, 2);
@@ -251,7 +253,10 @@ const example = ({ name, code, status, body, req }) => ({
  *                                   bad Authorization value, which `token`
  *                                   cannot express
  * @param {string}   [o.token]       env var holding the bearer token
- * @param {string}   [o.gate]        rendered as an "Access" line in the description
+ * @param {string}   [o.gate]        fallback "Access" label, used only when no
+ *                                   route matches the path. The real gate is
+ *                                   read from `routes/` — see lib/routeGates.js
+ *                                   for why it is derived rather than written.
  * @param {string}   [o.description] markdown
  * @param {Array}    [o.assert]      flattened into the test script
  * @param {Array}    [o.capture]     [[envVar, "d.path"], …]
@@ -282,7 +287,12 @@ const req = ({
     ...(form ? { body: formBody(form) } : {}),
     url: url(segments, query),
     ...(token ? { auth: bearer(token) } : { auth: { type: "noauth" } }),
-    description: [gate ? `**Access:** ${gate}` : null, description || null]
+    // Derived wins over anything passed in: a hand-written label is a fact
+    // about the code kept in prose, and prose does not move when the code does.
+    description: [
+      `**Access:** ${gateFor(method, segments) || gate || "—"}`,
+      description || null,
+    ]
       .filter(Boolean)
       .join("\n\n"),
   };
@@ -334,6 +344,8 @@ const countTree = (items) =>
   );
 
 module.exports = {
+  gateFor,
+  gateNameFor,
   json,
   q,
   url,

@@ -1,6 +1,10 @@
 const express = require("express");
 const router = express.Router();
-const { validateSchema, verifyJwtToken, isAdmin } = require("../middlewares");
+const {
+  validateSchema,
+  verifyJwtTokenEvenIfDeactivated,
+  isAdmin,
+} = require("../middlewares");
 const {
   register,
   login,
@@ -100,6 +104,9 @@ router.post(
   resetPasswordHandler,
 );
 
-router.post("/logout", verifyJwtToken, logout);
+// Deliberately reachable by a deactivated account: every other gate answers a
+// suspended user with a 401 so the client signs them out, and refusing the sign
+// out itself would be the one thing that leaves them stuck.
+router.post("/logout", verifyJwtTokenEvenIfDeactivated, logout);
 
 module.exports = router;

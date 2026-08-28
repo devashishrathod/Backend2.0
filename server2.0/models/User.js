@@ -96,6 +96,25 @@ const userSchema = new mongoose.Schema(
     isOnline: { type: Boolean },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
+
+    // ---------------------------------------------------------------------
+    // Server-side session kill switch.
+    //
+    // Any JWT whose `iat` predates this instant is refused by the auth gate.
+    // A JWT cannot be revoked — it is valid until it expires — so without this
+    // there is no way to end a session that is already open.
+    //
+    // Stamped on **reactivation** rather than on deactivation. While an account
+    // is off, `isActive` already refuses every request, and leaving the token
+    // itself alive is what lets the few deactivation-aware endpoints (logout,
+    // device unregister, reading the notice that explains the suspension) still
+    // work. Stamping it on the way back in is what guarantees no token survives
+    // the round trip: the vendor has to sign in fresh.
+    //
+    // Also the primitive for "sign out of all devices" and for ending sessions
+    // on a password change.
+    // ---------------------------------------------------------------------
+    sessionInvalidatedAt: { type: Date },
   },
   { timestamps: true, versionKey: false },
 );

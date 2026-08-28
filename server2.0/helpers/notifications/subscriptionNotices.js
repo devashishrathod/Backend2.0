@@ -40,7 +40,15 @@ const asDate = (value) =>
  * A type whose env var is unset simply does not send on WhatsApp — so templates
  * can be switched on one at a time as Meta approves them.
  */
-const panelUrlPath = (path) => (process.env.VENDOR_PANEL_URL ? path : undefined);
+// Screens, absolute email URLs and WhatsApp URL fragments all come from one
+// place — see `panelLinks.js`. This file used to compute its own, which meant a
+// route rename had to be found in two.
+const {
+  PANEL_PATHS,
+  vendorUrl,
+  deepLink,
+  whatsappUrlParam,
+} = require("./panelLinks");
 
 const ACTION_COPY = Object.freeze({
   [SUBSCRIPTION_ACTION.NEW]: {
@@ -78,6 +86,7 @@ exports.notifySubscriptionActivated = ({
   action,
   isAdminGrant = false,
   forfeitedDays = 0,
+  awaitDelivery = false,
 }) => {
   const copy = ACTION_COPY[action] || ACTION_COPY[SUBSCRIPTION_ACTION.NEW];
   const lines = [
@@ -111,12 +120,18 @@ exports.notifySubscriptionActivated = ({
       action,
       forfeitedDays,
     },
-    mail: { lines },
+    deepLink: deepLink(PANEL_PATHS.SUBSCRIPTION),
+    mail: {
+      lines,
+      ctaLabel: "View your subscription",
+      ctaUrl: vendorUrl(PANEL_PATHS.SUBSCRIPTION),
+    },
     // 2 vars: plan, valid till. Same shape for activated / renewed / upgraded /
     // downgraded / granted, so one template body serves all five if desired.
+    awaitDelivery,
     whatsapp: {
       params: [subscription.name, asDate(subscribed.endDate)],
-      urlParam: panelUrlPath("subscription"),
+      urlParam: whatsappUrlParam(PANEL_PATHS.SUBSCRIPTION),
     },
   });
 };
@@ -128,6 +143,7 @@ exports.notifySubscriptionExpiring = ({
   subscribed,
   daysRemaining,
   offset,
+  awaitDelivery = false,
 }) =>
   notify({
     brandId: brand?._id || subscribed.brandId,
@@ -149,28 +165,36 @@ exports.notifySubscriptionExpiring = ({
     },
     // One notification per plan per offset, so the job can run hourly.
     dedupeKey: `SUBSCRIPTION_EXPIRING:${subscribed._id}:${offset}`,
+    deepLink: deepLink(PANEL_PATHS.SUBSCRIPTION_PLANS),
     mail: {
       lines: [
         ["Plan", subscription?.name || "-"],
         ["Ends on", asDate(subscribed.endDate)],
         ["Days left", String(daysRemaining)],
       ],
+      ctaLabel: "Renew now",
+      ctaUrl: vendorUrl(PANEL_PATHS.SUBSCRIPTION_PLANS),
       footnote:
         "Once the plan ends, existing outlets and vouchers stay in place but nothing new can be created until you renew.",
     },
     // 3 vars: plan, days left, end date.
+    awaitDelivery,
     whatsapp: {
       params: [
         subscription?.name,
         String(daysRemaining),
         asDate(subscribed.endDate),
       ],
-      urlParam: panelUrlPath("subscription/plans"),
+      urlParam: whatsappUrlParam(PANEL_PATHS.SUBSCRIPTION_PLANS),
     },
   });
 
 /** The plan has lapsed. Sent by the expiry sweep. */
-exports.notifySubscriptionExpired = ({ subscribed, subscription }) =>
+exports.notifySubscriptionExpired = ({
+  subscribed,
+  subscription,
+  awaitDelivery = false,
+}) =>
   notify({
     brandId: subscribed.brandId,
     type: NOTIFICATION_TYPES.SUBSCRIPTION_EXPIRED,
@@ -183,21 +207,26 @@ exports.notifySubscriptionExpired = ({ subscribed, subscription }) =>
       endDate: subscribed.endDate,
     },
     dedupeKey: `SUBSCRIPTION_EXPIRED:${subscribed._id}`,
+    deepLink: deepLink(PANEL_PATHS.SUBSCRIPTION_PLANS),
     mail: {
       ctaLabel: "Renew now",
-      ctaUrl: process.env.VENDOR_PANEL_URL
-        ? `${process.env.VENDOR_PANEL_URL}/subscription/plans`
-        : undefined,
+      ctaUrl: vendorUrl(PANEL_PATHS.SUBSCRIPTION_PLANS),
     },
     // 2 vars: plan, end date.
+    awaitDelivery,
     whatsapp: {
       params: [subscription?.name, asDate(subscribed.endDate)],
-      urlParam: panelUrlPath("subscription/plans"),
+      urlParam: whatsappUrlParam(PANEL_PATHS.SUBSCRIPTION_PLANS),
     },
   });
 
 /** An admin revoked the plan before its end date. */
-exports.notifySubscriptionCancelled = ({ subscribed, subscription, reason }) =>
+exports.notifySubscriptionCancelled = ({
+  subscribed,
+  subscription,
+  reason,
+  awaitDelivery = false,
+}) =>
   notify({
     brandId: subscribed.brandId,
     type: NOTIFICATION_TYPES.SUBSCRIPTION_CANCELLED,
@@ -211,6 +240,12 @@ exports.notifySubscriptionCancelled = ({ subscribed, subscription, reason }) =>
       reason,
     },
     dedupeKey: `SUBSCRIPTION_CANCELLED:${subscribed._id}`,
+    deepLink: deepLink(PANEL_PATHS.SUBSCRIPTION_PLANS),
+    mail: {
+      ctaLabel: "Subscribe again",
+      ctaUrl: vendorUrl(PANEL_PATHS.SUBSCRIPTION_PLANS),
+    },
     // 1 var: plan. The internal cancellation reason is not sent to the vendor.
+    awaitDelivery,
     whatsapp: { params: [subscription?.name] },
   });

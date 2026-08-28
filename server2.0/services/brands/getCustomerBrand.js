@@ -6,6 +6,12 @@ const SubBrand = require("../../models/SubBrand");
 const { buildAggregateLookup } = require("../../database");
 const { SYSTEM_VERIFICATION_STATUS } = require("../../constants");
 const { throwError } = require("../../utils");
+const {
+  customerSectionMatch,
+  sortedVisibleMedias,
+  mediaCounts,
+  customerMediaMap,
+} = require("../../helpers/showcases");
 
 /**
  * How many media items ride along inside each showcase section.
@@ -141,42 +147,21 @@ const fetchFeatures = (_id) =>
 /**
  * Every album the vendor has chosen to show, each with a bounded media preview.
  *
- * `isVisible` is filtered here. `getBrandsAllShowcase` omits it — only
- * `getAllVideoClips` checks it — so a section the vendor had hidden was still
- * being served on the brand profile.
+ * The match and the media shape come from `helpers/showcases/projections.js`,
+ * shared with the full-gallery and clips endpoints. They used to be hand-rolled
+ * in each of the three, which is exactly how `isVisible` ended up enforced here
+ * and silently missing from `getBrandsAllShowcase` — a section the vendor had
+ * hidden stayed off the brand profile but was still served by the gallery.
+ *
+ * `storage` and `metadata` are absent by construction: the shared projection is
+ * a whitelist, so Cloudinary internals and original filenames cannot leak even
+ * as new fields are added to the model.
  */
 const fetchShowcase = async (_id) => {
   const sections = await ShowcaseSection.aggregate([
-    {
-      $match: {
-        brandId: _id,
-        isActive: true,
-        isVisible: true,
-        isDeleted: false,
-      },
-    },
+    { $match: customerSectionMatch(_id) },
     { $sort: { sortOrder: 1 } },
-    {
-      $addFields: {
-        visibleMedias: {
-          $sortArray: {
-            input: {
-              $filter: {
-                input: "$medias",
-                as: "m",
-                cond: {
-                  $and: [
-                    { $eq: ["$$m.isActive", true] },
-                    { $eq: ["$$m.isDeleted", false] },
-                  ],
-                },
-              },
-            },
-            sortBy: { sortOrder: 1 },
-          },
-        },
-      },
-    },
+    { $addFields: { visibleMedias: sortedVisibleMedias() } },
     {
       $project: {
         title: 1,
@@ -184,42 +169,13 @@ const fetchShowcase = async (_id) => {
         coverImage: 1,
         sectionType: 1,
         sortOrder: 1,
-        mediaCount: { $size: "$visibleMedias" },
-        photoCount: {
-          $size: {
-            $filter: {
-              input: "$visibleMedias",
-              as: "m",
-              cond: { $eq: ["$$m.type", "PHOTO"] },
-            },
-          },
-        },
-        videoCount: {
-          $size: {
-            $filter: {
-              input: "$visibleMedias",
-              as: "m",
-              cond: { $eq: ["$$m.type", "VIDEO"] },
-            },
-          },
-        },
-        // `storage` and `metadata` are deliberately absent — Cloudinary
-        // internals and original filenames are not the customer's business.
-        medias: {
-          $map: {
-            input: { $slice: ["$visibleMedias", MEDIA_PREVIEW_PER_SECTION] },
-            as: "m",
-            in: {
-              _id: "$$m._id",
-              type: "$$m.type",
-              url: "$$m.url",
-              thumbnail: "$$m.thumbnail",
-              title: "$$m.title",
-              altText: "$$m.altText",
-              sortOrder: "$$m.sortOrder",
-            },
-          },
-        },
+        ...mediaCounts("$visibleMedias"),
+        medias: customerMediaMap(
+          { $slice: ["$visibleMedias", MEDIA_PREVIEW_PER_SECTION] },
+          // A profile card renders a thumbnail strip; it has no player and no
+          // timestamps to show, so this preview stays as lean as it was.
+          { withCreatedAt: false, withVideoMeta: false },
+        ),
       },
     },
     {

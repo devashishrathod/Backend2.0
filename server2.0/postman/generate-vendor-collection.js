@@ -1440,13 +1440,32 @@ const showcaseFolder = folder(
           description: "Vendor ke liye optional (apna brand pinned hai); admin ke liye narrowing filter",
         },
         { key: "sortBy", value: "sortOrder" },
+        {
+          key: "isVisible",
+          value: "false",
+          disabled: true,
+          description: "Panel ke \"Hidden\" tab ke liye — default me visible+hidden dono aate hain",
+        },
+        {
+          key: "isActive",
+          value: "false",
+          disabled: true,
+          description: "Default me on+off dono aate hain",
+        },
       ],
       gate: "`isVendorOrAdmin` + ownership",
       description: [
         "`brandId` vendor ke liye optional hai — service apne brand pe pin kar deti hai.",
         "Doosre brand ka `brandId` bhejne pe **reject** hota hai, chup-chaap ignore nahi.",
         "",
-        "`{brandId: 1, isActive: 1}` index already tha, to ye scoping pehle se **tez** bhi hai.",
+        "🔴 `isActive` / `isVisible` ke **default filter hata diye gaye hain**. Pehle",
+        "dono ka default `true` tha, matlab abhi-abhi hide kiya section apni hi list se",
+        "gayab ho jaata tha aur wapas on karne ka rasta nahi bachta tha. Ab sirf",
+        "soft-deleted sections chhupte hain; ye do query params filter ki tarah kaam",
+        "karte hain.",
+        "",
+        "Response me `isVisible`, `isShowVideosInClips`, `slug`, `coverImageMode` aur",
+        "`inactiveMediaCount` bhi aate hain — panel ke toggles inhi se render karein.",
       ].join("\n"),
       capture: [["section_id", "d.data[0]._id"]],
       assert: [
@@ -1456,6 +1475,13 @@ const showcaseFolder = folder(
           `const mine = String(pm.environment.get("brand_id"));`,
           `pm.response.json().data.data.forEach(function (s) {`,
           `  if (s.brandId) pm.expect(String(s.brandId), s.title).to.eql(mine);`,
+          `});`,
+        ]),
+        ...A.custom("toggles response me aate hain", [
+          `const rows = pm.response.json().data.data;`,
+          `rows.forEach(function (s) {`,
+          `  pm.expect(s, s.title).to.have.property("isVisible");`,
+          `  pm.expect(s, s.title).to.have.property("isShowVideosInClips");`,
           `});`,
         ]),
       ],
@@ -1470,14 +1496,25 @@ const showcaseFolder = folder(
         { key: "page", value: "1" },
         { key: "limit", value: "50" },
         { key: "type", value: "", disabled: true, description: "PHOTO | VIDEO" },
+        {
+          key: "isActive",
+          value: "false",
+          disabled: true,
+          description: "Default me on+off dono media aati hain",
+        },
       ],
       gate: "`isVendorOrAdmin` + ownership",
       description: [
         "⚠️ Media ek **nested paginated block** me aati hai — `data.media.data[]`, na ki",
         "`data.medias[]`. Section ke apne counts (`mediaCount` / `photoCount` /",
-        "`videoCount`) us page ke nahi, **poore** album ke hain.",
+        "`videoCount` / `inactiveMediaCount`) us page ke nahi, **poore** album ke hain —",
+        "`type` / `search` / `isActive` filter inhe nahi badalte.",
         "",
-        "`type` se `PHOTO` ya `VIDEO` filter kar sakte hain.",
+        "🔴 `isActive: false` media ab bhi list me aati hai (pehle gayab ho jaati thi, to",
+        "usko wapas on karne ka koi rasta nahi tha). Sirf soft-deleted chhupti hai.",
+        "",
+        "`isShowInVideoClips` sirf **VIDEO** rows pe aata hai — photo pe wo key hi nahi",
+        "hoti, to photo ke liye panel me toggle mat dikhayein.",
       ].join("\n"),
       capture: [["media_id", "d.media.data[0]._id"]],
       assert: [
@@ -1488,6 +1525,15 @@ const showcaseFolder = folder(
           `pm.expect(d.media, "media").to.be.an("object");`,
           `pm.expect(d.media.data, "media.data").to.be.an("array");`,
           `pm.expect(d.mediaCount, "mediaCount poore album ka").to.be.a("number");`,
+        ]),
+        ...A.custom("isShowInVideoClips sirf video pe", [
+          `pm.response.json().data.media.data.forEach(function (m) {`,
+          `  if (m.type === "VIDEO") {`,
+          `    pm.expect(m, "video " + m._id).to.have.property("isShowInVideoClips");`,
+          `  } else {`,
+          `    pm.expect(m, "photo " + m._id).to.not.have.property("isShowInVideoClips");`,
+          `  }`,
+          `});`,
         ]),
       ],
     }),
@@ -1540,7 +1586,7 @@ const showcaseFolder = folder(
       body: { description: "postman se update kiya gaya", isVisible: true },
       gate: "`isVendorOrAdmin` + ownership",
       description:
-        "⚠️ `isVisible: false` karne pe wo album customer ke **brand profile** se gayab ho jaata hai — par purana `get-brand-showcase` endpoint us filter ko nahi lagata.",
+        "`isVisible: false` karne pe album customer ke **brand profile** aur **full gallery** dono se gayab ho jaata hai (pehle gallery endpoint ye filter nahi lagata tha). Vendor ki apni list (#get-all) me wo phir bhi dikhta hai, taaki wapas on kiya ja sake.",
       assert: [
         ...A.custom("200 ya 404 (section bana hi nahi tha)", [
           `pm.expect([200, 404, 409]).to.include(pm.response.code);`,
@@ -1556,9 +1602,11 @@ const showcaseFolder = folder(
       body: { sections: [{ id: "{{section_id}}", sortOrder: 1 }] },
       gate: "`isVendorOrAdmin` + ownership",
       description: [
-        "Field ka naam **`id`** hai (`sectionId` nahi). `sections` array me **har**",
-        "section ka naya `sortOrder` bhejein — service `countDocuments` se match karti",
-        "hai, to adhoori list `400 \"Invalid section list.\"` deti hai.",
+        "Field ka naam **`id`** hai (`sectionId` nahi). `sections` array me brand ke",
+        "**saare** sections ka naya `sortOrder` bhejein — service list ko `1..n`",
+        "renumber karti hai, to adhoori list positions se takra jaati. Ab wo",
+        "`400 \"Please send the complete section order — N sections expected, M received.\"`",
+        "deti hai; galat id pe `400 \"Invalid section list.\"`.",
         "",
         "`brandId` path me hai par ownership `resolveActorBrand` se resolve hoti hai —",
         "doosre brand ka id daalne pe reject.",
@@ -1567,17 +1615,36 @@ const showcaseFolder = folder(
         "padhti thi jabki payload me `id` aata hai, to har well-formed request",
         "`undefined.toString()` pe `500` ho jaati thi. Fix 2026-08-27 ko hua.",
       ].join("\n"),
+      // Ye request ek hi section bhejti hai, to brand me ek se zyada section hone
+      // par complete-order rule ise (jaan-boojh kar) reject karega — media reorder
+      // ki tarah. Dono raaste valid hain, isliye assert dono ko accept karta hai.
       assert: [
-        ...A.status(200),
-        ...A.ok("Sections reordered successfully."),
-        ...A.custom("kitne update hue wo bataya", [
-          `const d = pm.response.json().data;`,
-          `pm.expect(d.updated, "updated").to.be.a("number").and.to.be.above(0);`,
+        ...A.custom("200 (poori list) ya 400 (adhoori list refusal)", [
+          `pm.expect([200, 400]).to.include(pm.response.code);`,
+          `const b = pm.response.json();`,
+          `if (pm.response.code === 200) {`,
+          `  pm.expect(b.success).to.eql(true);`,
+          `  pm.expect(b.data.updated, "updated").to.be.a("number").and.to.be.above(0);`,
+          `} else {`,
+          `  pm.expect(b.success).to.eql(false);`,
+          `  pm.expect(String(b.message)).to.match(/complete section order|Invalid section list/);`,
+          `}`,
+        ]),
+        ...A.custom("500 nahi hai — id field sahi padhi ja rahi hai", [
+          `pm.expect(String(pm.response.json().message || "")).to.not.include("toString");`,
         ]),
       ],
       examples: [
         {
           name: "400 — adhoori list bheji",
+          code: 400,
+          status: "Bad Request",
+          body: err(
+            "Please send the complete section order — 5 sections expected, 1 received.",
+          ),
+        },
+        {
+          name: "400 — koi id is brand ka nahi",
           code: 400,
           status: "Bad Request",
           body: err("Invalid section list."),
@@ -1626,14 +1693,22 @@ const showcaseFolder = folder(
         "{{media_id}}",
       ],
       token: V,
+      // `isShowInVideoClips` yahan deliberately nahi bheja — seeded media photo bhi
+      // ho sakti hai, aur photo pe wo field ab 422 deti hai.
       body: {
         title: "postman media title",
         altText: "postman alt text",
-        isShowInVideoClips: true,
       },
       gate: "`isVendorOrAdmin` + ownership",
-      description:
-        "Sirf metadata — file replace karne ke liye alag endpoint hai. `isShowInVideoClips` clips feed ko control karta hai.",
+      description: [
+        "Sirf metadata — file replace karne ke liye alag endpoint hai.",
+        "",
+        "⚠️ `isShowInVideoClips` **sirf VIDEO** pe bheja ja sakta hai; photo pe `422`",
+        "aata hai. Custom `thumbnail` file bhi sirf video pe (image, max 10 MB).",
+        "",
+        "🔴 `sortOrder` yahan se hata diya gaya hai — position sirf reorder endpoint",
+        "badalta hai (warna do media ek hi position pe aa jaati thi).",
+      ].join("\n"),
       assert: [
         ...A.custom("200 ya 404 (media id seed me hai ya nahi)", [
           `pm.expect([200, 404]).to.include(pm.response.code);`,
@@ -1662,8 +1737,14 @@ const showcaseFolder = folder(
         },
       ],
       gate: "`isVendorOrAdmin` + ownership",
-      description:
-        "**Multipart.** Purani file Cloudinary se delete ho jaati hai, `sortOrder` wahi rehta hai.",
+      description: [
+        "**Multipart.** Purani file (aur video ka custom poster) Cloudinary se delete ho",
+        "jaate hain — sirf naya upload **aur** save succeed hone ke baad.",
+        "",
+        "`_id`, `sortOrder`, `isActive`, `isShowInVideoClips` wahi rehte hain. Type badal",
+        "nahi sakta — photo ki jagah photo, video ki jagah video (check upload se pehle",
+        "hi mime type pe hota hai, to reject hone pe file upload hi nahi hoti).",
+      ].join("\n"),
       assert: uploadTolerantAssert(
         "Media replaced successfully.",
         "/media|file|image|video|required/i",
@@ -1678,10 +1759,12 @@ const showcaseFolder = folder(
       body: { medias: [{ id: "{{media_id}}", sortOrder: 1 }] },
       gate: "`isVendorOrAdmin` + ownership",
       description: [
-        "Field ka naam **`id`** hai (`mediaId` nahi).",
+        "Field ka naam **`id`** hai (`mediaId` nahi). `sortOrder` min **1** (pehle `0`",
+        "allowed tha).",
         "",
-        "⚠️ **Poori list bhejein** — service section ke active media count se compare",
-        "karti hai, aur adhoori list pe `400 \"Please send complete media order.\"` deti hai.",
+        "⚠️ **Poori list bhejein** — service section ke live media count se compare karti",
+        "hai, aur adhoori list pe `400 \"Please send the complete media order — N media",
+        "expected, M received.\"` deti hai.",
         "",
         "Seeded section me 8 media hain, to ek-item wali list yahan **deliberately** wo",
         "refusal trigger karti hai — aur yahi assert bhi hota hai.",
@@ -1690,7 +1773,7 @@ const showcaseFolder = folder(
       ].join("\n"),
       assert: [
         ...A.status(400),
-        ...A.err("Please send complete media order."),
+        ...A.err("complete media order"),
         ...A.custom("500 nahi hai — id field ab sahi padhi ja rahi hai", [
           `pm.expect(String(pm.response.json().message)).to.not.include("toString");`,
         ]),
@@ -1721,10 +1804,21 @@ const showcaseFolder = folder(
       description: [
         "⚠️ **Aakhri media delete nahi hoti** — section ko media chahiye. Poora album",
         "hataana ho to section hi delete karein.",
+        "",
+        "🔴 Ab **soft delete** hai — media `isDeleted: true` + `deletedAt` ke saath rehti",
+        "hai, array se hard `$pull` nahi hoti (is domain ka aakhri hard delete tha).",
+        "Cloudinary file phir bhi delete hoti hai, to ye audit record hai, restore point",
+        "nahi.",
+        "",
+        "Response me `deletedMediaId` aur **naya** `coverImage` aata hai — deleted media",
+        "cover thi to cover khud shift ho jaata hai.",
       ].join("\n"),
       assert: [
         ...A.custom("200 ya 'last media' refusal", [
           `pm.expect([200, 400, 404]).to.include(pm.response.code);`,
+          `if (pm.response.code === 200) {`,
+          `  pm.expect(pm.response.json().data, "data").to.have.property("deletedMediaId");`,
+          `}`,
         ]),
       ],
       examples: [
@@ -1732,7 +1826,7 @@ const showcaseFolder = folder(
           name: "400 — aakhri media hai",
           code: 400,
           status: "Bad Request",
-          body: err("Cannot delete the last media of a section."),
+          body: err("At least one media is required in this section."),
         },
       ],
     }),
@@ -1743,11 +1837,21 @@ const showcaseFolder = folder(
       segments: ["showcase", "section", "delete", "{{new_section_id}}"],
       token: V,
       gate: "`isVendorOrAdmin` + ownership",
-      description:
-        "Plan ka showcase slot **release** karta hai — `isActive: false` karne se wo release nahi hota.",
+      description: [
+        "Plan ka showcase slot **release** karta hai — `isVisible` / `isActive: false`",
+        "karne se wo release nahi hota.",
+        "",
+        "Soft delete hai, par Cloudinary files delete ho jaati hain. Response me",
+        "`deletedSectionId` aur `deletedMediaIds` (sirf ids) aate hain.",
+      ].join("\n"),
       assert: [
         ...A.custom("200 ya 404", [
           `pm.expect([200, 404]).to.include(pm.response.code);`,
+          `if (pm.response.code === 200) {`,
+          `  const d = pm.response.json().data;`,
+          `  pm.expect(d, "data").to.have.property("deletedSectionId");`,
+          `  pm.expect(d.deletedMediaIds, "deletedMediaIds").to.be.an("array");`,
+          `}`,
         ]),
       ],
     }),
@@ -2555,6 +2659,15 @@ const gateFolder = folder(
     "| `401` | Token hai hi nahi, ya expire |",
     "| `403` | Token malformed, ya role allowed nahi |",
     "| `422` | Role validator se reject (password flow) |",
+    "",
+    "### ⚠️ Kuch customer endpoints ab **public** hain",
+    "",
+    "Guest browsing aane ke baad `/brands/customer/*`, `/showcase/get-brand-showcase/*`",
+    "aur voucher browse endpoints pe koi gate nahi hai — vendor token pe wo `200` denge,",
+    "`403` nahi. Isliye wo yahan negative tests me nahi hain.",
+    "",
+    "Reachable hona use karne ka karan nahi hai: wo customer app ka data model hain, vendor",
+    "panel ka nahi. [Appendix A](../docs/vendor_panel_api_doc.md#appendix-a--not-for-vendor-panel) dekhein.",
   ].join("\n"),
   [
     req({
@@ -2701,18 +2814,6 @@ const gateFolder = folder(
         method: "GET",
         segments: ["banners", "get-all"],
         why: "App-level home banners — admin ka kaam.",
-      },
-      {
-        name: "Customer ka brand profile",
-        method: "GET",
-        segments: ["brands", "customer", "get", "{{brand_id}}"],
-        why: "`isCustomer`. Vendor ke liye `/brands/get` hai.",
-      },
-      {
-        name: "Customer showcase view",
-        method: "GET",
-        segments: ["showcase", "get-brand-showcase", "{{brand_id}}"],
-        why: "`isCustomer`. Vendor ke liye `/showcase/section/get-all` hai.",
       },
       {
         name: "Customer address upsert",
