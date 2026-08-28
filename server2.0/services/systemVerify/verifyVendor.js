@@ -10,6 +10,10 @@ const {
   normalizeBusinessEntity,
 } = require("../../helpers/systemVerify");
 const { recordBrandVerificationHistory } = require("../../helpers/brands");
+const {
+  notifyBrandUnderReview,
+  notifyAdminsBrandAwaitingReview,
+} = require("../../helpers/notifications");
 const { throwError } = require("../../utils");
 const {
   ROLES,
@@ -417,6 +421,47 @@ exports.verifyVendor = async (userId) => {
   } finally {
     await session.endSession();
   }
+
+  // ---------------------------------------------------------------------------
+  // After the commit.
+  //
+  // Two notices, both outside the transaction: the vendor gets an
+  // acknowledgement, and the admin team gets the one alert that means somebody
+  // has to act. Neither may fail a submission that has already been recorded, so
+  // neither is awaited for its delivery and neither throws.
+  //
+  // Nothing fires for the individual onboarding steps that led here. The vendor
+  // is in the app filling them in, and four extra messages per signup is noise
+  // the admin feed and the WhatsApp bill both pay for.
+  //
+  // The brand's own status is UNDER_REVIEW whatever the system scored — nothing
+  // is auto-approved — so the vendor copy is the same either way, and the score
+  // goes only to the admin.
+  // ---------------------------------------------------------------------------
+  const brandForNotice = {
+    _id: brand._id,
+    brandName: brand.brandName,
+    uniqueId: brand.uniqueId,
+    merchantId: brand.merchantId,
+  };
+
+  await Promise.all([
+    notifyBrandUnderReview({
+      brand: brandForNotice,
+      attemptNumber,
+      isResubmission,
+      // Deliberately omitted from the vendor's notice: the KYC score is an
+      // internal triage number, and a vendor reading "score 78" would draw
+      // conclusions the score is not meant to support.
+    }),
+    notifyAdminsBrandAwaitingReview({
+      brand: brandForNotice,
+      attemptNumber,
+      isResubmission,
+      score,
+      systemStatus: status,
+    }),
+  ]);
 
   // The full record goes back as before. This is only a KYC pass — the score
   // and remarks are what let the admin skim instead of re-checking every

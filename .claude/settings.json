@@ -26,7 +26,15 @@
       "Bash(node -e \"require\\('./models/pricingSchema'\\); console.log\\('schema parse ok'\\)\")",
       "Bash(grep -n 'showcaseUsed\\\\|releaseEntitlementSlot\\\\|$inc' services/showcase/deleteSection.js services/showcase/createSection.js)",
       "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/c69b47dc-be04-43d9-917c-a398162e1230/scratchpad/deferred-docs.js\" \"c:/Users/acar/OneDrive/Documents/GitHub/Backend2.0/server2.0\")",
-      "Bash(taskkill //F //IM node.exe)"
+      "Bash(taskkill //F //IM node.exe)",
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/ca329627-762e-49c8-9478-a9197643cf39/scratchpad/verifyShowcase.js\")",
+      "Bash(sed -i 's|require\\(\"dotenv\"\\)|require\\(\"C:/Users/acar/OneDrive/Documents/GitHub/Backend2.0/server2.0/node_modules/dotenv\"\\)|; s|require\\(\"mongoose\"\\)|require\\(\"C:/Users/acar/OneDrive/Documents/GitHub/Backend2.0/server2.0/node_modules/mongoose\"\\)|' verifyShowcase.js)",
+      "Bash(node verifyShowcase.js)",
+      "Bash(sed -i 's|.config\\({ quiet: true }\\)|.config\\({ quiet: true, path: \"C:/Users/acar/OneDrive/Documents/GitHub/Backend2.0/server2.0/.env\" }\\)|' verifyShowcase.js)",
+      "Bash(sed -i 's|^const run = async \\(\\) => {|const dns = require\\(\"dns\"\\);\\\\nconst run = async \\(\\) => {\\\\n  dns.setServers\\([\"8.8.8.8\", \"1.1.1.1\"]\\);|' verifyShowcase.js)",
+      "Bash(sed -i 's|const sample = await ShowcaseSection.findOne\\({ isDeleted: false }\\)|const sample = await ShowcaseSection.findOne\\({ brandId: process.argv[2], isDeleted: false }\\)|' verifyShowcase.js)",
+      "Bash(node verifyShowcase.js 6a8072c9003180a42ba08a1d)",
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/ca329627-762e-49c8-9478-a9197643cf39/scratchpad/verifyRules.js\")"
     ]
   }
 }

@@ -7,6 +7,11 @@ const {
   normalizeSortOrder,
 } = require("../../helpers/showcases");
 
+/**
+ * Re-number a brand's sections from a full ordered list.
+ *
+ * @param {{ userId: string, role: string, brandId?: string }} actor
+ */
 exports.reorderAllSections = async (actor, payload) => {
   let { sections, brandId } = payload;
 
@@ -25,14 +30,32 @@ exports.reorderAllSections = async (actor, payload) => {
   validateUniqueSortOrders(sections);
   sections = normalizeSortOrder(sections);
   const ids = sections.map((item) => item.id);
-  const total = await ShowcaseSection.countDocuments({
-    brandId,
-    isDeleted: false,
-    _id: { $in: ids },
-  });
-  if (total !== sections.length) {
+
+  const [matched, total] = await Promise.all([
+    ShowcaseSection.countDocuments({
+      brandId,
+      isDeleted: false,
+      _id: { $in: ids },
+    }),
+    ShowcaseSection.countDocuments({ brandId, isDeleted: false }),
+  ]);
+
+  if (matched !== sections.length) {
     throwError(400, "Invalid section list.");
   }
+
+  // `normalizeSortOrder` renumbers the payload 1..n, so a partial list would
+  // hand out positions that the sections left out already hold — two sections
+  // at `sortOrder: 1`, and an order that depends on which one Mongo returns
+  // first. A drag-and-drop UI has the whole list anyway, and the media reorder
+  // endpoint has always required it.
+  if (total !== sections.length) {
+    throwError(
+      400,
+      `Please send the complete section order — ${total} sections expected, ${sections.length} received.`,
+    );
+  }
+
   await ShowcaseSection.bulkWrite(
     sections.map((item) => ({
       updateOne: {

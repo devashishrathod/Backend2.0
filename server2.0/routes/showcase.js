@@ -1,11 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const {
-  validateSchema,
-  isCustomer,
-  isVendorOrAdmin,
-} = require("../middlewares");
+const { validateSchema, isVendorOrAdmin } = require("../middlewares");
 const {
   create,
   get,
@@ -46,6 +42,17 @@ const {
 // per request inside the services (`resolveSectionForActor` for anything
 // addressed by `sectionId`, `resolveActorBrand` where a `brandId` is named),
 // which pins a vendor to their own brand and lets an admin act on any.
+//
+// Two audiences, two different views of the same documents:
+//
+//   Managed (below, all behind `isVendorOrAdmin`) — everything that is not
+//   soft-deleted, hidden and switched-off content included, because that is
+//   what the vendor needs in order to switch it back on.
+//
+//   Customer (bottom of the file, public like `/brands/customer/*`) — only
+//   what the vendor has published: `isVisible` sections, `isActive` media,
+//   and for the clips feed the double opt-in on top of that. Storage
+//   internals and the vendor's own toggles never leave the server.
 // ---------------------------------------------------------------------------
 
 // ── Sections ───────────────────────────────────────────────────────────────
@@ -119,12 +126,20 @@ router.delete(
 );
 
 // ── Customer-facing reads ──────────────────────────────────────────────────
-// Only active, visible content, with storage internals stripped.
+// Public, matching `/brands/customer/*`: the gallery is part of a brand's
+// public profile, and a customer browsing brands may not be signed in yet.
+//
+// The full gallery — visible sections only, media in display order. A media
+// opted out of the clips feed still belongs to its album, so
+// `isShowInVideoClips` is deliberately not a filter here.
 router.get(
   "/get-brand-showcase/:brandId",
   validateSchema(validateGetBrandShowcase),
   getBrandShowcase,
 );
+// The reels feed. `/:brandId` is a wildcard first segment, so this route has to
+// stay below every literal path in this file — `/section/...` and
+// `/get-brand-showcase/...` would otherwise be read as brand ids.
 router.get(
   "/:brandId/video-clips",
   validateSchema(validateGetVideoClips),

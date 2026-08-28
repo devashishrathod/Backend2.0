@@ -1,40 +1,31 @@
-const jwt = require("jsonwebtoken");
-const { getUserById } = require("../services/users");
-const { throwError, asyncWrapper } = require("../utils");
-const { ROLES } = require("../constants");
+const { buildAuthGate } = require("./authenticate");
 
-exports.verifyJwtToken = asyncWrapper(async (req, res, next) => {
-  let token = req.headers["authorization"];
-  if (!token) throwError(401, "Access Denied! Missing authorization token");
-  const splitToken = token.split(" ")[1];
-  if (!splitToken) {
-    throwError(403, "Access Denied! Invalid authorization token format");
-  }
-  let decodedToken;
-  try {
-    decodedToken = jwt.verify(splitToken, process.env.JWT_SECRET);
-  } catch (error) {
-    if (error.name === "TokenExpiredError") {
-      throwError(401, "Your session has expired. Please log in again.");
-    } else if (error.name === "JsonWebTokenError") {
-      throwError(403, "Invalid or malformed token. Please log in again.");
-    } else if (error.name === "NotBeforeError") {
-      throwError(403, "Token not active yet. Please try again later.");
-    } else {
-      throwError(500, "Authentication failed due to an unexpected error.");
-    }
-  }
-  if (!decodedToken) throwError(403, "Access Denied! Invalid token");
-  const user = await getUserById(decodedToken?.id);
-  if (!user) throwError(404, "Access Denied! User not found");
-  req.userId = user._id;
-  req.role = user.role;
-  req.user = user;
-  if (user.role === ROLES.CUSTOMER) {
-    req.customerId = user.customerId;
-  }
-  if (user.role === ROLES.VENDOR) {
-    req.brandId = user.brandId;
-  }
-  next();
+/** Any signed-in, live account. The default door. */
+exports.verifyJwtToken = buildAuthGate();
+
+/**
+ * Same, but a deactivated account is let through.
+ *
+ * Only for the endpoints a suspended user still has to reach: signing out and
+ * retiring their push devices. A session that was explicitly killed
+ * (`User.sessionInvalidatedAt`) is still refused here — see
+ * helpers/auth/assertAccountAccess.js.
+ */
+exports.verifyJwtTokenEvenIfDeactivated = buildAuthGate({
+  allowDeactivated: true,
 });
+
+/**
+ * Guest browsing: signed in if a token is sent, anonymous if not.
+ *
+ * The customer app lets people look around before creating an account (an app
+ * store requirement), so the browse endpoints cannot demand a token. Removing
+ * the gate outright is not the same thing though — the handlers behind them
+ * read `req.userId` to personalise, and with no gate at all that is `undefined`
+ * even for a signed-in caller. This populates it when a token is there and
+ * leaves it unset when it is not, so one endpoint serves both audiences.
+ *
+ * A token that *is* present must still be valid; see `optional` in
+ * middlewares/authenticate.js for why.
+ */
+exports.optionalAuth = buildAuthGate({ optional: true });

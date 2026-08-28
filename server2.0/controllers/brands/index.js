@@ -7,6 +7,8 @@ const { acceptPartnershipDeed } = require("./acceptPartnershipDeed");
 const { get } = require("./get");
 const { getCustomer } = require("./getCustomer");
 const { getAllCustomer } = require("./getAllCustomer");
+const { getAllAdmin } = require("./getAllAdmin");
+const { toggleStatus } = require("./toggleStatus");
 const { update } = require("./update");
 const { reviewBrandVerification } = require("./reviewBrandVerification");
 const { reviewTopBrand } = require("./reviewTopBrand");
@@ -25,6 +27,8 @@ module.exports = {
   get,
   getCustomer,
   getAllCustomer,
+  getAllAdmin,
+  toggleStatus,
   update,
   reviewBrandVerification,
   reviewTopBrand,

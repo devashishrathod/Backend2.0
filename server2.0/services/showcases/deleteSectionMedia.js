@@ -1,75 +1,67 @@
-const ShowcaseSection = require("../../models/ShowcaseSection");
 const { throwError } = require("../../utils");
-// const { validateVendorBrand } = require("../../helpers/showcase/common");
-const { deleteMedia } = require("../../helpers/showcases");
 const {
   resolveSectionForActor,
+  deleteMedia,
+  deleteCustomThumbnail,
+  syncSectionCoverImage,
 } = require("../../helpers/showcases");
 
+/**
+ * Remove one media from a section.
+ *
+ * Soft delete, matching the rest of the platform: the row stays with
+ * `isDeleted: true` so the section keeps a record of what it used to hold. It
+ * used to `$pull` the subdocument out of the array — a hard delete of domain
+ * data, and the only one left in this domain.
+ *
+ * The Cloudinary asset is still destroyed, because a removed photo should stop
+ * costing storage. So this is an audit trail, not a restore point.
+ *
+ * A section must keep at least one live media; use the section delete endpoint
+ * to remove the album itself.
+ *
+ * @param {{ userId: string, role: string, brandId?: string }} actor
+ */
 exports.deleteSectionMedia = async (actor, payload) => {
-  await resolveSectionForActor(actor, payload.sectionId, {
-    projection: { brandId: 1 },
+  const section = await resolveSectionForActor(actor, payload.sectionId, {
+    projection: { medias: 1, coverImage: 1, coverImageMode: 1 },
   });
 
-  // const brand = await validateVendorBrand(userId);
-  const section = await ShowcaseSection.findOne(
-    {
-      _id: payload.sectionId,
-      "medias._id": payload.mediaId,
-      isDeleted: false,
-    },
-    { coverImage: 1, medias: 1 },
-  );
-
-  if (!section) throwError(404, "Media not found.");
-
-  const findMediaById = (medias, mediaId) => {
-    return medias.find((item) => item._id.toString() === mediaId);
-  };
-
-  const media = findMediaById(section.medias, payload.mediaId);
-
+  const media = section.medias.id(payload.mediaId);
   if (!media || media.isDeleted || !media.isActive) {
     throwError(404, "Media not found.");
   }
 
-  const activeMedias = section.medias
-    .filter((item) => item.isActive && !item.isDeleted)
-    .sort((a, b) => a.sortOrder - b.sortOrder);
-
-  if (activeMedias.length <= 1) {
+  const liveCount = section.medias.filter(
+    (item) => item.isActive && !item.isDeleted,
+  ).length;
+  if (liveCount <= 1) {
     throwError(400, "At least one media is required in this section.");
   }
 
-  let nextCoverImage = section.coverImage;
+  const removed = media.toObject();
 
-  if (section.coverImage === media.url) {
-    const nextMedia = activeMedias.find(
-      (item) => item._id.toString() !== payload.mediaId,
-    );
-    nextCoverImage = nextMedia ? nextMedia.url : null;
-  }
+  media.isActive = false;
+  media.isDeleted = true;
+  media.deletedAt = new Date();
 
-  const update = { $pull: { medias: { _id: payload.mediaId } } };
+  // Recomputed from what is left, rather than compared field by field. The old
+  // code tested `coverImage === media.url`, while the cover had been written
+  // from `thumbnail` — so deleting the cover media often left the section
+  // pointing at a dead asset.
+  syncSectionCoverImage(section);
 
-  if (nextCoverImage !== section.coverImage) {
-    update.$set = { coverImage: nextCoverImage };
-  }
-
-  const result = await ShowcaseSection.updateOne(
-    { _id: payload.sectionId, "medias._id": payload.mediaId, isDeleted: false },
-    update,
-  );
-
-  if (!result.modifiedCount) throwError(500, "Failed to delete media.");
+  await section.save();
 
   try {
-    await deleteMedia(media);
+    await deleteCustomThumbnail(removed);
+    await deleteMedia(removed);
   } catch (err) {
     console.error("Cloudinary delete failed:", err.message);
   }
+
   return {
-    deletedMediaId: media._id,
-    coverImage: nextCoverImage,
+    deletedMediaId: removed._id,
+    coverImage: section.coverImage,
   };
 };

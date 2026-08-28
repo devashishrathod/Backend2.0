@@ -31,7 +31,6 @@ exports.updateBrand = async (brandId, payload = {}, logo = null) => {
         email,
         description,
         joinedDate,
-        isActive,
         subCategoryId,
         isOnboarding,
       } = payload;
@@ -40,7 +39,9 @@ exports.updateBrand = async (brandId, payload = {}, logo = null) => {
       if (email) brand.email = email;
       if (description) brand.description = description
       if (joinedDate) brand.joinedDate = new Date(joinedDate);
-      if (isActive !== undefined) brand.isActive = isActive;
+      // `isActive` is deliberately not settable here. Switching a brand off is a
+      // moderation action that has to be recorded and notified, so it lives on
+      // `PUT /brands/admin/:brandId/status` — see the note in validator/brands.js.
 
       if (isOnboarding === true) {
         if (!subCategoryId) {

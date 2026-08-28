@@ -1168,3 +1168,138 @@ dry run / mixed-audience broadcast / retry idempotency / dead-token retirement /
 soft-failure threshold / counter reset / unconfigured degradation / cross-user
 unregister attempt / sign-out-everywhere, plus 10 on `notify()`'s push wiring.
 All pass, no leftovers.
+
+---
+
+## 18. Brand lifecycle notifications
+
+Onboarding, verification and the account switches all notify through the same
+`notify()` used by subscriptions — so in-app, email, push and WhatsApp come for
+free and behave identically. Nothing here has its own delivery code.
+
+```
+helpers/brands/resolveBrandIdentity.js          who to greet, one precedence
+helpers/notifications/panelLinks.js             where a notice sends the reader
+helpers/notifications/brandVerificationNotices.js   onboarding + verification
+helpers/notifications/brandStatusNotices.js     account / visibility switches
+```
+
+### Which events notify, and which deliberately do not
+
+The verification history records **nine** actions. Five are worth a message.
+
+| Event | Vendor | Admin | Why |
+|---|---|---|---|
+| documents submitted | ✅ | ✅ | vendor wants an acknowledgement; admin has to act |
+| resubmitted after rejection | ✅ | ✅ | reads differently the second time |
+| approved | ✅ | — | the admin did it — telling them is noise |
+| rejected | ✅ **+ reason** | — | ,, |
+| approval revoked | ✅ + reason | — | ,, |
+| `REVIEWED` / `UNREVIEWED` toggle | ❌ | ❌ | internal. "An admin looked at your file" is not news, and twice is worse |
+| approval acknowledged | ❌ | ❌ | the vendor's own click |
+| onboarding step saved (PAN/GST/bank) | ❌ | ❌ | they are in the app doing it — four extra messages per signup, and four WhatsApp charges |
+| remediation edit | ❌ | ❌ | ,, |
+
+The admin feed carries exactly the two vendor-triggered events that need a
+decision. That is the bar on purpose: a feed that also says "a vendor saved
+their PAN" stops being read.
+
+### Who we greet, and what we call the business
+
+`brandLegalName` does not exist. Three fields could serve, on two documents, so
+`resolveBrandIdentity` settles it once and every channel uses the same answer —
+otherwise the same vendor is "Zomato" in an email and "ETERNAL LIMITED" on
+WhatsApp.
+
+```
+name       GST.legalName -> Brand.brandName -> Brand.legalBusinessName
+                         -> User.name -> "there"
+brandName  Brand.brandName -> GST.legalName -> Brand.legalBusinessName -> name
+```
+
+`GST.legalName` leads because it came from the GST portal rather than from
+something a vendor typed. The `"there"` fallback matters: a blank WhatsApp
+variable is rejected by Meta, and the rejection happens downstream where nobody
+sees it. One brand on staging has no name of any kind and lands on it.
+
+### Two reasons that look alike and are not
+
+| Field | Written for | Sent to the vendor? |
+|---|---|---|
+| verification `rejectionReason` / `revokeReason` | the vendor | **yes** — on the row, in the email table, and as WhatsApp `{{3}}` |
+| `accountDeactivationReason` | admins ("suspected fake GST, flagged by ops") | **no** — kept in `meta` for audit only |
+
+A rejection with no reason leaves the vendor nothing to fix and support a
+ticket, so it travels. An internal moderation note read back verbatim is not
+something this path should decide to do, so it does not.
+
+### Links
+
+`panelLinks.js` resolves all three forms from named screen constants, so a route
+rename is one edit:
+
+- **email** — an absolute `VENDOR_PANEL_URL`/`ADMIN_PANEL_URL` button. Returns
+  `undefined` when the env var is unset, and `sendMail` then omits the button
+  entirely. A button rendering as a dead `/dashboard` is worse than no button.
+- **in-app row and push** — a bare client route in `meta.deepLink` and in the
+  push payload, so the app opens the right screen. Works whether or not a web
+  panel URL is configured.
+- **WhatsApp** — a path *fragment* for the template's dynamic URL button. Meta
+  approves the base URL, so sending a full URL would double the host.
+
+### WhatsApp templates
+
+| Env var (`WHATSAPP_TEMPLATE_…`) | Vars | Order |
+|---|---|---|
+| `BRAND_UNDER_REVIEW` | 2 | name, brand |
+| `BRAND_RESUBMITTED` | 2 | name, brand |
+| `BRAND_APPROVED` | 2 | name, brand |
+| `BRAND_REJECTED` | 3 | name, brand, reason |
+| `BRAND_APPROVAL_REVOKED` | 3 | name, brand, reason |
+| `BRAND_DEACTIVATED` | 2 | name, brand |
+| `BRAND_ACTIVATED` | 2 | name, brand |
+| `BRAND_HIDDEN_FROM_CUSTOMERS` | 2 | name, brand |
+| `BRAND_VISIBLE_TO_CUSTOMERS` | 2 | name, brand |
+
+### Where they fire
+
+Every one is **after the commit**, outside the transaction, and none throws:
+
+- `verifyVendor.js` — vendor acknowledgement + admin alert, after the
+  submission is recorded.
+- `reviewBrandVerification.js` — approved / rejected / revoked, after the
+  decision is recorded. `REVIEWED` sends nothing.
+- `toggleBrandStatus.js` — deactivated / reactivated / visibility, after the
+  switch commits.
+
+An admin's decision must never be undone because a message failed, and provider
+I/O has no business inside a database transaction. Both endpoints now return
+`isVendorNotified` so the outcome is reported rather than hidden.
+
+Deactivation is the one notice that **skips push on purpose**: the same
+operation retires the vendor's device tokens, so a push would be racing its own
+token being switched off. Email and WhatsApp are what reach a locked-out
+account — which is why WhatsApp matters most on that one.
+
+### The score stays internal
+
+The KYC score goes to the admin (it is their triage number) and to nobody else.
+A vendor reading "score 78" would draw conclusions the score is not meant to
+support. Asserted in the suite rather than left to convention.
+
+### Verified
+
+72 assertions: name precedence and its fallback, all three channels landing and
+being recorded on the row, the deep link matching across row and push, the
+reason travelling on every channel for a rejection, the internal note *not*
+travelling on a deactivation, the score not leaking, per-attempt idempotency on
+both the vendor and admin sides, push correctly skipped on deactivation, and no
+dead email button when the panel URL is unset.
+
+### One operational finding
+
+**Not one of the 22 brands on staging has an email address** — not on the brand
+and not on the owning user. So the email channel skips for every vendor today.
+The code is right (it skips cleanly and does not add `EMAIL` to `channels`), but
+until an address is captured at onboarding, WhatsApp and push are the only
+channels that actually reach a vendor.

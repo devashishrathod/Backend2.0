@@ -1,50 +1,17 @@
-const jwt = require("jsonwebtoken");
 const { ROLES } = require("../constants");
-const { getUserById } = require("../services/users");
-const { throwError, asyncWrapper } = require("../utils");
+const { buildAuthGate } = require("./authenticate");
 
-const validateRoles = (...allowedRoles) =>
-  asyncWrapper(async (req, res, next) => {
-    let token = req.headers["authorization"];
-    if (!token) throwError(401, "Access Denied! Missing authorization token");
-    const splitToken = token.split(" ")[1];
-    if (!splitToken) {
-      throwError(403, "Access Denied! Invalid authorization token format");
-    }
-    let decodedToken;
-    try {
-      decodedToken = jwt.verify(splitToken, process.env.JWT_SECRET);
-    } catch (error) {
-      if (error.name === "TokenExpiredError") {
-        throwError(401, "Your session has expired. Please log in again.");
-      } else if (error.name === "JsonWebTokenError") {
-        throwError(403, "Invalid or malformed token. Please log in again.");
-      } else if (error.name === "NotBeforeError") {
-        throwError(403, "Token not active yet. Please try again later.");
-      } else {
-        throwError(500, "Authentication failed due to an unexpected error.");
-      }
-    }
-    if (!decodedToken) throwError(403, "Access Denied! Invalid token");
-    const user = await getUserById(decodedToken?.id);
-    if (!user) throwError(404, "Access Denied! User not found");
-    req.userId = user._id;
-    req.role = user.role;
-    req.user = user;
-    if (user.role === ROLES.CUSTOMER) {
-      req.customerId = user.customerId;
-    }
-    if (user.role === ROLES.VENDOR) {
-      req.brandId = user.brandId;
-    }
-    if (!allowedRoles.includes(user.role)) {
-      throwError(
-        403,
-        "Forbidden: You do not have permission to perform this action.",
-      );
-    }
-    next();
-  });
+const validateRoles = (...allowedRoles) => buildAuthGate({ allowedRoles });
+
+/**
+ * Role gate that lets a deactivated account through.
+ *
+ * Only for endpoints a suspended user still has to reach — today that is reading
+ * their notifications, which is where the notice explaining the suspension
+ * lands. A killed session is still refused.
+ */
+const validateRolesEvenIfDeactivated = (...allowedRoles) =>
+  buildAuthGate({ allowedRoles, allowDeactivated: true });
 
 const isAdmin = validateRoles(ROLES.ADMIN);
 const isCustomer = validateRoles(ROLES.CUSTOMER);
@@ -62,11 +29,19 @@ const isSubVendor = validateRoles(ROLES.SUB_VENDOR);
  */
 const isVendorOrAdmin = validateRoles(ROLES.VENDOR, ROLES.ADMIN);
 
+/** `isVendorOrAdmin`, reachable by a deactivated vendor. Notifications only. */
+const isVendorOrAdminEvenIfDeactivated = validateRolesEvenIfDeactivated(
+  ROLES.VENDOR,
+  ROLES.ADMIN,
+);
+
 module.exports = {
   validateRoles,
+  validateRolesEvenIfDeactivated,
   isAdmin,
   isCustomer,
   isVendor,
   isSubVendor,
   isVendorOrAdmin,
+  isVendorOrAdminEvenIfDeactivated,
 };

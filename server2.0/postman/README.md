@@ -6,8 +6,8 @@ jhooth nahi bol sakti.
 
 | Collection | Endpoints | Status |
 |---|---:|---|
-| `trydood-customer.postman_collection.json` | 35 | ✅ Live verified — 74 requests · 308 assertions · sab pass |
-| `trydood-vendor.postman_collection.json` | 78 | ✅ Live verified — 101 requests · 234 assertions · sab pass |
+| `trydood-customer.postman_collection.json` | 35 | ✅ Live verified — 88 requests · 355 assertions · **132 captured examples** · sab pass |
+| `trydood-vendor.postman_collection.json` | 78 | ✅ Live verified — 99 requests · 228 assertions · **105 captured examples** · sab pass |
 | `trydood-admin.postman_collection.json` | 114 | ⬜ Phase 3 |
 | `trydood-security-changes.postman_collection.json` | – | ⏳ Teeno panel collections ready hone par retire hogi |
 
@@ -15,12 +15,51 @@ Companion docs: [`../docs/customer_mobile_api_doc.md`](../docs/customer_mobile_a
 [`../docs/vendor_panel_api_doc.md`](../docs/vendor_panel_api_doc.md) ·
 [`../docs/endpoints_category.md`](../docs/endpoints_category.md)
 
+---
+
+## Examples haath se nahi likhe jaate
+
+Har saved example ek **asli response** hai, live run se capture kiya gaya:
+
+```bash
+# 1. Fixtures
+node scripts/seedPostmanFixtures.js --db Trydood2_postman --apply
+
+# 2. Server usi database pe
+MONGO_URL="<...>/Trydood2_postman" npm run dev
+
+# 3. Capture — collection chalti hai aur har response wapas usi file me examples ban jaata hai
+node postman/lib/capture-examples.js \
+  postman/trydood-customer.postman_collection.json \
+  postman/environments/customer-local.postman_environment.json
+```
+
+Capture ke baad:
+
+- **Sanitize** — asli ObjectId `{{brand_id}}` jaisi environment variable ban jaati hai,
+  timestamps ek fixed instant pe pin ho jaate hain, JWT redact ho jaate hain.
+- **Consolidate** — ek hi endpoint ko chhune wali saari sibling requests ke examples
+  **primary request pe bhi** aa jaate hain. Matlab Postman me ek API kholiye to uska poora
+  behaviour ek jagah dikhta hai: success, har validation failure, har business refusal.
+
+Voucher feed pe 11 examples hain — guest, signed-in, saari sort modes, suggestions tab,
+aur har error.
+
+**Kyun capture, likhna kyun nahi:** haath se likha example code badalte hi purana ho jaata
+hai, aur wo galti dikhti nahi — galat example bilkul sahi jaisa lagta hai. Pichhle rounds
+me aise do ship ho chuke the (`nearestOutlet._id` jo actually `subBrandId` hai, flat
+`medias[]` jo actually nested `media.data[]` hai) aur dono sirf chalane pe pakde gaye. Ab
+example galat ho hi nahi sakta jab tak API khud galat na ho.
+
+---
+
 ### Ab tak kya nikla
 
 Live runs ne paanch aise defects pakde jo code padhkar nahi dikhte the:
 
 | Kya | Kahan |
 |---|---|
+| 🔴 **Voucher feed har user ke liye `404` de raha tha** — guest-login commit ne auth hata di, to `req.userId` set hona band ho gaya aur service `Customer` dhoondhti reh gayi. Naya `optionalAuth` gate + guest-tolerant service | Customer |
 | 🔴 `currentScreen` galat value poori login call `422` kar deti hai — aur enum me koi customer screen hai hi nahi | Customer |
 | 🔴 `GET /brands/verifications/history` har vendor request pe `500` (`isVendor is not defined`) | Vendor |
 | 🔴 Dono showcase reorder endpoints har request pe `500` — `id` vs `sectionId`/`mediaId`. **Kabhi kaam nahi kiye** | Vendor |
@@ -180,6 +219,9 @@ karein.
 | File | Kya |
 |---|---|
 | `lib/builders.js` | Teeno collections ke shared builders — request, assertions, envelope |
+| `lib/routeGates.js` | Har route ka **asli gate**, `routes/` se padha gaya |
+| `lib/capture-examples.js` | Live run se asli responses capture karke examples me daalta hai |
+| `lib/assertUniqueNames.js` | Duplicate request name pe build fail karta hai (capture name pe key karta hai) |
 | `lib/validate-collection.js` | Pre-import sanity checks |
 | `generate-customer-collection.js` | Customer collection |
 | `generate-vendor-collection.js` | Vendor collection |

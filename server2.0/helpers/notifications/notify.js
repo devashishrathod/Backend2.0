@@ -80,9 +80,15 @@ exports.notify = async ({
   // template's variables are positional and only the caller knows what belongs
   // in them. With no params it is skipped rather than sent half-filled.
   whatsapp,
-  // Set only by short-lived callers (scripts) that would exit before a
-  // fire-and-forget send completes.
-  awaitEmail = false,
+  // Client route to open when the notification is tapped. Stored on the row and
+  // sent in the push payload, so the in-app list and the push both land the
+  // reader on the same screen instead of a generic feed.
+  deepLink,
+  // Wait for email, push and WhatsApp to finish instead of leaving them in
+  // flight. Off by default because the server must not hold a request open for a
+  // provider round trip — set it only in a short-lived caller (a script, a test)
+  // that would exit before a fire-and-forget send completed.
+  awaitDelivery = false,
   mail,
 }) => {
   try {
@@ -97,7 +103,10 @@ exports.notify = async ({
       title,
       body,
       channels: [NOTIFICATION_CHANNELS.IN_APP],
-      meta,
+      // Kept inside `meta` rather than as its own column: it is a client routing
+      // hint, and `notifyAudience` already carries it there — one shape for both
+      // paths means the app reads it from one place.
+      meta: { ...(meta || {}), ...(deepLink ? { deepLink } : {}) },
       dedupeKey,
     });
 
@@ -126,6 +135,7 @@ exports.notify = async ({
             data: {
               type,
               notificationId: String(notification._id),
+              ...(deepLink ? { deepLink } : {}),
               ...(brandId ? { brandId: String(brandId) } : {}),
               ...(meta?.subscribedId ? { subscribedId: String(meta.subscribedId) } : {}),
             },
@@ -189,7 +199,7 @@ exports.notify = async ({
             )
         : null;
 
-    if (awaitEmail) {
+    if (awaitDelivery) {
       if (pushing) await pushing;
       if (messaging) await messaging;
     }
@@ -236,8 +246,8 @@ exports.notify = async ({
     // everything it needs; only the delivery is in flight.
     //
     // Callers that must not exit before the mail lands (a one-shot script rather
-    // than the long-lived server) pass `awaitEmail: true`.
-    if (awaitEmail) await deliver;
+    // than the long-lived server) pass `awaitDelivery: true`.
+    if (awaitDelivery) await deliver;
 
     return { created: true, notification };
   } catch (error) {

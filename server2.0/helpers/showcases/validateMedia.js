@@ -1,5 +1,8 @@
 const path = require("path");
-const { SHOWCASE_MEDIA_TYPE } = require("../../constants/showcase");
+const {
+  SHOWCASE_MEDIA_TYPE,
+  SHOWCASE_COVER_IMAGE_MODE,
+} = require("../../constants/showcase");
 const { throwError } = require("../../utils");
 
 exports.normalizeFiles = (files) => {
@@ -83,6 +86,39 @@ exports.validateMediaFiles = (
   }
 };
 
+/**
+ * A replacement video poster.
+ *
+ * Went unvalidated entirely: any file the vendor attached as `thumbnail` was
+ * pushed to Cloudinary and stored, so a 40 MB TIFF — or a video — could end up
+ * as a section's poster frame.
+ */
+exports.validateThumbnailFile = (file, config) => {
+  if (!file) throwError(400, "Thumbnail file is required.");
+  if (!config) throwError(500, "Showcase configuration not found.");
+
+  const mime = file.mimetype || "";
+  if (!mime.startsWith("image") || !config.allowedImages.includes(mime)) {
+    throwError(400, "Thumbnail must be an image in a supported format.");
+  }
+
+  const sizeMB = file.size / 1024 / 1024;
+  if (sizeMB > config.maxImageSizeMB) {
+    throwError(
+      400,
+      `Thumbnail exceeds maximum image size of ${config.maxImageSizeMB} MB.`,
+    );
+  }
+};
+
+/**
+ * Turn freshly uploaded assets into media subdocuments.
+ *
+ * `isShowInVideoClips` is a VIDEO-only switch, so a photo is always stored with
+ * it off. It used to be stamped onto every row, which left photos carrying a
+ * `true` that nothing could ever act on — and a toggle in the vendor panel that
+ * did nothing.
+ */
 exports.prepareMediaDocuments = (
   medias = [],
   startSort = 1,
@@ -97,9 +133,11 @@ exports.prepareMediaDocuments = (
     title: exports.getFileNameWithoutExtension(media.metadata?.originalName),
     altText: exports.getFileNameWithoutExtension(media.metadata?.originalName),
     sortOrder: startSort + index,
-    isShowInVideoClips,
+    isShowInVideoClips:
+      media.type === SHOWCASE_MEDIA_TYPE.VIDEO ? isShowInVideoClips : false,
     isActive: true,
     isDeleted: false,
+    deletedAt: null,
   }));
 };
 
@@ -138,7 +176,10 @@ exports.normalizeSortOrder = (items = []) => {
     }));
 };
 
-exports.validateUniqueIds = (items = [], key = "sectionId") => {
+// `id` is what the validators accept and what the docs publish. The default
+// used to be `sectionId`, a key no payload ever carries, so any caller that
+// forgot to pass the key dereferenced `undefined` and answered 500.
+exports.validateUniqueIds = (items = [], key = "id") => {
   const ids = new Set();
   for (const item of items) {
     const value = item[key].toString();
@@ -159,11 +200,37 @@ exports.validateUniqueSortOrders = (items = [], key = "sortOrder") => {
   }
 };
 
-exports.syncSectionCoverImage = (section) => {
+/**
+ * The displayable image for one media.
+ *
+ * `thumbnail` first, always. Reading `url` first meant that as soon as a video
+ * sorted to the top of a section, `coverImage` became an `.mp4` link and every
+ * card that rendered it showed a broken image.
+ */
+exports.getMediaCoverImage = (media) =>
+  media?.thumbnail || media?.url || null;
+
+/** The first visible media of a section, in display order. */
+exports.pickCoverMedia = (medias = []) => {
   let cover = null;
-  for (const media of section.medias) {
+  for (const media of medias) {
     if (media.isDeleted || !media.isActive) continue;
     if (!cover || media.sortOrder < cover.sortOrder) cover = media;
   }
-  section.coverImage = cover?.url || cover?.thumbnail || null;
+  return cover;
+};
+
+/**
+ * Recompute a section's cover from its media, in place.
+ *
+ * Honours `coverImageMode`: MANUAL means the vendor pinned a cover, so add /
+ * delete / reorder must leave it alone. The field existed on the model but
+ * nothing read it, so a manual cover was silently overwritten by the next
+ * reorder.
+ */
+exports.syncSectionCoverImage = (section) => {
+  if (section.coverImageMode === SHOWCASE_COVER_IMAGE_MODE.MANUAL) return;
+  section.coverImage = exports.getMediaCoverImage(
+    exports.pickCoverMedia(section.medias),
+  );
 };

@@ -28,7 +28,12 @@ exports.notifyAdmins = async ({
   meta,
   dedupeKey,
   email = true,
-  awaitEmail = false,
+  // Forwarded so an admin alert can reach a phone and open the right screen.
+  // Admin notices are queue work — an alert that only exists in a panel nobody
+  // has open is not much of an alert.
+  push = true,
+  deepLink,
+  awaitDelivery = false,
   mail,
 }) => {
   try {
@@ -57,7 +62,9 @@ exports.notifyAdmins = async ({
           meta,
           dedupeKey: dedupeKey ? `${dedupeKey}:${admin._id}` : undefined,
           email,
-          awaitEmail,
+          push,
+          deepLink,
+          awaitDelivery,
           mail,
         }),
       ),

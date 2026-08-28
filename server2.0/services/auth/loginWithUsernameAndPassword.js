@@ -1,11 +1,15 @@
 const User = require("../../models/User");
 const { throwError } = require("../../utils");
+const { assertAccountAccess } = require("../../helpers/auth");
 
 exports.loginWithUsernameAndPassword = async (payload) => {
   let { username, password } = payload;
   username = username.toLowerCase();
-  const user = await User.findOne({ username });
+  // See loginWithEmailAndPassword: `isDeleted` was missing, and a deactivated
+  // account could mint a token.
+  const user = await User.findOne({ username, isDeleted: false });
   if (!user) throwError(404, "Invalid credentials! User not found");
+  assertAccountAccess(user);
   // Fail closed on an account that never chose a password. Without this an
   // OTP-only account would be reachable by whatever default it was seeded with.
   if (!user.hasPassword()) {

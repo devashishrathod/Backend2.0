@@ -1,6 +1,7 @@
 const User = require("../../models/User");
 const { LOGIN_TYPES, ROLES } = require("../../constants");
 const { throwError } = require("../../utils");
+const { assertAccountAccess } = require("../../helpers/auth");
 const { verifyOtpToMobile } = require("../../helpers/twoFactor");
 
 exports.verifyMobileOTP = async (body) => {
@@ -10,6 +11,8 @@ exports.verifyMobileOTP = async (body) => {
     "-password",
   );
   if (!user) throwError(404, "User not found with this mobile number");
+  // See verifyEmailOTP — this issues a token, so it needs the gate too.
+  assertAccountAccess(user);
   let result = await verifyOtpToMobile(sessionId, otp);
   if (result?.Status == "Success") {
     user.loginType = LOGIN_TYPES.MOBILE;

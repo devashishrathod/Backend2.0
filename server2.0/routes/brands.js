@@ -22,6 +22,8 @@ const {
   validateGetAllCustomerBrands,
   validateReviewTopBrand,
   validateGetTopBrands,
+  validateGetAllAdminBrands,
+  validateToggleBrandStatus,
 } = require("../validator/brands");
 const {
   addOrUpdateBasicDetails,
@@ -33,6 +35,8 @@ const {
   get,
   getCustomer,
   getAllCustomer,
+  getAllAdmin,
+  toggleStatus,
   update,
   reviewBrandVerification,
   reviewTopBrand,
@@ -78,6 +82,35 @@ router.put(
   validateSchema(validateUpdateBasicDetails),
   addOrUpdateBasicDetails,
 );
+// ---------------------------------------------------------------------------
+// Admin — the brand directory, and the account on/off switch.
+//
+// `/admin/get-all` is the triage list: identity, owner, verification state,
+// plan, usage and the deactivation trail, one row per brand. Its own pipeline
+// rather than a role branch on the customer listing — see the note on
+// `/customer/get-all` below for why role-filtered projections are avoided here.
+//
+// The toggle is the only endpoint that switches a brand account off. It moves
+// `Brand.isActive` and the owning vendor's `User.isActive` together, so the
+// brand leaves every customer listing and the vendor is refused by the auth gate
+// on their very next request — not merely at their next login.
+//
+// Declared before `/admin/:brandId/status` so the literal `get-all` is never
+// read as a brand id.
+// ---------------------------------------------------------------------------
+router.get(
+  "/admin/get-all",
+  isAdmin,
+  validateSchema(validateGetAllAdminBrands),
+  getAllAdmin,
+);
+router.put(
+  "/admin/:brandId/status",
+  isAdmin,
+  validateSchema(validateToggleBrandStatus),
+  toggleStatus,
+);
+
 // Admin — brand verification (approve / reject / revoke / reviewed-toggle)
 router.get(
   "/admin/verifications",
