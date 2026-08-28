@@ -3,6 +3,7 @@ const { buildAuthGate } = require("./authenticate");
 const {
   verifyJwtToken,
   verifyJwtTokenEvenIfDeactivated,
+  optionalAuth,
 } = require("./verifyJwtToken");
 const { validateSchema } = require("./validateSchema");
 const {
@@ -36,6 +37,7 @@ module.exports = {
   buildAuthGate,
   verifyJwtToken,
   verifyJwtTokenEvenIfDeactivated,
+  optionalAuth,
   validateRoles,
   validateRolesEvenIfDeactivated,
   validateSchema,

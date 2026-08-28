@@ -14,3 +14,18 @@ exports.verifyJwtToken = buildAuthGate();
 exports.verifyJwtTokenEvenIfDeactivated = buildAuthGate({
   allowDeactivated: true,
 });
+
+/**
+ * Guest browsing: signed in if a token is sent, anonymous if not.
+ *
+ * The customer app lets people look around before creating an account (an app
+ * store requirement), so the browse endpoints cannot demand a token. Removing
+ * the gate outright is not the same thing though — the handlers behind them
+ * read `req.userId` to personalise, and with no gate at all that is `undefined`
+ * even for a signed-in caller. This populates it when a token is there and
+ * leaves it unset when it is not, so one endpoint serves both audiences.
+ *
+ * A token that *is* present must still be valid; see `optional` in
+ * middlewares/authenticate.js for why.
+ */
+exports.optionalAuth = buildAuthGate({ optional: true });

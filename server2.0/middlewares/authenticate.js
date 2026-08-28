@@ -23,11 +23,28 @@ const { throwError, asyncWrapper } = require("../utils");
  * @param {boolean}  [options.allowDeactivated=false]
  *        Let a deactivated account through. Only for the endpoints a suspended
  *        user still has to reach — see middlewares/index.js.
+ * @param {boolean}  [options.optional=false]
+ *        Guest browsing. With no `Authorization` header at all the request
+ *        continues with no `req.userId`, and the handler decides what an
+ *        anonymous caller gets.
+ *
+ *        A header that *is* present still has to be valid. Silently downgrading
+ *        an expired token to a guest session would show a signed-in user the
+ *        anonymous view with no hint why, and they would never be prompted to
+ *        log in again — so a bad token is rejected here exactly as it is on
+ *        every other gate.
  */
-exports.buildAuthGate = ({ allowedRoles = null, allowDeactivated = false } = {}) =>
+exports.buildAuthGate = ({
+  allowedRoles = null,
+  allowDeactivated = false,
+  optional = false,
+} = {}) =>
   asyncWrapper(async (req, res, next) => {
     let token = req.headers["authorization"];
-    if (!token) throwError(401, "Access Denied! Missing authorization token");
+    if (!token) {
+      if (optional) return next();
+      throwError(401, "Access Denied! Missing authorization token");
+    }
     const splitToken = token.split(" ")[1];
     if (!splitToken) {
       throwError(403, "Access Denied! Invalid authorization token format");

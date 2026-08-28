@@ -2659,6 +2659,15 @@ const gateFolder = folder(
     "| `401` | Token hai hi nahi, ya expire |",
     "| `403` | Token malformed, ya role allowed nahi |",
     "| `422` | Role validator se reject (password flow) |",
+    "",
+    "### ⚠️ Kuch customer endpoints ab **public** hain",
+    "",
+    "Guest browsing aane ke baad `/brands/customer/*`, `/showcase/get-brand-showcase/*`",
+    "aur voucher browse endpoints pe koi gate nahi hai — vendor token pe wo `200` denge,",
+    "`403` nahi. Isliye wo yahan negative tests me nahi hain.",
+    "",
+    "Reachable hona use karne ka karan nahi hai: wo customer app ka data model hain, vendor",
+    "panel ka nahi. [Appendix A](../docs/vendor_panel_api_doc.md#appendix-a--not-for-vendor-panel) dekhein.",
   ].join("\n"),
   [
     req({
@@ -2805,18 +2814,6 @@ const gateFolder = folder(
         method: "GET",
         segments: ["banners", "get-all"],
         why: "App-level home banners — admin ka kaam.",
-      },
-      {
-        name: "Customer ka brand profile",
-        method: "GET",
-        segments: ["brands", "customer", "get", "{{brand_id}}"],
-        why: "`isCustomer`. Vendor ke liye `/brands/get` hai.",
-      },
-      {
-        name: "Customer showcase view",
-        method: "GET",
-        segments: ["showcase", "get-brand-showcase", "{{brand_id}}"],
-        why: "`isCustomer`. Vendor ke liye `/showcase/section/get-all` hai.",
       },
       {
         name: "Customer address upsert",

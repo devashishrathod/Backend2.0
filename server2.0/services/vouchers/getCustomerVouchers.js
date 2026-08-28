@@ -16,13 +16,25 @@ const { getVoucherConfig } = require("../../helpers/settings");
 const EARTH_MAX_DISTANCE_METERS = 20_037_508;
 
 exports.getCustomerVouchers = async (userId, query) => {
-  const customer = await Customer.findOne({
-    userId,
-    isActive: true,
-    isDeleted: false,
-  }).select("_id locationId");
-
-  if (!customer) throwError(404, "Customer not found.");
+  /**
+   * Optional context, not identity.
+   *
+   * The feed is open to guests, so there may be no `userId` at all — and a
+   * signed-in vendor or admin previewing the app has no Customer row either.
+   * The record is only ever used for the saved-location fallback below, so a
+   * missing one is not an error: it just means coordinates have to be explicit.
+   *
+   * This used to `throwError(404, "Customer not found.")` on a missing record,
+   * which turned "you didn't tell me where you are" into "who are you?" — and
+   * once the route became public it fired for every caller, signed in or not.
+   */
+  const customer = userId
+    ? await Customer.findOne({
+        userId,
+        isActive: true,
+        isDeleted: false,
+      }).select("_id locationId")
+    : null;
 
   let latitude = query.latitude;
   let longitude = query.longitude;
@@ -33,8 +45,11 @@ exports.getCustomerVouchers = async (userId, query) => {
    */
 
   if (latitude === undefined || longitude === undefined) {
-    if (!customer.locationId) {
-      throwError(400, "Customer location not found.");
+    if (!customer?.locationId) {
+      throwError(
+        400,
+        "Location is required. Send latitude and longitude, or save an address first.",
+      );
     }
 
     const location = await Location.findOne({

@@ -1,25 +1,41 @@
 # Trydood 2.0 — Customer Mobile App API Documentation
 
-**Version:** 1.4.0
+**Version:** 1.5.0
 **Base URL (Local):** `http://localhost:8080/trydood/v1`
 **Base URL (Staging):** `https://backend2-0-4v4i.onrender.com/trydood/v1`
 **Framework:** Express.js (Node.js, CommonJS)
 **Database:** MongoDB (Mongoose ODM)
-**Scope:** Customer mobile app ke **35 endpoints**
-**Last verified:** 2026-08-26 against current code · Source: `server2.0` scan (149 total endpoints, categorization → [endpoints_category.md](./endpoints_category.md))
+**Scope:** Customer mobile app ke **35 endpoints** — jinme se **21 guest ke liye khule hain**
+**Last verified:** 2026-08-27 against a running server · Source: `server2.0` scan (151 total endpoints, categorization → [endpoints_category.md](./endpoints_category.md))
 
-> ✅ **v1.4.0 se ye doc live API ke against verify ho chuka hai** — sirf code padhkar nahi likha gaya. Saare 35 endpoints ek chalte hue server pe seeded fixtures ke saath run kiye gaye: **74 requests, 308 assertions, sab pass.** Collection: [`postman/trydood-customer.postman_collection.json`](../postman/trydood-customer.postman_collection.json)
+> ✅ **Ye doc live API ke against verify hota hai**, sirf code padhkar nahi likha jaata. Saare 35 endpoints ek chalte hue server pe seeded fixtures ke saath run hote hain: **88 requests, 355 assertions, sab pass.**
+>
+> ✅ **Postman ke saare examples asli responses hain** — 132 examples, sab ek live run se capture kiye gaye ([`postman/trydood-customer.postman_collection.json`](../postman/trydood-customer.postman_collection.json)). Koi bhi example haath se nahi likha gaya, isliye wo galat ho hi nahi sakta jab tak API khud galat na ho.
+>
+> ✅ **Har `**Access:**` line routes se derive hoti hai**, likhi nahi jaati — is round me wahi 19 galat lines pakdi gayin.
 >
 > Jahan behaviour buggy ya adhoora hai, wahan ⚠️ (ya 🔴, agar wo cheez tod deti hai) marker hai.
 
-### 🆕 v1.4.0 me kya naya
+### 🆕 v1.5.0 me kya naya
 
-Doc me koi naya endpoint nahi — ye **live verification round** tha. Teen jagah doc code se match nahi kar raha tha:
+**Guest browsing** — app store approval ke liye user ab sign-up se pehle app dekh sakta hai.
+
+| Change | Detail |
+|---|---|
+| **21 endpoints guest ke liye khule** | Vouchers, brands, showcase, features, master data, home screen, legal — sab bina token. Poora naksha [Guest access](#guest-access--bina-token-kya-chalta-hai) me |
+| 🔴 **Voucher feed toota tha, ab theek hai** | Auth hatane par `req.userId` set hona band ho gaya tha, aur service pehle hi step me `Customer` dhoondhti thi — to feed **har** user ko `404 "Customer not found."` deta tha, guest aur signed-in dono. Naya `optionalAuth` gate + guest-tolerant service ne fix kiya |
+| **Naya error message** | `404 "Customer not found."` ki jagah ab `400 "Location is required. Send latitude and longitude, or save an address first."` — jo actually batata hai karna kya hai |
+| **132 real examples** | Har request pe saved examples, sab live run se capture. Ek API kholiye to uske saare flows aur errors ek jagah dikhte hain |
+| **Access lines auto-derived** | `postman/lib/routeGates.js` routes padhkar gate nikalta hai; doc aur collection dono usse bante hain |
+
+### v1.4.0 me kya aaya tha
+
+Ye **live verification round** tha. Teen jagah doc code se match nahi kar raha tha:
 
 | Fix | Kya galat tha |
 |---|---|
-| 🔴 **`currentScreen` warning** | Enum me koi customer screen hai hi nahi, aur galat value **poori login call `422`** kar deti hai. Pehle isko sirf "generally zarurat nahi" likha tha ([details](#screens-onboarding-step-tracking--currentscreen-field)) |
-| **`nearestOutlet.subBrandId`** | Doc me `_id` likha tha. Pipeline ka `$group` use `subBrandId` rename kar deta hai — `_id` field hai hi nahi ([#15](#15-get-voucherscustomerget-all)) |
+| 🔴 **`currentScreen` warning** | Enum me koi customer screen hai hi nahi, aur galat value **poori login call `422`** kar deti hai ([details](#screens-onboarding-step-tracking--currentscreen-field)) |
+| **`nearestOutlet.subBrandId`** | Doc me `_id` likha tha. Pipeline ka `$group` use `subBrandId` rename kar deta hai ([#15](#15-get-voucherscustomerget-all)) |
 | **Device list ke fields** | `userId`, `role`, `updatedAt` example me the par service unhe project hi nahi karti ([#33](#33-get-devicetokensget-mine)) |
 
 ### v1.3.0 me kya aaya tha
@@ -58,12 +74,13 @@ Doc me koi naya endpoint nahi — ye **live verification round** tha. Teen jagah
 
 1. [Overview](#overview)
 2. [Authentication](#authentication)
-3. [Standard Response Format](#standard-response-format)
-4. [Pagination](#pagination)
-5. [HTTP Status Codes](#http-status-codes)
-6. [Common Errors](#common-errors)
-7. [Enums Reference](#enums-reference)
-8. [Auth APIs](#auth-apis)
+3. [**Guest access — bina token kya chalta hai**](#guest-access--bina-token-kya-chalta-hai) 🆕
+4. [Standard Response Format](#standard-response-format)
+5. [Pagination](#pagination)
+6. [HTTP Status Codes](#http-status-codes)
+7. [Common Errors](#common-errors)
+8. [Enums Reference](#enums-reference)
+9. [Auth APIs](#auth-apis)
    - [POST /auth/loginOrSignUp-with-whatsapp](#1-post-authloginorsignup-with-whatsapp)
    - [POST /auth/verify-otp-whatsapp](#2-post-authverify-otp-whatsapp)
    - [POST /auth/logout](#3-post-authlogout)
@@ -132,8 +149,8 @@ Customer mobile app 10 functional areas cover karta hai:
 
 **Important architecture notes:**
 
-- **Customer-facing endpoints pe `role` check nahi hai.** Un pe sirf `verifyJwtToken` lagta hai — matlab customer token se kuch vendor/admin endpoints bhi technically call ho sakte hain. Har endpoint pe **Intended** (kis role ke liye banaya) aur **Enforced** (backend actually kya rokta hai) dono likha hai. Details → [Appendix B](#appendix-b--known-issues)
-  > Backend me role gates lagne shuru ho gaye hain — vouchers ke vendor endpoints, transactions, subBrands, aur saare naye modules ab properly gated hain. Dono naye brand endpoints (`/brands/customer/get/:brandId`, `/brands/customer/get-all`) pe **`isCustomer`** hai. Baaki customer-facing endpoints pe abhi `verifyJwtToken` hi hai.
+- **21 endpoints guest ke liye khule hain, 14 gated.** Har endpoint pe `**Access:**` line hai jo batati hai kaunsa gate laga hai. Poora naksha → [Guest access](#guest-access--bina-token-kya-chalta-hai)
+  > Wo line **routes se derive hoti hai**, likhi nahi jaati (`postman/lib/routeGates.js`). Pehle ye haath se likhi jaati thi aur ek hi commit ne 19 lines ko chup-chaap jhootha kar diya tha — ab code badalne pe line apne aap badal jaati hai.
 - **Soft delete pattern** — kuch bhi actually delete nahi hota, `isDeleted: true` set hota hai
 - **Lowercase normalization** — names, addresses, city/state/country DB me lowercase store hote hain. UI pe capitalize karna frontend ka kaam hai
 - **Voucher listing geo-based hai** — customer ke coordinates chahiye (query me ya saved location se)
@@ -167,6 +184,74 @@ Authorization: Bearer <token>
 **Expiry:** `JWT_EXPIRY` env variable se aata hai (server config). Token expire hone pe `401` + `"Your session has expired. Please log in again."` — app ko login screen pe bhejna hai.
 
 ⚠️ **Logout server-side token invalidate nahi karta** (koi blacklist nahi hai). Token expiry tak valid rehta hai. App ko locally token delete karna hoga.
+
+---
+
+## Guest access — bina token kya chalta hai
+
+App store approval ke liye user ko **sign-up se pehle** app dekhne dena zaruri tha, isliye
+browse endpoints se auth hata di gayi hai. **35 me se 21 endpoints bina kisi token ke
+chalte hain.**
+
+### Chaar tarah ke access
+
+| Gate | Matlab | Kitne |
+|---|---|---:|
+| 🌐 **Public** | Token dekha hi nahi jaata. Response sabke liye ek jaisa | 18 |
+| 🌐 **`optionalAuth`** | Token ho to decode hota hai aur response personalise hota hai; na ho to guest chalta hai | 3 |
+| 🔒 **`verifyJwtToken`** | Koi bhi signed-in role | 7 |
+| 🔒 **`isCustomer`** | Sirf customer | 5 |
+| 🔒 **`verifyJwtTokenEvenIfDeactivated`** | Signed in, suspended account bhi — logout aur push unregister, warna suspended user phasa reh jaata | 2 |
+
+### Kya guest kar sakta hai
+
+| Screen | Endpoints |
+|---|---|
+| **Home** | Banner · tickers · categories · sub-categories |
+| **Voucher feed** | Feed · voucher detail · discount preview |
+| **Brand** | Directory · profile · showcase gallery · video clips · features |
+| **Legal** | Terms · privacy (sign-up screen ke consent link ke liye zaruri) |
+
+### Kya guest nahi kar sakta
+
+Profile, saved address, follow / avoid, push notifications — sab kuch jo **"mera"** hai.
+Wahan `401 "Access Denied! Missing authorization token"` aata hai, jo app ke liye login
+screen dikhane ka signal hai.
+
+### ⚠️ Guest ko coordinates khud bhejne padte hain
+
+Voucher feed signed-in user ke liye uske **saved address** pe gir jaata hai. Guest ka koi
+saved address hota hi nahi, to usse `latitude` + `longitude` bhejne padte hain:
+
+```http
+GET /vouchers/customer/get-all?latitude=22.7533&longitude=75.8937
+```
+
+Na bhejein to:
+
+```json
+{
+  "success": false,
+  "message": "Location is required. Send latitude and longitude, or save an address first."
+}
+```
+
+### ⚠️ `optionalAuth` ka matlab "koi bhi token chalega" nahi hai
+
+Token **na** bhejna bilkul theek hai. Par **galat** token bhejna theek nahi — wo waise hi
+reject hota hai jaise kisi bhi gated endpoint pe:
+
+```json
+{ "success": false, "message": "Invalid or malformed token. Please log in again." }
+```
+
+Ye jaan-boojhkar hai. Expired token ko chup-chaap guest bana dena zyada 'friendly' lagta
+hai, par tab user ko anonymous feed dikhta rehta — apne saved address ke bina, apne
+follows ke bina — aur app usse kabhi dobara login karne ko kehti hi nahi. Behtar hai ki
+app `403` dekhe, token phenke, aur login screen dikhaye.
+
+**App ke liye rule:** token hai to bhejo, nahi hai to header hi mat bhejo. Khaali ya
+purana token kabhi mat bhejo.
 
 ---
 
@@ -387,7 +472,7 @@ Saare enum values **UPPERCASE** hain (payment ke alawa).
 
 Customer app ka **primary login endpoint**. Ek hi call login aur signup dono handle karta hai — agar number naya hai to user + customer record auto-create ho jaate hain.
 
-**Access:** Intended: Customer + Vendor · Enforced: **Public** (koi token nahi chahiye)
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 ### Headers
 | Header | Value | Required |
@@ -477,7 +562,7 @@ Message me "OTP sent" likha aata hai par WhatsApp pe kuch nahi jaata. Testing ke
 
 OTP verify karke JWT token deta hai. **Yahi se app ka token milta hai.**
 
-**Access:** Intended: Customer + Vendor · Enforced: **Public**
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 ### Headers
 | Header | Value | Required |
@@ -561,7 +646,7 @@ Live verify kiya (2026-08-26): `{"currentScreen": "HOME"}` → `422 "`HOME` is n
 
 ## 3. POST /auth/logout
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🔒 **Signed in — suspended account bhi** (`verifyJwtTokenEvenIfDeactivated`)
 
 ### Headers
 | Header | Value | Required |
@@ -599,7 +684,7 @@ Sirf [common auth errors](#common-errors).
 
 Logged-in customer ka profile, uske customer record aur saved location ke saath.
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🔒 **Koi bhi signed-in role** (`verifyJwtToken`)
 
 ### Headers
 | Header | Value | Required |
@@ -694,7 +779,7 @@ Logged-in customer ka profile, uske customer record aur saved location ke saath.
 
 Profile update. JSON ya multipart dono chalta hai (image ke liye multipart).
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🔒 **Koi bhi signed-in role** (`verifyJwtToken`)
 
 ### Headers
 | Header | Value | Required |
@@ -784,7 +869,7 @@ image: <file>
 
 ⚠️ **Ye endpoint kuch delete nahi karta.** Neeche detail me.
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🔒 **Koi bhi signed-in role** (`verifyJwtToken`)
 
 ### Headers
 | Header | Value | Required |
@@ -827,7 +912,7 @@ router.delete("/delete", verifyJwtToken, (req, res) => {
 
 Customer ka address save/update. **Ek customer = ek location** — dobara call karne pe existing update hoti hai, nayi nahi banti.
 
-**Access:** Intended: CUSTOMER · Enforced: **CUSTOMER** (service level pe verify hota hai — role check wala ek endpoint)
+**Access:** 🔒 **Sirf CUSTOMER** (`isCustomer`)
 
 ### Headers
 | Header | Value | Required |
@@ -921,7 +1006,9 @@ Customer ka address save/update. **Ek customer = ek location** — dobara call k
 
 **1. Coordinates ka order `[longitude, latitude]` hai** — GeoJSON standard. Ye **ulta** hai us se jo maps APIs usually dete hain (`lat, lng`). **Galat order sabse common bug hai** — Indore ke liye `[75.8937, 22.7533]` sahi hai, `[22.7533, 75.8937]` galat.
 
-**2. Ye endpoint voucher listing ke liye zaruri hai.** Voucher APIs (#15, #16) customer ke coordinates use karte hain. Agar location save nahi ki to wo `400 "Customer location not found."` denge — unless har call me `latitude`/`longitude` explicitly bhejein.
+**2. Ye endpoint voucher listing ko aasan banata hai, zaruri nahi hai.** Voucher APIs (#15, #16) ko coordinates chahiye. Address save hone pe wo **apne aap** use ho jaate hain; warna har call me `latitude`/`longitude` explicitly bhejne padte hain, warna `400 "Location is required…"` aata hai.
+
+> Guest ke paas saved address ho hi nahi sakta (ye endpoint `isCustomer` hai), to guest mode me coordinates hamesha explicitly bhejein.
 
 **3. Upsert lookup `userId` pe hota hai**, `customerId` pe nahi. Ek user ki ek hi location rahegi.
 
@@ -941,7 +1028,7 @@ Customer ka address save/update. **Ek customer = ek location** — dobara call k
 
 Location ID se detail fetch.
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🔒 **Koi bhi signed-in role** (`verifyJwtToken`)
 
 ### Headers
 | Header | Value | Required |
@@ -999,7 +1086,7 @@ Location ID se detail fetch.
 
 Categories list. Home screen ke category grid ke liye.
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 ### Headers
 | Header | Value | Required |
@@ -1078,7 +1165,7 @@ GET /categories/getAll?isActive=true&limit=50&sortBy=name&sortOrder=asc
 
 ## 10. GET /categories/get/:id
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 ### Path Params
 | Param | Type | Required |
@@ -1117,7 +1204,7 @@ GET /categories/getAll?isActive=true&limit=50&sortBy=name&sortOrder=asc
 
 Sub-categories list. `categoryId` se filter kar sakte hain.
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 ### Query Params
 Same as [#9](#9-get-categoriesgetall), plus:
@@ -1170,7 +1257,7 @@ GET /subCategories/getAll?categoryId=68f1a2b3c4d5e6f7a8b9c0e1&isActive=true&limi
 
 ## 12. GET /subCategories/get/:id
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 ### Path Params
 | Param | Type | Required |
@@ -1210,7 +1297,7 @@ GET /subCategories/getAll?categoryId=68f1a2b3c4d5e6f7a8b9c0e1&isActive=true&limi
 
 Home screen ka **ek** active banner. App-level banner hai (kisi brand ka nahi).
 
-**Access:** Intended: CUSTOMER · Enforced: **Any authenticated**
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 ### Headers
 | Header | Value | Required |
@@ -1302,7 +1389,7 @@ Frontend ko `type` dekh kar right field padhna hai. Baaki fields absent ya empty
 
 Home screen ka scrolling ticker strip. Multiple tickers aate hain.
 
-**Access:** Intended: CUSTOMER · Enforced: **Any authenticated**
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 ### Query Params
 Koi nahi.
@@ -1391,7 +1478,7 @@ Customer ko sirf **`PUBLISHED`** status ke, currently valid (`startAt <= now < e
 
 Nearby vouchers ki paginated list. Home/deals screen ka main feed.
 
-**Access:** Intended: CUSTOMER · Enforced: **Any authenticated**
+**Access:** 🌐 **Guest bhi** (`optionalAuth`) — token bhejo to personalised, na bhejo to anonymous. Galat token phir bhi reject hota hai
 
 ### Headers
 | Header | Value | Required |
@@ -1557,9 +1644,9 @@ Har row pe `isSuggested` boolean aata hai — usse badge/highlight kar sakte hai
 ### Errors
 | Status | Message | Kab |
 |---|---|---|
-| `404` | `Customer not found.` | Token ka customer record nahi ya inactive |
-| `400` | `Customer location not found.` | Coordinates nahi bheje aur saved location bhi nahi |
-| `400` | `Customer location coordinates not found.` | Saved location hai par uska `geo` corrupt/missing |
+| `400` | `Location is required. Send latitude and longitude, or save an address first.` | Na coordinates bheje, na koi saved address hai. **Guest ke liye normal case** |
+| `400` | `Customer location coordinates not found.` | Saved address hai par uska `geo` corrupt/missing |
+| `403` | `Invalid or malformed token. Please log in again.` | Token bheja par wo valid nahi. Bina token bilkul theek hai — aadha-adhoora token nahi |
 | `404` | `No any voucher found` | ⚠️ Radius me koi voucher nahi — **empty-state dikhayein, error nahi** |
 | `500` | `Invalid voucher maximum distance configuration.` | Platform settings me `maxDistanceKm` galat |
 | `422` | `Invalid category ID.` / `Invalid subCategory ID.` | ObjectId format galat |
@@ -1610,7 +1697,7 @@ Aisa isliye hai ki jis sheher me curated brands abhi pahunche hi nahi, wahan tab
 
 Voucher detail screen. Saare offers + saare outlets ke saath.
 
-**Access:** Intended: CUSTOMER · Enforced: **Any authenticated**
+**Access:** 🌐 **Guest bhi** (`optionalAuth`) — token bhejo to personalised, na bhejo to anonymous. Galat token phir bhi reject hota hai
 
 ### Path Params
 | Param | Type | Required | Validation |
@@ -1732,9 +1819,9 @@ GET /vouchers/customer/get/68f1a2b3c4d5e6f7a8b9c2a1?latitude=22.7533&longitude=7
 | Status | Message | Kab |
 |---|---|---|
 | `400` | `Invalid voucher ID.` | ObjectId format galat |
-| `404` | `Customer not found.` | Customer record missing/inactive |
-| `400` | `Customer location not found.` | Coordinates + saved location dono nahi |
-| `400` | `Customer location coordinates not found.` | Saved location ka geo corrupt |
+| `400` | `Location is required. Send latitude and longitude, or save an address first.` | Na coordinates, na saved address. **Guest ke liye normal case** |
+| `400` | `Customer location coordinates not found.` | Saved address ka `geo` corrupt |
+| `403` | `Invalid or malformed token. Please log in again.` | Token bheja par valid nahi |
 | `404` | `Voucher not found or currently unavailable.` | Voucher exist nahi karta, `PUBLISHED` nahi, expire ho gaya, ya radius ke bahar |
 | `400` | `Selected outlet is not linked with this voucher.` | `outletId` is voucher ka nahi |
 | `500` | `Invalid voucher maximum distance configuration.` | Settings issue |
@@ -1760,7 +1847,7 @@ GET /vouchers/customer/get/68f1a2b3c4d5e6f7a8b9c2a1?latitude=22.7533&longitude=7
 
 Bill amount pe **actual discount** calculate karta hai. Ye batata hai user ko kitna bachega.
 
-**Access:** Intended: CUSTOMER · Enforced: **Any authenticated**
+**Access:** 🌐 **Guest bhi** (`optionalAuth`) — token bhejo to personalised, na bhejo to anonymous. Galat token phir bhi reject hota hai
 
 ### Headers
 | Header | Value | Required |
@@ -1991,7 +2078,7 @@ Ye do case me hota hai:
 
 Brand profile screen ka **single call** — brand, features, visible showcase preview aur outlets, sab ek saath.
 
-**Access:** Intended: CUSTOMER · Enforced: **CUSTOMER**
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 > 🔄 **v1.2.0 me badla.** Pehle yahan `GET /brands/get?brandId=` document tha. Wo endpoint ab **customer ke liye band hai** (`isVendorOrAdmin`) — wo brand ka PAN, GSTIN, bank account aur subscription billing return karta tha. Ye naya endpoint sirf wahi banata hai jo profile screen render karti hai, to usme strip karne layak kuch hai hi nahi.
 
@@ -2125,7 +2212,7 @@ Brand profile screen ka **single call** — brand, features, visible showcase pr
 
 Brand directory ki paginated list — aur **"Top Brands" tab** bhi isi se.
 
-**Access:** Intended: CUSTOMER · Enforced: **CUSTOMER**
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 > 🆕 **v1.3.0 me naya.** Pehle koi brand-list endpoint tha hi nahi.
 
@@ -2255,7 +2342,7 @@ Na bhejein to ye simple directory hai — koi `distanceInMeters` field nahi aaye
 
 Brand ka photo/video gallery, sections me organized.
 
-**Access:** Public (koi token nahi chahiye) — `/brands/customer/*` ki tarah
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 ### Path Params
 | Param | Type | Required |
@@ -2386,7 +2473,7 @@ Poora filter: section pe `isVisible && isActive && !isDeleted`, media pe `isActi
 
 Brand ke videos ka flat, paginated feed — reels/stories style UI ke liye.
 
-**Access:** Public (koi token nahi chahiye)
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 ### Path Params
 | Param | Type | Required |
@@ -2471,7 +2558,7 @@ Matlab showcase (#19) me video dikhe par clips feed me na aaye — ye normal hai
 
 Brand ke USP/highlight points (icon + title + description). Brand profile pe "Features" / "Why choose us" section.
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 ### Query Params
 | Param | Type | Required | Default | Validation |
@@ -2551,7 +2638,7 @@ GET /brandFeatures/get-all?brandId=68f1a2b3c4d5e6f7a8b9c3a1&isActive=true&limit=
 
 ## 22. GET /brandFeatures/get/:featureId
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 ### Path Params
 | Param | Type | Required |
@@ -2596,7 +2683,7 @@ Practically ye endpoint customer app me shayad na chahiye — `get-all` (#21) me
 
 Brand follow/unfollow. **Ek hi endpoint dono karta hai** — current state ka ulta ho jaata hai.
 
-**Access:** Intended: CUSTOMER · Enforced: **CUSTOMER** (service level pe customer resolve hota hai)
+**Access:** 🔒 **Sirf CUSTOMER** (`isCustomer`)
 
 ### Headers
 | Header | Value | Required |
@@ -2665,7 +2752,7 @@ Koi nahi.
 
 Customer ne jin brands ko follow kiya, unki paginated list.
 
-**Access:** Intended: CUSTOMER · Enforced: **CUSTOMER** (service level)
+**Access:** 🔒 **Sirf CUSTOMER** (`isCustomer`)
 
 ### Query Params
 | Param | Type | Required | Default | Validation |
@@ -2740,7 +2827,7 @@ GET /follows/get-all?page=1&limit=20
 
 Brand ko "avoid list" me add/remove. "Bad experience" / "Don't show me this brand" feature.
 
-**Access:** Intended: CUSTOMER · Enforced: **CUSTOMER** (service level)
+**Access:** 🔒 **Sirf CUSTOMER** (`isCustomer`)
 
 ### Path Params
 | Param | Type | Required |
@@ -2800,7 +2887,7 @@ Koi nahi.
 
 Avoid kiye brands ki paginated list.
 
-**Access:** Intended: CUSTOMER · Enforced: **CUSTOMER** (service level)
+**Access:** 🔒 **Sirf CUSTOMER** (`isCustomer`)
 
 ### Query Params
 Same as [#24](#24-get-followsget-all).
@@ -2856,7 +2943,7 @@ Same as [#24](#24-get-followsget-all).
 
 ## 27. GET /terms-and-conditions/getAll
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 ### Query Params
 | Param | Type | Required | Default | Validation |
@@ -2921,7 +3008,7 @@ GET /terms-and-conditions/getAll?isActive=true&limit=20
 
 ## 28. GET /terms-and-conditions/get/:id
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 ### Path Params
 | Param | Type | Required |
@@ -2956,7 +3043,7 @@ GET /terms-and-conditions/getAll?isActive=true&limit=20
 
 ## 29. GET /privacy-and-policies/getAll
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 ### Query Params
 Same as [#27](#27-get-terms-and-conditionsgetall).
@@ -2999,7 +3086,7 @@ Same as [#27](#27-get-terms-and-conditionsgetall).
 
 ## 30. GET /privacy-and-policies/get/:id
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 ### Path Params
 | Param | Type | Required |
@@ -3050,7 +3137,7 @@ Global middleware: `router.use(verifyJwtToken)` — chaaron endpoints pe.
 
 Device ko push ke liye register karta hai. **App start pe aur token refresh pe call karein.**
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🔒 **Koi bhi signed-in role** (`verifyJwtToken`)
 
 ### Headers
 | Header | Value | Required |
@@ -3135,7 +3222,7 @@ Device ko push ke liye register karta hai. **App start pe aur token refresh pe c
 
 Device ko push se hata deta hai. **Logout pe call karna zaruri hai.**
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🔒 **Signed in — suspended account bhi** (`verifyJwtTokenEvenIfDeactivated`)
 
 ### Body
 | Field | Type | Required | Default | Notes |
@@ -3191,7 +3278,7 @@ POST /auth/logout
 
 Caller ke apne registered devices. "Logged-in devices" screen ke liye.
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🔒 **Koi bhi signed-in role** (`verifyJwtToken`)
 
 ### Query Params
 | Param | Type | Required | Default | Notes |
@@ -3251,7 +3338,7 @@ Caller ke apne registered devices. "Logged-in devices" screen ke liye.
 
 Test push bhejta hai — **sirf caller ke apne devices pe**. Setup verify karne ke liye.
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** 🔒 **Koi bhi signed-in role** (`verifyJwtToken`)
 
 ### Body — dono optional
 | Field | Type | Required | Default | Validation |

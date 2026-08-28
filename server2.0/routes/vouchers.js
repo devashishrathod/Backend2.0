@@ -2,10 +2,10 @@ const express = require("express");
 const router = express.Router();
 
 const {
-  verifyJwtToken,
   validateSchema,
   isAdmin,
   isVendorOrAdmin,
+  optionalAuth,
 } = require("../middlewares");
 const {
   create,
@@ -113,19 +113,31 @@ router.delete(
   deleteBanner,
 );
 
-// Customer
+// ---------------------------------------------------------------------------
+// Customer — open to guests, personalised when signed in.
+//
+// `optionalAuth` rather than no gate at all: these handlers read `req.userId`
+// to fall back to the customer's saved location, and with no gate that is
+// `undefined` even for a signed-in caller — which made every one of these
+// answer `404 "Customer not found."` for everybody.
+//
+// A guest simply has to pass `latitude` + `longitude` explicitly.
+// ---------------------------------------------------------------------------
 router.get(
   "/customer/get-all",
+  optionalAuth,
   validateSchema(validateCustomerGetAllVouchers),
   getAllCustomerVouchers,
 );
 router.get(
   "/customer/get/:voucherId",
+  optionalAuth,
   validateSchema(validateCustomerGetVoucher),
   getCustomerVoucher,
 );
 router.post(
   "/customer/voucher/preview",
+  optionalAuth,
   validateSchema(validateCustomerVoucherPreview),
   previewCustomerVoucher,
 );

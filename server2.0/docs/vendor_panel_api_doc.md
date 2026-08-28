@@ -5973,7 +5973,7 @@ Asli verdict `SystemVerify` document me hai.
 
 ---
 
-**Doc version:** 1.2.0 · **Last verified:** 2026-08-27 against a running server (101 requests · 234 assertions · all pass)
+**Doc version:** 1.2.1 · **Last verified:** 2026-08-28 against a running server (99 requests · 228 assertions · 105 captured examples · all pass)
 **Related docs:** [endpoints_category.md](./endpoints_category.md) · [security_findings.md](./security_findings.md) · [brand_verification_api_doc.md](./brand_verification_api_doc.md) · [subscription_lifecycle_design.md](./subscription_lifecycle_design.md) · [brand_rejection_remediation_design.md](./brand_rejection_remediation_design.md) · [customer_mobile_api_doc.md](./customer_mobile_api_doc.md)
 **Pending:** Super admin panel doc (phase 3)
 

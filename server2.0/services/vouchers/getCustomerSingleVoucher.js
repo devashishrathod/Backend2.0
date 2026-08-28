@@ -26,15 +26,16 @@ exports.getCustomerSingleVoucher = async (userId, payload) => {
    * -----------------------------------------
    */
 
-  const customer = await Customer.findOne({
-    userId,
-    isActive: true,
-    isDeleted: false,
-  }).select("_id locationId");
-
-  if (!customer) {
-    throwError(404, "Customer not found.");
-  }
+  // Optional context, not identity — same reasoning as getCustomerVouchers.
+  // A guest has no `userId`; the record is only used for the saved-location
+  // fallback, so its absence just means coordinates must be explicit.
+  const customer = userId
+    ? await Customer.findOne({
+        userId,
+        isActive: true,
+        isDeleted: false,
+      }).select("_id locationId")
+    : null;
 
   /**
    * -----------------------------------------
@@ -46,8 +47,11 @@ exports.getCustomerSingleVoucher = async (userId, payload) => {
   let longitude = payload.longitude;
 
   if (latitude === undefined || longitude === undefined) {
-    if (!customer.locationId) {
-      throwError(400, "Customer location not found.");
+    if (!customer?.locationId) {
+      throwError(
+        400,
+        "Location is required. Send latitude and longitude, or save an address first.",
+      );
     }
 
     const location = await Location.findOne({
