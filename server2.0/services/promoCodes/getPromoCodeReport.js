@@ -3,10 +3,12 @@ const PromoCodeUsage = require("../../models/PromoCodeUsage");
 const PromoCode = require("../../models/PromoCode");
 const { throwError } = require("../../utils");
 const { buildAggregateLookup } = require("../../database");
+const { buildAudienceFilter } = require("../../helpers/promoCodes");
 const {
   PROMO_USAGE_STATUS,
   REPORT_LIMITS,
   REPORT_GROUP_BY,
+  PROMO_AUDIENCE,
 } = require("../../constants/promoCode");
 const { SUBSCRIPTION_HISTORY_ACTION } = require("../../constants/subscription");
 
@@ -40,9 +42,27 @@ const DAY_FORMAT = Object.freeze({
  * other.
  */
 exports.getPromoCodeReport = async (query = {}) => {
-  const { promoCodeId, code, from, to, groupBy = REPORT_GROUP_BY.DAY } = query;
+  const {
+    promoCodeId,
+    code,
+    from,
+    to,
+    audience,
+    groupBy = REPORT_GROUP_BY.DAY,
+  } = query;
 
   const match = {};
+
+  // Scoped by audience, or the two campaigns' numbers are summed together. It
+  // also matters mechanically: `brandId` is no longer required on this ledger,
+  // so every customer row would otherwise collapse into a single null bucket in
+  // the by-brand sections below.
+  //
+  // Not `match.audience = audience`: ledger rows written before this field
+  // existed carry no value, while every row written since defaults to VENDOR.
+  // An exact match on VENDOR would therefore report on the new rows only and
+  // quietly drop the campaign's whole history.
+  Object.assign(match, buildAudienceFilter(audience));
 
   // A specific campaign, by id or by the code an admin actually remembers.
   let promo = null;
@@ -56,6 +76,24 @@ exports.getPromoCodeReport = async (query = {}) => {
 
     if (!promo) throwError(404, "Promo code not found");
     match.promoCodeId = promo._id;
+
+    // A specific campaign already implies its audience, so the code decides —
+    // never the query string. Falling back to VENDOR matters: codes created
+    // before this field existed have no stored value, and leaving `match.audience`
+    // undefined would match only ledger rows that ALSO predate it, hiding every
+    // claim made since (new rows default to VENDOR).
+    const promoAudience = promo.audience ?? PROMO_AUDIENCE.VENDOR;
+
+    // Contradicting the code's own audience can only ever return an empty
+    // report. Saying so beats handing an admin a page of zeroes and letting them
+    // conclude the campaign flopped.
+    if (audience && audience !== promoAudience) {
+      throwError(
+        422,
+        `${promo.code} is a ${promoAudience} promo code — asking for the ${audience} audience would report on nothing. Drop the audience filter, or use it without naming a code.`,
+      );
+    }
+    Object.assign(match, buildAudienceFilter(promoAudience));
   }
 
   const fromDate = from ? new Date(from) : null;

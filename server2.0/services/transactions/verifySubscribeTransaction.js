@@ -79,10 +79,15 @@ exports.verifySubscribeTransaction = async (actor, payload) => {
     };
   }
 
+  // The account is read off the transaction, never hardcoded. It was written
+  // when the order was created, so "which secret verifies this payment" is a
+  // fact about the row rather than a convention this call site has to remember
+  // — and getting it wrong means a signature that can never match, with the
+  // money already captured.
   const expectedSignature = generateRazorpaySignature(
     razorpayOrderId,
     razorpayPaymentId,
-    ROLES.VENDOR,
+    transaction.gatewayAccount,
   );
   if (expectedSignature !== razorpaySignature) {
     throwError(400, "Invalid signature. Payment may be tampered.");
@@ -90,7 +95,10 @@ exports.verifySubscribeTransaction = async (actor, payload) => {
 
   let payment;
   try {
-    payment = await getPaymentDetails(razorpayPaymentId, ROLES.VENDOR);
+    payment = await getPaymentDetails(
+      razorpayPaymentId,
+      transaction.gatewayAccount,
+    );
   } catch (error) {
     console.error("[verifySubscribe] Razorpay lookup failed:", error?.message);
     throwError(503, "Razorpay services unavailable! Please try again later");

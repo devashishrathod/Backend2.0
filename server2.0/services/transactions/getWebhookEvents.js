@@ -2,7 +2,10 @@ const mongoose = require("mongoose");
 const WebhookEvent = require("../../models/WebhookEvent");
 const { buildAggregateLookup } = require("../../database");
 const { pagination, throwError } = require("../../utils");
-const { WEBHOOK_STATUS } = require("../../constants/webhook");
+const {
+  WEBHOOK_STATUS,
+  WEBHOOK_REPLAYABLE_STATUSES,
+} = require("../../constants/webhook");
 
 /**
  * Admin view of every webhook delivery.
@@ -27,6 +30,8 @@ exports.getWebhookEvents = async (query = {}) => {
     transactionId,
     brandId,
     razorpayOrderId,
+    account,
+    purpose,
     fromDate,
     toDate,
     sortOrder = "desc",
@@ -42,6 +47,10 @@ exports.getWebhookEvents = async (query = {}) => {
 
   if (event) match.event = event;
   if (razorpayOrderId) match.razorpayOrderId = razorpayOrderId;
+  // Which Razorpay account, and which money flow. Without these an admin
+  // cannot separate a subscription delivery from a voucher one at all.
+  if (account) match.account = account;
+  if (purpose) match.purpose = purpose;
   if (transactionId) {
     match.transactionId = new mongoose.Types.ObjectId(transactionId);
   }
@@ -87,9 +96,10 @@ exports.getWebhookEvents = async (query = {}) => {
           { $ne: ["$transaction.verified", true] },
         ],
       },
-      isReplayable: {
-        $in: ["$status", [WEBHOOK_STATUS.FAILED, WEBHOOK_STATUS.IGNORED]],
-      },
+      // From the constant, not a literal — this and the single-event read
+      // used to hardcode the pair separately and could drift from the replay
+      // gate that actually enforces it.
+      isReplayable: { $in: ["$status", [...WEBHOOK_REPLAYABLE_STATUSES]] },
     },
   });
 
@@ -99,8 +109,12 @@ exports.getWebhookEvents = async (query = {}) => {
       // single-event read.
       provider: 1,
       eventId: 1,
+      claimedEventId: 1,
       event: 1,
       status: 1,
+      account: 1,
+      matchedExpectedAccount: 1,
+      purpose: 1,
       outcome: 1,
       error: 1,
       attempts: 1,
@@ -154,8 +168,6 @@ exports.getWebhookEvent = async (payload) => {
 
   return {
     ...record,
-    isReplayable: [WEBHOOK_STATUS.FAILED, WEBHOOK_STATUS.IGNORED].includes(
-      record.status,
-    ),
+    isReplayable: WEBHOOK_REPLAYABLE_STATUSES.includes(record.status),
   };
 };

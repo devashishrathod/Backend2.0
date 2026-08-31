@@ -8,6 +8,7 @@ const fileUpload = require("express-fileupload");
 const { mongoDb } = require("./database/mongoDb");
 const { errorHandler } = require("./middlewares");
 const { logChannelStatus } = require("./helpers/notifications");
+const { logPaymentAccounts, assertMoneyIndexes } = require("./helpers/transactions");
 const { throwError } = require("./utils");
 const allRoutes = require("./routes");
 const { getIP } = require("./configs/render");
@@ -50,9 +51,20 @@ app.listen(port, async () => {
   // Which notification channels can actually deliver. Answers "did my env
   // var take effect?" without an endpoint, and logs no credentials.
   logChannelStatus();
+  // Same question for the two Razorpay accounts: keys present, test or live,
+  // and whether each one can verify a webhook at all. A missing webhook secret
+  // is otherwise invisible until a payment is captured and never settles.
+  logPaymentAccounts();
   // Background sweeps (subscription + voucher expiry). Started after the
   // listener so a slow first run never delays the port binding, and never
   // allowed to take the process down. Disable with ENABLE_JOBS=false.
+  // Are the money indexes the ones this build expects? A blanket unique index
+  // where a partial one belongs rejects the second row that has no value yet,
+  // and it is invisible until a real payment hits it. Reports only — nothing is
+  // dropped automatically. See helpers/transactions/assertMoneyIndexes.js.
+  assertMoneyIndexes().catch((error) =>
+    console.error("[idx] index check failed:", error?.message),
+  );
   startJobs().catch((error) =>
     console.error("❌ [jobs] failed to start:", error?.message),
   );

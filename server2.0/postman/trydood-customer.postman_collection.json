@@ -14229,7 +14229,644 @@
       ]
     },
     {
-      "name": "11 — Access control (customer token refuse hona chahiye)",
+      "name": "11 — Voucher Claims",
+      "description": "Voucher khareedne se lekar us claim ki poori kahani tak.\n\nListing aur detail dono **ek hi endpoint, teen shapes** hain — scope aur projection\ntoken se nikalte hain. Teen alag endpoint ka matlab hota teen jagah ye yaad rakhna ki\nvendor ko kya nahi dikhna chahiye, aur ek jagah bhoolna = leak.",
+      "item": [
+        {
+          "name": "Claim order kholo (promo ke saath) ⭐",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(b, \"data key\").to.have.property(\"data\");",
+                  "});",
+                  "",
+                  "// ── capture into the environment ──",
+                  "if (pm.response.code < 300) {",
+                  "  const d = pm.response.json().data;",
+                  "  try { if (d.transaction._id) pm.environment.set(\"claim_transaction_id\", String(d.transaction._id)); } catch (e) {}",
+                  "  try { if (d.claim._id) pm.environment.set(\"claim_id\", String(d.claim._id)); } catch (e) {}",
+                  "  try { if (d.claim.claimCode) pm.environment.set(\"claim_code\", String(d.claim.claimCode)); } catch (e) {}",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"voucherId\": \"{{voucher_id}}\",\n  \"outletId\": \"{{outlet_id}}\",\n  \"billAmount\": 1000,\n  \"offerId\": \"{{offer_id}}\",\n  \"promoCode\": \"{{promo_code}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/voucher-claims/create-order",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims",
+                "create-order"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `isCustomer` — 🔒 sign-in zaroori. Guest ko **daam** milta hai (preview), **order nahi**.\n\nOrder of operations hi design hai:\n\n```\nprice → idempotency key insert → reuse window → claim + usage slot\n      → promo reserve → Razorpay (sabse aakhir me)\n```\n\n- **Key pehle, gateway baad me.** Do concurrent taps dono read-then-write check paas kar jaate hain;\n  key insert karna hi dusre ko haraata hai — unique index faisla karta hai, timing nahi.\n  Razorpay aakhir me isliye ki wahi ek step hai jiska koi undo nahi.\n- **Usage slot claim banate hi** liya jaata hai, payment par nahi — warna wahi window bachti hai\n  jo race ko chahiye: do checkout khule, koi kuch hold na kare, dono paas.\n- `promoCode` yahan **422** deta hai agar na chale. Preview par wahi rejection narm hai —\n  par yahan customer daam dekh chuka hai aur Pay daba chuka hai, to poora daam le lena theek nahi.\n\n| Field | Zaroori | Notes |\n|---|:-:|---|\n| `voucherId` | ✅ | |\n| `outletId` | ✅ | Jis outlet par bill bana |\n| `billAmount` | ✅ | > 0, `claim.maxBillAmount` (default ₹1,00,000) tak |\n| `offerId` | — | Na do to best applicable offer khud chunta hai |\n| `promoCode` | — | Na chale to **422**, chup-chaap ignore nahi |"
+          },
+          "response": []
+        },
+        {
+          "name": "Payment verify karo (browser callback)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(b, \"data key\").to.have.property(\"data\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"razorpayOrderId\": \"{{razorpay_order_id}}\",\n  \"razorpayPaymentId\": \"{{razorpay_payment_id}}\",\n  \"razorpaySignature\": \"{{razorpay_signature}}\",\n  \"transactionId\": \"{{claim_transaction_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/voucher-claims/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims",
+                "verify"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `isCustomer` — settlement claim ka maalik check karta hai, aur anonymous caller ke paas check karne ko kuch nahi.\n\nYe aur webhook **har payment par race karte hain** — dono ek hi `settleVoucherClaimPayment` chalate hain,\naur conditional claim (`verified: false → true`) tay karta hai kaun jeeta. Haarne wala\n\"pehle ho chuka\" report karta hai, dobara settle nahi karta.\n\nChaaron field **zaroori** hain. `transactionId` khaas taur par: vendor wale twin me ye kabhi\noptional tha, jisse ek verify request bina kuch verify kiye nikal jaati thi.\n\n> Signature usi Razorpay account ke secret se check hota hai jo `transaction.gatewayAccount`\n> par likha hai — call site par account hardcode karna mana hai."
+          },
+          "response": []
+        },
+        {
+          "name": "Meri claims — order history ⭐",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(b, \"data key\").to.have.property(\"data\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/voucher-claims?page=1&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "REDEEMED",
+                  "disabled": true
+                },
+                {
+                  "key": "claimCode",
+                  "value": "{{claim_code}}",
+                  "disabled": true
+                },
+                {
+                  "key": "brandId",
+                  "value": "{{brand_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "from",
+                  "value": "2026-08-01",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "2026-08-31",
+                  "disabled": true
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken` — koi bhi role. **Ek endpoint, teen shapes.** Scope aur projection dono token se nikalte hain —\ncustomer apne, vendor apne brand ke, sub-vendor apne outlet ke, admin sab dekhta hai.\n\n| Field | Customer | Vendor / Outlet | Admin |\n|---|:-:|:-:|:-:|\n| `voucher.convenienceFee` | ✅ | — | ✅ |\n| `voucher.vendorPayable` | — | ✅ | ✅ |\n| `gatewayFee` · `netReceived` | — | — | ✅ |\n| `voucher.platformPromoCost` | — | — | ✅ |\n| `email` · `contact` · `customerId` | ✅ (apna) | — | ✅ |\n| `invoiceDownloadUrl` | ✅ | — | ✅ |\n\n> Vendor ko `gatewayFee` / `platformPromoCost` **kabhi nahi** — wo hamara margin hai,\n> aur `email` / `contact` customer ki privacy. Dono ek hi document par hain, isiliye\n> ye faisla `claimProjection()` me ek jagah hota hai, har call site par yaad nahi rakha jaata.\n\nYe **\"maine kya khareeda\"** hai, \"kaunsa paisa hila\" nahi (uske liye `/payments`).\n\nFrozen snapshots padhta hai — `voucherSnapshot`, `brandSnapshot`, `outletSnapshot` — isliye\nSeptember ki claim March me bhi sahi padhti hai, voucher republish hone aur outlet ka naam\nbadalne ke baad bhi. Ye join nahi hai.\n\n| Param | Notes |\n|---|---|\n| `page` / `limit` | `1` / `20`, limit max **100** |\n| `status` | `PENDING · PAID · REDEEMED · FAILED · CANCELLED · EXPIRED · REFUNDED` |\n| `claimCode` | Poora code |\n| `brandId` / `outletId` / `voucherId` | Narrow karne ke liye |\n| `from` / `to` | ISO date. `to` **poore din** ko include karta hai (23:59:59) |\n\n⚠️ **Scope query se chaudi nahi ho sakti.** Filter aur scope **intersect** hote hain:\nvendor `?brandId=<dusra brand>` bheje to **kuch nahi** milta — apne rows nahi. Overlay karna\nsurakshit tha par chup: filter kaam karta hua *dikhta* tha, aur koi us par report bana leta.\n\n> Khaali list **200 + `data: []`** hai, 404 nahi. Jis customer ne kuch khareeda hi nahi\n> uski history khaali hai, gayab nahi — 404 pehli baar app kholne par error screen dikha deta."
+          },
+          "response": []
+        },
+        {
+          "name": "Mere payments",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(b, \"data key\").to.have.property(\"data\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/voucher-claims/payments?page=1&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims",
+                "payments"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "captured",
+                  "disabled": true
+                },
+                {
+                  "key": "from",
+                  "value": "2026-08-01",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "2026-08-31",
+                  "disabled": true
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken` — koi bhi role. **Ek endpoint, teen shapes.** Scope aur projection dono token se nikalte hain —\ncustomer apne, vendor apne brand ke, sub-vendor apne outlet ke, admin sab dekhta hai.\n\n| Field | Customer | Vendor / Outlet | Admin |\n|---|:-:|:-:|:-:|\n| `voucher.convenienceFee` | ✅ | — | ✅ |\n| `voucher.vendorPayable` | — | ✅ | ✅ |\n| `gatewayFee` · `netReceived` | — | — | ✅ |\n| `voucher.platformPromoCost` | — | — | ✅ |\n| `email` · `contact` · `customerId` | ✅ (apna) | — | ✅ |\n| `invoiceDownloadUrl` | ✅ | — | ✅ |\n\n> Vendor ko `gatewayFee` / `platformPromoCost` **kabhi nahi** — wo hamara margin hai,\n> aur `email` / `contact` customer ki privacy. Dono ek hi document par hain, isiliye\n> ye faisla `claimProjection()` me ek jagah hota hai, har call site par yaad nahi rakha jaata.\n\nYe **\"kaunsa paisa hila\"** hai. `status` yahan **payment** ki vocabulary hai\n(`created · authorized · captured · failed`), claim ki nahi.\n\n> `purpose` se scope hai, isliye ek galat filter bhi kabhi **subscription** payment\n> nahi dikha sakta — ek hi collection dono flows rakhti hai."
+          },
+          "response": []
+        },
+        {
+          "name": "Ek payment kholo (notification ka deep link yahin utarta hai) ⭐",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(b, \"data key\").to.have.property(\"data\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/voucher-claims/payments/{{claim_transaction_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims",
+                "payments",
+                "{{claim_transaction_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken` — koi bhi role. **Ek endpoint, teen shapes.** Scope aur projection dono token se nikalte hain —\ncustomer apne, vendor apne brand ke, sub-vendor apne outlet ke, admin sab dekhta hai.\n\n| Field | Customer | Vendor / Outlet | Admin |\n|---|:-:|:-:|:-:|\n| `voucher.convenienceFee` | ✅ | — | ✅ |\n| `voucher.vendorPayable` | — | ✅ | ✅ |\n| `gatewayFee` · `netReceived` | — | — | ✅ |\n| `voucher.platformPromoCost` | — | — | ✅ |\n| `email` · `contact` · `customerId` | ✅ (apna) | — | ✅ |\n| `invoiceDownloadUrl` | ✅ | — | ✅ |\n\n> Vendor ko `gatewayFee` / `platformPromoCost` **kabhi nahi** — wo hamara margin hai,\n> aur `email` / `contact` customer ki privacy. Dono ek hi document par hain, isiliye\n> ye faisla `claimProjection()` me ek jagah hota hai, har call site par yaad nahi rakha jaata.\n\nPush notification tap karke customer yahin aata hai, aur vendor apne din ki ek row\nkholkar bhi. Wahi projection jo listing use karti hai — detail page par wo field dikhna\njo list chhupati hai, exactly wo leak hai jise koi jaanchta nahi.\n\n**Response:** `payment` · `claim` · `brand` · `outlet` · `viewer`\n\n- `claim` saath aata hai kyunki akela payment sirf ek raqam aur ek timestamp hai —\n  customer ko wo dekhna hai jo usne khareeda\n- `viewer` batata hai caller kya render kar sakta hai, taaki client ko andaza na lagana pade\n- `payment.invoiceDownloadUrl` — **token nahi**. Token PDF ka bina-auth bearer credential hai;\n  bana hua URL hi uska poora istemaal hai\n- `PUBLIC_API_URL` set na ho to link **aata hi nahi** — kahin na jaane wala Download button\n  na hone se bura hai\n\n**Errors:** `404` na milne par (galat id **aur** dusre ka row — dono, warna prober ko pata\nchal jaata hai ki row hai) · `403` dusre outlet ka payment · `422` malformed id"
+          },
+          "response": []
+        },
+        {
+          "name": "Ek claim kholo — timeline ke saath ⭐",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(b, \"data key\").to.have.property(\"data\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/voucher-claims/{{claim_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims",
+                "{{claim_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken` — koi bhi role. **Ek endpoint, teen shapes.** Scope aur projection dono token se nikalte hain —\ncustomer apne, vendor apne brand ke, sub-vendor apne outlet ke, admin sab dekhta hai.\n\n| Field | Customer | Vendor / Outlet | Admin |\n|---|:-:|:-:|:-:|\n| `voucher.convenienceFee` | ✅ | — | ✅ |\n| `voucher.vendorPayable` | — | ✅ | ✅ |\n| `gatewayFee` · `netReceived` | — | — | ✅ |\n| `voucher.platformPromoCost` | — | — | ✅ |\n| `email` · `contact` · `customerId` | ✅ (apna) | — | ✅ |\n| `invoiceDownloadUrl` | ✅ | — | ✅ |\n\n> Vendor ko `gatewayFee` / `platformPromoCost` **kabhi nahi** — wo hamara margin hai,\n> aur `email` / `contact` customer ki privacy. Dono ek hi document par hain, isiliye\n> ye faisla `claimProjection()` me ek jagah hota hai, har call site par yaad nahi rakha jaata.\n\n**Response:** `claim` · `payment` · `brand` · `outlet` · **`timeline`** · `viewer`\n\n### Timeline banayi jaati hai, chhaani nahi\n\n`VoucherClaimHistory` append-only hai aur jaan-boojhkar **poori** — jo us waqt mayne rakhta\ntha wo sab. Wahi poornata wajah hai ki use jaisa ka taisa page par nahi bheja ja sakta:\n\n- `snapshot` **Mixed** hai aur aaj `CLAIM_CREATED` row par poora pricing block rakhta hai,\n  `platformPromoCost` samet. Kaccha bhejna vendor ko hamara margin pichhle darwaze se de deta\n- `reason` staff ne **staff ke liye** likha free text hai. *\"Refunded, customer disputes the bill\"*\n  wo vaakya nahi hai jo usi customer ko dikhaya jaaye\n\nIsliye non-admin ko har row se sirf: `label` · `at` · `fromStatus` → `toStatus` · `by` (role, aadmi nahi).\n`PROMO_RELEASED` sirf admin ko — wo hamari budget bookkeeping hai.\n\n**Timeline aage se padhi jaati hai (purani pehle).** Listing ulti hai, kyunki list me sabse naya khoja jaata hai."
+          },
+          "response": []
+        },
+        {
+          "name": "Claim code se kholo (counter wala surface)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(b, \"data key\").to.have.property(\"data\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/voucher-claims/code/{{claim_code}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims",
+                "code",
+                "{{claim_code}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken` — wahi service jo `/:claimId` chalati hai, to ek hi access rule dono par.\n\nCode hi wo cheez hai jo asli duniya me maujood hai: screen par chhapa, bolkar padha, type kiya.\nSirf ObjectId lene wala surface outlet ko pehle search karne par majboor karta — matlab dusra\nendpoint aur access rules ka dusra set galat hone ke liye.\n\n⚠️ **Code lookup ko narrow karta hai, authorise nahi karta.** Kisi aur ki screen se padha\ngaya code bhi kuch nahi kholta.\n\nCode us alphabet se banta hai jo galat padhe jaane wale characters **chhodta** hai —\n`0/O`, `1/I/L`, `5/S`, `2/Z`, `8/B` — kyunki ye code log ek dusre ko counter par bolkar padhte hain.\nIsliye validator shape check karta hai: galat character wale code par *\"mistyped\"* kehna\n404 se zyada kaam ka hai, jo lagta hai claim hai hi nahi."
+          },
+          "response": []
+        },
+        {
+          "name": "Claim listing — bina token 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Scope token se aata hai, isliye token ke bina koi scope hi nahi.",
+                  "pm.test(\"HTTP 401\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"failure envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(false);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/voucher-claims",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Token ke bina koi listing nahi — scope hi token se nikalta hai."
+          },
+          "response": []
+        },
+        {
+          "name": "Dusre ka payment kholna — 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Doosre customer ka payment.",
+                  "pm.test(\"HTTP 403\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "});",
+                  "",
+                  "pm.test(\"failure envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(false);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/voucher-claims/payments/{{other_customer_transaction_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims",
+                "payments",
+                "{{other_customer_transaction_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Detail par access `assertTransactionAccess` se hota hai, aur listing ka scope usi rule\nse nikalta hai — isliye listing kabhi wo row nahi dikha sakti jise detail kholne se mana kar de."
+          },
+          "response": []
+        },
+        {
+          "name": "Malformed transaction id — 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Joi ObjectId validator; warna Mongoose CastError 500 ban jaata.",
+                  "pm.test(\"HTTP 422\", function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test(\"failure envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(false);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/voucher-claims/payments/not-an-object-id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims",
+                "payments",
+                "not-an-object-id"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "ObjectId validator hi wo cheez hai jo malformed id ko `findOne` tak pahunchne se rokti hai — warna wo saaf 422 ki jagah 500 CastError banti."
+          },
+          "response": []
+        },
+        {
+          "name": "Galat shape ka claim code — 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Code ke alphabet me ye characters hain hi nahi.",
+                  "pm.test(\"HTTP 422\", function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test(\"failure envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(false);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/voucher-claims/code/TD-0OI1L5",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims",
+                "code",
+                "TD-0OI1L5"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "`0`, `O`, `I`, `1`, `L`, `5` code ke alphabet me hain hi nahi — ye counter par galat padhe\njaate hain, isliye generator unhe chhodta hai.\n\nIsliye jawab *\"mistyped character\"* hai, 404 nahi — 404 lagta hai claim maujood hi nahi."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "12 — Access control (customer token refuse hona chahiye)",
       "description": "Ye folder **negative tests** ka hai — har request ka pass hona matlab gate kaam kar\nraha hai. Sab customer ke apne token se chalti hain, koi extra setup nahi chahiye.\n\nPehle in me se zyadatar `200` deti thi: 149 me se 35 endpoints bilkul ungated the.\n\n| Status | Kab |\n|---|---|\n| `401` | Token hai hi nahi, ya expire ho gaya |\n| `403` | Token malformed hai, ya role allowed nahi |",
       "item": [
         {

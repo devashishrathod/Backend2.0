@@ -1,5 +1,21 @@
 const mongoose = require("mongoose");
 const { SUBSCRIPTION_DEFAULTS } = require("../constants/subscription");
+const {
+  CONVENIENCE_FEE_DEFAULTS,
+  CUSTOMER_TAX_DEFAULTS,
+  CUSTOMER_PROMO_DEFAULTS,
+  CLAIM_DEFAULTS,
+  CUSTOMER_NOTIFICATION_DEFAULTS,
+  CUSTOMER_INVOICE_DEFAULTS,
+  SETTLEMENT_DEFAULTS,
+  REFUND_DEFAULTS,
+  CHARGEBACK_DEFAULTS,
+  SETTLEMENT_CYCLE_TYPES,
+  PAYOUT_PROVIDERS,
+  REFUND_METHODS,
+  VENDOR_TIMEOUT_ACTIONS,
+} = require("../constants/customer");
+const { GATEWAY_FEE_BEARER } = require("../constants/transaction");
 
 const voucherSettingSchema = new mongoose.Schema(
   {
@@ -222,21 +238,281 @@ const vendorSettingSchema = new mongoose.Schema(
  */
 const convenienceFeeSchema = new mongoose.Schema(
   {
-    isEnabled: { type: Boolean, default: true },
-    slabSize: { type: Number, default: 500, min: 1 },
-    feePerSlab: { type: Number, default: 5, min: 0 },
-    // null = no ceiling; the slab pattern just keeps going.
-    maxFee: { type: Number, default: null, min: 0 },
+    isEnabled: { type: Boolean, default: CONVENIENCE_FEE_DEFAULTS.isEnabled },
+    slabSize: { type: Number, default: CONVENIENCE_FEE_DEFAULTS.slabSize, min: 1 },
+    feePerSlab: { type: Number, default: CONVENIENCE_FEE_DEFAULTS.feePerSlab, min: 0 },
+    // `null` means no ceiling and is still accepted — but it is no longer the
+    // default, because reaching it by never touching the setting put a ₹100 fee
+    // on a ₹10,000 bill.
+    maxFee: { type: Number, default: CONVENIENCE_FEE_DEFAULTS.maxFee, min: 0 },
+    chargeWhenNoOffer: {
+      type: Boolean,
+      default: CONVENIENCE_FEE_DEFAULTS.chargeWhenNoOffer,
+    },
+  },
+  { _id: false },
+);
+
+/** GST on the convenience fee — Trydood's own service income, not the vendor's. */
+const customerTaxSchema = new mongoose.Schema(
+  {
+    isGstEnabled: { type: Boolean, default: CUSTOMER_TAX_DEFAULTS.isGstEnabled },
+    gstPercentage: {
+      type: Number,
+      default: CUSTOMER_TAX_DEFAULTS.gstPercentage,
+      min: 0,
+      max: 100,
+    },
+    // true => the slab amounts already contain the tax and it is back-calculated,
+    // so turning the master switch on does not silently raise what is charged.
+    isGstInclusive: {
+      type: Boolean,
+      default: CUSTOMER_TAX_DEFAULTS.isGstInclusive,
+    },
+    sacCode: { type: String, default: CUSTOMER_TAX_DEFAULTS.sacCode },
+  },
+  { _id: false },
+);
+
+/** Customer-side promo codes. Separate switch from the vendor one. */
+const customerPromoSchema = new mongoose.Schema(
+  {
+    isEnabled: { type: Boolean, default: CUSTOMER_PROMO_DEFAULTS.isEnabled },
+    allowWhenNoOffer: {
+      type: Boolean,
+      default: CUSTOMER_PROMO_DEFAULTS.allowWhenNoOffer,
+    },
+    allowForGuestPreview: {
+      type: Boolean,
+      default: CUSTOMER_PROMO_DEFAULTS.allowForGuestPreview,
+    },
+  },
+  { _id: false },
+);
+
+/** The claim flow itself — kill switch, limits and windows. */
+const claimSettingSchema = new mongoose.Schema(
+  {
+    isEnabled: { type: Boolean, default: CLAIM_DEFAULTS.isEnabled },
+    allowWhenNoOffer: { type: Boolean, default: CLAIM_DEFAULTS.allowWhenNoOffer },
+    maxBillAmount: { type: Number, default: CLAIM_DEFAULTS.maxBillAmount, min: 1 },
+    pendingOrderReuseMinutes: {
+      type: Number,
+      default: CLAIM_DEFAULTS.pendingOrderReuseMinutes,
+      min: 0,
+    },
+    quoteTtlMinutes: {
+      type: Number,
+      default: CLAIM_DEFAULTS.quoteTtlMinutes,
+      min: 1,
+    },
+    allowWhenVendorPlanExpired: {
+      type: Boolean,
+      default: CLAIM_DEFAULTS.allowWhenVendorPlanExpired,
+    },
+    vendorPlanExpiredGraceDays: {
+      type: Number,
+      default: CLAIM_DEFAULTS.vendorPlanExpiredGraceDays,
+      min: 0,
+    },
+    redemptionWindowHours: {
+      type: Number,
+      default: CLAIM_DEFAULTS.redemptionWindowHours,
+      min: 1,
+    },
+  },
+  { _id: false },
+);
+
+/**
+ * Customer outbound channels.
+ *
+ * Deliberately not shared with `vendor.subscription.is*NotificationEnabled` —
+ * silencing vendor renewal reminders must not also silence a customer's payment
+ * receipt.
+ */
+const customerNotificationSchema = new mongoose.Schema(
+  {
+    isEmailNotificationEnabled: {
+      type: Boolean,
+      default: CUSTOMER_NOTIFICATION_DEFAULTS.isEmailNotificationEnabled,
+    },
+    isPushNotificationEnabled: {
+      type: Boolean,
+      default: CUSTOMER_NOTIFICATION_DEFAULTS.isPushNotificationEnabled,
+    },
+    isWhatsAppNotificationEnabled: {
+      type: Boolean,
+      default: CUSTOMER_NOTIFICATION_DEFAULTS.isWhatsAppNotificationEnabled,
+    },
+  },
+  { _id: false },
+);
+
+/** Invoice numbering. Changing the prefix starts a new counter. */
+const customerInvoiceSchema = new mongoose.Schema(
+  {
+    seriesPrefix: {
+      type: String,
+      default: CUSTOMER_INVOICE_DEFAULTS.seriesPrefix,
+      uppercase: true,
+      trim: true,
+    },
+  },
+  { _id: false },
+);
+
+/** Withheld slice of a risky vendor's payout. Off for everyone by default. */
+const settlementReserveSchema = new mongoose.Schema(
+  {
+    isEnabled: { type: Boolean, default: SETTLEMENT_DEFAULTS.reserve.isEnabled },
+    percent: {
+      type: Number,
+      default: SETTLEMENT_DEFAULTS.reserve.percent,
+      min: 0,
+      max: 100,
+    },
+    holdDays: {
+      type: Number,
+      default: SETTLEMENT_DEFAULTS.reserve.holdDays,
+      min: 0,
+    },
+    riskChargebackCount: {
+      type: Number,
+      default: SETTLEMENT_DEFAULTS.reserve.riskChargebackCount,
+      min: 1,
+    },
+  },
+  { _id: false },
+);
+
+/**
+ * Paying the vendor out.
+ *
+ * ⚠️ `delayDays` is load-bearing. It is the T+N floor the whole refund design
+ * rests on, and lowering it below the sum of the refund windows is refused on
+ * save by `assertSettlementTimingRule` — see `constants/customer.js`.
+ */
+const settlementSettingSchema = new mongoose.Schema(
+  {
+    isEnabled: { type: Boolean, default: SETTLEMENT_DEFAULTS.isEnabled },
+    delayDays: { type: Number, default: SETTLEMENT_DEFAULTS.delayDays, min: 0 },
+    payoutBufferHours: {
+      type: Number,
+      default: SETTLEMENT_DEFAULTS.payoutBufferHours,
+      min: 0,
+    },
+    cycleType: {
+      type: String,
+      enum: Object.values(SETTLEMENT_CYCLE_TYPES),
+      default: SETTLEMENT_DEFAULTS.cycleType,
+    },
+    requiresAdminApproval: {
+      type: Boolean,
+      default: SETTLEMENT_DEFAULTS.requiresAdminApproval,
+    },
+    minPayoutAmount: {
+      type: Number,
+      default: SETTLEMENT_DEFAULTS.minPayoutAmount,
+      min: 0,
+    },
+    payoutProvider: {
+      type: String,
+      enum: Object.values(PAYOUT_PROVIDERS),
+      default: SETTLEMENT_DEFAULTS.payoutProvider,
+    },
+    commissionPercent: {
+      type: Number,
+      default: SETTLEMENT_DEFAULTS.commissionPercent,
+      min: 0,
+      max: 100,
+    },
+    reserve: { type: settlementReserveSchema, default: () => ({}) },
+    newVendorReserveDays: {
+      type: Number,
+      default: SETTLEMENT_DEFAULTS.newVendorReserveDays,
+      min: 0,
+    },
+    notReceivedAlertHours: {
+      type: Number,
+      default: SETTLEMENT_DEFAULTS.notReceivedAlertHours,
+      min: 1,
+    },
+    gatewayFeeBearer: {
+      type: String,
+      enum: Object.values(GATEWAY_FEE_BEARER),
+      default: SETTLEMENT_DEFAULTS.gatewayFeeBearer,
+    },
+  },
+  { _id: false },
+);
+
+/**
+ * Refunds.
+ *
+ * ⚠️ `windowHours + vendorApprovalHours + adminBufferHours` may not exceed
+ * `settlement.delayDays * 24`. Enforced on save, not here — the rule spans two
+ * blocks and a partial PATCH of either one can break it.
+ */
+const refundSettingSchema = new mongoose.Schema(
+  {
+    method: {
+      type: String,
+      enum: Object.values(REFUND_METHODS),
+      default: REFUND_DEFAULTS.method,
+    },
+    windowHours: { type: Number, default: REFUND_DEFAULTS.windowHours, min: 0 },
+    vendorApprovalHours: {
+      type: Number,
+      default: REFUND_DEFAULTS.vendorApprovalHours,
+      min: 0,
+    },
+    adminBufferHours: {
+      type: Number,
+      default: REFUND_DEFAULTS.adminBufferHours,
+      min: 0,
+    },
+    onVendorTimeout: {
+      type: String,
+      enum: Object.values(VENDOR_TIMEOUT_ACTIONS),
+      default: REFUND_DEFAULTS.onVendorTimeout,
+    },
+    allowPartial: { type: Boolean, default: REFUND_DEFAULTS.allowPartial },
+    releasePromoOnRefund: {
+      type: Boolean,
+      default: REFUND_DEFAULTS.releasePromoOnRefund,
+    },
+    authorizedAlertMinutes: {
+      type: Number,
+      default: REFUND_DEFAULTS.authorizedAlertMinutes,
+      min: 1,
+    },
+  },
+  { _id: false },
+);
+
+const chargebackSettingSchema = new mongoose.Schema(
+  {
+    writeOffDays: {
+      type: Number,
+      default: CHARGEBACK_DEFAULTS.writeOffDays,
+      min: 1,
+    },
   },
   { _id: false },
 );
 
 const customerSettingSchema = new mongoose.Schema(
   {
-    convenienceFee: {
-      type: convenienceFeeSchema,
-      default: () => ({}),
-    },
+    convenienceFee: { type: convenienceFeeSchema, default: () => ({}) },
+    tax: { type: customerTaxSchema, default: () => ({}) },
+    promoCode: { type: customerPromoSchema, default: () => ({}) },
+    claim: { type: claimSettingSchema, default: () => ({}) },
+    notification: { type: customerNotificationSchema, default: () => ({}) },
+    invoice: { type: customerInvoiceSchema, default: () => ({}) },
+    settlement: { type: settlementSettingSchema, default: () => ({}) },
+    refund: { type: refundSettingSchema, default: () => ({}) },
+    chargeback: { type: chargebackSettingSchema, default: () => ({}) },
   },
   { _id: false },
 );

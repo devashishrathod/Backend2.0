@@ -35,7 +35,7 @@ Pichhla scan 2026-08-21 ko hua tha (108 endpoints). Uske baad **35 naye endpoint
 |---|---:|---|
 | `/auth` | +3 | `set-password` (signed-in), `forgot-password` + `reset-password` (public 2-step) |
 | `/brands` | +4 | `onboarding/acknowledge-approval` (vendor) · `admin/verifications` (list) · `admin/verifications/:brandId/review` · `verifications/history` (shared audit trail) |
-| `/transactions` | +7 | `subscribe/preview` · `invoice/regenerate` · `webhook/razorpay` (public HMAC) · `webhook/events` + `/:eventId` + `replay/:eventId` · `disputes` |
+| `/transactions` | +8 | `subscribe/preview` · `invoice/regenerate` · `webhook/razorpay` + `webhook/razorpay/customer` (public HMAC, ek per Razorpay account) · `webhook/events` + `/:eventId` + `replay/:eventId` · `disputes` |
 
 ### 🔒 Security improvements (badi baat)
 
@@ -536,15 +536,46 @@ Razorpay subscription payments + webhook operations.
 
 | # | Method | Endpoint | Access | Cat | Notes |
 |---|---|---|---|---|---|
-| 123 🆕 | POST | `/transactions/webhook/razorpay` | Intended: Razorpay · Enforced: **Public (HMAC)** | 🟣 | ⚠️ **Deliberately unauthenticated** — Razorpay JWT nahi de sakta. Authenticity raw body pe HMAC se aati hai (`RAZORPAY_WEBHOOK_SECRET`). Isse activation browser se independent hai — vendor tab band kar de to bhi plan mil jaata hai |
+| 123 🆕 | POST | `/transactions/webhook/razorpay` | Intended: Razorpay · Enforced: **Public (HMAC)** | 🟣 | ⚠️ **Deliberately unauthenticated** — Razorpay JWT nahi de sakta. Authenticity raw body pe HMAC se aati hai. **VENDOR account** (subscriptions); secrets `RAZORPAY_WEBHOOK_SECRETS` (comma-separated, rotation-safe). Isse activation browser se independent hai |
+| 123a 🆕 | POST | `/transactions/webhook/razorpay/customer` | Intended: Razorpay · Enforced: **Public (HMAC)** | 🟣 | Wahi cheez **CUSTOMER account** (voucher claims) ke liye; secrets `RAZORPAY_CUSTOMER_WEBHOOK_SECRETS`. Account **route se** aata hai, signature se nahi — signature sirf authenticate karta hai. Galat endpoint par aayi delivery phir bhi process hoti hai, par WARNING alert ke saath |
 | 124 🆕 | POST | `/transactions/subscribe/preview` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | Price + promo code preview, order banane se pehle |
 | 125 | POST | `/transactions/subscribe/create-order` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | ✅ Ab gated — pehle koi bhi user kisi bhi brand ke against order khol sakta tha |
 | 126 | POST | `/transactions/subscribe/verify-transaction` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | |
+| 126a 🆕 | GET | `/transactions/invoice/:token` | Intended: Customer + Vendor · Enforced: **Public (token)** | 🟣 | ⚠️ **Deliberately unauthenticated.** Link WhatsApp message aur email se khulta hai, jahan browser me koi session hota hi nahi — login maangne ka matlab hai Download button kaam na kare, jo uska ekmatra kaam hai. 32-byte random token hi credential hai; galat token par wahi 404 jo na-maujood token par. PDF **pehli request par** banti hai aur uske baad cache hoti hai — har claim par render + upload scale par nahi chalega, aur zyadatar invoice kabhi khulti hi nahi. Invoice **number** phir bhi settle par milta hai, taaki series me gap na aaye |
 | 127 🆕 | POST | `/transactions/invoice/regenerate` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | PDF invoice re-issue. Amounts kabhi recompute nahi hote — transaction pe frozen pricing se banta hai, to purana invoice exactly wahi dikhata hai jo charge hua tha |
 | 128 🆕 | GET | `/transactions/webhook/events` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Webhook delivery log. Pehle deliveries store hoti thi par DB ke bahar invisible thi — ek FAILED event (paisa captured, plan live nahi) chup-chaap pada reh sakta tha |
 | 129 🆕 | GET | `/transactions/webhook/events/:eventId` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | |
 | 130 🆕 | POST | `/transactions/webhook/replay/:eventId` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Stored payload dobara process. **Idempotent** — settlement transaction ko conditionally claim karta hai, to already-settled ka replay double-activate nahi karta |
 | 131 🆕 | GET | `/transactions/disputes` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Chargebacks, sabse pehle deadline wala upar. Deadline miss = paisa automatically forfeit, isliye ye report nahi **worklist** hai |
+| 131h 🆕 | GET | `/transactions/admin/health` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | **Liveness probe nahi** — server ka jawab dena hi wo sabit karta hai. Ye wo sawaal hai jo admin ko subah nau baje hota hai: *raat me kuch atka to nahi, aur abhi kuch chup-chaap paisa to nahi kho raha?* Teen hisse: `jobs` (safety net ruk gaya) · `stuck` (paisa aisi haalat me jise kuch nikalega nahi) · `indexes`. **`CRITICAL` sirf us cheez ke liye jo ghadi ke saath paisa khoti hai** — bina capture hui authorization ~5 din me khud refund ho jaati hai, dispute deadline chookne par paisa apne aap chala jaata hai, koi nirnay liye bina. Baaki `ATTENTION`: asli hai par insaan ka intezaar karte hue bigadta nahi. Dono ko ek rang dena logon ko laal nazarandaaz karna sikha deta hai. Har ginti **query hai, cached counter nahi** — ruk gaya cached number *"shunya samasyaein"* padha jaata hai jabki samasya badh rahi hoti hai. 8 me se koi job kabhi na chala ho to bhi `ATTENTION`: `startJobs` boot par har job ek baar chalata hai, to `NEVER_RUN` bachna matlab runner chala hi nahi — aur tab upar ke saare safety net maujood hi nahi. Hamesha `200`, khabar buri ho tab bhi: jo health endpoint anhealthy hone par 500 de wo bata hi nahi sakta **kya** anhealthy hai |
+
+---
+
+## 22a. Voucher Claims 🆕 — `/voucher-claims` (7)
+
+Customer ka voucher claim — paisa andar. **Likhne wale** do endpoint `isCustomer` ke peeche: guest ko **daam milta hai** (preview `optionalAuth` par hai) par **order nahi**. **Padhne wale** paanch `verifyJwtToken` par hain — role gate nahi, kyunki wo **ek endpoint, teen shapes** hain.
+
+> ### Ek endpoint, teen shapes — teen endpoint kyun nahi
+>
+> Har audience ke liye alag endpoint plan me tha (`customer/get-all`, `vendor/get-all`, `admin/get-all`). Bane ek-ek. Scope `buildAccessScopeFilter()` se aur projection `claimProjection(role)` se — dono token se — isliye ek hi URL par customer, vendor, outlet aur admin apna jawab paate hain.
+>
+> **Wajah drift hai.** Teen endpoint ka matlab tha teen jagah ye yaad rakhna ki vendor ko `gatewayFee`, `netReceived`, `voucher.platformPromoCost`, `email`, `contact` nahi dikhne chahiye. Ek jagah bhoolna = leak — aur wo listing me nahi, **detail page par** milta, jise koi jaanchta nahi.
+>
+> ⚠️ **Detail poora row padhta hai, phir chhaanta hai** — listing ki tarah pipeline me project nahi kar sakta. Ownership `customerId` / `brandId` me rehti hai, aur vendor projection wahi chhupati hai; pehle project karne ka matlab hota *"ye tumhara hai?"* aise document se poochna jo ab batata hi nahi kiska hai. Isliye `pickByProjection()` **whitelist** hai, delete-list nahi: model me kal juda field default roop se adrishya hai.
+>
+> ⚠️ **Scope query se chaudi nahi ho sakti** — filter aur scope **intersect** hote hain. Vendor `?brandId=<dusra>` bheje to **kuch nahi** milta. Pehle scope overlay hota tha: surakshit tha par chup — vendor ko apne rows waapas milte the, jo bilkul chale hue filter jaisa dikhta hai.
+
+> **Route file `voucherClaims.js` hai, mount `/voucher-claims` par.** `routes/index.js` prefix filename se banata hai, isliye file `module.exports = { router, routePrefix }` deti hai. ⚠️ `exports.routePrefix` ke saath `module.exports = router` likhna kaam **nahi** karta — doosri assignment poora exports object badal deti hai aur prefix chup-chaap kho jaata hai. Sirf boot log me dikhta hai.
+
+| # | Method | Endpoint | Access | Cat | Notes |
+|---|---|---|---|---|---|
+| 131a 🆕 | POST | `/voucher-claims/create-order` | Intended: Customer · Enforced: **CUSTOMER** | 🔵 | Razorpay order kholta hai. **Kram hi design hai:** daam (wahi builder jo preview chalata hai, `strictPromo` ke saath) → `Idempotency-Key` insert → reuse window → claim + once-per-user slot hold → promo reservation → **Razorpay sabse aakhir**. Key Razorpay call se **pehle** jaati hai: header lekar check kar lena kaafi nahi, do concurrent tap dono read-then-write paas kar jaate aur customer ko ek bill ke liye do payment sheet dikhte. Razorpay aakhir me kyunki uska undo nahi hai |
+| 131b 🆕 | POST | `/voucher-claims/verify` | Intended: Customer · Enforced: **CUSTOMER + ownership** | 🔵 | Browser callback. Signature sirf ye sabit karta hai ki payment Razorpay ne banayi — is order ki hai, sahi rakam hai, ya poochne wala wahi hai, ye nahi. Isliye chaar aur jaanch: account **transaction se** (hardcode nahi), `payment.order_id` milana, rakam `claim.pricing.amountInPaise` se milana, aur ownership **customer par** (`userId` par nahi — ek login saajha karte do customer me se ek doosre ki payment settle kar leta). Webhook race jeet le to `alreadyVerified: true` — wo safalta hai, error nahi |
+| 131c 🆕 | GET | `/voucher-claims` | Intended: sab · Enforced: **token se scope** | 🔵 | *"Maine kya khareeda"*. Frozen snapshots padhta hai (`voucherSnapshot` / `brandSnapshot` / `outletSnapshot`), join nahi — September ki claim March me bhi sahi padhti hai, voucher republish aur outlet rename ke baad bhi. **Khaali list `200` + `data: []`, `404` nahi**: jisne kuch khareeda hi nahi uski history khaali hai, gayab nahi. `pagination()` me `allowEmpty` isiliye juda — 404 pehli baar app kholne par error screen dikha deta |
+| 131d 🆕 | GET | `/voucher-claims/payments` | Intended: sab · Enforced: **token se scope** | 🔵 | *"Kaunsa paisa hila"*. `status` yahan **payment** ki vocabulary hai (`created · authorized · captured · failed`), claim ki nahi. `purpose` se scope, isliye ek galat filter bhi kabhi subscription payment nahi dikha sakta |
+| 131e 🆕 | GET | `/voucher-claims/payments/:transactionId` | Intended: sab · Enforced: **`assertTransactionAccess`** | 🔵 | **Push notification ka deep link yahin utarta hai.** `payment` · `claim` · `brand` · `outlet` · `viewer`. Claim saath aata hai kyunki akela payment sirf raqam aur timestamp hai. `invoiceDownloadUrl` deta hai, **token nahi** — token PDF ka bina-auth bearer credential hai. ⚠️ `purpose` scope ke bina ye **subscription** payment khol deta — dusre Razorpay account ka row, voucher-claim ki projection se. Id ka unique hona iska jawab nahi hai |
+| 131f 🆕 | GET | `/voucher-claims/:claimId` | Intended: sab · Enforced: **`assertClaimAccess`** | 🔵 | Claim + **timeline**. ⚠️ Timeline **banayi** jaati hai, chhaani nahi: `VoucherClaimHistory.snapshot` `Mixed` hai aur `CLAIM_CREATED` par **poora pricing block** rakhta hai (`platformPromoCost` samet), `reason` staff ka free-text note hai. Kaccha row bhejna vendor ko hamara margin pichhle darwaze se de deta — us projection ko paar karke jo use rokti hai. Non-admin ko sirf `label` · `at` · `fromStatus` → `toStatus` · `by` (role, aadmi nahi). `PROMO_RELEASED` sirf admin ko |
+| 131g 🆕 | GET | `/voucher-claims/code/:claimCode` | Intended: sab · Enforced: **`assertClaimAccess`** | 🔵 | Counter wala surface — code hi wo cheez hai jo asli duniya me hai: chhapa, bolkar padha, type kiya. ⚠️ **Code lookup narrow karta hai, authorise nahi karta** — kisi aur ki screen se padha code kuch nahi kholta. Route file me `/code/:claimCode` **`/:claimId` se upar** likha hai, warna parameter use nigal leta (`claimId = "code"` → sahi code par 422). Alphabet `0/O`, `1/I/L`, `5/S`, `2/Z`, `8/B` chhodta hai, isliye galat character par `422` *"mistyped"* — `404` lagta hai claim hai hi nahi |
 
 ---
 
@@ -666,7 +697,7 @@ Razorpay subscription payments + webhook operations.
 | 22 | Legal CRUD (terms ×5 + privacy ×5) | 10 |
 
 > **Admin ko ye nahi milte:** 14 customer-exclusive + 21 vendor-exclusive (onboarding 8, KYC 3, work hours 1, showcase vendor-CRUD 9) = 35. `149 − 35 = 114` ✓
-> **Note:** `POST /transactions/webhook/razorpay` public hai (Razorpay HMAC), par admin doc me reference ke liye document hoga — webhook ops section usi ke around hai.
+> **Note:** dono `POST /transactions/webhook/razorpay` aur `/webhook/razorpay/customer` public hain (Razorpay HMAC), par admin doc me reference ke liye document honge — webhook ops section unke around hai.
 
 ---
 
@@ -685,7 +716,8 @@ Razorpay subscription payments + webhook operations.
 **Postman:** customer (74 requests · 308 assertions) aur vendor (101 requests · 234
 assertions) — dono verified → [postman/README.md](../postman/README.md). Admin phase 3 me.
 
-> `API_DOCUMENTATION.md` aur `CUSTOMER_API_DOC.md` **Romani project ke reference docs** hain — Trydood ke nahi. Inko chheda nahi gaya.
+> `API_DOCUMENTATION.md` **Romani project ka reference doc** hai — Trydood ka nahi. Ise chheda nahi gaya.
+> (`CUSTOMER_API_DOC.md` bhi wahi tha aur delete kar diya gaya — 2026-08-30.)
 
 **Ab baaki:** vendor doc ke 39 endpoints + poora admin doc.
 

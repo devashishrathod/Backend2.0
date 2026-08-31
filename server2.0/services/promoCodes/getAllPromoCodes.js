@@ -2,6 +2,7 @@ const PromoCode = require("../../models/PromoCode");
 const { pagination } = require("../../utils");
 const { buildAggregateLookup } = require("../../database");
 const { PROMO_USAGE_STATUS } = require("../../constants/promoCode");
+const { buildAudienceFilter } = require("../../helpers/promoCodes");
 
 /**
  * Admin listing of promo codes with their live redemption state.
@@ -17,6 +18,7 @@ exports.getAllPromoCodes = async (query = {}) => {
     search,
     isActive,
     status,
+    audience,
     sortBy = "createdAt",
     sortOrder = "desc",
   } = query;
@@ -26,6 +28,14 @@ exports.getAllPromoCodes = async (query = {}) => {
 
   const now = new Date();
   const match = { isDeleted: false };
+
+  // Without this the admin listing mixes vendor subscription codes with customer
+  // voucher codes and gives no way to tell them apart — two campaigns with
+  // completely different economics in one table.
+  // Not `match.audience = audience`: codes created before this field existed have
+  // no stored value and are vendor codes by definition, so asking for VENDOR has
+  // to mean "not CUSTOMER" or the listing silently hides all of them.
+  Object.assign(match, buildAudienceFilter(audience));
 
   if (typeof isActive !== "undefined") {
     match.isActive = isActive === "true" || isActive === true;

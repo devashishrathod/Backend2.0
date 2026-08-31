@@ -11997,7 +11997,403 @@
       ]
     },
     {
-      "name": "18 — Access control (vendor token refuse hona chahiye)",
+      "name": "18 — Voucher Claims (read-only)",
+      "description": "Grahak ne mere outlet par kya khareeda, aur mujhe kitna milega.\n\n**Phase 1 me poori tarah read-only.** Capture par claim seedhe `REDEEMED` ho jaati hai —\npayment hi redemption hai. Outlet scan aur reversal Phase 2 hain\n(`docs/customer_voucher_claim_plan.md` §15.1).",
+      "item": [
+        {
+          "name": "Mere brand ki claims ⭐",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(b, \"data key\").to.have.property(\"data\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/voucher-claims?page=1&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "REDEEMED",
+                  "disabled": true
+                },
+                {
+                  "key": "outletId",
+                  "value": "{{sub_brand_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "from",
+                  "value": "2026-08-01",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "2026-08-31",
+                  "disabled": true
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken`. **Ek endpoint, teen shapes.** Scope aur projection dono token se nikalte hain —\ncustomer apne, vendor apne brand ke, sub-vendor apne outlet ke, admin sab dekhta hai.\n\n| Field | Customer | Vendor / Outlet | Admin |\n|---|:-:|:-:|:-:|\n| `voucher.convenienceFee` | ✅ | — | ✅ |\n| `voucher.vendorPayable` | — | ✅ | ✅ |\n| `gatewayFee` · `netReceived` | — | — | ✅ |\n| `voucher.platformPromoCost` | — | — | ✅ |\n| `email` · `contact` · `customerId` | ✅ (apna) | — | ✅ |\n| `invoiceDownloadUrl` | ✅ | — | ✅ |\n\n> Vendor ko `gatewayFee` / `platformPromoCost` **kabhi nahi** — wo hamara margin hai,\n> aur `email` / `contact` customer ki privacy. Dono ek hi document par hain, isiliye\n> ye faisla `claimProjection()` me ek jagah hota hai, har call site par yaad nahi rakha jaata.\n\n`SUB_VENDOR` token isi URL par **sirf apne outlet** ki rows paata hai — brand ki poori nahi.\n\n⚠️ **Scope query se chaudi nahi ho sakti.** `?brandId=<dusra brand>` bhejne par **kuch nahi**\nmilta, apne rows nahi — filter aur scope intersect hote hain."
+          },
+          "response": []
+        },
+        {
+          "name": "Mere brand ke payments",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(b, \"data key\").to.have.property(\"data\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/voucher-claims/payments?page=1&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims",
+                "payments"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "outletId",
+                  "value": "{{sub_brand_id}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken`. **Ek endpoint, teen shapes.** Scope aur projection dono token se nikalte hain —\ncustomer apne, vendor apne brand ke, sub-vendor apne outlet ke, admin sab dekhta hai.\n\n| Field | Customer | Vendor / Outlet | Admin |\n|---|:-:|:-:|:-:|\n| `voucher.convenienceFee` | ✅ | — | ✅ |\n| `voucher.vendorPayable` | — | ✅ | ✅ |\n| `gatewayFee` · `netReceived` | — | — | ✅ |\n| `voucher.platformPromoCost` | — | — | ✅ |\n| `email` · `contact` · `customerId` | ✅ (apna) | — | ✅ |\n| `invoiceDownloadUrl` | ✅ | — | ✅ |\n\n> Vendor ko `gatewayFee` / `platformPromoCost` **kabhi nahi** — wo hamara margin hai,\n> aur `email` / `contact` customer ki privacy. Dono ek hi document par hain, isiliye\n> ye faisla `claimProjection()` me ek jagah hota hai, har call site par yaad nahi rakha jaata.\n\nVendor ko `voucher.vendorPayable` dikhta hai — jo unhe milega. `gatewayFee`, `netReceived`\naur `voucher.platformPromoCost` **kabhi nahi**: Razorpay ne humse kya liya ye commercial\ndisclosure hai. `email` / `contact` bhi nahi — wo privacy hai."
+          },
+          "response": []
+        },
+        {
+          "name": "Ek payment kholo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(b, \"data key\").to.have.property(\"data\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/voucher-claims/payments/{{claim_transaction_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims",
+                "payments",
+                "{{claim_transaction_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken`. **Ek endpoint, teen shapes.** Scope aur projection dono token se nikalte hain —\ncustomer apne, vendor apne brand ke, sub-vendor apne outlet ke, admin sab dekhta hai.\n\n| Field | Customer | Vendor / Outlet | Admin |\n|---|:-:|:-:|:-:|\n| `voucher.convenienceFee` | ✅ | — | ✅ |\n| `voucher.vendorPayable` | — | ✅ | ✅ |\n| `gatewayFee` · `netReceived` | — | — | ✅ |\n| `voucher.platformPromoCost` | — | — | ✅ |\n| `email` · `contact` · `customerId` | ✅ (apna) | — | ✅ |\n| `invoiceDownloadUrl` | ✅ | — | ✅ |\n\n> Vendor ko `gatewayFee` / `platformPromoCost` **kabhi nahi** — wo hamara margin hai,\n> aur `email` / `contact` customer ki privacy. Dono ek hi document par hain, isiliye\n> ye faisla `claimProjection()` me ek jagah hota hai, har call site par yaad nahi rakha jaata.\n\nVendor ko `payment.invoiceDownloadUrl` **nahi** milta — customer ka tax invoice customer\nke apne details rakhta hai.\n\n**Errors:** `403` dusre brand ka payment · `403` \"not taken at your outlet\" (sub-vendor) · `404` id galat"
+          },
+          "response": []
+        },
+        {
+          "name": "Claim code se verify karo (counter par) ⭐",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(b, \"data key\").to.have.property(\"data\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/voucher-claims/code/{{claim_code}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims",
+                "code",
+                "{{claim_code}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken`. Counter par grahak code dikhaata hai, staff yahan daalta hai.\n\n**Phase 1 me ye read-only hai.** Capture par claim seedhe `REDEEMED` ho jaati hai\n(`redemptionMode: AUTO`) — payment hi redemption hai. Ye page batata hai *kitna pay hua,*\n*kaunsa offer, kab, kaunsa outlet*.\n\n> **Phase 2** me asli redemption aayegi (`POST /voucher-claims/redeem`), aur uske saath\n> dobara-scan ka samajhdaar jawab aur reversal — teeno ek saath. Sirf scan deploy karna\n> grahak ko phansa deta hai: scan chala nahi, saamaan mila nahi, aur *\"already redeemed\"*.\n> Dekhein `docs/customer_voucher_claim_plan.md` §15.1.\n\n⚠️ Code lookup narrow karta hai, **authorise nahi karta** — dusre brand ya dusre outlet ka\ncode 403 deta hai."
+          },
+          "response": []
+        },
+        {
+          "name": "Ek claim kholo — timeline ke saath",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(b, \"data key\").to.have.property(\"data\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/voucher-claims/{{claim_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims",
+                "{{claim_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken`. **Ek endpoint, teen shapes.** Scope aur projection dono token se nikalte hain —\ncustomer apne, vendor apne brand ke, sub-vendor apne outlet ke, admin sab dekhta hai.\n\n| Field | Customer | Vendor / Outlet | Admin |\n|---|:-:|:-:|:-:|\n| `voucher.convenienceFee` | ✅ | — | ✅ |\n| `voucher.vendorPayable` | — | ✅ | ✅ |\n| `gatewayFee` · `netReceived` | — | — | ✅ |\n| `voucher.platformPromoCost` | — | — | ✅ |\n| `email` · `contact` · `customerId` | ✅ (apna) | — | ✅ |\n| `invoiceDownloadUrl` | ✅ | — | ✅ |\n\n> Vendor ko `gatewayFee` / `platformPromoCost` **kabhi nahi** — wo hamara margin hai,\n> aur `email` / `contact` customer ki privacy. Dono ek hi document par hain, isiliye\n> ye faisla `claimProjection()` me ek jagah hota hai, har call site par yaad nahi rakha jaata.\n\n`timeline` har audience ke liye **banayi** jaati hai, chhaani nahi — kaccha audit row\n`snapshot` me poora pricing block rakhta hai (`platformPromoCost` samet), aur `reason`\nstaff ka note hai. Vendor ko dono me se kuch nahi."
+          },
+          "response": []
+        },
+        {
+          "name": "Dusre brand ki claim — 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Dusre brand ka row.",
+                  "pm.test(\"HTTP 403\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "});",
+                  "",
+                  "pm.test(\"failure envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(false);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/voucher-claims/{{other_brand_claim_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims",
+                "{{other_brand_claim_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Brand-side access parent `brandId` se hota hai; dusre brand ka row 403."
+          },
+          "response": []
+        },
+        {
+          "name": "Subscription payment ko claim detail se kholna — 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Ek collection, do money flows — purpose scope isse rokta hai.",
+                  "pm.test(\"HTTP 404\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"failure envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(false);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/voucher-claims/payments/{{subscription_transaction_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "voucher-claims",
+                "payments",
+                "{{subscription_transaction_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "⚠️ Ek hi collection vendor subscriptions aur customer voucher claims dono rakhti hai.\n`purpose` scope ke bina ye endpoint apne hi billing row ko — dusre Razorpay account ka,\naur aisi projection se jo voucher claim ke liye bani hai — khol deta. **Id ka unique hona\niska jawab nahi hai.**"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "19 — Access control (vendor token refuse hona chahiye)",
       "description": "**Negative tests** — har request ka pass hona matlab gate kaam kar raha hai.\nSab vendor ke apne token se chalti hain.\n\n| Status | Kab |\n|---|---|\n| `401` | Token hai hi nahi, ya expire |\n| `403` | Token malformed, ya role allowed nahi |\n| `422` | Role validator se reject (password flow) |\n\n### ⚠️ Kuch customer endpoints ab **public** hain\n\nGuest browsing aane ke baad `/brands/customer/*`, `/showcase/get-brand-showcase/*`\naur voucher browse endpoints pe koi gate nahi hai — vendor token pe wo `200` denge,\n`403` nahi. Isliye wo yahan negative tests me nahi hain.\n\nReachable hona use karne ka karan nahi hai: wo customer app ka data model hain, vendor\npanel ka nahi. [Appendix A](../docs/vendor_panel_api_doc.md#appendix-a--not-for-vendor-panel) dekhein.",
       "item": [
         {

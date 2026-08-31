@@ -5,6 +5,10 @@ const {
   WEBHOOK_STATUS,
   DISPUTE_STATUS,
 } = require("../constants/webhook");
+const {
+  RAZORPAY_ACCOUNTS,
+  TRANSACTION_PURPOSE,
+} = require("../constants/transaction");
 
 // Shared by preview and order creation so the two can never accept different
 // inputs. Note there is deliberately no `amount` field: the payable amount is
@@ -95,6 +99,22 @@ exports.validateGetWebhookEvents = {
       "any.invalid": "Invalid brandId",
     }),
     razorpayOrderId: Joi.string().trim().optional(),
+    // Which Razorpay account the delivery arrived on, and which money flow it
+    // belongs to. `stripUnknown` is on, so a filter that is not declared here
+    // is silently dropped rather than rejected — which would look like the
+    // filter simply not working.
+    account: Joi.string()
+      .valid(...Object.values(RAZORPAY_ACCOUNTS))
+      .optional()
+      .messages({
+        "any.only": `account must be one of: ${Object.values(RAZORPAY_ACCOUNTS).join(", ")}`,
+      }),
+    purpose: Joi.string()
+      .valid(...Object.values(TRANSACTION_PURPOSE))
+      .optional()
+      .messages({
+        "any.only": `purpose must be one of: ${Object.values(TRANSACTION_PURPOSE).join(", ")}`,
+      }),
     fromDate: Joi.date().iso().optional(),
     toDate: Joi.date().iso().optional(),
     sortOrder: Joi.string().valid("asc", "desc").optional(),

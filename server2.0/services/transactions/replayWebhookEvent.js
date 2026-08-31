@@ -2,6 +2,7 @@ const WebhookEvent = require("../../models/WebhookEvent");
 const {
   WEBHOOK_STATUS,
   WEBHOOK_REPLAYABLE_STATUSES,
+  WEBHOOK_NEVER_REPLAYABLE_STATUSES,
 } = require("../../constants/webhook");
 const { throwError } = require("../../utils");
 const {
@@ -39,6 +40,27 @@ exports.replayWebhookEvent = async (actor, payload) => {
     ],
   });
   if (!record) throwError(404, "Webhook event not found.");
+
+  // ---------------------------------------------------------------------------
+  // Checked BEFORE the `force` escape hatch, deliberately.
+  //
+  // Replay skips signature verification — correctly, because the payload was
+  // proven authentic when it was first stored. A REJECTED row is the one case
+  // where that premise is false: its signature never verified, so its body is
+  // unverified, attacker-controlled input. Force-replaying one would feed that
+  // straight into the settlement path, turning `force: true` into a
+  // free-subscription button for anyone who can reach the public webhook URL.
+  //
+  // There is no legitimate use for it either: a genuinely rejected delivery is
+  // fixed by correcting the secret and letting Razorpay retry, or by
+  // reconciling against Razorpay directly.
+  // ---------------------------------------------------------------------------
+  if (WEBHOOK_NEVER_REPLAYABLE_STATUSES.includes(record.status)) {
+    throwError(
+      422,
+      `This delivery is ${record.status} — its signature never verified, so its payload is untrusted and can never be replayed. Fix the webhook secret and let Razorpay retry, or reconcile the payment directly.`,
+    );
+  }
 
   if (!record.payload) {
     throwError(

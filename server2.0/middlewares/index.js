@@ -13,6 +13,8 @@ const {
   isVendor,
   isCustomer,
   isSubVendor,
+  isVendorOrSubVendor,
+  isBrandSideOrAdmin,
   isVendorOrAdmin,
   isVendorOrAdminEvenIfDeactivated,
 } = require("./validateRoles");
@@ -45,6 +47,8 @@ module.exports = {
   isVendor,
   isCustomer,
   isSubVendor,
+  isVendorOrSubVendor,
+  isBrandSideOrAdmin,
   isVendorOrAdmin,
   isVendorOrAdminEvenIfDeactivated,
 };

@@ -58,6 +58,16 @@ const NOTIFICATION_TYPES = Object.freeze({
   // ---------- admin-audience ----------
   // A payment arrived but could not be settled. Money is captured and the plan
   // is not live, so somebody has to look.
+  // ---------- customer voucher claims ----------
+  // The receipt, and the one that carries the Download Invoice button.
+  VOUCHER_PAYMENT_SUCCESS: "VOUCHER_PAYMENT_SUCCESS",
+  VOUCHER_PAYMENT_FAILED: "VOUCHER_PAYMENT_FAILED",
+  VOUCHER_REFUNDED: "VOUCHER_REFUNDED",
+  // To the vendor and the outlet, not the customer.
+  VOUCHER_CLAIM_RECEIVED: "VOUCHER_CLAIM_RECEIVED",
+  // Phase 2: a paid claim that was never scanned inside its window.
+  VOUCHER_CLAIM_EXPIRED: "VOUCHER_CLAIM_EXPIRED",
+
   WEBHOOK_FAILED: "WEBHOOK_FAILED",
   // A chargeback. There is a response deadline; missing it forfeits the money.
   PAYMENT_DISPUTED: "PAYMENT_DISPUTED",

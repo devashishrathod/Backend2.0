@@ -5700,6 +5700,115 @@ Same as [#78](#78-get-terms-and-conditionsgetall).
 
 ---
 
+# Voucher Claim APIs 🆕
+
+Grahak ne mere outlet par kya khareeda, aur mujhe kitna milega.
+
+> **Phase 1 me poori tarah read-only.** Capture par claim seedhe `REDEEMED` ho jaati hai
+> (`redemptionMode: AUTO`) — **payment hi redemption hai**. Outlet scan aur reversal
+> Phase 2 hain, `docs/customer_voucher_claim_plan.md` §15.1 dekhein.
+
+## ⚠️ Ek endpoint, teen shapes
+
+Ye wahi URLs hain jo customer app use karta hai. **Scope aur projection dono token se
+nikalte hain** — vendor token bhejne par vendor ka jawab aata hai, `SUB_VENDOR` token
+bhejne par sirf us outlet ka.
+
+| Field | Vendor / Outlet | Kyun |
+|---|:-:|---|
+| `voucher.vendorPayable` · `pricing.netBill` | ✅ | Aapko kitna milega |
+| `voucher.vendorPromoCost` | ✅ | Promo me aapka hissa |
+| `gatewayFee` · `netReceived` | ❌ | Razorpay ne **humse** kya liya — commercial disclosure |
+| `voucher.platformPromoCost` | ❌ | Promo me hamara hissa |
+| `email` · `contact` · `customerId` | ❌ | Grahak ki privacy |
+| `invoiceDownloadUrl` | ❌ | Grahak ka tax invoice uske apne details rakhta hai |
+
+Ye faisla `claimProjection()` me **ek jagah** hota hai, har endpoint par yaad nahi rakha
+jaata — teen alag endpoint hote to ek jagah bhoolna leak ban jaata, aur wo listing me nahi,
+detail page par milta, jise koi jaanchta nahi.
+
+## 82. GET /voucher-claims — mere brand ki claims
+
+**Access:** 🔒 `verifyJwtToken` — `VENDOR` aur `SUB_VENDOR` dono
+
+`SUB_VENDOR` token isi URL par **sirf apne outlet** ki rows paata hai, brand ki poori nahi.
+
+| Param | Default | Notes |
+|---|---|---|
+| `page` / `limit` | `1` / `20` | `limit` max **100** |
+| `status` | – | `PENDING · PAID · REDEEMED · FAILED · CANCELLED · EXPIRED · REFUNDED` |
+| `outletId` | – | Outlet-wise report |
+| `claimCode` | – | Poora code |
+| `from` / `to` | – | ISO date. `to` **poora din** include karta hai |
+
+⚠️ **Scope query se chaudi nahi ho sakti.** `?brandId=<dusra brand>` bhejne par **kuch
+nahi** milta — apne rows nahi. Filter aur scope intersect hote hain, isliye galat filter
+par khaali jawab aata hai, chup-chaap galat jawab nahi.
+
+Khaali list `200` + `data: []` hai, `404` nahi.
+
+---
+
+## 83. GET /voucher-claims/payments — mere brand ke payments
+
+**Access:** 🔒 `verifyJwtToken`
+
+*"Kaunsa paisa hila"*. `status` yahan **payment** ki vocabulary hai —
+`created · authorized · captured · failed`.
+
+Settlement ke fields bhi yahin: `settlementId`, `settlementHold`, `paidToVendorAt`.
+
+---
+
+## 84. GET /voucher-claims/payments/:transactionId — ek payment
+
+**Access:** 🔒 `verifyJwtToken`
+
+| Status | Kab |
+|---|---|
+| `404` | Id galat **ya** row kisi aur ka — dono ka ek hi jawab |
+| `403` | Dusre brand ka, ya `SUB_VENDOR` ke liye dusre outlet ka |
+| `422` | Malformed id |
+
+⚠️ **Apna subscription payment yahan nahi khulta.** Ek hi collection vendor subscriptions
+aur customer voucher claims dono rakhti hai; `purpose` scope hi use rokta hai. Apni
+subscription ke liye `/transactions/...` use karein.
+
+---
+
+## 85. GET /voucher-claims/:claimId — ek claim, timeline ke saath
+
+**Access:** 🔒 `verifyJwtToken`
+
+`claim` · `payment` · `brand` · `outlet` · **`timeline`** · `viewer`
+
+Timeline har audience ke liye **banayi** jaati hai, chhaani nahi. Aapko har row se
+`label` · `at` · `fromStatus` → `toStatus` · `by` milta hai. Kaccha audit row `snapshot`
+me poora pricing block rakhta hai (`platformPromoCost` samet) aur `reason` staff ka note
+hai — dono me se kuch nahi aata.
+
+---
+
+## 86. GET /voucher-claims/code/:claimCode — counter par verify
+
+**Access:** 🔒 `verifyJwtToken`
+
+Counter par grahak code dikhaata hai, staff yahan daalta hai: **kitna pay hua, kaunsa
+offer, kab, kaunsa outlet**.
+
+⚠️ **Code lookup ko narrow karta hai, authorise nahi karta.** Dusre brand ya dusre outlet
+ka code `403` deta hai — kisi aur ki screen se padha gaya code kuch nahi kholta.
+
+Code `TD-` + 6 characters `34679ACDEFGHJKMNPQRTUVWXY` me se. `0/O`, `1/I/L`, `5/S`, `2/Z`,
+`8/B` chhode gaye hain kyunki ye counter par bolkar padhe jaate hain. Galat character wale
+code par `422` *"mistyped character"* — `404` lagta hai claim maujood hi nahi.
+
+> **Phase 2 me yahi surface redeem karega.** Uske saath dobara-scan ka samajhdaar jawab
+> aur reversal bhi aayenge — teeno ek saath. Sirf scan deploy karna grahak ko phansa deta
+> hai: scan chala nahi, saamaan mila nahi, aur *"already redeemed"*.
+
+---
+
 # Appendix A — Not For Vendor Panel
 
 Ye 62 endpoints backend me hain par vendor panel inko use na kare. Zyada tar ab properly gated hain (`403` denge), par kuch pe abhi bhi role check nahi hai — un pe app ko khud discipline rakhni hogi.

@@ -5834,7 +5834,7 @@
               "body": "{\n  \"success\": true,\n  \"message\": \"Voucher preview calculated successfully.\",\n  \"data\": {\n    \"voucher\": {\n      \"id\": \"{{voucher_id}}\",\n      \"name\": \"flat 30% off on total bill\"\n    },\n    \"version\": {\n      \"id\": \"…\",\n      \"versionNumber\": 3\n    },\n    \"outlet\": {\n      \"id\": \"{{sub_brand_id}}\",\n      \"storeId\": \"TS-87HD-48L3-PZYW\"\n    },\n    \"billAmount\": 300,\n    \"offerApplied\": false,\n    \"selectedOffer\": null,\n    \"eligibleOffers\": [],\n    \"pricing\": {\n      \"billAmount\": 300,\n      \"discountAmount\": 0,\n      \"promoDiscount\": 0,\n      \"convenienceFee\": 0,\n      \"payableAmount\": 300,\n      \"totalSavings\": 0\n    }\n  }\n}"
             },
             {
-              "name": "400 — bill ≤ 0 ab bhi error hai",
+              "name": "422 — bill ≤ 0 (Joi answers before the service)",
               "originalRequest": {
                 "method": "POST",
                 "header": [
@@ -5876,8 +5876,8 @@
                 },
                 "description": "### 🔄 Kya badla\n\n**Ye pehle `400` deta tha.** Ab `200` + `offerApplied: false` — customer sirf apna bill pay karega.\n\n---\n\nDo case me aisa hota hai:\n\n1. Bill har offer ke `minBillAmount` se kam hai\n2. Voucher version me koi offer hai hi nahi\n\nDono ka jawab same hai — **fee bhi `0`**.\n\nClient ka kaam: `offerApplied === false` pe offer section chhupa dein aur seedha `pricing.payableAmount` dikhayein."
               },
-              "status": "Bad Request",
-              "code": 400,
+              "status": "Unprocessable Entity",
+              "code": 422,
               "_postman_previewlanguage": "json",
               "header": [
                 {
@@ -5886,7 +5886,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": false,\n  \"message\": \"Valid bill amount is required.\"\n}"
+              "body": "{\n  \"success\": false,\n  \"message\": \"Bill amount must be greater than zero.\"\n}"
             }
           ]
         }

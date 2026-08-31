@@ -22,10 +22,13 @@ const {
   subscribeVerifyTransaction,
   invoiceRegenerate,
   razorpayWebhook,
+  razorpayCustomerWebhook,
+  invoiceByToken,
   webhookEventList,
   webhookEventGet,
   webhookReplay,
   disputeList,
+  paymentHealth,
 } = require("../controllers/transactions");
 
 // These routes previously ran only `verifyJwtToken`, so any authenticated user
@@ -33,16 +36,36 @@ const {
 // Ownership is enforced per-brand inside the services via resolveActorBrand.
 
 // ---------------------------------------------------------------------------
-// PUBLIC — Razorpay webhook.
+// PUBLIC — Razorpay webhooks. One endpoint per account.
 //
 // Deliberately unauthenticated: Razorpay cannot present a JWT. Authenticity
 // comes from the HMAC over the raw request body, verified inside the service
-// against RAZORPAY_WEBHOOK_SECRET. Declared first so no auth middleware can be
-// accidentally applied to it later.
+// against that account's webhook secrets. Declared first so no auth middleware
+// can be accidentally applied to them later.
 //
-// This is what makes activation independent of the browser: a vendor who closes
-// the tab mid-payment still gets their plan, because Razorpay tells us directly.
+// Two endpoints because the two Razorpay accounts are separate merchants with
+// separate webhook secrets — and because it makes the account a property of the
+// URL. The signature then only has to prove the payload is authentic, not tell
+// us whose it is.
+//
+// This is what makes activation independent of the browser: a customer who
+// closes the tab mid-payment still gets their claim, because Razorpay tells us
+// directly.
+//
+//   Razorpay dashboard → Settings → Webhooks
+//     VENDOR account   → {PUBLIC_API_URL}/trydood/v1/transactions/webhook/razorpay
+//     CUSTOMER account → {PUBLIC_API_URL}/trydood/v1/transactions/webhook/razorpay/customer
 // ---------------------------------------------------------------------------
+/**
+ * The public invoice link. **No JWT** — see the controller.
+ *
+ * Declared beside the webhooks, before any auth middleware, for the same reason
+ * they are: everything below `router.use(verifyJwtToken)` would reject a browser
+ * arriving from a WhatsApp message.
+ */
+router.get("/invoice/:token", invoiceByToken);
+
+router.post("/webhook/razorpay/customer", razorpayCustomerWebhook);
 router.post("/webhook/razorpay", razorpayWebhook);
 
 router.post(
@@ -111,5 +134,17 @@ router.get(
   validateSchema(validateGetDisputes),
   disputeList,
 );
+
+/**
+ * ---------------- payment health ----------------
+ *
+ * Not a liveness probe — the server answering proves that. This answers the
+ * question an admin actually has: did anything get stuck overnight, and is
+ * anything quietly losing money right now?
+ *
+ * No validator: it takes nothing. A query parameter here would only be a way to
+ * ask for a less complete answer.
+ */
+router.get("/admin/health", isAdmin, paymentHealth);
 
 module.exports = router;
