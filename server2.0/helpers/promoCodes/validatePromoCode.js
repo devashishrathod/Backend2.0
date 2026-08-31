@@ -2,15 +2,16 @@ const PromoCode = require("../../models/PromoCode");
 const PromoCodeUsage = require("../../models/PromoCodeUsage");
 const Subscribed = require("../../models/Subscribed");
 const {
-  PROMO_DISCOUNT_TYPES,
   PROMO_USAGE_STATUS,
   PROMO_REJECTION,
+  PROMO_AUDIENCE,
 } = require("../../constants/promoCode");
 const { SUBSCRIBED_STATUS } = require("../../constants/subscription");
-const { round2 } = require("../subscribeds/calculatePricing");
+const { assertPromoWindowAndCaps } = require("./assertPromoWindowAndCaps");
+const { buildAudienceFilter } = require("./buildAudienceFilter");
 
 /**
- * Resolve a promo code and compute what it is worth on this order.
+ * Resolve a **vendor subscription** promo code and compute what it is worth.
  *
  * Returns a verdict rather than throwing, so the preview endpoint can render a
  * disabled Apply button with a reason while order creation turns the same
@@ -20,6 +21,15 @@ const { round2 } = require("../subscribeds/calculatePricing");
  * The discount applies to `taxableValue` — the price *after* the plan's own
  * discount — never to the list price. GST is then charged on what remains, so
  * the tax base stays correct.
+ *
+ * The window, the platform-wide cap and the discount arithmetic now live in
+ * `assertPromoWindowAndCaps`, shared with the customer validator so the two can
+ * never disagree on what a code is worth.
+ *
+ * **Audience isolation.** The lookup is scoped so a customer voucher code can
+ * never be redeemed at subscription checkout. Why that scope is `$ne: CUSTOMER`
+ * rather than `$eq: VENDOR` is explained once in `buildAudienceFilter`, which
+ * the admin listing and the campaign report use too.
  *
  * @param {object}  args
  * @param {string}  args.code
@@ -45,18 +55,23 @@ exports.validatePromoCode = async ({
   const promo = await PromoCode.findOne({
     code: normalized,
     isDeleted: false,
+    ...buildAudienceFilter(PROMO_AUDIENCE.VENDOR),
   });
 
+  // A customer-audience code reaching here is reported exactly like a code that
+  // does not exist. Saying "this code is not for you" would confirm it exists.
   if (!promo) return { ok: false, reason: PROMO_REJECTION.NOT_FOUND };
-  if (!promo.isActive) return { ok: false, reason: PROMO_REJECTION.INACTIVE };
 
-  const now = new Date();
-  if (promo.validFrom && now < promo.validFrom) {
-    return { ok: false, reason: PROMO_REJECTION.NOT_STARTED, promoCode: promo };
-  }
-  if (promo.validTill && now > promo.validTill) {
-    return { ok: false, reason: PROMO_REJECTION.EXPIRED, promoCode: promo };
-  }
+  // ---------- shared gates: live, in window, platform cap, worth ----------
+  const verdict = assertPromoWindowAndCaps({
+    promo,
+    base: taxableValue,
+    minBase: promo.minOrderValue,
+    minReason: PROMO_REJECTION.MIN_ORDER_VALUE,
+  });
+  if (!verdict.ok) return verdict;
+
+  // ---------- vendor-specific gates ----------
 
   // An empty scope list means "no restriction".
   if (promo.subscriptionIds?.length) {
@@ -72,7 +87,10 @@ exports.validatePromoCode = async ({
     }
   }
 
-  if (promo.applicableActions?.length && !promo.applicableActions.includes(action)) {
+  if (
+    promo.applicableActions?.length &&
+    !promo.applicableActions.includes(action)
+  ) {
     return {
       ok: false,
       reason: PROMO_REJECTION.ACTION_NOT_ELIGIBLE,
@@ -95,29 +113,13 @@ exports.validatePromoCode = async ({
     }
   }
 
-  // Checked against the already-discounted subtotal, matching where the promo
-  // discount is actually applied.
-  if (promo.minOrderValue && taxableValue < promo.minOrderValue) {
-    return {
-      ok: false,
-      reason: PROMO_REJECTION.MIN_ORDER_VALUE,
-      promoCode: promo,
-    };
-  }
-
-  if (promo.totalUsageLimit && promo.usedCount >= promo.totalUsageLimit) {
-    return {
-      ok: false,
-      reason: PROMO_REJECTION.TOTAL_LIMIT_REACHED,
-      promoCode: promo,
-    };
-  }
-
   // Per-brand cap counts the ledger, not `usedCount` — RESERVED rows count too,
-  // so a vendor cannot hold two open orders against a single-use code.
+  // so a vendor cannot hold two open orders against a single-use code. Scoped by
+  // audience so customer claims on the same code are never counted here.
   const brandUses = await PromoCodeUsage.countDocuments({
     promoCodeId: promo._id,
     brandId: brand._id,
+    audience: { $ne: PROMO_AUDIENCE.CUSTOMER },
     status: {
       $in: [PROMO_USAGE_STATUS.RESERVED, PROMO_USAGE_STATUS.CONSUMED],
     },
@@ -130,17 +132,5 @@ exports.validatePromoCode = async ({
     };
   }
 
-  // ---------- worth ----------
-  let discount =
-    promo.discountType === PROMO_DISCOUNT_TYPES.PERCENT
-      ? round2((taxableValue * (promo.discountPercent || 0)) / 100)
-      : round2(promo.discountAmount || 0);
-
-  if (promo.maxDiscountAmount) {
-    discount = Math.min(discount, round2(promo.maxDiscountAmount));
-  }
-  // Never let a promo push the order negative.
-  discount = Math.min(discount, taxableValue);
-
-  return { ok: true, promoCode: promo, discount };
+  return verdict;
 };

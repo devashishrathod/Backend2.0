@@ -19,9 +19,54 @@ Node.js · CommonJS · Express 5 · Mongoose 9 (MongoDB) · Joi 18 · JWT · bcr
 ```bash
 npm run dev     # nodemon index  — local development with reload
 npm start       # node index     — production
+npm test        # jest --runInBand — money paths only, see below
 ```
 
-> There is no test runner and no lint script configured. Do not invent `npm test` / `npm run lint` — they will fail.
+> No lint script is configured. Do not invent `npm run lint` — it will fail.
+
+### `npm test` covers the money paths and nothing else
+
+`__tests__/money/` is the only tested folder, and the rest of the repo keeps the
+no-test convention. It exists for the handful of behaviours that cannot be
+verified by clicking — atomic claims, partial unique indexes, idempotency keys,
+webhook replay. Rare, expensive when wrong, and exactly the class manual QA never
+catches.
+
+These run against a **separate database on the real cluster** (`Trydood2_test`),
+derived from `MONGO_URL` by `__tests__/money/setup/testDb.js`. There is no
+in-memory Mongo: a `mongod` reserves half the machine's RAM for its cache by
+default, and this machine does not have it to spare. Everything is behind that
+one helper, so switching later is a change to one file.
+
+**The guard is load-bearing.** These tests delete documents. `testDb.js` refuses
+to connect, and `clearCollections` refuses to run, unless the live connection's
+database name ends in `_test`. Never bypass it, and never point a test at
+`mongoose.connect(process.env.MONGO_URL)` directly.
+
+> ⚠️ `NODE_ENV=production` is set in some shells here, which makes npm set
+> `omit=dev` and skip devDependencies entirely — `npm install` reports success
+> and jest never lands. Install dev tooling with
+> `NODE_ENV=development npm install --include=dev`.
+
+One-off maintenance lives in `scripts/`, not in a migrations framework. Every one
+of them is **dry-run by default** and writes only with `--apply`:
+
+```bash
+node scripts/migrateCustomerClaimFoundation.js          # what would change
+node scripts/migrateCustomerClaimFoundation.js --apply  # change it
+```
+
+> ⚠️ Postman collections are generated, but `trydood-customer` and `trydood-vendor`
+> also carry **captured** examples from live runs, which the generators do not know
+> about. Re-running a generator rewrites the whole file and deletes them — measured at
+> 15,499 lines across the two, with the command still reporting success. Run only the
+> generator whose source you changed, and check `git diff --stat postman/` afterwards.
+> See `postman/README.md`.
+
+> ⚠️ Never fix a schema drift with `syncIndexes()`. It drops **every** index not
+> in the current schema, including any added by hand or by another branch, and it
+> names none of them on the way out. Drop by name, and only after verifying the
+> replacement index exists — see `scripts/migrateCustomerClaimFoundation.js`.
 
 Server boots from `index.js`, mounts everything under `/trydood/v1`, and connects to Mongo via `database/mongoDb.js`.
 
@@ -71,6 +116,11 @@ Strictly one direction. A controller never imports a model; a service never sees
 | Lists | `pagination(Model, pipeline, …)` | manual `$skip` / `$limit` |
 | Delete | `isDeleted: true` | `deleteOne()` |
 | Queries | filter `isDeleted: false` | unfiltered `find()` |
+| Transaction queries | `buildTransactionFilter({ purpose, … })` | raw `Transaction.find({ … })` |
+| Ledger writes | `recordLedgerEntry({ entryType, … })` | `LedgerEntry.create(…)` |
+| Claim pricing | `calculateVoucherPricing(…)` | arithmetic at the call site |
+| Redirects | `sendRedirect(res, url)` | `res.redirect(…)` |
+| `req.customerId` | `resolveCustomerId(req)` | `String(req.customerId)` — it is a **document** |
 
 ---
 
@@ -161,6 +211,41 @@ Generated skills live in `.claude/skills/` (`explore-codebase`, `review-changes`
 
 ---
 
+## Money paths
+
+Two flows share the `transactions` collection, told apart by `purpose`:
+**subscriptions** (vendor, VENDOR Razorpay account) and **voucher claims**
+(customer, CUSTOMER account). They share a shape and almost no logic.
+
+### The settle is staged, and every step is idempotent
+
+The conditional claim (`findOneAndUpdate({ verified: false })`) is what makes the
+browser callback and the webhook safe — they race on **every** payment. But that
+claim is terminal, and several writes follow it: a process that dies in between
+leaves a transaction `verified: true` with the work half done and no way back in.
+
+So `settlementStage` records how far it got — `CLAIMED → RECORDED → INVOICED →
+COMPLETE` — and `resumeIncompleteSettlements` re-runs the whole thing with
+`resume: true`. Because every step is idempotent, **resume does not need to know
+where it stopped**.
+
+If you add a step to a settle, it must be safe to run twice, and it must sit
+before the `COMPLETE` stage marker.
+
+### Locks are taken when a record is created, not when it is paid
+
+`VoucherClaim.holdsUsageSlot` is set the moment the claim exists. Waiting for
+payment leaves exactly the window a race needs: two checkouts open, neither
+holding anything, both allowed through.
+
+### An idempotency key is inserted before the external call, never after
+
+Two concurrent taps both pass a read-then-write check. Inserting the key is what
+makes the second one lose — the unique index decides, not the timing. And the
+gateway is called **last**, because it is the only step with no undo.
+
+---
+
 ## Never
 
 - `try/catch` in a controller
@@ -172,3 +257,21 @@ Generated skills live in `.claude/skills/` (`explore-codebase`, `review-changes`
 - Magic strings where a `constants` entry exists
 - Manual pagination or hand-written `$lookup` + `$unwind`
 - Committing `.env` or any credential
+- Querying `Transaction` without `buildTransactionFilter` — one collection holds both
+  vendor subscriptions and customer voucher claims, and a forgotten `purpose` silently
+  mixes them. Pass `purpose: null` when you genuinely want both.
+- Hardcoding a Razorpay account (`ROLES.VENDOR` / `ROLES.CUSTOMER`) at a call site —
+  read `transaction.gatewayAccount` instead. See `constants/transaction.js`.
+- Writing a `LedgerEntry` directly. Go through `helpers/ledger/recordLedgerEntry.js`
+  — it derives the account and direction from the entry type, so two call sites
+  cannot disagree about which way a refund moves, and it makes the capture-time
+  entries idempotent. **A ledger row is never updated and never deleted**: a
+  correction is a new row with `reversalOf` set.
+- Putting `$in` in a `partialFilterExpression`. Mongo accepts only equality,
+  `$exists`, comparisons and `$type`. "In one of these statuses" has to become a
+  denormalised boolean — `VoucherClaim.holdsUsageSlot`,
+  `LedgerEntry.isOncePerTransaction` — and the index keys on that.
+- Scheduling background work with a bare `setInterval` outside `jobs/index.js`. The
+  runner is an in-process timer, so on a multi-instance deploy anything it schedules
+  runs once per instance. Add the job to the registry in `jobs/index.js` and it gets
+  the cross-process `JobLock` and the health record for free.

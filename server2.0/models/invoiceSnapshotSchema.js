@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
 const { pricingSchema } = require("./pricingSchema");
+const { voucherPricingSchema } = require("./voucherPricingSchema");
+const { INVOICE_KIND } = require("../constants/transaction");
 
 const partySchema = new mongoose.Schema(
   {
@@ -41,6 +43,32 @@ const invoiceSnapshotSchema = new mongoose.Schema(
     // Stamped so a future change to the invoice layout can be applied to new
     // invoices without altering how an old one renders.
     version: { type: Number, default: 1 },
+
+    /**
+     * Which document this is, and the renderer's branch key.
+     *
+     * `SUBSCRIPTION` is what every existing invoice is, so it is the default and
+     * nothing about those changes. `VOUCHER_CLAIM` gets its own layout: the
+     * subscription one prints "Original Price", a plan name, a duration and a
+     * validity range, none of which a voucher claim has — run through it, a claim
+     * would print an empty plan name, `Validity: - to -`, and tax rows of zero.
+     */
+    kind: {
+      type: String,
+      enum: Object.values(INVOICE_KIND),
+      default: INVOICE_KIND.SUBSCRIPTION,
+    },
+
+    /**
+     * Whether this is a tax invoice at all.
+     *
+     * ⚠️ Printing "TAX INVOICE" on a document with no tax on it is wrong.
+     * Customer GST is off by default, so a claim receipt says **PAYMENT
+     * RECEIPT** and prints no tax block. The moment GST is switched on the same
+     * claim becomes a TAX INVOICE — which is why this is stored rather than
+     * derived at render time, when the config may have changed.
+     */
+    isTaxInvoice: { type: Boolean, default: true },
     issuedAt: { type: Date },
     invoiceId: { type: String },
     transactionRef: { type: String },
@@ -58,7 +86,48 @@ const invoiceSnapshotSchema = new mongoose.Schema(
     billTo: { type: partySchema, default: () => ({}) },
 
     // ---------- how much ----------
-    pricing: { type: pricingSchema, default: () => ({}) },
+    // `SUBSCRIPTION` only. Absent on a claim — see `voucherPricing`.
+    pricing: { type: pricingSchema },
+    // `VOUCHER_CLAIM` only. Kept as its own typed field rather than making
+    // `pricing` Mixed: the two blocks share almost no field names, and a
+    // renderer that had to guess which shape it held would guess wrong.
+    voucherPricing: { type: voucherPricingSchema },
+
+    /**
+     * The printed lines, already worded.
+     *
+     * A claim invoice has to say *"Bill collected on behalf of <Brand>"* rather
+     * than name a product, because Trydood did not sell the meal — the vendor
+     * did, and we collected for them. Getting that wording out of the renderer
+     * and into the snapshot means an invoice re-issued after the wording changes
+     * still reads the way it did when it was issued.
+     */
+    lineItems: [
+      {
+        _id: false,
+        label: { type: String },
+        amount: { type: Number },
+        // Set on the rows that are subtracted, so the renderer does not have to
+        // infer a minus sign from the label.
+        isDeduction: { type: Boolean, default: false },
+      },
+    ],
+
+    /** What was claimed. `VOUCHER_CLAIM` only. */
+    voucherBlock: {
+      voucherName: { type: String },
+      versionCode: { type: String },
+      offerTitle: { type: String },
+      claimCode: { type: String },
+      outletStoreId: { type: String },
+      redeemedAt: { type: Date },
+    },
+
+    /** Who the money was collected for. `VOUCHER_CLAIM` only. */
+    brandBlock: {
+      name: { type: String },
+      outletAddress: { type: String },
+    },
 
     // ---------- how it was paid ----------
     paymentStatus: { type: String },

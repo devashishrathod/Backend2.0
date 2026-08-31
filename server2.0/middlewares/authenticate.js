@@ -86,6 +86,21 @@ exports.buildAuthGate = ({
     if (user.role === ROLES.VENDOR) {
       req.brandId = user.brandId;
     }
+    /**
+     * A sub-vendor works one outlet of a brand, and needs both.
+     *
+     * ⚠️ Nothing was set here at all. Every gate that reads `req.brandId` — the
+     * claim access check, the outlet verify screen — simply saw `undefined` for
+     * a sub-vendor and refused them, or worse, matched nothing and returned an
+     * empty list that reads as "no claims today".
+     *
+     * `brandId` is the parent brand, not a second identity: a sub-vendor's claims
+     * belong to the brand, and scoping to the outlet is `subBrandId`'s job.
+     */
+    if (user.role === ROLES.SUB_VENDOR) {
+      req.brandId = user.brandId;
+      req.subBrandId = user.subBrandId;
+    }
 
     // Last, so a deactivated account is told it is deactivated rather than that
     // it lacks permission.

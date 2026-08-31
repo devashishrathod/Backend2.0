@@ -17,7 +17,9 @@ const {
 const {
   generateAndUploadInvoice,
   buildInvoiceSnapshot,
+  detectDoubleCapture,
 } = require("../transactions");
+const { SETTLEMENT_STAGE } = require("../../constants/transaction");
 const { calculateEndDate } = require("./calculateEndDate");
 const { getActiveSubscription } = require("./getActiveSubscription");
 const { resolveSubscriptionAction } = require("./resolveSubscriptionAction");
@@ -122,14 +124,28 @@ exports.settleSubscriptionPayment = async ({
         razorpayPaymentId: payment.id,
         verified: true,
         verifiedAt: new Date(),
+        // The claim is terminal — nothing can re-enter through it — but several
+        // dependent writes follow. This is how `resumeIncompleteSettlements`
+        // finds a settlement that was claimed and then abandoned mid-way.
+        settlementStage: SETTLEMENT_STAGE.CLAIMED,
       },
     },
-    { new: true },
+    { returnDocument: "after" },
   );
 
   if (!claimed) {
     // Someone else settled it first — return what they produced.
     const settled = await Transaction.findById(transaction._id);
+
+    // ...but "someone else" is not always the same payment. Razorpay allows
+    // more than one payment attempt on an order, so this can be a genuinely
+    // SECOND capture — money taken twice, with the conditional claim quietly
+    // dropping it. That has to reach a human.
+    const double = await detectDoubleCapture({
+      transaction: settled || transaction,
+      payment,
+    });
+
     const existing = settled?.subscribedId
       ? await Subscribed.findById(settled.subscribedId)
       : await getActiveSubscription(transaction.brandId);
@@ -139,6 +155,7 @@ exports.settleSubscriptionPayment = async ({
       action: null,
       invoiceUrl: settled?.invoiceUrl || null,
       alreadySettled: true,
+      doubleCapture: double.isDouble,
     };
   }
 
@@ -197,6 +214,12 @@ exports.settleSubscriptionPayment = async ({
     subscriptionId: subscription._id,
     userId: actor.userId || claimed.createdBy,
   });
+
+  // Domain records are written: the plan is live and the promo is committed.
+  await Transaction.updateOne(
+    { _id: claimed._id },
+    { $set: { settlementStage: SETTLEMENT_STAGE.RECORDED } },
+  );
 
   const quoteLapsed = Boolean(
     claimed.promoQuotedUntil && claimed.promoQuotedUntil < new Date(),
@@ -262,10 +285,23 @@ exports.settleSubscriptionPayment = async ({
     );
   }
 
+  // The invoice snapshot is frozen (or its failure logged and moved past —
+  // a missing PDF is a regenerate-later problem, not a settlement failure).
+  await Transaction.updateOne(
+    { _id: claimed._id },
+    { $set: { settlementStage: SETTLEMENT_STAGE.INVOICED } },
+  );
+
   // Only nudge the vendor forward if they are still on the subscribe step.
   await User.updateOne(
     { _id: brand.userId, currentScreen: SCREENS.SUBSCRIBE_PLAN },
     { $set: { currentScreen: SCREENS.OUTLET_PAGE } },
+  );
+
+  // Nothing left to resume.
+  await Transaction.updateOne(
+    { _id: claimed._id },
+    { $set: { settlementStage: SETTLEMENT_STAGE.COMPLETE } },
   );
 
   return {

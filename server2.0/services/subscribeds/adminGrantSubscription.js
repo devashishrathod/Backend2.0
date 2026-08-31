@@ -8,6 +8,11 @@ const {
   SUBSCRIPTION_SOURCE,
   SUBSCRIPTION_ACTION,
 } = require("../../constants/subscription");
+const {
+  TRANSACTION_PURPOSE,
+  ACCOUNT_FOR_PURPOSE,
+  INVOICE_SERIES,
+} = require("../../constants/transaction");
 const { throwError } = require("../../utils");
 const { getSubscriptionConfig } = require("../../helpers/settings");
 const { summarizeUsage } = require("../../helpers/brands");
@@ -21,7 +26,7 @@ const {
   activateSubscription,
 } = require("../../helpers/subscribeds");
 const {
-  generateUniqueInvoiceId,
+  generateInvoiceNumber,
   generateAndUploadInvoice,
   buildInvoiceSnapshot,
 } = require("../../helpers/transactions");
@@ -146,9 +151,17 @@ exports.adminGrantSubscription = async (actor, payload) => {
     );
   }
 
-  const invoiceId = await generateUniqueInvoiceId();
+  const invoiceId = await generateInvoiceNumber({
+    series: INVOICE_SERIES[TRANSACTION_PURPOSE.SUBSCRIPTION],
+  });
 
   const transaction = await Transaction.create({
+    // A manual grant never touches Razorpay, but it is still a subscription
+    // transaction and must sit in the same ledger, under the same purpose, as
+    // a paid one. `gatewayAccount` records which side of the business it
+    // belongs to — nothing will ever verify a signature against it.
+    purpose: TRANSACTION_PURPOSE.SUBSCRIPTION,
+    gatewayAccount: ACCOUNT_FOR_PURPOSE[TRANSACTION_PURPOSE.SUBSCRIPTION],
     brandId: brand._id,
     subscriptionId: subscription._id,
     userId: brand.userId,
@@ -157,9 +170,10 @@ exports.adminGrantSubscription = async (actor, payload) => {
     contact: brand.whatsappNumber || brand.mobile,
     gateway: PAYMENT_GATEWAYS.MANUAL,
     manualPaymentMode: paymentMode,
-    // There is no Razorpay order behind a manual grant, but the live unique
-    // index on this field is non-sparse, so a synthetic reference is used
-    // rather than leaving it null — two null rows would collide.
+    // A synthetic reference rather than null. The unique index on this field is
+    // now partial on `$type: "string"`, so a null would in fact be allowed —
+    // but a MANUAL row with a traceable reference is easier to reconcile than a
+    // blank one, and the value is already printed on the audit trail.
     razorpayOrderId: `MANUAL-${invoiceId}`,
     referenceNumber,
     note,

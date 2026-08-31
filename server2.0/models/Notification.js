@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { userField, brandField } = require("./validObjectId");
+const { userField, brandField, customerField } = require("./validObjectId");
 const {
   NOTIFICATION_AUDIENCE,
   NOTIFICATION_TYPES,
@@ -24,6 +24,16 @@ const notificationSchema = new mongoose.Schema(
     // is who actually reads it.
     brandId: brandField,
     userId: userField,
+    /**
+     * The customer this is addressed to.
+     *
+     * A customer is not a brand, and `brandId` on a claim notification would
+     * mean the vendor whose voucher was claimed — the wrong person entirely.
+     * Without this column a customer's own notification feed could not be
+     * queried at all: `userId` alone is shared with any vendor account on the
+     * same login.
+     */
+    customerId: customerField,
     audience: {
       type: String,
       enum: Object.values(NOTIFICATION_AUDIENCE),

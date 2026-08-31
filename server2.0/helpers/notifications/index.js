@@ -55,4 +55,6 @@ module.exports = {
   notifyBrandDeactivated,
   notifyBrandActivated,
   notifyBrandCustomerVisibilityChanged,
+  // Everything a voucher claim tells someone. All failure-tolerant.
+  ...require("./voucherClaimNotices"),
 };

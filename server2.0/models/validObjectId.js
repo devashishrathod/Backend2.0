@@ -33,9 +33,18 @@ module.exports = Object.freeze({
   workHoursField: refField("WorkHours"),
   voucherField: refField("Voucher"),
   voucherSubBrandField: refField("VoucherSubBrand"),
+  // Dangling: offers are embedded subdocuments inside VoucherVersion.offers,
+  // there is no VoucherOffer model. Kept because existing schemas reference it;
+  // new code should use a plain ObjectId for an offer id, not this.
   voucherOfferField: refField("VoucherOffer"),
+  voucherVersionField: refField("VoucherVersion"),
+  voucherClaimField: refField("VoucherClaim"),
+  promoCodeField: refField("PromoCode"),
   billField: refField("Bill"),
   settlementField: refField("Settlement"),
+  // Dangling in the same way: there is no Refund model and there will not be
+  // one — the refund record is RefundRequest. Left in place only because
+  // Transaction.refundId still uses it; that field is dropped in Phase S1.
   refundField: refField("Refund"),
 
   // Array of ObjectIds with validation

@@ -4,6 +4,7 @@ const {
   PROMO_USAGE_STATUS,
   PROMO_CODE_LIMITS,
   PROMO_REJECTION,
+  PROMO_AUDIENCE,
 } = require("../../constants/promoCode");
 const { throwError } = require("../../utils");
 
@@ -23,12 +24,25 @@ const { throwError } = require("../../utils");
  */
 exports.reservePromoCode = async ({
   promoCode,
+  // Exactly one of these. The audience discriminates which, and every cap check
+  // and report scopes by it — counting a customer's claims against a brand's
+  // limit, or the reverse, would be nonsense.
   brand,
+  customerId,
   userId,
   subscription,
+  voucherClaimId,
   transaction,
   discountAmount,
+  // How the discount is funded, already split by the caller. Frozen here so a
+  // settlement never has to re-derive it from a promo code that may since have
+  // been edited. Must satisfy vendorCost + platformCost === discountAmount.
+  vendorCost = 0,
+  platformCost = discountAmount,
 }) => {
+  const audience = customerId
+    ? PROMO_AUDIENCE.CUSTOMER
+    : PROMO_AUDIENCE.VENDOR;
   const claimed = await PromoCode.findOneAndUpdate(
     {
       _id: promoCode._id,
@@ -57,12 +71,17 @@ exports.reservePromoCode = async ({
     return await PromoCodeUsage.create({
       promoCodeId: promoCode._id,
       code: promoCode.code,
-      brandId: brand._id,
+      audience,
+      brandId: brand?._id,
+      customerId,
       userId,
-      subscriptionId: subscription._id,
+      subscriptionId: subscription?._id,
+      voucherClaimId,
       transactionId: transaction._id,
       status: PROMO_USAGE_STATUS.RESERVED,
       discountAmount,
+      vendorCost,
+      platformCost,
       reservedAt: new Date(),
     });
   } catch (error) {
@@ -100,12 +119,17 @@ exports.reservePromoCode = async ({
 exports.commitPromoCode = async ({
   transactionId,
   subscribedId,
+  voucherClaimId,
   // The frozen block from the transaction, used only for reconciliation.
   pricing,
   brandId,
+  customerId,
   subscriptionId,
   userId,
 }) => {
+  const audience = customerId
+    ? PROMO_AUDIENCE.CUSTOMER
+    : PROMO_AUDIENCE.VENDOR;
   if (!transactionId) return null;
 
   const usage = await PromoCodeUsage.findOneAndUpdate(
@@ -114,7 +138,8 @@ exports.commitPromoCode = async ({
       $set: {
         status: PROMO_USAGE_STATUS.CONSUMED,
         consumedAt: new Date(),
-        subscribedId,
+        ...(subscribedId ? { subscribedId } : {}),
+        ...(voucherClaimId ? { voucherClaimId } : {}),
       },
     },
     { new: true },
@@ -159,7 +184,8 @@ exports.commitPromoCode = async ({
       $set: {
         status: PROMO_USAGE_STATUS.CONSUMED,
         consumedAt: new Date(),
-        subscribedId,
+        ...(subscribedId ? { subscribedId } : {}),
+        ...(voucherClaimId ? { voucherClaimId } : {}),
         discountAmount: pricing.promoDiscount,
         releaseReason: RECLAIM_NOTE,
       },
@@ -172,9 +198,12 @@ exports.commitPromoCode = async ({
     reconstructed = await PromoCodeUsage.create({
       promoCodeId: promo._id,
       code: promo.code,
+      audience,
       brandId,
+      customerId,
       userId,
       subscriptionId,
+      voucherClaimId,
       transactionId,
       subscribedId,
       status: PROMO_USAGE_STATUS.CONSUMED,

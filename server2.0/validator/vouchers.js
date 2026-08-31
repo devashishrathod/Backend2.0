@@ -1,4 +1,5 @@
 const Joi = require("joi");
+const { PROMO_CODE_LIMITS } = require("../constants/promoCode");
 const objectId = require("./validJoiObjectId");
 const {
   VOUCHER_DISCOUNT_TYPES,
@@ -432,8 +433,45 @@ exports.validateCustomerVoucherPreview = {
     }),
     billAmount: Joi.number().positive().precision(2).required().messages({
       "number.base": "Bill amount must be a number.",
+      // A non-positive bill is refused HERE, by Joi, which runs before the
+      // service. That makes it a 422 and not the 400 the pricing helper would
+      // have raised — the helper's own guard is unreachable through the API and
+      // stays only as a guard for direct callers.
       "number.positive": "Bill amount must be greater than zero.",
       "any.required": "Bill amount is required.",
     }),
+
+    /**
+     * The customer's explicit offer choice.
+     *
+     * Optional: with nothing named, the best offer for the bill wins. Naming one
+     * that cannot apply is a 422 with the reason — no substitute is chosen for
+     * them, because the screen and the charge must agree about what was bought.
+     */
+    offerId: objectId().optional().messages({
+      "any.invalid": "Invalid offer ID format.",
+    }),
+
+    /**
+     * A customer-audience promo code.
+     *
+     * Rejected softly here: preview reports the reason in `promo.message` so the
+     * page can render it inline next to a disabled Apply button. Order creation
+     * runs the same builder with `strictPromo` and turns that into a 422.
+     */
+    promoCode: Joi.string()
+      .trim()
+      .uppercase()
+      .min(PROMO_CODE_LIMITS.MIN_CODE_LENGTH)
+      .max(PROMO_CODE_LIMITS.MAX_CODE_LENGTH)
+      .pattern(/^[A-Z0-9_-]+$/)
+      .allow("", null)
+      .optional()
+      .messages({
+        "string.min": "Promo code must be at least {#limit} characters.",
+        "string.max": "Promo code cannot exceed {#limit} characters.",
+        "string.pattern.base":
+          "Promo code may only contain letters, numbers, dashes and underscores.",
+      }),
   }),
 };

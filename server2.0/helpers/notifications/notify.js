@@ -9,7 +9,9 @@ const {
 const { sendMail } = require("../nodeMailer");
 const { dispatchPush } = require("../push");
 const { sendWhatsApp } = require("../whatsapp");
-const { getSubscriptionConfig } = require("../settings");
+const { getSubscriptionConfig, getCustomerConfig } = require("../settings");
+const Customer = require("../../models/Customer");
+const { resolveCustomerId } = require("../customers");
 
 /**
  * Resolve where to reach a brand: the address on the brand, falling back to the
@@ -19,14 +21,29 @@ const { getSubscriptionConfig } = require("../settings");
  * over the login mobile — a business often runs WhatsApp on a different number
  * from the one used to sign in, and messaging the wrong one reaches nobody.
  */
-const resolveRecipient = async (brandId, userId) => {
+const resolveRecipient = async (brandId, userId, customerId) => {
+  /**
+   * A customer's own contacts come first.
+   *
+   * Falling through to the User record would reach the login identity, which is
+   * often not where a customer wants a receipt — and on a shared login it is
+   * not even the same person. The User is still the fallback, because a
+   * customer who never filled in an email should still get one.
+   */
+  const resolvedCustomerId = resolveCustomerId(customerId);
+  const customer = resolvedCustomerId
+    ? await Customer.findById(resolvedCustomerId)
+        .select("email mobile whatsappNumber name userId")
+        .lean()
+    : null;
+
   const brand = brandId
     ? await Brand.findById(brandId)
         .select("email mobile whatsappNumber userId brandName")
         .lean()
     : null;
 
-  const targetUserId = userId || brand?.userId;
+  const targetUserId = userId || customer?.userId || brand?.userId;
   const user = targetUserId
     ? await User.findById(targetUserId)
         .select("email name mobile whatsappNumber")
@@ -35,15 +52,38 @@ const resolveRecipient = async (brandId, userId) => {
 
   return {
     userId: targetUserId || null,
-    email: brand?.email || user?.email || null,
+    customerId: resolvedCustomerId || null,
+    email: customer?.email || brand?.email || user?.email || null,
     phone:
+      customer?.whatsappNumber ||
+      customer?.mobile ||
       brand?.whatsappNumber ||
       user?.whatsappNumber ||
       brand?.mobile ||
       user?.mobile ||
       null,
     brandName: brand?.brandName || null,
+    name: customer?.name || user?.name || brand?.brandName || null,
   };
+};
+
+/**
+ * Which channel toggles govern this notification.
+ *
+ * ⚠️ They were read from `getSubscriptionConfig()` for every audience — the
+ * **vendor** settings. So silencing vendor renewal reminders would also have
+ * silenced every customer's payment receipt, and a customer-side toggle would
+ * have had no effect at all.
+ *
+ * Shaped the same either way, so the three delivery blocks below do not have to
+ * know which audience they are serving.
+ */
+const getNotificationConfig = async (audience) => {
+  if (audience === NOTIFICATION_AUDIENCE.CUSTOMER) {
+    const { notification } = await getCustomerConfig();
+    return notification;
+  }
+  return getSubscriptionConfig();
 };
 
 /**
@@ -65,6 +105,11 @@ const resolveRecipient = async (brandId, userId) => {
 exports.notify = async ({
   brandId,
   userId,
+  /**
+   * The customer this is for. Accepts an id or the populated document
+   * `req.customerId` actually holds — normalised inside.
+   */
+  customerId,
   audience = NOTIFICATION_AUDIENCE.VENDOR,
   type,
   severity = NOTIFICATION_SEVERITY.INFO,
@@ -92,11 +137,12 @@ exports.notify = async ({
   mail,
 }) => {
   try {
-    const recipient = await resolveRecipient(brandId, userId);
+    const recipient = await resolveRecipient(brandId, userId, customerId);
 
     const notification = await Notification.create({
       brandId: brandId || undefined,
       userId: recipient.userId || undefined,
+      customerId: recipient.customerId || undefined,
       audience,
       type,
       severity,
@@ -115,7 +161,7 @@ exports.notify = async ({
     // and defaults are the right fallback for a delivery decision.
     let config = {};
     try {
-      config = await getSubscriptionConfig();
+      config = await getNotificationConfig(audience);
     } catch (error) {
       console.error(
         `[notify] could not read notification settings for ${notification._id}:`,
@@ -262,3 +308,15 @@ exports.notify = async ({
     return { created: false, reason: error?.message };
   }
 };
+
+/**
+ * Exported for the tests that check who a notification actually reaches.
+ *
+ * Not part of the public surface — callers use `notify`. But "which address does
+ * a customer's receipt go to" is exactly the kind of thing that is silently
+ * wrong for months, and testing it through the resolved row rather than through
+ * a copy of the logic is the only way to catch it.
+ */
+exports.resolveRecipient = resolveRecipient;
+exports.getNotificationConfig = getNotificationConfig;
+

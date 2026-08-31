@@ -3,6 +3,10 @@ const os = require("os");
 const path = require("path");
 const PDFDocument = require("pdfkit");
 const { PAYMENT_STATUS } = require("../../constants");
+const {
+  INVOICE_KIND,
+  INVOICE_TITLE,
+} = require("../../constants/transaction");
 const { GST_TAX_TYPES } = require("../../constants/subscription");
 const { uploadPDF } = require("../../services/uploads");
 
@@ -60,7 +64,16 @@ const renderInvoicePdf = async (snapshot = {}, { compress = true } = {}) => {
     paymentMethod,
     isManual = false,
     placeOfSupply,
+    // ---------- voucher claim only ----------
+    kind = INVOICE_KIND.SUBSCRIPTION,
+    isTaxInvoice = true,
+    voucherPricing = {},
+    lineItems = [],
+    voucherBlock = {},
+    brandBlock = {},
   } = snapshot;
+
+  const isClaim = kind === INVOICE_KIND.VOUCHER_CLAIM;
 
   const fileName = `invoice_${Date.now()}_${Math.floor(Math.random() * 10000)}.pdf`;
   // OS temp dir, not a folder inside the source tree.
@@ -75,16 +88,29 @@ const renderInvoicePdf = async (snapshot = {}, { compress = true } = {}) => {
     const writeStream = fs.createWriteStream(filePath);
     doc.pipe(writeStream);
 
-    // ---------------- header ----------------
-    doc.fontSize(18).text("TAX INVOICE", { align: "center" });
+    /**
+     * ---------------- header ----------------
+     *
+     * ⚠️ A document carrying no tax must not call itself a tax invoice. Customer
+     * GST is off by default, so a claim prints **PAYMENT RECEIPT** — and the
+     * decision was frozen into the snapshot when it was issued, not taken here,
+     * so switching GST on later cannot retitle a document already sent out.
+     */
+    doc
+      .fontSize(18)
+      .text(isTaxInvoice ? INVOICE_TITLE.TAX_INVOICE : INVOICE_TITLE.RECEIPT, {
+        align: "center",
+      });
     doc.moveDown(0.3);
     doc
       .fontSize(9)
       .fillColor("#666")
       .text(
-        isManual
-          ? "Subscription granted directly by Trydood administration"
-          : "Subscription payment receipt",
+        isClaim
+          ? `Payment collected by Trydood on behalf of ${brandBlock.name || "the brand"}`
+          : isManual
+            ? "Subscription granted directly by Trydood administration"
+            : "Subscription payment receipt",
         { align: "center" },
       );
     doc.fillColor("#000").moveDown(1);
@@ -117,18 +143,50 @@ const renderInvoicePdf = async (snapshot = {}, { compress = true } = {}) => {
     if (placeOfSupply) doc.text(`Place of Supply: ${placeOfSupply}`);
     doc.moveDown(0.8);
 
-    // ---------------- line item ----------------
+    // ---------------- description ----------------
     doc.fontSize(10).text("Description");
     doc.fontSize(9);
-    doc.text(
-      `${planName || "Subscription"} plan${planType ? ` (${planType})` : ""}${durationLabel ? ` — ${durationLabel}` : ""}`,
-    );
-    if (hsnSacCode) doc.text(`HSN/SAC: ${hsnSacCode}`);
-    doc.text(`Validity: ${asDate(planStart)} to ${asDate(planEnd)}`);
+
+    if (isClaim) {
+      // A claim has no plan, no duration and no validity range. Printed through
+      // the subscription block it would show an empty name and `Validity: - to -`.
+      if (voucherBlock.voucherName) doc.text(voucherBlock.voucherName);
+      if (voucherBlock.offerTitle) doc.text(`Offer: ${voucherBlock.offerTitle}`);
+      if (voucherBlock.claimCode) doc.text(`Claim Code: ${voucherBlock.claimCode}`);
+      if (voucherBlock.outletStoreId) {
+        doc.text(`Outlet: ${voucherBlock.outletStoreId}`);
+      }
+      if (voucherBlock.redeemedAt) {
+        doc.text(`Redeemed: ${asDate(voucherBlock.redeemedAt)}`);
+      }
+      // Only on a document that actually carries tax, and only for our own fee.
+      if (isTaxInvoice && hsnSacCode) doc.text(`SAC: ${hsnSacCode}`);
+    } else {
+      doc.text(
+        `${planName || "Subscription"} plan${planType ? ` (${planType})` : ""}${durationLabel ? ` — ${durationLabel}` : ""}`,
+      );
+      if (hsnSacCode) doc.text(`HSN/SAC: ${hsnSacCode}`);
+      doc.text(`Validity: ${asDate(planStart)} to ${asDate(planEnd)}`);
+    }
     doc.moveDown(0.8);
 
     // ---------------- amounts ----------------
-    const rows = [
+    //
+    // A claim's rows come pre-worded from the snapshot, because the wording is
+    // part of what was issued: "Bill collected on behalf of <Brand>" is a
+    // statement about who sold the meal, and an invoice re-issued after that
+    // wording changed must still read the way it did.
+    const rows = isClaim
+      ? [
+          ...lineItems.map((item) => [
+            item.label,
+            item.isDeduction
+              ? `- ${money(item.amount)}`
+              : money(item.amount),
+          ]),
+          ...(isTaxInvoice ? taxRows(voucherPricing) : []),
+        ]
+      : [
       ["Original Price", money(pricing.listPrice)],
       ...(pricing.discountAmount > 0
         ? [
@@ -162,20 +220,36 @@ const renderInvoicePdf = async (snapshot = {}, { compress = true } = {}) => {
     doc.moveDown(0.4);
     const totalY = doc.y;
     doc.fontSize(11);
-    doc.text("Total Payable", labelX, totalY, { width: 120 });
-    doc.text(money(pricing.totalPayable), valueX, totalY, {
-      width: 95,
-      align: "right",
+    doc.text(isClaim ? "You Paid" : "Total Payable", labelX, totalY, {
+      width: 120,
     });
+    doc.text(
+      money(isClaim ? voucherPricing.totalPayable : pricing.totalPayable),
+      valueX,
+      totalY,
+      { width: 95, align: "right" },
+    );
 
     doc.moveDown(1.5);
     doc
       .fontSize(8)
       .fillColor("#666")
       .text(
-        pricing.isGstInclusive
-          ? "Plan price is inclusive of GST."
-          : "GST is charged in addition to the plan price.",
+        isClaim
+          ? /**
+             * A claim's footer has to say three things a subscription's does not:
+             * that Trydood collected rather than sold, that any tax here is on
+             * our fee alone, and — while GST is off — that there is no tax at
+             * all. The subscription line said "GST is charged in addition to the
+             * plan price", which on a claim is wrong twice over: there is no
+             * plan, and no GST was charged.
+             */
+            isTaxInvoice
+            ? "Tax shown applies to the Trydood convenience fee only. The bill amount was collected on behalf of the brand."
+            : "No tax has been charged. The bill amount was collected on behalf of the brand."
+          : pricing.isGstInclusive
+            ? "Plan price is inclusive of GST."
+            : "GST is charged in addition to the plan price.",
         50,
         doc.y,
       );
