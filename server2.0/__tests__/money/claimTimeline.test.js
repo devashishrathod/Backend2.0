@@ -237,7 +237,9 @@ describe("the timeline never hands over the raw audit row", () => {
     });
     // A role is a real answer for an auditor and is not sensitive. A user id is.
     expect(timeline.every((row) => row.performedBy === undefined)).toBe(true);
-    expect(timeline.some((row) => row.by === CLAIM_PERFORMED_BY.VENDOR)).toBe(true);
+    expect(timeline.some((row) => row.by === CLAIM_PERFORMED_BY.VENDOR)).toBe(
+      true,
+    );
   });
 
   it("gives an admin the whole forensic row", async () => {
@@ -368,7 +370,9 @@ describe("opening a claim by the code at the counter", () => {
     ).rejects.toThrow(/not authorized/i);
 
     await expect(
-      getClaimDetail(subVendor(BRAND_A, OUTLET_2), { claimCode: claim.claimCode }),
+      getClaimDetail(subVendor(BRAND_A, OUTLET_2), {
+        claimCode: claim.claimCode,
+      }),
     ).rejects.toThrow(/not made at your outlet/i);
   });
 
@@ -393,7 +397,7 @@ describe("the claim page carries its payment, narrowed the same way", () => {
 
   it("gives the customer their invoice link and not the token", async () => {
     const previous = process.env.PUBLIC_API_URL;
-    process.env.PUBLIC_API_URL = "https://api.example.com";
+    process.env.PUBLIC_API_URL = "https://backend2-0-4v4i.onrender.com";
 
     try {
       const { payment } = await getClaimDetail(customer(CUSTOMER_A), {

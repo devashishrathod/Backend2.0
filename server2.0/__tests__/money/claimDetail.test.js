@@ -136,7 +136,10 @@ beforeEach(async () => {
 
 describe("who may open one payment", () => {
   it("lets the customer who paid", async () => {
-    const result = await getClaimTransactionDetail(customer(CUSTOMER_A), txn._id);
+    const result = await getClaimTransactionDetail(
+      customer(CUSTOMER_A),
+      txn._id,
+    );
     expect(String(result.payment._id)).toBe(String(txn._id));
     expect(result.viewer.scope).toBe("OWN");
   });
@@ -169,9 +172,9 @@ describe("who may open one payment", () => {
    * tells a prober that it does.
    */
   it("answers 404 for a row that does not exist", async () => {
-    await expect(
-      getClaimTransactionDetail(admin(), oid()),
-    ).rejects.toThrow(/not found/i);
+    await expect(getClaimTransactionDetail(admin(), oid())).rejects.toThrow(
+      /not found/i,
+    );
   });
 
   /**
@@ -202,7 +205,10 @@ describe("a detail page never shows what the listing hides", () => {
    * whole, checks, then narrows — and the narrowing must land in the same place.
    */
   it("hides our margin from the vendor", async () => {
-    const { payment } = await getClaimTransactionDetail(vendor(BRAND_A), txn._id);
+    const { payment } = await getClaimTransactionDetail(
+      vendor(BRAND_A),
+      txn._id,
+    );
 
     expect(payment.gatewayFee).toBeUndefined();
     expect(payment.netReceived).toBeUndefined();
@@ -210,7 +216,10 @@ describe("a detail page never shows what the listing hides", () => {
   });
 
   it("hides the customer's details from the vendor", async () => {
-    const { payment } = await getClaimTransactionDetail(vendor(BRAND_A), txn._id);
+    const { payment } = await getClaimTransactionDetail(
+      vendor(BRAND_A),
+      txn._id,
+    );
 
     expect(payment.email).toBeUndefined();
     expect(payment.contact).toBeUndefined();
@@ -218,12 +227,18 @@ describe("a detail page never shows what the listing hides", () => {
   });
 
   it("shows the vendor what they will be paid", async () => {
-    const { payment } = await getClaimTransactionDetail(vendor(BRAND_A), txn._id);
+    const { payment } = await getClaimTransactionDetail(
+      vendor(BRAND_A),
+      txn._id,
+    );
     expect(payment.voucher.vendorPayable).toBe(800);
   });
 
   it("hides our margin from the customer too", async () => {
-    const { payment } = await getClaimTransactionDetail(customer(CUSTOMER_A), txn._id);
+    const { payment } = await getClaimTransactionDetail(
+      customer(CUSTOMER_A),
+      txn._id,
+    );
 
     expect(payment.gatewayFee).toBeUndefined();
     expect(payment.voucher.platformPromoCost).toBeUndefined();
@@ -272,7 +287,10 @@ describe("what the page needs to render", () => {
   });
 
   it("tells the client what it may render instead of making it guess", async () => {
-    const { viewer } = await getClaimTransactionDetail(vendor(BRAND_A), txn._id);
+    const { viewer } = await getClaimTransactionDetail(
+      vendor(BRAND_A),
+      txn._id,
+    );
 
     expect(viewer.role).toBe(ROLES.VENDOR);
     expect(viewer.canSeePlatformCosts).toBe(false);
@@ -280,7 +298,10 @@ describe("what the page needs to render", () => {
   });
 
   it("carries the payment method and the moment it happened", async () => {
-    const { payment } = await getClaimTransactionDetail(customer(CUSTOMER_A), txn._id);
+    const { payment } = await getClaimTransactionDetail(
+      customer(CUSTOMER_A),
+      txn._id,
+    );
 
     expect(payment.paymentMethod).toBe("upi");
     expect(payment.createdAt).toBeInstanceOf(Date);
@@ -294,7 +315,7 @@ describe("what the page needs to render", () => {
    */
   it("hands back a download link, never the token behind it", async () => {
     const previous = process.env.PUBLIC_API_URL;
-    process.env.PUBLIC_API_URL = "https://api.example.com";
+    process.env.PUBLIC_API_URL = "https://backend2-0-4v4i.onrender.com";
 
     try {
       const { payment } = await getClaimTransactionDetail(
@@ -302,7 +323,7 @@ describe("what the page needs to render", () => {
         txn._id,
       );
       expect(payment.invoiceDownloadUrl).toBe(
-        `https://api.example.com/trydood/v1/transactions/invoice/${"a".repeat(64)}`,
+        `https://backend2-0-4v4i.onrender.com/trydood/v1/transactions/invoice/${"a".repeat(64)}`,
       );
       expect(payment.invoiceToken).toBeUndefined();
     } finally {
@@ -332,10 +353,13 @@ describe("what the page needs to render", () => {
 
   it("gives the vendor no invoice link at all", async () => {
     const previous = process.env.PUBLIC_API_URL;
-    process.env.PUBLIC_API_URL = "https://api.example.com";
+    process.env.PUBLIC_API_URL = "https://backend2-0-4v4i.onrender.com";
 
     try {
-      const { payment } = await getClaimTransactionDetail(vendor(BRAND_A), txn._id);
+      const { payment } = await getClaimTransactionDetail(
+        vendor(BRAND_A),
+        txn._id,
+      );
       // The customer's tax invoice carries the customer's own details.
       expect(payment.invoiceDownloadUrl).toBeUndefined();
     } finally {
@@ -460,7 +484,9 @@ describe("the whitelist fails closed", () => {
       expect(claimProjection(role).gatewayFee).toBeUndefined();
       expect(claimProjection(role).netReceived).toBeUndefined();
       expect(claimRecordProjection(role).pricing).toBeUndefined();
-      expect(claimRecordProjection(role)["pricing.platformPromoCost"]).toBeUndefined();
+      expect(
+        claimRecordProjection(role)["pricing.platformPromoCost"],
+      ).toBeUndefined();
     }
     // The admin view is the control: if this ever stops being visible, the
     // assertions above start passing for the wrong reason.
