@@ -77,7 +77,53 @@ const VOUCHER_SLOT_RELEASING_STATUSES = Object.freeze([
   VOUCHER_STATUSES.REJECTED,
 ]);
 
+/**
+ * The rows a voucher-claim checkout renders, top to bottom.
+ *
+ * Keyed rather than positional so a client can style or reorder without parsing
+ * the label — and so a new row can be inserted without shifting anything.
+ *
+ * Deliberately NOT reusing `ORDER_SUMMARY_ROWS` from the subscription side. The
+ * two checkouts show different things: there is no "Original Price" for a bill
+ * the customer typed, and a subscription has no convenience fee. Sharing the
+ * enum would mean one of them carrying keys it never emits, and a client
+ * switching on it could not tell which flow it was rendering.
+ */
+const VOUCHER_SUMMARY_ROWS = Object.freeze({
+  BILL_AMOUNT: "BILL_AMOUNT",
+  OFFER_DISCOUNT: "OFFER_DISCOUNT",
+  PROMO_DISCOUNT: "PROMO_DISCOUNT",
+  NET_BILL: "NET_BILL",
+  CONVENIENCE_FEE: "CONVENIENCE_FEE",
+  TAX: "TAX",
+});
+
+/**
+ * Why a specific offer could not be applied.
+ *
+ * Only reached when the customer **named** an offer. When nobody named one, an
+ * offer that does not fit is simply not chosen — that is ranking, not a refusal,
+ * and saying "this offer needs a bigger bill" about an offer they never asked
+ * for would be noise.
+ *
+ * Values are the message, not a code — the same convention as `PROMO_REJECTION`,
+ * so a client can show them directly.
+ */
+const OFFER_REJECTION = Object.freeze({
+  NOT_FOUND: "That offer is not available on this voucher.",
+  INACTIVE: "That offer is no longer available.",
+  ALREADY_USED: "You have already used this offer.",
+  NO_DISCOUNT: "That offer gives no discount on this bill.",
+});
+
+/** The one message that needs the number in it to be useful. */
+const offerBelowMinimum = (minBillAmount, symbol = "₹") =>
+  `This offer needs a bill of at least ${symbol}${Number(minBillAmount || 0).toLocaleString("en-IN")}.`;
+
 module.exports = {
+  OFFER_REJECTION,
+  offerBelowMinimum,
+  VOUCHER_SUMMARY_ROWS,
   VOUCHER_SLOT_CONSUMING_STATUSES,
   VOUCHER_SLOT_RELEASING_STATUSES,
   VOUCHER_USAGE_TYPE,

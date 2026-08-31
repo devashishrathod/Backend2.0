@@ -6,14 +6,41 @@ jhooth nahi bol sakti.
 
 | Collection | Endpoints | Status |
 |---|---:|---|
-| `trydood-customer.postman_collection.json` | 35 | ✅ Live verified — 88 requests · 355 assertions · **132 captured examples** · sab pass |
-| `trydood-vendor.postman_collection.json` | 78 | ✅ Live verified — 99 requests · 228 assertions · **105 captured examples** · sab pass |
+| `trydood-customer.postman_collection.json` | 42 | ⚠️ 99 requests · **132 captured examples** — 11 naye (Voucher Claims) **abhi capture nahi hue** |
+| `trydood-vendor.postman_collection.json` | 83 | ⚠️ 106 requests · **105 captured examples** — 7 naye (Voucher Claims) **abhi capture nahi hue** |
 | `trydood-admin.postman_collection.json` | 114 | ⬜ Phase 3 |
 | `trydood-security-changes.postman_collection.json` | – | ⏳ Teeno panel collections ready hone par retire hogi |
 
 Companion docs: [`../docs/customer_mobile_api_doc.md`](../docs/customer_mobile_api_doc.md) ·
 [`../docs/vendor_panel_api_doc.md`](../docs/vendor_panel_api_doc.md) ·
 [`../docs/endpoints_category.md`](../docs/endpoints_category.md)
+
+---
+
+## Naye endpoints haath se jode jaate hain, generate nahi
+
+Voucher-claim ke 18 requests `scripts/addClaimRequestsToPostman.js` ne **jode** — generator
+nahi chalaya gaya:
+
+```bash
+node scripts/addClaimRequestsToPostman.js           # kya badlega
+node scripts/addClaimRequestsToPostman.js --apply   # badlo
+```
+
+Script sirf **insert** karti hai aur teen guard rakhti hai:
+
+1. **Byte-exact round-trip** — likhne se pehle jaanchti hai ki `JSON.stringify(…, 2)` + CRLF
+   file ko hu-ba-hu dobara banata hai. Na bane to likhti hi nahi. Warna har line reformat
+   hoti aur asli badlaav 20,000-line diff me dab jaata (in files me **CRLF** line endings hain)
+2. **Captured example count** — insert se pehle aur baad me ginti karti hai; badal jaye to
+   likhne se mana kar deti hai. Insert karne me ek bhi example nahi jaana chahiye
+3. **Folder number** — naya folder access-control wale ka number **le leta hai** aur wo ek
+   aage badh jaata hai. Pehli koshish me dono collections me do-do folder `12` / `19` ban
+   gaye the: Postman array order me dikhata hai, isliye kuch error nahi hota aur kisi ko
+   pata nahi chalta
+
+⚠️ **In 18 requests ke examples abhi capture nahi hue.** Neeche wala capture step chalana
+baaki hai — usme `newman` chahiye, jo is machine par install nahi hai.
 
 ---
 
@@ -33,6 +60,24 @@ node postman/lib/capture-examples.js \
   postman/trydood-customer.postman_collection.json \
   postman/environments/customer-local.postman_environment.json
 ```
+
+> ### ⚠️ Generator dobara chalane se captured examples **mit jaate hain**
+>
+> `node postman/generate-customer-collection.js` collection ko **poora dobara likhta hai**.
+> Generator sirf haath se likhe examples jaanta hai — live capture se aaye examples uske
+> source me hain hi nahi, isliye wo saare gayab ho jaate hain.
+>
+> Naapa gaya: customer + vendor collections ko bina soche regenerate karne par
+> **15,499 line delete** hui, yaani 237 captured examples. `git diff --stat` ke bina ye
+> dikhta bhi nahi — command "✅ 88 requests" bolkar khatam ho jaati hai.
+>
+> **Isliye:** generator wahi chalao jiska source tumne badla hai, aur chalane ke baad
+> `git diff --stat postman/` zaroor dekho. Delete ki ginti insert se badi ho to ruk kar
+> socho. Regenerate ke baad capture step (upar wala 1-2-3) dobara chalana padta hai.
+>
+> Abhi ke haal: `customer` me 132 aur `vendor` me 105 captured examples hain;
+> `subscription` aur `security` poori tarah generated hain, unme capture hai hi nahi —
+> unhe regenerate karna surakshit hai.
 
 Capture ke baad:
 

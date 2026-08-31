@@ -218,6 +218,19 @@ const run = async () => {
       systemVerifyId: verify._id,
       followersCount: followers,
       isActive: true,
+      /**
+       * Approval, tied to the same flag that drives `SystemVerify`.
+       *
+       * `Brand.isApproved` defaults to **false** and nothing here used to set
+       * it. Every seeded brand was therefore unapproved, and the claim preview
+       * gates on approval — so a captured example would have enshrined
+       * `canClaim: false` as the happy path and made the whole collection
+       * describe a blocked flow.
+       *
+       * Brand B stays unapproved on purpose: it is the fixture the "blocked"
+       * example is captured against.
+       */
+      isApproved: Boolean(verified),
       ...(top ? { isTopBrand: true, topOrder: 1, topAddedAt: new Date(), topAddedBy: admin._id } : {}),
     });
 
@@ -551,27 +564,37 @@ const run = async () => {
       isActive: true,
     });
 
-    await Subscribed.create({
-      userId: brands[0].user._id,
-      brandId: brands[0].brand._id,
-      subscribedBy: brands[0].user._id,
-      subscriptionId: plan._id,
-      durationInDays: 365,
-      durationInYears: 1,
-      startDate: new Date(Date.now() - 86400000),
-      endDate: new Date(Date.now() + 86400000 * 364),
-      price: plan.price,
-      paidAmount: plan.price,
-      dueAmount: 0,
-      status: SUBSCRIBED_STATUS.ACTIVE,
-      source: SUBSCRIPTION_SOURCE.ADMIN_MANUAL,
-      grantedByAdminId: admin._id,
-    });
+    /**
+     * A live plan for **every** brand, not only the first.
+     *
+     * A voucher claim is refused when the vendor's own subscription has lapsed
+     * — that is the point of `claim.allowWhenVendorPlanExpired`. With only
+     * brand A subscribed, every claim against brand B came back blocked for a
+     * reason that had nothing to do with what the example was demonstrating.
+     */
+    for (const { user, brand } of brands) {
+      await Subscribed.create({
+        userId: user._id,
+        brandId: brand._id,
+        subscribedBy: user._id,
+        subscriptionId: plan._id,
+        durationInDays: 365,
+        durationInYears: 1,
+        startDate: new Date(Date.now() - 86400000),
+        endDate: new Date(Date.now() + 86400000 * 364),
+        price: plan.price,
+        paidAmount: plan.price,
+        dueAmount: 0,
+        status: SUBSCRIBED_STATUS.ACTIVE,
+        source: SUBSCRIPTION_SOURCE.ADMIN_MANUAL,
+        grantedByAdminId: admin._id,
+      });
 
-    // The single writer of `Brand.isSubscribed` / `subscribedId`, and it also
-    // pushes the plan's entitlements onto the brand. Setting those by hand
-    // would leave limits and subscription state disagreeing.
-    await syncBrandSubscriptionState(brands[0].brand._id);
+      // The single writer of `Brand.isSubscribed` / `subscribedId`, and it also
+      // pushes the plan's entitlements onto the brand. Setting those by hand
+      // would leave limits and subscription state disagreeing.
+      await syncBrandSubscriptionState(brand._id);
+    }
 
     const b = await Brand.findById(brands[0].brand._id).select(
       "isSubscribed vouchersLimit isVouchersUnlimited subBrandsLimit showcaseLimit",

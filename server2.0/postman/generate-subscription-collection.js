@@ -301,6 +301,76 @@ const SELLER = Object.freeze({
   companyState: "Tamil Nadu",
 });
 
+// The full `Setting.customer` tree at its shipped defaults. Kept beside
+// SUBSCRIPTION_CONFIG so the two saved examples cannot drift from each other.
+const CUSTOMER_CONFIG = {
+  convenienceFee: {
+    isEnabled: true,
+    slabSize: 500,
+    feePerSlab: 5,
+    // Was null (no ceiling at all), which put a Rs100 fee on a Rs10,000 bill.
+    maxFee: 50,
+    chargeWhenNoOffer: false,
+  },
+  tax: {
+    isGstEnabled: false,
+    gstPercentage: 18,
+    isGstInclusive: true,
+    sacCode: "998599",
+  },
+  promoCode: {
+    isEnabled: false,
+    allowWhenNoOffer: false,
+    allowForGuestPreview: true,
+  },
+  claim: {
+    isEnabled: true,
+    allowWhenNoOffer: true,
+    maxBillAmount: 100000,
+    pendingOrderReuseMinutes: 10,
+    quoteTtlMinutes: 30,
+    allowWhenVendorPlanExpired: false,
+    vendorPlanExpiredGraceDays: 0,
+    redemptionWindowHours: 24,
+  },
+  notification: {
+    isEmailNotificationEnabled: true,
+    isPushNotificationEnabled: true,
+    isWhatsAppNotificationEnabled: false,
+  },
+  invoice: { seriesPrefix: "VCH" },
+  settlement: {
+    isEnabled: true,
+    delayDays: 3,
+    payoutBufferHours: 6,
+    cycleType: "DAILY",
+    requiresAdminApproval: true,
+    minPayoutAmount: 100,
+    payoutProvider: "MANUAL_BANK",
+    commissionPercent: 0,
+    reserve: {
+      isEnabled: false,
+      percent: 5,
+      holdDays: 30,
+      riskChargebackCount: 2,
+    },
+    newVendorReserveDays: 0,
+    notReceivedAlertHours: 96,
+    gatewayFeeBearer: "PLATFORM",
+  },
+  refund: {
+    method: "SOURCE",
+    windowHours: 24,
+    vendorApprovalHours: 24,
+    adminBufferHours: 12,
+    onVendorTimeout: "ESCALATE",
+    allowPartial: true,
+    releasePromoOnRefund: false,
+    authorizedAlertMinutes: 30,
+  },
+  chargeback: { writeOffDays: 90 },
+};
+
 const SUBSCRIPTION_CONFIG = {
   gstPercentage: 18,
   isGstInclusive: false,
@@ -436,15 +506,15 @@ const authFolder = folder(
 // ---------------------------------------------------------------------------
 
 const settingsFolder = folder(
-  "01 — Admin Settings · subscription config  [CHANGED]",
-  "`Setting.vendor.subscription` is new. Every tunable in the checkout flow — GST %, seller identity, who may upgrade/downgrade, grace period — is read from here via `helpers/settings/getSubscriptionConfig.js`. `constants/subscription.js → SUBSCRIPTION_DEFAULTS` is a fallback only.\n\n⚠️ **`companyStateCode` must be set.** It is compared against the first two digits of the brand's GSTIN to decide CGST+SGST vs IGST. While blank, every supply is billed as inter-state IGST.",
+  "01 — Admin Settings · platform config  [CHANGED]",
+  "`Setting.vendor.subscription` is new. Every tunable in the checkout flow — GST %, seller identity, who may upgrade/downgrade, grace period — is read from here via `helpers/settings/getSubscriptionConfig.js`. `constants/subscription.js → SUBSCRIPTION_DEFAULTS` is a fallback only.\n\n⚠️ **`companyStateCode` must be set.** It is compared against the first two digits of the brand's GSTIN to decide CGST+SGST vs IGST. While blank, every supply is billed as inter-state IGST.\n\n**`Setting.customer` is new too — and was previously unreachable.** The model carried `convenienceFee`, but the validator declared no `customer` object and `stripUnknown` is on, so the whole tree was dropped from every request body and only the schema defaults ever applied. It now covers nine blocks: convenience fee, tax, customer promo codes, the claim flow, customer notification channels, invoice numbering, settlement, refunds and chargebacks. Read through `helpers/settings/getCustomerConfig.js`, with `constants/customer.js` as the fallback.\n\n⚠️ One cross-block rule is enforced **on save, against the merged document**: the three refund windows must fit inside the settlement payout delay. See the customer config request for why a request-shaped validator cannot do it.",
   [
     request({
       name: "Get Settings",
       method: "GET",
       segments: ["settings", "get"],
       description:
-        "Admin only (`isAdmin`). Response now carries `vendor.subscription`. Upserts the singleton doc with defaults on first read (`helpers/settings/getSetting.js`).",
+        "Admin only (`isAdmin`). Response carries `vendor.subscription` **and the full `customer` tree**. Upserts the singleton doc with defaults on first read (`helpers/settings/getSetting.js`).\n\n⚠️ A doc created before a block existed will not have that block stored — a Mongoose default applies on write only. `getCustomerConfig()` falls back to `constants/customer.js` for anything missing, so reads are always complete even when the stored document is not.",
       tests: [
         ...baseAsserts(200),
         'pm.test("subscription config present", function () {',
@@ -476,7 +546,7 @@ const settingsFolder = folder(
               },
               subscription: SUBSCRIPTION_CONFIG,
             },
-            customer: {},
+            customer: CUSTOMER_CONFIG,
             isActive: true,
             updatedBy: "68a1f4c2b1e2c3d4e5f60600",
           },
@@ -567,6 +637,139 @@ const settingsFolder = folder(
           422,
           "Unprocessable Entity",
           "Please provide at least one field to update.",
+        ),
+        e401(),
+        e403Role(),
+      ],
+    }),
+
+    // ----------------------------------------------------------------------
+    // The customer half of the same endpoint. Its own request rather than a
+    // variant body, because the golden-rule 422 has no equivalent anywhere on
+    // the vendor side and deserves a saved example an admin can read.
+    // ----------------------------------------------------------------------
+    request({
+      name: "Update Settings \u2014 customer config  [NEW]",
+      method: "PUT",
+      segments: ["settings", "update"],
+      reqBody: { customer: CUSTOMER_CONFIG },
+      description: [
+        "Admin only. **`Setting.customer` was unreachable until now** \u2014 the model had `convenienceFee`, but `validator/settings.js` declared no `customer` object and `stripUnknown` is on, so the whole tree was silently dropped from every request body and only the schema defaults ever applied.",
+        "",
+        "**Merged per block, never replaced.** Send `{ customer: { convenienceFee: { feePerSlab: 9 } } }` and the other four fee fields keep their values \u2014 as do the eight other blocks. Nested blocks merge too: patching `settlement.reserve.percent` leaves `holdDays` and `riskChargebackCount` alone.",
+        "",
+        "| Block | What it governs |",
+        "|---|---|",
+        "| `convenienceFee` | The slab fee on top of a discounted bill |",
+        "| `tax` | GST on that fee \u2014 **off by default** |",
+        "| `promoCode` | Customer-side promo master switch \u2014 **off by default** |",
+        "| `claim` | Kill switch, bill cap, quote TTL, expired-plan policy |",
+        "| `notification` | Customer email / push / WhatsApp |",
+        "| `invoice` | Invoice series prefix |",
+        "| `settlement` | T+N payout, cycle, commission, reserve, MDR bearer |",
+        "| `refund` | Method and the three refund windows |",
+        "| `chargeback` | Write-off age |",
+        "",
+        "### \u26a0\ufe0f The golden rule \u2014 a 422 you will meet",
+        "",
+        "```",
+        "settlement.delayDays \u00d7 24  \u2265  refund.windowHours + vendorApprovalHours + adminBufferHours",
+        "```",
+        "",
+        "Defaults: 72h \u2265 24 + 24 + 12 = 60h \u2713",
+        "",
+        "While that holds, **a refund can never touch money already paid out to the vendor** \u2014 it just reduces that cycle's payable. Break it and the platform is recovering money a vendor has already banked, which surfaces as a reconciliation problem weeks later rather than an error today.",
+        "",
+        "It is checked on the **merged** document, not on your request body. That matters: a PATCH raising only `refund.windowHours` carries no `settlement` block, so a request-shaped validator would have nothing to compare against and the rule would break silently. Raising the windows past a stored `delayDays` is refused, and so is lowering `delayDays` under stored windows \u2014 **and nothing is written when it is.**",
+        "",
+        "### \u26a0\ufe0f `maxFee` changed meaning",
+        "",
+        "It used to default to `null`, which means *no ceiling* \u2014 so a Rs10,000 bill carried a Rs100 convenience fee. The default is now **50**. `null` is still accepted and still means no ceiling, but it now has to be chosen rather than arrived at by never touching the setting.",
+        "",
+        "### \u26a0\ufe0f `invoice.seriesPrefix` starts a new counter",
+        "",
+        "Changing it does not renumber anything. Invoices already issued keep the prefix they were issued under, which is correct \u2014 an invoice number is a permanent legal reference.",
+      ].join("\n"),
+      tests: [
+        ...baseAsserts(200),
+        'pm.test("the customer tree actually persisted", function () {',
+        "    const c = pm.response.json().data.customer;",
+        '    pm.expect(c).to.have.property("convenienceFee");',
+        '    pm.expect(c).to.have.property("settlement");',
+        '    pm.expect(c).to.have.property("refund");',
+        "    pm.expect(c.convenienceFee.maxFee).to.eql(50);",
+        "});",
+        "",
+        'pm.test("the golden rule holds on what came back", function () {',
+        "    const c = pm.response.json().data.customer;",
+        "    const delayHours = c.settlement.delayDays * 24;",
+        "    const path = c.refund.windowHours + c.refund.vendorApprovalHours + c.refund.adminBufferHours;",
+        "    pm.expect(delayHours).to.be.at.least(path);",
+        "});",
+        "",
+        'pm.test("vendor blocks untouched by the merge", function () {',
+        "    const v = pm.response.json().data.vendor;",
+        '    pm.expect(v).to.have.property("subscription");',
+        '    pm.expect(v).to.have.property("voucher");',
+        "});",
+      ],
+      responses: [
+        ok("200 \u2014 updated", 200, {
+          success: true,
+          message: "Settings updated successfully.",
+          data: {
+            _id: "68a1f4c2b1e2c3d4e5f60900",
+            vendor: {
+              voucher: { maxOffers: 10, maxImages: 5, maxDistanceKm: 25 },
+              showcase: { maxSections: 5, maxItemsPerSection: 15, isActive: true },
+              subscription: SUBSCRIPTION_CONFIG,
+            },
+            customer: CUSTOMER_CONFIG,
+            isActive: true,
+            updatedBy: "68a1f4c2b1e2c3d4e5f60600",
+          },
+        }),
+        ok("200 \u2014 one field, everything else kept", 200, {
+          success: true,
+          message: "Settings updated successfully.",
+          data: {
+            _id: "68a1f4c2b1e2c3d4e5f60900",
+            customer: {
+              ...CUSTOMER_CONFIG,
+              convenienceFee: { ...CUSTOMER_CONFIG.convenienceFee, feePerSlab: 9 },
+            },
+            isActive: true,
+          },
+        }),
+        err(
+          "422 \u2014 refund windows outgrow the payout delay",
+          422,
+          "Unprocessable Entity",
+          "A refund could outlive the settlement it belongs to. Paying out on T+3 gives 72h, but the refund path needs 120h (48h for the customer to raise it + 48h for the vendor to respond + 24h for admin). Either raise settlement.delayDays to 5 or shorten the refund windows.",
+        ),
+        err(
+          "422 \u2014 payout delay lowered under the windows",
+          422,
+          "Unprocessable Entity",
+          "A refund could outlive the settlement it belongs to. Paying out on T+1 gives 24h, but the refund path needs 60h (24h for the customer to raise it + 24h for the vendor to respond + 12h for admin). Either raise settlement.delayDays to 3 or shorten the refund windows.",
+        ),
+        err(
+          "422 \u2014 unknown payout provider",
+          422,
+          "Unprocessable Entity",
+          "payoutProvider must be one of: MANUAL_BANK, RAZORPAY_X, RAZORPAY_ROUTE",
+        ),
+        err(
+          "422 \u2014 slab size of zero",
+          422,
+          "Unprocessable Entity",
+          "slabSize must be at least 1",
+        ),
+        err(
+          "422 \u2014 non-letter invoice prefix",
+          422,
+          "Unprocessable Entity",
+          "seriesPrefix may only contain letters",
         ),
         e401(),
         e403Role(),
@@ -3059,6 +3262,19 @@ const collection = {
       description: "Code string used at checkout.",
     },
     {
+      key: "customer_promo_code_id",
+      value: "",
+      type: "string",
+      description:
+        "Set by Create Promo Code - CUSTOMER audience. Kept apart from promo_code_id so the two campaign types can be exercised in one run.",
+    },
+    {
+      key: "customer_promo_code",
+      value: "PIZZA50",
+      type: "string",
+      description: "Voucher-claim code string, redeemed at customer checkout.",
+    },
+    {
       key: "notification_id",
       value: "",
       type: "string",
@@ -3075,7 +3291,7 @@ const collection = {
       value: "",
       type: "string",
       description:
-        "Must match RAZORPAY_WEBHOOK_SECRET on the server. The webhook requests sign themselves with it.",
+        "Must match one of the values in RAZORPAY_WEBHOOK_SECRETS on the server (VENDOR account). The webhook requests sign themselves with it.",
     },
   ],
   item: [
@@ -3173,9 +3389,17 @@ const envValues = (baseUrl) => [
   { key: "preview_total_paise", value: "", type: "default", enabled: true },
   { key: "promo_code_id", value: "", type: "default", enabled: true },
   { key: "promo_code", value: "LAUNCH20", type: "default", enabled: true },
+  { key: "customer_promo_code_id", value: "", type: "default", enabled: true },
+  { key: "customer_promo_code", value: "PIZZA50", type: "default", enabled: true },
   { key: "notification_id", value: "", type: "default", enabled: true },
   { key: "forfeited_subscribed_id", value: "", type: "default", enabled: true },
   { key: "razorpay_webhook_secret", value: "", type: "secret", enabled: true },
+  {
+    key: "razorpay_customer_webhook_secret",
+    value: "",
+    type: "secret",
+    enabled: true,
+  },
   { key: "webhook_event_id", value: "", type: "default", enabled: true },
 ];
 

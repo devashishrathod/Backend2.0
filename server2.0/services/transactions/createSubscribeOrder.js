@@ -7,7 +7,7 @@ const {
   SUBSCRIPTION_HISTORY_ACTION,
 } = require("../../constants/subscription");
 const { throwError } = require("../../utils");
-const { getRazorpayInstance } = require("../../configs/razorpay");
+const { getRazorpayAccount } = require("../../configs/razorpay");
 const { resolveActorBrand } = require("../../helpers/brands");
 const {
   buildCheckoutPreview,
@@ -18,7 +18,12 @@ const {
   releasePromoCode,
 } = require("../../helpers/promoCodes");
 const { PROMO_CODE_LIMITS } = require("../../constants/promoCode");
-const { generateUniqueInvoiceId } = require("../../helpers/transactions");
+const {
+  TRANSACTION_PURPOSE,
+  ACCOUNT_FOR_PURPOSE,
+  INVOICE_SERIES,
+} = require("../../constants/transaction");
+const { generateInvoiceNumber } = require("../../helpers/transactions");
 
 /**
  * Open a Razorpay order for a subscription purchase.
@@ -58,6 +63,13 @@ exports.createSubscribeOrder = async (actor, payload) => {
     );
   }
 
+  // Resolved once, before the reuse branch, because both exits hand the client
+  // a key id and it must be the key that owns the order — a mismatch means
+  // Razorpay's checkout refuses to open at all.
+  const { instance: razorpay, keyId } = getRazorpayAccount(
+    ACCOUNT_FOR_PURPOSE[TRANSACTION_PURPOSE.SUBSCRIPTION],
+  );
+
   // Reuse a still-open order for the same brand + plan rather than leaving a
   // trail of abandoned Razorpay orders every time the page is reloaded.
   const reuseWindowMs = (config.pendingOrderReuseMinutes || 0) * 60 * 1000;
@@ -92,7 +104,7 @@ exports.createSubscribeOrder = async (actor, payload) => {
           orderId: existing.razorpayOrderId,
           amount: existing.pricing?.amountInPaise ?? pricing.amountInPaise,
           currency: existing.currency,
-          keyId: process.env.RAZORPAY_VENDOR_KEY_ID,
+          keyId,
         },
         reused: true,
       };
@@ -103,7 +115,6 @@ exports.createSubscribeOrder = async (actor, payload) => {
     .toString()
     .slice(-6)}`;
 
-  const razorpay = getRazorpayInstance(ROLES.VENDOR);
   const razorpayOrder = await razorpay.orders.create({
     amount: pricing.amountInPaise,
     currency: pricing.currency,
@@ -119,6 +130,11 @@ exports.createSubscribeOrder = async (actor, payload) => {
   }
 
   const transaction = await Transaction.create({
+    // Both required. `purpose` routes the webhook to the right settler;
+    // `gatewayAccount` is what every later signature check, payment lookup and
+    // refund reads instead of hardcoding an account at the call site.
+    purpose: TRANSACTION_PURPOSE.SUBSCRIPTION,
+    gatewayAccount: ACCOUNT_FOR_PURPOSE[TRANSACTION_PURPOSE.SUBSCRIPTION],
     brandId: brand._id,
     subscriptionId: subscription._id,
     userId: brand.userId,
@@ -141,7 +157,9 @@ exports.createSubscribeOrder = async (actor, payload) => {
     notes: razorpayOrder.notes,
     // Was previously written as `offer_id`, which the schema silently dropped.
     offerId: razorpayOrder.offer_id,
-    invoiceId: await generateUniqueInvoiceId(),
+    invoiceId: await generateInvoiceNumber({
+      series: INVOICE_SERIES[TRANSACTION_PURPOSE.SUBSCRIPTION],
+    }),
     createdAtRaw: razorpayOrder.created_at,
   });
 
@@ -216,7 +234,7 @@ exports.createSubscribeOrder = async (actor, payload) => {
       orderId: razorpayOrder.id,
       amount: razorpayOrder.amount,
       currency: razorpayOrder.currency,
-      keyId: process.env.RAZORPAY_VENDOR_KEY_ID,
+      keyId,
     },
     reused: false,
   };

@@ -250,6 +250,24 @@ mid-way leaves a valid plan rather than none.
 The runner is `jobs/index.js`: `setInterval`, no cron dependency, one catch-up
 run on boot, overlap-guarded, disabled with `ENABLE_JOBS=false`.
 
+Overlap is guarded twice. In-process, an `inFlight` set stops a slow sweep being
+re-entered by its own next tick. Across processes, a `JobLock` row — one per job,
+`_id` is the job name — stops a second instance running the same sweep at the
+same moment. That second guard matters because the runner is an in-process timer:
+two dynos means every job runs twice, and on boot immediately and simultaneously.
+
+The lock is a **lease**, not a flag. A process killed mid-run cannot release its
+own lock, and a permanent flag would mean that job never runs again on any
+instance. A heartbeat pushes the lease out every five minutes while the job is
+genuinely working, so a slow job keeps its lock and only a dead one loses it.
+
+The same row records `lastSuccessfulRunAt`, the last result, and a consecutive
+failure count. That is what makes the quiet failure visible — not a job that
+throws, which gets logged, but `ENABLE_JOBS=false` left set after a debugging
+session, or a process down for hours. `helpers/jobs/getJobHealth.js` judges each
+job against multiples of **its own** interval, so a 15-minute sweep and a 3-hour
+reminder are both healthy at their own pace.
+
 ---
 
 ## 6. Admin flows

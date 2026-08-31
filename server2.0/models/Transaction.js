@@ -5,7 +5,10 @@ const {
   subscriptionField,
   brandField,
   subBrandField,
+  customerField,
   voucherField,
+  voucherVersionField,
+  voucherClaimField,
   billField,
   settlementField,
   refundField,
@@ -24,12 +27,81 @@ const {
   MANUAL_PAYMENT_MODES,
 } = require("../constants/subscription");
 const { DISPUTE_STATUS } = require("../constants/webhook");
+const {
+  RAZORPAY_ACCOUNTS,
+  TRANSACTION_PURPOSE,
+  SETTLEMENT_STAGE,
+  GATEWAY_FEE_BEARER,
+  TRANSACTION_INDEXES,
+} = require("../constants/transaction");
+
+/**
+ * Everything a voucher claim adds to a transaction.
+ *
+ * Namespaced rather than spread across the top level for one reason: this
+ * document already carries 60-plus fields shared by two different money flows,
+ * and a reader needs to be able to tell at a glance which ones apply to which.
+ * `purpose: VOUCHER_CLAIM` rows fill this in; subscription rows leave it empty.
+ *
+ * The amounts here are a denormalised copy of `VoucherClaim.pricing`, kept so a
+ * settlement can total a brand's day without joining every claim.
+ */
+const voucherTransactionSchema = new mongoose.Schema(
+  {
+    claimId: voucherClaimField,
+    voucherId: voucherField,
+    voucherVersionId: voucherVersionField,
+    versionNumber: { type: Number },
+    // Plain ObjectId, not voucherOfferField — offers are embedded subdocuments
+    // inside VoucherVersion.offers, so there is no model to ref. Null when the
+    // bill was below every offer's minimum and the customer simply paid it.
+    offerId: { type: mongoose.Schema.Types.ObjectId },
+
+    billAmount: { type: Number },
+    offerDiscount: { type: Number, default: 0 },
+    convenienceFee: { type: Number, default: 0 },
+    // billAmount - offerDiscount. The vendor's supply; GST on it (if any) is
+    // the vendor's own, not ours.
+    netBill: { type: Number },
+
+    // What the vendor is owed once the promo split is applied. Frozen here so a
+    // later change to the promo code cannot rewrite a settled figure.
+    vendorPayable: { type: Number },
+    platformPromoCost: { type: Number, default: 0 },
+    vendorPromoCost: { type: Number, default: 0 },
+    // 0 today. Frozen at claim time anyway, because reading the live rate at
+    // settlement would let a rate change retroactively dock money from claims
+    // already collected and already shown to the vendor.
+    commissionPercent: { type: Number, default: 0 },
+    commissionAmount: { type: Number, default: 0 },
+  },
+  { _id: false },
+);
 
 const transactionSchema = new mongoose.Schema(
   {
+    // ---------- what this money was for, and whose account it landed in ----------
+    // Both required: `purpose` picks the settlement path and scopes every
+    // index; `gatewayAccount` decides which Razorpay secret verifies the
+    // payment and which instance issues a refund. Neither may be inferred at
+    // call time — see constants/transaction.js.
+    purpose: {
+      type: String,
+      enum: Object.values(TRANSACTION_PURPOSE),
+      required: true,
+      index: true,
+    },
+    gatewayAccount: {
+      type: String,
+      enum: Object.values(RAZORPAY_ACCOUNTS),
+      required: true,
+      index: true,
+    },
+
     userId: userField,
     brandId: brandField,
     subBrandId: subBrandField,
+    customerId: customerField,
     subscriptionId: subscriptionField,
     subscribedId: subscribedField,
     voucherId: voucherField,
@@ -37,11 +109,30 @@ const transactionSchema = new mongoose.Schema(
     createdBy: userField,
     settlementId: settlementField,
     refundId: refundField,
+
+    // Only populated on purpose: VOUCHER_CLAIM.
+    voucher: { type: voucherTransactionSchema, default: undefined },
+
     entity: { type: String },
     amount: { type: Number, required: true },
     // Full tax/discount breakdown behind `amount`. Frozen at order time so the
     // invoice never drifts when a plan's price or the GST rate changes later.
-    pricing: { type: pricingSchema, default: () => ({}) },
+    /**
+     * Subscription pricing. `purpose: SUBSCRIPTION` only.
+     *
+     * ⚠️ No default on purpose. It used to auto-materialise, which meant every
+     * voucher-claim row carried a subscription pricing block full of zeroes —
+     * and `taxType` defaulting to `IGST` inside it. `buildOrderSummary`'s
+     * `buildTaxRows()` branches on exactly that field, so a claim rendered
+     * through it would print an IGST row of zero: a tax line on an invoice that
+     * has no tax.
+     *
+     * Both subscription writers (`createSubscribeOrder`, `adminGrantSubscription`)
+     * set this explicitly from `calculatePricing`, so nothing relied on the
+     * default. A voucher claim prices through `voucherPricingSchema` instead and
+     * leaves this absent, which is the honest state.
+     */
+    pricing: { type: pricingSchema },
     // MANUAL covers admin grants — free, cash, bank transfer, cheque. Those
     // rows have no Razorpay order, which is why razorpayOrderId is sparse.
     gateway: {
@@ -94,18 +185,29 @@ const transactionSchema = new mongoose.Schema(
       enum: Object.values(PAYMENT_METHODS),
     },
     walletProvider: { type: String, enum: WALLET_PROVIDERS },
-    // No longer required: admin grants (gateway MANUAL) never touch Razorpay.
-    //
-    // The unique index is intentionally left NON-sparse to match the index
-    // already live in the database — switching it would raise
-    // IndexOptionsConflict on every boot. Instead, MANUAL rows are written with
-    // a synthetic `MANUAL-<invoiceId>` reference (see adminGrantSubscription),
-    // so they satisfy the unique index without colliding on null.
-    razorpayOrderId: { type: String, unique: true },
+    // `unique` deliberately NOT declared on the path here — see the named
+    // partial-unique indexes at the bottom of this file. A voucher-claim row is
+    // inserted before it has an invoice number, and in a non-sparse unique
+    // index a missing field is stored as `null`, so only one such row could
+    // ever exist. `partialFilterExpression: { $type: "string" }` skips both a
+    // missing field and an explicit null; `sparse` would not (it indexes
+    // explicit nulls), which is why it is not used.
+    razorpayOrderId: { type: String },
     razorpayPaymentId: { type: String, index: true, sparse: true },
+    // Razorpay permits more than one payment attempt against a single order, so
+    // a retry after a capture we never recorded can produce two captures. The
+    // conditional claim stops the second from settling, but the money is still
+    // taken — these are the ids that need refunding. See detectDoubleCapture.
+    duplicateCapturePaymentIds: { type: [String], default: undefined },
     razorpaySignature: { type: String },
-    invoiceId: { type: String, unique: true },
+    invoiceId: { type: String },
     invoiceUrl: { type: String },
+    // Unguessable handle for the public invoice download link. The sequential
+    // invoice number is a document-of-record and must never appear in a URL.
+    invoiceToken: { type: String },
+    // Client-supplied, so a retried create-order returns the same transaction
+    // instead of opening a second Razorpay order. Scoped per customer.
+    idempotencyKey: { type: String },
     // Everything the invoice prints, frozen when it is issued. The generator
     // reads only this and performs no live lookups, so a re-issue reproduces the
     // original exactly — even after the plan is renamed or the seller's GSTIN
@@ -141,6 +243,52 @@ const transactionSchema = new mongoose.Schema(
     updatedAtRaw: { type: Number },
     paidToVendorAt: { type: Date },
     paidRefundAt: { type: Date },
+
+    // ---------- gateway fee (MDR) ----------
+    // Razorpay settles NET: it deducts MDR plus GST on that MDR before the
+    // money reaches our bank. `payment.fee` / `payment.tax` already arrive in
+    // the capture payload and were already being written to `fee` / `tax`
+    // below — what was missing was any notion of who absorbs it, so it was
+    // silently coming out of the platform's margin with nothing recorded.
+    gatewayFee: { type: Number, default: 0 },
+    gatewayFeeBearer: {
+      type: String,
+      enum: Object.values(GATEWAY_FEE_BEARER),
+      default: GATEWAY_FEE_BEARER.PLATFORM,
+    },
+    // The bearer's share, frozen. Only non-zero when the bearer is not PLATFORM.
+    vendorGatewayFee: { type: Number, default: 0 },
+    // amount − gatewayFee: what actually reaches the bank, as opposed to what
+    // the customer paid. The settlement ledger reconciles against this.
+    netReceived: { type: Number },
+
+    // ---------- settlement (money out — see vendor_settlement_plan.md) ----------
+    // Set the moment anything makes this row ineligible for payout: a refund
+    // request, a completed refund, any dispute event. Monotonic by design — a
+    // webhook may set it, only an explicit admin action clears it. Eligibility
+    // keys on THIS, never on `isDisputed`, because `payment.dispute.lost`
+    // writes `isDisputed: false` and a lost chargeback must not become payable.
+    settlementHold: { type: Boolean, default: false, index: true },
+    settlementHoldReason: { type: String, trim: true, maxlength: 300 },
+    // Razorpay's own settlement of this payment INTO our bank. Observed, never
+    // inferred from a calendar offset: Razorpay settles in T+2 *working* days,
+    // and suspends settlement entirely when an account is under review.
+    razorpaySettlementId: { type: String, index: true, sparse: true },
+    fundsReceivedAt: { type: Date, index: true },
+
+    // ---------- settle progress ----------
+    // The conditional claim on `verified` is terminal, but several dependent
+    // writes follow it. This is how `resumeIncompleteSettlements` finds a row
+    // that was claimed and then abandoned mid-way.
+    settlementStage: {
+      type: String,
+      enum: Object.values(SETTLEMENT_STAGE),
+      index: true,
+    },
+    // Recorded but deliberately NOT settled: an authorized payment is not a
+    // captured one. If it stays authorized it is auto-refunded by Razorpay in
+    // about five days, which the customer experiences as a silent failure.
+    authorizedAt: { type: Date },
     // ---------- chargeback / dispute ----------
     // Mirrored from Razorpay's dispute webhooks. A dispute has a response
     // deadline and missing it forfeits the money, so it is tracked on the
@@ -181,5 +329,118 @@ transactionSchema.index({ brandId: 1, isDeleted: 1, createdAt: -1 });
 
 // The disputes worklist: open chargebacks, soonest deadline first.
 transactionSchema.index({ isDisputed: 1, disputeStatus: 1, disputeRespondBy: 1 });
+
+// ---------------------------------------------------------------------------
+// Partial-unique indexes
+//
+// These replace the plain `unique: true` paths that used to sit on
+// `razorpayOrderId` and `invoiceId`. Both are declared here, with EXPLICIT
+// NAMES, for two reasons:
+//
+//  1. A voucher-claim row is inserted before it has an invoice number. In a
+//     unique index that is neither sparse nor partial, a missing field indexes
+//     as `null` — so exactly one such document could exist and the second
+//     claim on the platform would fail with E11000.
+//  2. Mongo derives `invoiceId_1` / `razorpayOrderId_1` for a path-level
+//     unique. Reusing those names would make the migration impossible: it has
+//     to create the new index, verify it, and only then drop the old one by
+//     name. Editing the path in place instead raises IndexOptionsConflict (85),
+//     which Mongoose swallows on the `index` event — leaving whichever index
+//     happened to win and no error anywhere.
+//
+// `$type: "string"` is used rather than `sparse: true` because a sparse unique
+// index still indexes an explicit `null`; this one skips both a missing field
+// and an explicit null.
+// ---------------------------------------------------------------------------
+
+transactionSchema.index(
+  { invoiceId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { invoiceId: { $type: "string" } },
+    name: TRANSACTION_INDEXES.INVOICE_ID,
+  },
+);
+
+transactionSchema.index(
+  { razorpayOrderId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { razorpayOrderId: { $type: "string" } },
+    name: TRANSACTION_INDEXES.RAZORPAY_ORDER_ID,
+  },
+);
+
+transactionSchema.index(
+  { invoiceToken: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { invoiceToken: { $type: "string" } },
+    name: TRANSACTION_INDEXES.INVOICE_TOKEN,
+  },
+);
+
+// One open order per (customer, idempotency key). Scoped to the customer so two
+// clients cannot collide on a weak key.
+transactionSchema.index(
+  { customerId: 1, idempotencyKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { idempotencyKey: { $type: "string" } },
+    name: TRANSACTION_INDEXES.IDEMPOTENCY_KEY,
+  },
+);
+
+// One transaction per claim, both ways.
+transactionSchema.index(
+  { "voucher.claimId": 1 },
+  {
+    unique: true,
+    // $type rather than $exists: an explicitly-null claimId would satisfy
+    // $exists and collide with the next one, which is the same trap the
+    // invoiceId index exists to avoid.
+    partialFilterExpression: { "voucher.claimId": { $type: "objectId" } },
+    name: TRANSACTION_INDEXES.VOUCHER_CLAIM_ID,
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Purpose-scoped read indexes
+//
+// Every one of these is partial on `purpose: VOUCHER_CLAIM`. That is the whole
+// point: voucher claims will outnumber subscriptions by orders of magnitude, so
+// a subscription insert must not pay to maintain a voucher index, and a vendor
+// listing must not scan customer rows. Partial indexes give both for free.
+// ---------------------------------------------------------------------------
+
+const voucherOnly = {
+  purpose: TRANSACTION_PURPOSE.VOUCHER_CLAIM,
+};
+
+transactionSchema.index(
+  { purpose: 1, customerId: 1, createdAt: -1 },
+  { partialFilterExpression: voucherOnly },
+);
+
+transactionSchema.index(
+  { purpose: 1, brandId: 1, createdAt: -1 },
+  { partialFilterExpression: voucherOnly },
+);
+
+transactionSchema.index(
+  { purpose: 1, subBrandId: 1, createdAt: -1 },
+  { partialFilterExpression: voucherOnly },
+);
+
+// Admin filters and the sweep jobs — both purposes.
+transactionSchema.index({ purpose: 1, status: 1, createdAt: -1 });
+
+// The webhook's lookup. Razorpay order ids are globally unique, so scoping by
+// account is belt-and-braces — but it is what makes it structurally impossible
+// for one account's payment to settle against the other account's order.
+transactionSchema.index({ razorpayOrderId: 1, gatewayAccount: 1 });
+
+// buildSettlements' eligibility scan.
+transactionSchema.index({ settlementId: 1 }, { sparse: true });
 
 module.exports = mongoose.model("Transaction", transactionSchema);

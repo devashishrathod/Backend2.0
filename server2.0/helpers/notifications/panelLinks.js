@@ -72,7 +72,50 @@ const deepLink = (path) => `/${trimPath(path)}`;
  */
 const whatsappUrlParam = (path) => trimPath(path);
 
+/**
+ * Customer-app screens.
+ *
+ * The customer app resolves its own routes, so these are bare paths — there is
+ * no customer web panel to build an absolute URL against.
+ */
+const CUSTOMER_PATHS = Object.freeze({
+  ORDERS: "orders",
+  order: (claimId) => `orders/${claimId}`,
+  transaction: (transactionId) => `transactions/${transactionId}`,
+  voucher: (voucherId) => `vouchers/${voucherId}`,
+  SUPPORT: "support",
+});
+
+/**
+ * An absolute link to something this API itself serves.
+ *
+ * Used for the invoice download, which is the one customer-facing URL that is
+ * **not** an app route: it resolves a token and redirects to a CDN file, so it
+ * has to be reachable from a WhatsApp message and an email client.
+ *
+ * Returns `undefined` when `PUBLIC_API_URL` is unset — the same contract
+ * `vendorUrl` follows, so `sendMail` omits the button rather than rendering a
+ * dead one. A Download button that goes nowhere is worse than no button.
+ *
+ * ⚠️ The WhatsApp template's URL button is approved by Meta **against a fixed
+ * base**, with only the last segment dynamic. That is why the token is the last
+ * path segment and the Cloudinary URL is not used directly: a CDN URL is
+ * different for every invoice and could never be the dynamic part.
+ */
+const publicUrl = (path) => {
+  const base = trimBase(process.env.PUBLIC_API_URL);
+  if (!base) return undefined;
+  return `${base}/trydood/v1/${trimPath(path)}`;
+};
+
+/** The public invoice link, by token. */
+const invoiceUrl = (token) =>
+  token ? publicUrl(`transactions/invoice/${token}`) : undefined;
+
 module.exports = {
+  CUSTOMER_PATHS,
+  publicUrl,
+  invoiceUrl,
   PANEL_PATHS,
   ADMIN_PATHS,
   vendorUrl,

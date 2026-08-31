@@ -4684,7 +4684,28 @@ GET /subscribeds/history?brandId=68f1a2b3c4d5e6f7a8b9c3a1&limit=50
 
 # Promo Code APIs
 
-Subscription checkout ke promo codes. **Poora module `router.use(isAdmin)` ke peeche hai ✅** — vendor codes manage nahi karta, wo sirf `/transactions/subscribe/preview` aur `create-order` me redeem karta hai.
+Promo codes **do checkouts** ke liye. **Poora module `router.use(isAdmin)` ke peeche hai ✅** — vendor ya customer codes manage nahi karte, wo sirf redeem karte hain.
+
+### ⚠️ `audience` — sabse pehle ye samjhein
+
+Ek hi collection do bilkul alag campaigns rakhta hai:
+
+| | `audience: "VENDOR"` *(default)* | `audience: "CUSTOMER"` |
+|---|---|---|
+| Kahan redeem hota hai | `/transactions/subscribe/preview` + `create-order` | Voucher claim checkout |
+| Kaun redeem karta hai | Vendor, apne plan pe | Customer, apne bill pe |
+| Scope fields | `subscriptionIds`, `applicableActions` | `voucherIds`, `brandIds`, `categoryIds` |
+| Minimum | `minOrderValue` (plan-discounted subtotal) | `minBillAmount` (customer ne jo raw bill type kiya) |
+| Per-owner cap | `perBrandUsageLimit` | `perCustomerUsageLimit` |
+| First-time | `firstTimeOnly` | `firstOrderOnly` |
+| Kis base pe lagta hai | Plan subtotal | `appliesTo`: `NET_BILL` \| `CONVENIENCE_FEE` |
+| Discount kaun bharta hai | Hamesha platform | `costBearing`: `PLATFORM` \| `VENDOR` \| `SHARED` |
+
+**Dono poori tarah isolated hain.** Ek audience ka code doosre ke checkout pe bilkul waise reject hota hai jaise wo code exist hi na karta ho (`This promo code is not valid.`) — "ye code aapke liye nahi hai" bolne se confirm ho jaata ki code exist karta hai, aur response se live codes enumerate kiye ja sakte the.
+
+**Jo shared hai:** window (`validFrom` / `validTill`), platform-wide `totalUsageLimit`, aur discount ka arithmetic (percent, `maxDiscountAmount` cap, base pe clamp) — ye teeno `helpers/promoCodes/assertPromoWindowAndCaps.js` me ek jagah hain, isliye do checkouts kabhi disagree nahi kar sakte ki code ki value kitni hai.
+
+**⚠️ `audience` create ke baad immutable hai** — har `PromoCodeUsage` row usko claim time pe freeze karti hai aur per-owner cap usi se count hota hai. Flip karne se wo history orphan ho jaati aur single-use code dobara redeem ho jaata. Jo codes is field ke aane se pehle bane the unme value stored nahi hai; wo **har jagah `VENDOR` maane jaate hain** (lookup `$ne: CUSTOMER` se hota hai, `$eq: VENDOR` se nahi — warna ek bhi purana code na milta).
 
 ### Discount kaise lagta hai
 
@@ -4733,6 +4754,7 @@ Ek abandoned checkout single-use code ko lock na kar de, isliye:
 | Field | Type | Required | Validation |
 |---|---|---|---|
 | `code` | string | ✅ | 3–40 chars, `/^[A-Z0-9_-]+$/`, auto-uppercase + trim |
+| `audience` | string | ❌ | `VENDOR` *(default)* \| `CUSTOMER` — ⚠️ create ke baad change nahi hota |
 | `discountType` | string | ✅ | `PERCENT` \| `FLAT` |
 | `discountPercent` | number | ⚠️ | 0–100 — **`PERCENT` pe > 0 hona chahiye** |
 | `discountAmount` | number | ⚠️ | ≥ 0 — **`FLAT` pe > 0 hona chahiye** |
@@ -4744,8 +4766,55 @@ Ek abandoned checkout single-use code ko lock na kar de, isliye:
 | `firstTimeOnly` | boolean | ❌ | Sirf pehli subscription pe |
 | `validFrom` · `validTill` | date | ❌ | `validTill` > `validFrom` |
 | `totalUsageLimit` | number | ❌ | Integer ≥ 1 |
-| `perBrandUsageLimit` | number | ❌ | Integer ≥ 1 — ⚠️ `totalUsageLimit` se zyada nahi |
+| `perBrandUsageLimit` | number | ❌ | Integer ≥ 1 — ⚠️ `totalUsageLimit` se zyada nahi · **VENDOR only** |
 | `isActive` | boolean | ❌ | |
+
+**`audience: "CUSTOMER"` ke extra fields:**
+
+| Field | Type | Required | Validation |
+|---|---|---|---|
+| `voucherIds` | ObjectId[] | ❌ | Kaunse vouchers pe valid. Empty = sab. **Exist karne chahiye** |
+| `brandIds` | ObjectId[] | ❌ | Kaunse brands pe valid. Empty = sab. **Exist karne chahiye** |
+| `categoryIds` | ObjectId[] | ❌ | Kaunsi categories pe valid. Empty = sab. **Exist karne chahiye** |
+| `minBillAmount` | number | ❌ | ≥ 0 — **raw bill se compare hota hai, offer lagne se pehle** |
+| `appliesTo` | string | ❌ | `NET_BILL` *(default)* \| `CONVENIENCE_FEE` |
+| `perCustomerUsageLimit` | number | ❌ | Integer ≥ 1 — ⚠️ `totalUsageLimit` se zyada nahi |
+| `firstOrderOnly` | boolean | ❌ | Sirf customer ke pehle claim pe |
+| `costBearing.mode` | string | ❌ | `PLATFORM` *(default)* \| `VENDOR` \| `SHARED` |
+| `costBearing.vendorPercent` | number | ❌ | 0–100 — ⚠️ **sirf `SHARED` pe, aur 1–99 hona chahiye** |
+
+⚠️ **Doosri audience ka field bhejna `422` hai, silently ignore nahi hota.** Warna code ban to jaata par kabhi match na karta — jo diagnose karna 422 se kahin mushkil hai.
+
+### `costBearing` — discount kaun bharta hai
+
+Ye wo field hai jo **vendor ke bank account tak pahunchti hai**, isliye iske rules sakht hain:
+
+| mode | Matlab | Kya chahiye |
+|---|---|---|
+| `PLATFORM` *(default)* | Trydood bharta hai; vendor ka settlement aisa hi rehta hai jaise koi code laga hi na ho | — |
+| `VENDOR` | Brand bharta hai; us din ke settlement se minus hota hai | non-empty `brandIds` |
+| `SHARED` | Dono me bat-ta hai | non-empty `brandIds` + `vendorPercent` 1–99 |
+
+**`brandIds` `PLATFORM` ke alawa mandatory kyun:** uske bina discount us brand se cut hota jahan customer ittefaq se pahunch gaya — ek aisa code jise fund karne pe wo brand kabhi raazi hi nahi hua tha.
+
+**Split claim time pe `PromoCodeUsage` row pe freeze ho jaata hai** (`vendorCost` + `platformCost`, jinka sum hamesha `discountAmount` hota hai). Isliye code ko baad me edit ya delete karne se koi aisa settlement dobara nahi likha jaata jo pehle hi compute ho chuka hai.
+
+**Customer code, brand-funded:**
+```json
+{
+  "code": "PIZZA50",
+  "audience": "CUSTOMER",
+  "discountType": "FLAT",
+  "discountAmount": 50,
+  "brandIds": ["68f1a2b3c4d5e6f7a8b9d001"],
+  "minBillAmount": 300,
+  "appliesTo": "NET_BILL",
+  "perCustomerUsageLimit": 2,
+  "costBearing": { "mode": "SHARED", "vendorPercent": 40 },
+  "totalUsageLimit": 5000
+}
+```
+₹50 discount pe vendor ₹20 bharta hai, platform ₹30.
 
 **Percentage code with cap:**
 ```json
@@ -4786,6 +4855,7 @@ Ek abandoned checkout single-use code ko lock na kar de, isliye:
   "data": {
     "_id": "68f1a2b3c4d5e6f7a8b9q001",
     "code": "MONSOON20",
+    "audience": "VENDOR",
     "description": "Monsoon campaign — 20% off up to ₹1,000",
     "discountType": "PERCENT",
     "discountPercent": 20,
@@ -4817,6 +4887,15 @@ Ek abandoned checkout single-use code ko lock na kar de, isliye:
 | `422` | `validTill must be after validFrom.` | |
 | `422` | `perBrandUsageLimit cannot exceed totalUsageLimit.` | |
 | `422` | `One or more subscriptionIds do not exist.` | ⚠️ Non-existent plan reference |
+| `422` | `One or more voucherIds / brandIds / categoryIds do not exist.` | ⚠️ CUSTOMER scope reference |
+| `422` | `perCustomerUsageLimit cannot exceed totalUsageLimit.` | |
+| `422` | `voucherIds, minBillAmount are not valid on a VENDOR promo code.` | Galat audience ka field |
+| `422` | `subscriptionIds, applicableActions are not valid on a CUSTOMER promo code.` | Galat audience ka field |
+| `422` | `costBearing applies to CUSTOMER promo codes — a subscription discount is always funded by the platform.` | `VENDOR`/`SHARED` mode VENDOR-audience code pe |
+| `422` | `A VENDOR promo code must be scoped with brandIds. Without it the discount would be deducted from whichever brand the customer happens to visit.` | |
+| `422` | `A SHARED promo code needs a vendorPercent between 1 and 99. Use PLATFORM for 0 or VENDOR for 100.` | |
+| `422` | `vendorPercent only applies to a SHARED promo code — VENDOR already decides who pays in full.` | |
+| `422` | `audience must be one of: VENDOR, CUSTOMER` | |
 | `422` | `Code is required` | |
 | `422` | `Code must be at least 3 characters` / `cannot exceed 40 characters` | |
 | `422` | `Code may only contain letters, numbers, dashes and underscores` | |
@@ -4852,6 +4931,7 @@ Ek abandoned checkout single-use code ko lock na kar de, isliye:
 | `search` | string | ❌ | – | `""` allowed |
 | `isActive` | boolean\|string | ❌ | – | **Stored flag** |
 | `status` | string | ❌ | – | ⚠️ `LIVE` \| `SCHEDULED` \| `EXPIRED` — **effective state** |
+| `audience` | string | ❌ | – | `VENDOR` \| `CUSTOMER` — omit karne pe dono mix ho jaate hain |
 | `sortBy` | string | ❌ | – | `createdAt` \| `code` \| `usedCount` \| `validTill` |
 | `sortOrder` | string | ❌ | – | `asc` \| `desc` |
 
@@ -5024,6 +5104,8 @@ GET /promoCodes/reports?code=MONSOON20&from=2026-09-01&to=2026-09-30&groupBy=day
 | `422` | `` `from` cannot be later than `to`. `` | |
 | `422` | `from must be an ISO date, e.g. 2026-08-01` | |
 | `422` | `groupBy must be one of: day, month` | |
+| `422` | `audience must be one of: VENDOR, CUSTOMER` | |
+| `422` | `MONSOON20 is a VENDOR promo code — asking for the CUSTOMER audience would report on nothing. Drop the audience filter, or use it without naming a code.` | `code`/`promoCodeId` + ulta `audience` |
 | `422` | `Unknown query parameter` | Extra param bheja |
 
 ### ⚠️ Notes
@@ -5088,7 +5170,7 @@ GET /promoCodes/reports?code=MONSOON20&from=2026-09-01&to=2026-09-30&groupBy=day
 | `id` | ObjectId | ✅ |
 
 ### Body — sab optional, **kam se kam ek field**
-Create (#84) ke saare fields except `code` — ⚠️ **code badal nahi sakta**.
+Create (#84) ke saare fields except `code` aur `audience` — ⚠️ **dono badal nahi sakte**.
 
 ```json
 { "totalUsageLimit": 1000, "validTill": "2026-10-15T23:59:59.000Z" }
@@ -5099,14 +5181,29 @@ Create (#84) ke saare fields except `code` — ⚠️ **code badal nahi sakta**.
 { "isActive": false }
 ```
 
+⚠️ **`costBearing` merge hoti hai, replace nahi.** Jis code me pehle se `vendorPercent: 40` hai uspe `{ "costBearing": { "mode": "SHARED" } }` bhejne se 40 bana rehta hai. Ye merge na hota to ek SHARED code silently aisa ban jaata jo vendor ko kuch settle hi na karta — aur validation phir bhi pass kar jaati, kyunki wo stored value dekh ke check karti hai. Jo field badalni hai wahi bhejein.
+
 ### Success — `200`
 ```json
 {
   "success": true,
   "message": "Promo code updated successfully",
-  "data": { "_id": "…", "code": "MONSOON20", "totalUsageLimit": 1000, "validTill": "2026-10-15T23:59:59.000Z" }
+  "data": {
+    "promoCode": {
+      "_id": "68f1a2b3c4d5e6f7a8b9q001",
+      "code": "MONSOON20",
+      "audience": "VENDOR",
+      "totalUsageLimit": 1000,
+      "validTill": "2026-10-15T23:59:59.000Z",
+      "usedCount": 12,
+      "isActive": true
+    },
+    "usage": { "consumed": 11, "reserved": 1 }
+  }
 }
 ```
+
+> ⚠️ Response `data.promoCode` **aur** `data.usage` deta hai — flat promo code nahi. `usage` ledger se aata hai, `usedCount` counter se nahi, isliye actual redemptions aur khule checkouts alag dikhte hain.
 
 ### Errors
 | Status | Message | Kab |
@@ -5117,11 +5214,16 @@ Create (#84) ke saare fields except `code` — ⚠️ **code badal nahi sakta**.
 | `422` | `validTill must be after validFrom.` | Existing + new merge hoke check hota hai |
 | `422` | `perBrandUsageLimit cannot exceed totalUsageLimit.` | |
 | `422` | `One or more subscriptionIds do not exist.` | |
+| `422` | `A promo code's audience cannot be changed from VENDOR to CUSTOMER — its redemption history is counted per audience. Deactivate this one and create a new code instead.` | ⚠️ Wahi value dobara bhejna theek hai |
+| `422` | `perCustomerUsageLimit cannot exceed totalUsageLimit.` | |
+| `422` | Saare `costBearing` rules (#84 dekhein) | Stored + new merge hoke check hote hain |
 | `422` | `Please provide at least one field to update.` | Body khali |
 
 ### ⚠️ Notes
 
 **1. `code` immutable hai** — validator me nahi hai. Naya code chahiye to naya banao.
+
+**1b. `audience` bhi immutable hai** — har `PromoCodeUsage` row usko claim time pe freeze karti hai aur per-owner cap usi se count hota hai. Flip karne se purani rows cap me ginna band ho jaati aur single-use code dobara redeem ho jaata. Jo codes is field se pehle bane the wo `VENDOR` count hote hain, isliye unhe `CUSTOMER` bhi nahi banaya ja sakta.
 
 **2. Validations existing + new merge karke chalti hain** — jaise sirf `validTill` bhejo, to wo existing `validFrom` se compare hoga.
 
@@ -5398,9 +5500,22 @@ Razorpay webhook receiver + admin operations. **Ye payment reliability ka backbo
 Aur admin ops kyun:
 > *"Deliveries were already stored but invisible outside the database, so a FAILED event (money captured, plan not live, and Razorpay will not retry once it has our 200) could sit unnoticed."*
 
-## 94. POST /transactions/webhook/razorpay
+## 94. POST /transactions/webhook/razorpay · POST /transactions/webhook/razorpay/customer
 
-🔴 **Public endpoint — Razorpay ke liye.** Admin panel ise **kabhi call nahi karega**; documentation ke liye hai.
+🔴 **Public endpoints — Razorpay ke liye.** Admin panel inhe **kabhi call nahi karega**; documentation ke liye hain.
+
+### ⚠️ Do endpoint, do account
+
+| Route | Razorpay account | Kya aata hai | Secrets |
+|---|---|---|---|
+| `/transactions/webhook/razorpay` | **VENDOR** | Vendor subscription payments | `RAZORPAY_WEBHOOK_SECRETS` |
+| `/transactions/webhook/razorpay/customer` 🆕 | **CUSTOMER** | Customer voucher claims | `RAZORPAY_CUSTOMER_WEBHOOK_SECRETS` |
+
+Dono ka body, headers aur behaviour bilkul ek jaisa hai. Farq sirf itna: **account route se tay hota hai, signature se nahi.**
+
+Ye jaan-boojh kar hai. Agar account us secret se derive hota jisne verify kiya, to kabhi dono dashboard par ek hi secret set ho jaane par **har customer payment vendor lookup me chali jaati** — aur wo lookup galat merchant se "payment not found" leke aati. Signature sirf ye batata hai ki delivery asli hai; wo kiska paisa hai, ye endpoint batata hai.
+
+**Galat endpoint par aayi delivery phir bhi process hoti hai** — paisa asli hai aur use girana sabse bura option hai — par ek **WARNING alert** ke saath, jisme likha hota hai kaunsa dashboard kaunse URL par point karna chahiye. Chup-chaap kaam karta rehna sabse khatarnaak hai: wo us din tootta hai jis din secrets alag ho jaate hain.
 
 **Access:** Intended: Razorpay · Enforced: **Public (HMAC-verified)**
 
@@ -5432,7 +5547,22 @@ Razorpay ka raw event payload.
 
 **4. Handled events (10):** `payment.captured` · `order.paid` · `payment.failed` · `refund.processed` · aur 6 dispute events. Baaki `IGNORED` mark hoke store ho jaate hain.
 
-**5. `RAZORPAY_WEBHOOK_SECRET` set hona zaruri hai** — na ho to har delivery fail hogi.
+**5. Webhook secrets ab ek *list* hain** — `RAZORPAY_WEBHOOK_SECRETS` aur `RAZORPAY_CUSTOMER_WEBHOOK_SECRETS`, comma-separated. List isliye ki secret **bina downtime** rotate ho sake: naya add karo → dashboard update karo → agle deploy me purana hata do. Har secret try hota hai.
+
+Purana single-value `RAZORPAY_WEBHOOK_SECRET` VENDOR account ke liye **sabse aakhir me** padha jaata hai, taaki upgrade karte hi kuch toote nahi.
+
+Set na ho to har delivery reject hogi — aur ye boot par dikh jaata hai:
+
+```
+✅ [pay] VENDOR    test · rzp_test_TKV… · 1 webhook secret(s)
+⚪ [pay] CUSTOMER  test · rzp_test_jkS… · NO webhook secret — deliveries will be rejected
+```
+
+**6. Reject hui delivery ab record hoti hai** — `status: REJECTED`. Pehle kuch bhi likha nahi jaata tha, yaani galat ya abhi deploy na hue secret par payments capture hoti rehti aur **kahin koi nishan nahi** hota.
+
+Par wo row **body ke hash** par key hoti hai, `x-razorpay-event-id` header par nahi. Wajah: jis delivery ki signature verify nahi hui, uska header **attacker-controlled** hai. Header par key karte to koi bhi ek forged request bhej kar us event-id ko "istemal" kar deta, aur jab Razorpay wahi event-id sahi signature ke saath retry karta to wo `DUPLICATE` mark hokar **kabhi settle hi na hoti**.
+
+Isliye row me: body ka SHA-256, size, pehle 512 bytes ka preview, source IP — **poora payload nahi** (wo unverified input hai). Aur `REJECTED` kabhi replay nahi hoti: unverified payload ko admin ke ek click par process karna us problem se bura hai jise ye theek karne aayi thi.
 
 ---
 
@@ -5803,11 +5933,79 @@ Platform-wide configuration. **Ek singleton document.**
         "isActive": true
       }
     },
+    "customer": {
+      "convenienceFee": {
+        "isEnabled": true,
+        "slabSize": 500,
+        "feePerSlab": 5,
+        "maxFee": 50,
+        "chargeWhenNoOffer": false
+      },
+      "tax": {
+        "isGstEnabled": false,
+        "gstPercentage": 18,
+        "isGstInclusive": true,
+        "sacCode": "998599"
+      },
+      "promoCode": {
+        "isEnabled": false,
+        "allowWhenNoOffer": false,
+        "allowForGuestPreview": true
+      },
+      "claim": {
+        "isEnabled": true,
+        "allowWhenNoOffer": true,
+        "maxBillAmount": 100000,
+        "pendingOrderReuseMinutes": 10,
+        "quoteTtlMinutes": 30,
+        "allowWhenVendorPlanExpired": false,
+        "vendorPlanExpiredGraceDays": 0,
+        "redemptionWindowHours": 24
+      },
+      "notification": {
+        "isEmailNotificationEnabled": true,
+        "isPushNotificationEnabled": true,
+        "isWhatsAppNotificationEnabled": false
+      },
+      "invoice": { "seriesPrefix": "VCH" },
+      "settlement": {
+        "isEnabled": true,
+        "delayDays": 3,
+        "payoutBufferHours": 6,
+        "cycleType": "DAILY",
+        "requiresAdminApproval": true,
+        "minPayoutAmount": 100,
+        "payoutProvider": "MANUAL_BANK",
+        "commissionPercent": 0,
+        "reserve": {
+          "isEnabled": false,
+          "percent": 5,
+          "holdDays": 30,
+          "riskChargebackCount": 2
+        },
+        "newVendorReserveDays": 0,
+        "notReceivedAlertHours": 96,
+        "gatewayFeeBearer": "PLATFORM"
+      },
+      "refund": {
+        "method": "SOURCE",
+        "windowHours": 24,
+        "vendorApprovalHours": 24,
+        "adminBufferHours": 12,
+        "onVendorTimeout": "ESCALATE",
+        "allowPartial": true,
+        "releasePromoOnRefund": false,
+        "authorizedAlertMinutes": 30
+      },
+      "chargeback": { "writeOffDays": 90 }
+    },
     "isActive": true,
     "updatedAt": "2026-08-01T00:00:00.000Z"
   }
 }
 ```
+
+> ⚠️ **Purane document me `customer` khali `{}` bhi ho sakta hai.** Mongoose default sirf **write** par lagta hai, isliye jo block doc banne ke baad add hua wo stored nahi hoga. Padhne wala har flow `helpers/settings/getCustomerConfig.js` se jaata hai, jo `constants/customer.js` se fallback bhar deta hai — to reads hamesha poore rehte hain chahe stored doc adhoora ho.
 
 ### Errors
 Sirf [common auth errors](#common-errors) + `403` role check.
@@ -5824,6 +6022,7 @@ Sirf [common auth errors](#common-errors) + `403` role check.
 | `vendor.voucher` | `maxOffers` (1–100) · `maxImages` (≥1) · `maxDistanceKm` (≥1) |
 | `vendor.showcase` | `maxSections` · `maxItemsPerSection` · `maxImagesPerSection` · `maxVideosPerSection` · `maxImageSizeMB` · `maxVideoSizeMB` (sab ≥1) · `allowedImages[]` · `allowedVideos[]` (min 1 item) · `isActive` |
 | `vendor.subscription` | Niche full table |
+| `customer` | Niche full table — **naya**, pehle pahunch me hi nahi tha |
 | `isActive` | boolean |
 
 ### `vendor.subscription` fields
@@ -5892,6 +6091,143 @@ Sirf [common auth errors](#common-errors) + `403` role check.
 { "vendor": { "showcase": { "maxSections": 10, "maxVideosPerSection": 8 } } }
 ```
 
+---
+
+### `customer` fields — **naya block**
+
+> ⚠️ **Pehle ye poora tree API se pahunch me tha hi nahi.** Model me `customer.convenienceFee` maujood tha, par `validator/settings.js` me koi `customer` object nahi tha aur `stripUnknown` on hai — matlab har request body se ye chup-chaap gir jaata tha aur sirf schema defaults chalte the. Ab poora tree reachable hai.
+
+Har block alag se merge hota hai. Nested block bhi merge hota hai — `settlement.reserve.percent` bhejne par `holdDays` aur `riskChargebackCount` waise hi rehte hain.
+
+**`customer.convenienceFee`** — discounted bill ke upar platform fee
+| Field | Default | Validation | Notes |
+|---|---|---|---|
+| `isEnabled` | `true` | boolean | |
+| `slabSize` | `500` | Integer ≥ 1 | Har itne ₹ par ek slab |
+| `feePerSlab` | `5` | ≥ 0 | `ceil(bill / slabSize) × feePerSlab` |
+| `maxFee` | **`50`** | ≥ 0, ya `null` | ⚠️ Neeche padhein |
+| `chargeWhenNoOffer` | `false` | boolean | Offer na lage to fee lagegi ya nahi |
+
+> ⚠️ **`maxFee` ka matlab badla hai.** Pehle default `null` tha — yaani **koi ceiling nahi**, aur ₹10,000 ke bill par ₹100 fee lag jaati. Ab default **50** hai. `null` abhi bhi accept hota hai aur abhi bhi "no ceiling" hi matlab rakhta hai, par ab wo **jaan-boojh kar chunna** padta hai, setting ko kabhi na chhoo kar mil nahi jaata.
+
+**`customer.tax`** — convenience fee par GST (Trydood ki apni service income)
+| Field | Default | Validation |
+|---|---|---|
+| `isGstEnabled` | **`false`** | boolean — master switch |
+| `gstPercentage` | `18` | 0–100 |
+| `isGstInclusive` | **`true`** | `true` = slab amount me tax shamil hai aur back-calculate hota hai, isliye switch on karne se customer ka daam nahi badhta |
+| `sacCode` | `998599` | Max 20 |
+
+**`customer.promoCode`** — customer-side codes (vendor wale se bilkul alag switch)
+| Field | Default | Notes |
+|---|---|---|
+| `isEnabled` | **`false`** | Off jab tak customer checkout live na ho |
+| `allowWhenNoOffer` | `false` | Bina offer ke promo = pura giveaway, koi vendor supply nahi |
+| `allowForGuestPreview` | `true` | Guest ko provisional discount; login par dobara validate hota hai |
+
+**`customer.claim`** — claim flow
+| Field | Default | Validation | Notes |
+|---|---|---|---|
+| `isEnabled` | `true` | boolean | Kill switch |
+| `allowWhenNoOffer` | `true` | boolean | Bina discount ke bhi bill pay kar sakta hai |
+| `maxBillAmount` | `100000` | 1–10000000 | Typo/hostile client ke against guard |
+| `pendingOrderReuseMinutes` | `10` | 0–1440 | Khula order dobara diya jaata hai |
+| `quoteTtlMinutes` | `30` | 1–1440 | Promo reservation TTL se match karta hai |
+| `allowWhenVendorPlanExpired` | `false` | boolean | Lapsed plan par bechna |
+| `vendorPlanExpiredGraceDays` | `0` | 0–90 | |
+| `redemptionWindowHours` | `24` | 1–8760 | Phase 2 — abhi inert |
+
+**`customer.notification`** — customer channels (vendor ke channels se alag)
+| Field | Default | Notes |
+|---|---|---|
+| `isEmailNotificationEnabled` | `true` | |
+| `isPushNotificationEnabled` | `true` | |
+| `isWhatsAppNotificationEnabled` | `false` | Meta template approval chahiye |
+
+> Ye jaan-boojh kar `vendor.subscription.is*NotificationEnabled` se share **nahi** kiye gaye — vendor ke renewal reminder band karne se customer ki payment receipt band nahi honi chahiye.
+
+**`customer.invoice`**
+| Field | Default | Validation |
+|---|---|---|
+| `seriesPrefix` | `VCH` | 2–6 letters, sirf `A-Z` |
+
+> ⚠️ **Prefix badalne se naya counter shuru hota hai.** Pehle issue ho chuke invoice apna purana prefix rakhte hain — jo sahi hai, invoice number ek permanent legal reference hai, dobara nahi likha jaata.
+
+**`customer.settlement`** — vendor ko payout
+| Field | Default | Validation | Notes |
+|---|---|---|---|
+| `isEnabled` | `true` | boolean | |
+| `delayDays` | `3` | 0–30 | ⚠️ T+N — golden rule dekhein |
+| `payoutBufferHours` | `6` | 0–168 | Paisa bank me aane ke baad ka buffer |
+| `cycleType` | `DAILY` | `DAILY` \| `WEEKLY` | |
+| `requiresAdminApproval` | `true` | boolean | `false` = auto-approve |
+| `minPayoutAmount` | `100` | ≥ 0 | Isse kam → carry forward |
+| `payoutProvider` | `MANUAL_BANK` | `MANUAL_BANK` \| `RAZORPAY_X` \| `RAZORPAY_ROUTE` | Abhi manual NEFT |
+| `commissionPercent` | **`0`** | 0–100 | Structure ready, rate zero |
+| `reserve.isEnabled` | `false` | boolean | Risky vendor ka withheld slice |
+| `reserve.percent` | `5` | 0–100 | |
+| `reserve.holdDays` | `30` | 0–365 | |
+| `reserve.riskChargebackCount` | `2` | ≥ 1 | Itne chargeback → reserve on |
+| `newVendorReserveDays` | `0` | 0–365 | |
+| `notReceivedAlertHours` | `96` | 1–720 | |
+| `gatewayFeeBearer` | `PLATFORM` | `PLATFORM` \| `VENDOR` \| `SHARED` | Razorpay MDR kaun uthaye |
+
+**`customer.refund`**
+| Field | Default | Validation | Notes |
+|---|---|---|---|
+| `method` | `SOURCE` | `SOURCE` \| `MANUAL_BANK` | Usi card/UPI par wapas |
+| `windowHours` | `24` | 0–720 | ⚠️ Golden rule |
+| `vendorApprovalHours` | `24` | 0–720 | ⚠️ Golden rule |
+| `adminBufferHours` | `12` | 0–720 | ⚠️ Golden rule |
+| `onVendorTimeout` | `ESCALATE` | `ESCALATE` \| `AUTO_APPROVE` | |
+| `allowPartial` | `true` | boolean | |
+| `releasePromoOnRefund` | **`false`** | boolean | Promo slot wapas nahi — warna claim+refund se single-use code recycle ho jaata |
+| `authorizedAlertMinutes` | `30` | 1–1440 | Authorized par atki payment |
+
+**`customer.chargeback`**
+| Field | Default | Validation |
+|---|---|---|
+| `writeOffDays` | `90` | 1–365 |
+
+### ⚠️ Golden rule — ek 422 jo aapko milega
+
+```
+settlement.delayDays × 24  ≥  refund.windowHours + vendorApprovalHours + adminBufferHours
+```
+
+Default: **72h ≥ 24 + 24 + 12 = 60h** ✓
+
+Jab tak ye sach hai, **koi refund kabhi aise paise ko nahi chhoo sakta jo vendor ko ja chuka ho** — refund bas us cycle ka payable kam karta hai. Ye toot gaya to platform aise vendor se paisa recover kar raha hoga jo wo bank me daal chuka hai; ye galti aaj error banke nahi, hafton baad reconciliation bigaad ke saamne aati hai.
+
+**Ye rule *merged* document par chalta hai, aapki request body par nahi.** Aur yahi is design ka point hai: `{ customer: { refund: { windowHours: 48 } } }` bhejne par body me `settlement` block hai hi nahi, to request-shaped validator ke paas compare karne ko kuch hota hi nahi aur rule chup-chaap toot jaata. Isliye ye `services/settings/updateSetting.js` me merge ke **baad**, save se **pehle** chalta hai.
+
+Dono taraf se block hota hai:
+- Stored `delayDays` ke upar windows badhana → 422
+- Stored windows ke neeche `delayDays` girana → 422
+
+**Aur reject hone par kuch bhi save nahi hota** — save `assertSettlementTimingRule` ke baad hi hota hai.
+
+**Customer config set karna:**
+```json
+{
+  "customer": {
+    "convenienceFee": { "feePerSlab": 9, "maxFee": 75 },
+    "claim": { "maxBillAmount": 50000 },
+    "settlement": { "delayDays": 4, "requiresAdminApproval": true }
+  }
+}
+```
+
+**Sirf ek nested field badalna (baaki reserve fields waise hi rahenge):**
+```json
+{ "customer": { "settlement": { "reserve": { "percent": 15 } } } }
+```
+
+**Convenience fee band karna:**
+```json
+{ "customer": { "convenienceFee": { "isEnabled": false } } }
+```
+
 ### Success — `200`
 ```json
 {
@@ -5909,11 +6245,21 @@ Sirf [common auth errors](#common-errors) + `403` role check.
 | `422` | `gstPercentage must be at least 0` / `cannot exceed 100` | |
 | `422` | `Provide at least one reminder offset` | `expiryReminderDays` khali |
 | `422` | `At most 6 reminder offsets are supported` | |
+| `422` | `A refund could outlive the settlement it belongs to. Paying out on T+3 gives 72h, but the refund path needs 120h (…). Either raise settlement.delayDays to 5 or shorten the refund windows.` | ⚠️ Golden rule — dono taraf se |
+| `422` | `payoutProvider must be one of: MANUAL_BANK, RAZORPAY_X, RAZORPAY_ROUTE` | |
+| `422` | `method must be one of: SOURCE, MANUAL_BANK` | `customer.refund.method` |
+| `422` | `cycleType must be one of: DAILY, WEEKLY` | |
+| `422` | `onVendorTimeout must be one of: ESCALATE, AUTO_APPROVE` | |
+| `422` | `gatewayFeeBearer must be one of: PLATFORM, VENDOR, SHARED` | |
+| `422` | `slabSize must be at least 1` | |
+| `422` | `seriesPrefix may only contain letters` | |
 | `403` | `Forbidden: You do not have permission to perform this action.` | Role check |
 
 ### ⚠️ Edge cases & notes
 
 **1. Merge hota hai, replace nahi.** Validator comment: *"Merged onto the existing block, so an admin can change just the GST rate without resetting the seller identity and every policy flag."* Sirf jo bhejein wahi badalta hai.
+
+**1b. Nested block bhi merge hota hai.** `customer.settlement.reserve` block ke andar block hai. Mongoose sub-document par `Object.assign` nested path ko **poora replace** kar deta hai, isliye `{ settlement: { reserve: { percent: 15 } } }` bhejne se `holdDays` aur `riskChargebackCount` apne defaults par wapas chale jaate — live schema par verify kiya, 45/3 se 30/2 par reset ho rahe the. `updateSetting.js` ab nested block ko parent assign se pehle alag kar deta hai, to sibling bache rehte hain.
 
 **2. ⚠️ `companyStateCode` khali hai to har supply `IGST` treat hoti hai.** Comment: *"Leave blank and every supply is treated as inter-state."* Intra-state CGST+SGST split ke liye ye set karna zaruri hai — brand ke GSTIN ke pehle 2 digits se compare hota hai.
 

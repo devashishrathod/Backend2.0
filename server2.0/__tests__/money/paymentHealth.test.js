@@ -1,0 +1,362 @@
+const mongoose = require("mongoose");
+const {
+  connectTestDb,
+  disconnectTestDb,
+  clearCollections,
+} = require("./setup/testDb");
+
+const Transaction = require("../../models/Transaction");
+const VoucherClaim = require("../../models/VoucherClaim");
+const JobLock = require("../../models/JobLock");
+const { getPaymentHealth } = require("../../services/transactions");
+const { getJobRegistry } = require("../../jobs");
+const {
+  TRANSACTION_PURPOSE,
+  RAZORPAY_ACCOUNTS,
+  SETTLEMENT_STAGE,
+  PAYMENT_HEALTH_STATUS,
+} = require("../../constants/transaction");
+const { VOUCHER_CLAIM_STATUS } = require("../../constants/voucherClaim");
+const { PAYMENT_STATUS } = require("../../constants");
+
+const oid = () => new mongoose.Types.ObjectId();
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+const ago = (ms) => new Date(Date.now() - ms);
+
+/**
+ * Make every job look like it ran a moment ago.
+ *
+ * Without this the runner has never run on the test database, which is itself
+ * an ATTENTION condition — correctly so, but it would mask the money conditions
+ * these tests are actually about.
+ */
+const seedHealthyJobs = async () => {
+  const now = new Date();
+  await JobLock.collection.insertMany(
+    getJobRegistry().map((job) => ({
+      _id: job.name,
+      intervalMinutes: job.intervalMinutes || 60,
+      lastRunAt: now,
+      lastSuccessfulRunAt: now,
+      consecutiveFailures: 0,
+    })),
+  );
+};
+
+const claimPayment = (overrides = {}) => ({
+  purpose: TRANSACTION_PURPOSE.VOUCHER_CLAIM,
+  gatewayAccount: RAZORPAY_ACCOUNTS.CUSTOMER,
+  customerId: oid(),
+  brandId: oid(),
+  amount: 810,
+  ...overrides,
+});
+
+beforeAll(async () => {
+  await connectTestDb();
+  for (const m of [Transaction, VoucherClaim, JobLock]) await m.createIndexes();
+});
+
+afterAll(async () => {
+  await clearCollections(Transaction, VoucherClaim, JobLock);
+  await disconnectTestDb();
+});
+
+beforeEach(async () => {
+  await clearCollections(Transaction, VoucherClaim, JobLock);
+  await seedHealthyJobs();
+});
+
+describe("a quiet system reports quiet", () => {
+  it("is OK with nothing stuck", async () => {
+    const health = await getPaymentHealth();
+    expect(health.status).toBe(PAYMENT_HEALTH_STATUS.OK);
+    expect(health.stuck).toEqual({
+      interruptedSettles: 0,
+      stuckAuthorizations: 0,
+      stalePendingClaims: 0,
+      openDisputes: 0,
+      disputesDueSoon: 0,
+      unsettledCaptures: 0,
+    });
+  });
+
+  /**
+   * A payment taken thirty seconds ago is not stuck, it is in flight. Without a
+   * grace window every checkout in progress would light the board red, and a
+   * board that is always red is a board nobody reads.
+   */
+  it("does not call a payment in flight stuck", async () => {
+    await Transaction.create(
+      claimPayment({
+        status: PAYMENT_STATUS.AUTHORIZED,
+        verified: false,
+        createdAt: new Date(),
+      }),
+    );
+    await VoucherClaim.create({
+      customerId: oid(),
+      voucherId: oid(),
+      voucherVersionId: oid(),
+      versionNumber: 1,
+      brandId: oid(),
+      subBrandId: oid(),
+      billAmount: 1000,
+      pricing: { billAmount: 1000, totalPayable: 810, amountInPaise: 81000 },
+      status: VOUCHER_CLAIM_STATUS.PENDING,
+      holdsUsageSlot: true,
+      createdAt: new Date(),
+    });
+
+    const health = await getPaymentHealth();
+    expect(health.stuck.stuckAuthorizations).toBe(0);
+    expect(health.stuck.stalePendingClaims).toBe(0);
+    expect(health.status).toBe(PAYMENT_HEALTH_STATUS.OK);
+  });
+});
+
+describe("what loses money on a timer is CRITICAL", () => {
+  /**
+   * ⚠️ An `authorized` payment that is never captured is auto-refunded by
+   * Razorpay after about five days. The customer's money goes back, the claim
+   * stays unpaid, and nobody notices until the vendor asks where the sale went.
+   */
+  it("flags an authorization nobody captured", async () => {
+    await Transaction.create(
+      claimPayment({
+        status: PAYMENT_STATUS.AUTHORIZED,
+        verified: false,
+        createdAt: ago(3 * HOUR),
+      }),
+    );
+
+    const health = await getPaymentHealth();
+    expect(health.stuck.stuckAuthorizations).toBe(1);
+    expect(health.status).toBe(PAYMENT_HEALTH_STATUS.CRITICAL);
+  });
+
+  /**
+   * A dispute deadline missed forfeits the money by default — the loss happens
+   * with no decision ever taken, which is why it is a different alarm from
+   * "a dispute is open".
+   */
+  it("flags a dispute whose deadline is close", async () => {
+    await Transaction.create(
+      claimPayment({
+        verified: true,
+        settlementStage: SETTLEMENT_STAGE.COMPLETE,
+        isDisputed: true,
+        disputeRespondBy: new Date(Date.now() + DAY),
+      }),
+    );
+
+    const health = await getPaymentHealth();
+    expect(health.stuck.disputesDueSoon).toBe(1);
+    expect(health.stuck.openDisputes).toBe(1);
+    expect(health.status).toBe(PAYMENT_HEALTH_STATUS.CRITICAL);
+  });
+
+  it("does not treat a far-off deadline as urgent", async () => {
+    await Transaction.create(
+      claimPayment({
+        verified: true,
+        settlementStage: SETTLEMENT_STAGE.COMPLETE,
+        isDisputed: true,
+        disputeRespondBy: new Date(Date.now() + 20 * DAY),
+      }),
+    );
+
+    const health = await getPaymentHealth();
+    expect(health.stuck.disputesDueSoon).toBe(0);
+    expect(health.stuck.openDisputes).toBe(1);
+    // Real, but it waits for a human without getting worse.
+    expect(health.status).toBe(PAYMENT_HEALTH_STATUS.ATTENTION);
+  });
+
+  it("stops counting a dispute once it is resolved", async () => {
+    await Transaction.create(
+      claimPayment({
+        verified: true,
+        settlementStage: SETTLEMENT_STAGE.COMPLETE,
+        isDisputed: true,
+        disputeRespondBy: new Date(Date.now() + DAY),
+        disputeResolvedAt: new Date(),
+      }),
+    );
+
+    const health = await getPaymentHealth();
+    expect(health.stuck.openDisputes).toBe(0);
+    expect(health.stuck.disputesDueSoon).toBe(0);
+  });
+});
+
+describe("what waits for a human is ATTENTION", () => {
+  /**
+   * A capture that claimed the row and then died partway. Every step after the
+   * conditional claim is idempotent, so `resumeIncompleteSettlements` simply
+   * runs them again — a count that stays above zero means that job is not
+   * working, which is why it sits next to the job list.
+   */
+  it("flags a settle that never finished", async () => {
+    await Transaction.create(
+      claimPayment({
+        verified: true,
+        settlementStage: SETTLEMENT_STAGE.RECORDED,
+      }),
+    );
+
+    const health = await getPaymentHealth();
+    expect(health.stuck.interruptedSettles).toBe(1);
+    expect(health.status).toBe(PAYMENT_HEALTH_STATUS.ATTENTION);
+  });
+
+  /**
+   * The usage slot is taken when the claim is created, not when it is paid —
+   * that is what closes the race. The cost is that an abandoned checkout holds
+   * it until the sweep runs, and the customer is told "you have already used
+   * this offer" about a claim they never paid for.
+   */
+  it("flags a slot held by an abandoned checkout", async () => {
+    await VoucherClaim.create({
+      customerId: oid(),
+      voucherId: oid(),
+      voucherVersionId: oid(),
+      versionNumber: 1,
+      brandId: oid(),
+      subBrandId: oid(),
+      billAmount: 1000,
+      pricing: { billAmount: 1000, totalPayable: 810, amountInPaise: 81000 },
+      status: VOUCHER_CLAIM_STATUS.PENDING,
+      holdsUsageSlot: true,
+      createdAt: ago(5 * HOUR),
+    });
+
+    const health = await getPaymentHealth();
+    expect(health.stuck.stalePendingClaims).toBe(1);
+    expect(health.status).toBe(PAYMENT_HEALTH_STATUS.ATTENTION);
+  });
+
+  it("flags money captured long ago and never paid out", async () => {
+    await Transaction.create(
+      claimPayment({
+        verified: true,
+        settlementStage: SETTLEMENT_STAGE.COMPLETE,
+        createdAt: ago(15 * DAY),
+      }),
+    );
+
+    const health = await getPaymentHealth();
+    expect(health.stuck.unsettledCaptures).toBe(1);
+    expect(health.status).toBe(PAYMENT_HEALTH_STATUS.ATTENTION);
+  });
+
+  /**
+   * A row on hold is not unpaid by accident — it is unpaid on purpose, because
+   * a refund or a dispute is pending against it. Counting it would make the
+   * board red for exactly the rows the process is handling correctly.
+   */
+  it("does not flag money deliberately held back", async () => {
+    await Transaction.create(
+      claimPayment({
+        verified: true,
+        settlementStage: SETTLEMENT_STAGE.COMPLETE,
+        settlementHold: true,
+        settlementHoldReason: "Refund requested",
+        createdAt: ago(15 * DAY),
+      }),
+    );
+
+    const health = await getPaymentHealth();
+    expect(health.stuck.unsettledCaptures).toBe(0);
+    expect(health.status).toBe(PAYMENT_HEALTH_STATUS.OK);
+  });
+
+  it("does not flag money already paid out", async () => {
+    await Transaction.create(
+      claimPayment({
+        verified: true,
+        settlementStage: SETTLEMENT_STAGE.COMPLETE,
+        settlementId: oid(),
+        createdAt: ago(15 * DAY),
+      }),
+    );
+
+    const health = await getPaymentHealth();
+    expect(health.stuck.unsettledCaptures).toBe(0);
+  });
+});
+
+describe("the runner itself is part of the answer", () => {
+  /**
+   * `startJobs` runs every job once at boot, so `NEVER_RUN` surviving means the
+   * runner did not start — and then none of the safety nets above exist either.
+   * A brand-new instance with no job runner reporting a confident OK is exactly
+   * the failure this line prevents.
+   */
+  it("does not report OK when no job has ever run", async () => {
+    await JobLock.deleteMany({});
+
+    const health = await getPaymentHealth();
+    expect(health.jobs.registered).toBe(getJobRegistry().length);
+    expect(health.status).toBe(PAYMENT_HEALTH_STATUS.ATTENTION);
+  });
+});
+
+describe("it counts only the flow it claims to", () => {
+  /**
+   * One collection holds vendor subscriptions and customer voucher claims. A
+   * health page that mixed them would report a vendor's own unpaid invoice as
+   * stuck customer money.
+   */
+  it("ignores subscription payments entirely", async () => {
+    await Transaction.create({
+      purpose: TRANSACTION_PURPOSE.SUBSCRIPTION,
+      gatewayAccount: RAZORPAY_ACCOUNTS.VENDOR,
+      brandId: oid(),
+      amount: 4999,
+      status: PAYMENT_STATUS.AUTHORIZED,
+      verified: false,
+      createdAt: ago(10 * DAY),
+    });
+
+    const health = await getPaymentHealth();
+    expect(health.stuck.stuckAuthorizations).toBe(0);
+    expect(health.stuck.unsettledCaptures).toBe(0);
+    expect(health.status).toBe(PAYMENT_HEALTH_STATUS.OK);
+  });
+
+  it("ignores a soft-deleted row", async () => {
+    await Transaction.create(
+      claimPayment({
+        status: PAYMENT_STATUS.AUTHORIZED,
+        verified: false,
+        createdAt: ago(3 * HOUR),
+        isDeleted: true,
+      }),
+    );
+
+    const health = await getPaymentHealth();
+    expect(health.stuck.stuckAuthorizations).toBe(0);
+  });
+});
+
+describe("the index guarantee is reported, not assumed", () => {
+  /**
+   * ⚠️ Something outside this build keeps recreating `invoiceId_1` and
+   * `razorpayOrderId_1` — blanket unique indexes that reject the *second* row
+   * with no value. In production that rejects every second voucher claim. It is
+   * reported at boot too, but a boot log scrolls away and this page does not.
+   */
+  it("carries the index check into the answer", async () => {
+    const health = await getPaymentHealth();
+    expect(health.indexes).toHaveProperty("ok");
+    expect(typeof health.indexes.ok).toBe("boolean");
+  });
+
+  it("stamps when it looked, so a stale page is obvious", async () => {
+    const health = await getPaymentHealth();
+    expect(health.checkedAt).toBeInstanceOf(Date);
+    expect(Date.now() - health.checkedAt.getTime()).toBeLessThan(60_000);
+  });
+});

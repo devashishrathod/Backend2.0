@@ -1860,15 +1860,33 @@ Bill amount pe **actual discount** calculate karta hai. Ye batata hai user ko ki
 |---|---|---|---|
 | `voucherId` | ObjectId | ✅ | Valid ObjectId |
 | `outletId` | ObjectId | ✅ | Valid ObjectId. Voucher se linked hona chahiye |
-| `billAmount` | number | ✅ | Positive (> 0), max 2 decimal places |
+| `billAmount` | number | ✅ | Positive (> 0), max 2 decimals. `Setting.customer.claim.maxBillAmount` (default ₹1,00,000) se upar → **422** |
+| `offerId` 🆕 | ObjectId | ❌ | Customer ka apna chunaav. Na bhejein to sabse achha offer khud lag jaata hai |
+| `promoCode` 🆕 | string | ❌ | 3–40 chars, `A-Z 0-9 _ -`. `""` ya `null` bhejna "koi code nahi" hai |
 
 ```json
 {
   "voucherId": "68f1a2b3c4d5e6f7a8b9c2a1",
   "outletId": "68f1a2b3c4d5e6f7a8b9c4a1",
-  "billAmount": 1200
+  "billAmount": 1200,
+  "promoCode": "WELCOME50"
 }
 ```
+
+### 🆕 `offerId` — jab customer khud offer chunta hai
+
+Kuch na bhejein to backend bill ke hisaab se **sabse achha** offer chun leta hai (barabari par zyada `minBillAmount` wala jeetta hai).
+
+Naam lene par baat badal jaati hai: **unka chunaav chalta hai**, chahe doosra offer zyada faayda de raha ho. Aur agar wo offer lag hi nahi sakta to **422** aata hai apni wajah ke saath — koi doosra offer chupke se nahi lagta, kyunki tab screen aur charge alag-alag cheez keh rahe hote.
+
+| Wajah | Message |
+|---|---|
+| Us voucher ka offer hi nahi | `That offer is not available on this voucher.` |
+| Band ya delete ho chuka | `That offer is no longer available.` |
+| Pehle se istemal (ONCE_PER_USER) | `You have already used this offer.` |
+| Bill chhota hai | `This offer needs a bill of at least ₹1,000.` |
+
+> **ONCE_PER_USER offer jo customer pehle use kar chuka hai wo list me aata hi nahi.** Warna unhe aisa daam dikhta jo unhe mil hi nahi sakta, aur payment par 409 milta.
 
 ### Success — `200`
 ```json
@@ -1931,17 +1949,131 @@ Bill amount pe **actual discount** calculate karta hai. Ye batata hai user ko ki
         "finalAmount": 1050
       }
     ],
+    "brand": {
+      "id": "68f1a2b3c4d5e6f7a8b9c1a1",
+      "name": "postman cafe mocha",
+      "isApproved": true
+    },
     "pricing": {
+      "currency": "INR",
       "billAmount": 1200,
-      "discountAmount": 300,
-      "promoDiscount": 0,
+      "offerId": "68f1a2b3c4d5e6f7a8b9c2d1",
+      "offerTitle": "30% off above 500",
+      "offerDiscount": 300,
+      "promoCode": "WELCOME50",
+      "promoAppliesTo": "NET_BILL",
+      "promoBase": 900,
+      "promoDiscount": 50,
+      "vendorPromoCost": 15,
+      "platformPromoCost": 35,
+      "netBill": 900,
       "convenienceFee": 15,
-      "payableAmount": 915,
-      "totalSavings": 300
-    }
+      "isGstEnabled": false,
+      "taxType": null,
+      "gstAmount": 0,
+      "taxOnTop": 0,
+      "totalPayable": 865,
+      "amountInPaise": 86500,
+      "youSaved": 350,
+      "vendorPayable": 885,
+      "commissionPercent": 0,
+      "commissionAmount": 0,
+
+      "discountAmount": 300,
+      "payableAmount": 865,
+      "totalSavings": 350
+    },
+    "orderSummary": {
+      "rows": [
+        { "key": "BILL_AMOUNT", "label": "Bill Amount", "amount": 1200, "display": "₹ 1,200.00" },
+        { "key": "OFFER_DISCOUNT", "label": "Voucher discount (30% off above 500)", "amount": -300, "display": "- ₹ 300.00" },
+        { "key": "PROMO_DISCOUNT", "label": "Promo code (WELCOME50)", "amount": -50, "display": "- ₹ 50.00" },
+        { "key": "NET_BILL", "label": "Bill after discount", "amount": 900, "display": "₹ 900.00" },
+        { "key": "CONVENIENCE_FEE", "label": "Convenience fee", "amount": 15, "display": "+ ₹ 15.00" }
+      ],
+      "payable": { "label": "You'll Pay", "amount": 865, "display": "₹ 865.00" },
+      "youSaved": 350,
+      "youSavedDisplay": "₹ 350.00",
+      "savedText": "You saved ₹ 350.00 on this bill"
+    },
+    "promo": {
+      "supported": true,
+      "applied": {
+        "code": "WELCOME50",
+        "description": "Welcome offer",
+        "discount": 50,
+        "appliesTo": "NET_BILL"
+      },
+      "provisional": false,
+      "message": "Promo code WELCOME50 applied"
+    },
+    "canClaim": true,
+    "blockedReason": null,
+    "requiresLogin": false,
+    "notices": []
   }
 }
 ```
+
+### ⚠️ Teen naam badle hain — purane abhi bhi aa rahe hain
+
+`pricing` block is phase me poora likha gaya hai. Teen fields ke naam badle:
+
+| Purana | Naya |
+|---|---|
+| `discountAmount` | `offerDiscount` |
+| `payableAmount` | `totalPayable` |
+| `totalSavings` | `youSaved` |
+
+**Purane teeno naam response me abhi bhi hain** — wahi number, dono naam se — taaki chalu app na toote. Par wo **deprecated** hain aur app ke shift hone ke baad hata diye jayenge. Naye naam par aa jaayein.
+
+> Store sirf naye naam hote hain. Purane sirf response me echo hote hain.
+
+### 🆕 `canClaim` / `blockedReason` — do tarah ki "nahi"
+
+Ye **error se alag cheez** hai, jaan-boojh kar:
+
+- **Error (4xx)** tab jab request hi galat ho — anjaan voucher (404), outlet linked nahi (400), bill cap se upar (422), aisa `offerId` jo lag nahi sakta (422). Render karne ko kuch hai hi nahi.
+- **`canClaim: false` + `blockedReason`** tab jab request theek ho par jawab "nahi" ho — brand approved nahi, vendor ka plan lapse, saare offers pehle use ho chuke. **Page phir bhi voucher aur daam dikhata hai**, bas button disabled aur wajah saath me.
+
+| `blockedReason` | Kab |
+|---|---|
+| `Voucher claims are temporarily unavailable. Please try again later.` | `Setting.customer.claim.isEnabled: false` |
+| `This brand is not accepting claims right now.` | Brand inactive / unapproved / deleted, **ya** vendor ka plan lapse |
+| `You have already used every offer on this voucher.` | Saare offers ONCE_PER_USER the aur sab consume ho chuke |
+
+> Brand ki andaruni haalat (unapproved? plan lapse?) customer ko nahi batayi jaati — teeno ka ek hi vaakya hai.
+
+### 🆕 `orderSummary` — client koi hisaab na kare
+
+Har row me `key` · `label` · `amount` · `display` chaaron hote hain, aur `display` **pehle se format** hai (`₹ 2,50,000.00` — bharatiya grouping). Zero wali rows aati hi nahi: `- ₹ 0.00` shor hai aur usse lagta hai kuch laga aur shoonya nikla.
+
+`savedText` `null` hota hai jab kuch bacha hi na ho, taaki "You saved ₹ 0.00" ka banner na dikhe.
+
+### 🆕 `promo` — soft yahan, strict order par
+
+| Field | Matlab |
+|---|---|
+| `supported` | `Setting.customer.promoCode.isEnabled` — **default `false`** |
+| `applied` | Laga to `{ code, description, discount, appliesTo }`, warna `null` |
+| `provisional` | **Guest ke liye `true`** — neeche padhein |
+| `message` | Laga to confirmation, warna **wajah** |
+
+Preview par galat code **error nahi** hai — `message` me wajah aati hai taaki Apply button ke paas inline dikha sakein. **Order creation par wahi wajah 422 ban jaati hai**, kyunki jis code ko customer laga hua samajh raha hai uspar chupchaap poora daam le lena theek nahi.
+
+**`appliesTo`** batata hai discount kis cheez se kata: `NET_BILL` (offer ke baad ka bill) ya `CONVENIENCE_FEE`. Discount hamesha **usi base par clamp** hota hai — ₹10 ki fee par ₹50 ka fee-code ₹10 hi hai, ₹50 nahi.
+
+### 🆕 Guest + promo code — `provisional: true`
+
+Guest ki koi pehchaan nahi, isliye `perCustomerUsageLimit` aur `firstOrderOnly` check ho hi nahi sakte. Mana karne ke bajaye discount **indicative** dikhaya jaata hai:
+
+```jsonc
+"promo": { "applied": { "code": "WELCOME50", "discount": 50 }, "provisional": true }
+```
+
+`notices[]` me bhi line aati hai: *"Log in to confirm this promo code before paying."*
+
+Login ke baad order creation par **dobara validate** hota hai. Wahan fail ho to **422 wajah ke saath** — chupchaap poora daam nahi.
 
 ### 🆕 `pricing` — checkout screen ki rows
 
@@ -1950,13 +2082,23 @@ Ye block seedha render karne ke liye hai. **App ko koi arithmetic nahi karni** �
 | Field | Type | Notes |
 |---|---|---|
 | `billAmount` | number | Jo user ne enter kiya |
-| `discountAmount` | number | `selectedOffer` ka discount. Koi offer na lage to `0` |
-| `promoDiscount` | number | ⚠️ **Abhi hamesha `0`** — customer-side promo codes wire nahi hue. Row isliye hai ki jab aayein to shape na badle |
-| `convenienceFee` | number | Neeche slab table dekhein. Offer na lage to `0` |
-| `payableAmount` | number | `billAmount − discountAmount + convenienceFee`. **Yahi charge karna hai** |
-| `totalSavings` | number | Jitna bacha — abhi `discountAmount` ke barabar |
+| `offerDiscount` | number | `selectedOffer` ka discount. Koi offer na lage to `0` |
+| `promoDiscount` | number | Promo code ka discount — **ab live hai** |
+| `netBill` | number | `billAmount − offerDiscount`. **Vendor ki supply** |
+| `convenienceFee` | number | Neeche slab table. **Original bill** par lagti hai |
+| `taxOnTop` | number | Fee par GST, sirf jab GST on ho. Inclusive mode me `0` |
+| `totalPayable` | number | `netBill − promoDiscount + convenienceFee + taxOnTop`. **Yahi charge karna hai** |
+| `amountInPaise` | number | Wahi total integer paise me — Razorpay ko yahi jaata hai |
+| `youSaved` | number | `offerDiscount + promoDiscount` |
+| `vendorPayable` | number | Vendor ko kitna milega. **Fee isme kabhi nahi aati** |
+| `taxType` | string\|null | `CGST_SGST` \| `IGST` \| `null` jab GST band ho |
+| `cgst` `sgst` `igst` `gstAmount` | number | Tax ka breakup. `cgst + sgst === gstAmount`, hamesha |
+| `sacCode` | string\|null | Invoice par |
+| `commissionPercent` `commissionAmount` | number | **Abhi `0`.** Claim ke waqt freeze hote hain taaki baad me rate badle to purane claims par retroactive na lage |
 
 > Sab values 2 decimal places pe rounded hain.
+
+**GST abhi band hai** (`Setting.customer.tax.isGstEnabled: false`), isliye `taxType: null` aur `orderSummary` me koi tax row nahi. On hone par tax **sirf convenience fee** par lagega — `netBill` vendor ki supply hai aur unka apna tax maamla; uspar tax lena kisi aur ki sale par tax lena hota.
 
 ### 🆕 Convenience fee — slabs
 
@@ -1974,7 +2116,7 @@ Formula: `ceil(billAmount / 500) × 5`
 
 **Ye hardcoded nahi hai** — `Setting.customer.convenienceFee` se aata hai (`isEnabled`, `slabSize`, `feePerSlab`, `maxFee`). Admin slab size ya per-slab amount badal sakta hai, ya poori fee band kar sakta hai. Upar wale numbers defaults hain. **App ko fee calculate nahi karni — `pricing.convenienceFee` hi use karein.**
 
-⚠️ **Koi offer apply na ho to fee bhi `0`.** Customer sirf apna bill pay karega.
+⚠️ **Koi offer apply na ho to fee bhi `0`.** Customer sirf apna bill pay karega — warna wo Trydood ke bina jitna deta usse **zyada** de raha hota. Admin `convenienceFee.chargeWhenNoOffer` se ise on kar sakta hai; tab `notices[]` me saaf likha aata hai ki bina offer ke bhi fee lagi hai.
 
 ### Calculation logic
 
@@ -2069,6 +2211,363 @@ Ye do case me hota hai:
 **6. Rounding:** `discountAmount` aur `finalAmount` 2 decimal places pe rounded. `billAmount` bhi response me rounded aata hai.
 
 **7. `discountApplicableOn` calculation me use nahi hota.** Backend seedha `billAmount` pe discount lagata hai, `SUBTOTAL` vs `FINAL_BILL` distinction ignore hota hai. Ye field sirf display/terms ke liye hai.
+
+---
+
+# Voucher Claim APIs 🆕
+
+Preview (#17) ke baad ka poora raasta: order kholna, payment confirm karna, aur invoice.
+
+> **Preview guest ke liye bhi hai, order nahi.** Guest ko daam dikhta hai — wo app store ki zaroorat hai — par order kholne ke liye login chahiye. Preview ka `requiresLogin: true` yahi batata hai.
+
+## 17a. POST /voucher-claims/create-order
+
+Razorpay order kholta hai. Iske baad app Razorpay checkout uthata hai aur band hone par #17b call karta hai.
+
+**Access:** 🔒 **CUSTOMER only** (`isCustomer`)
+
+### Headers
+| Header | Value | Required |
+|---|---|---|
+| `Authorization` | `Bearer <token>` | ✅ |
+| `Content-Type` | `application/json` | ✅ |
+| `Idempotency-Key` | Koi bhi unique string | ⚠️ **Bhejein** — neeche padhein |
+
+### ⚠️ `Idempotency-Key` — do tap, ek order
+
+Header na bhejein to bhi reuse window (10 min) zyadatar case bacha leti hai. Par **do tap ek hi pal me** — do baar dabana, ya do tab — dono reuse check paas kar jaate hain aur customer ko **ek bill ke liye do payment sheet** dikhte hain.
+
+Key bhejne par server use Razorpay call se **pehle** insert karta hai, aur unique index tay karta hai kaun aage badhega. Haarne wale ko error nahi milta — usi order ka jawab milta hai, `reused: true` ke saath.
+
+**App ka kaam:** ek claim attempt ke liye key ek baar banayein aur **retry par wahi bhejein**. Har retry par nayi key banane se poora mechanism bekaar ho jaata hai.
+
+### Body
+Bilkul wahi jo preview (#17) leta hai — jaan-boojh kar. Order creation wahi builder chalata hai, aur ek field jo ek jagah maani jaye aur doosri jagah gir jaye uska matlab hai customer ko kuch aur dikha aur kuch aur cut gaya.
+
+| Field | Type | Required |
+|---|---|---|
+| `voucherId` | ObjectId | ✅ |
+| `outletId` | ObjectId | ✅ |
+| `billAmount` | number | ✅ |
+| `offerId` | ObjectId | ❌ |
+| `promoCode` | string | ❌ |
+
+```json
+{
+  "voucherId": "68f1a2b3c4d5e6f7a8b9c2a1",
+  "outletId": "68f1a2b3c4d5e6f7a8b9c4a1",
+  "billAmount": 1200,
+  "promoCode": "WELCOME50"
+}
+```
+
+### Success — `201` (naya) ya `200` (reused)
+```jsonc
+{
+  "success": true,
+  "message": "Claim order created successfully.",
+  "data": {
+    "claim": {
+      "id": "68f1a2b3c4d5e6f7a8b9e001",
+      "claimCode": "TD-8F3K2Q",
+      "status": "PENDING"
+    },
+    "transaction": { "id": "68f1a2b3c4d5e6f7a8b9e101", "status": "created" },
+
+    "voucher": {}, "version": {}, "outlet": {}, "brand": {},
+    "billAmount": 1200,
+    "offerApplied": true,
+    "selectedOffer": {},
+    "pricing": {},        // #17 wala hi block
+    "orderSummary": {},
+    "promo": {},
+
+    "razorpay": {
+      "orderId": "order_PxAbC123",
+      "amount": 86500,     // paise. Checkout ko yahi jaata hai
+      "currency": "INR",
+      "keyId": "rzp_live_xxxxxxxx"
+    },
+    "reused": false
+  }
+}
+```
+
+**`reused: true` ka matlab** — ye order pehle se khula tha (wahi key, ya reuse window). Response ka aakaar bilkul wahi hai, isliye app ko koi alag branch nahi likhni: dono case me `razorpay` block uthaकर checkout khol dijiye.
+
+**`claimCode`** abhi se mil jaata hai, payment se pehle. Support ke liye customer ke paas quote karne ko kuch hota hai chahe payment beech me atki ho.
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `401` | Access Denied! Missing authorization token | Guest |
+| `403` | *(preview ka `blockedReason`)* | Brand approved nahi, vendor ka plan lapse, saare offers use ho chuke |
+| `409` | `You already have a claim in progress for this offer. Finish or cancel it first.` | ⚠️ Neeche |
+| `422` | `This claim has no payable amount. Please check the bill.` | Promo ne total zero kar diya |
+| `422` | *(promo ki wajah)* | `strictPromo` — preview par soft tha, yahan 422 |
+| `422` | *(offer ki wajah)* | Naam liya hua offer lag nahi sakta |
+| `503` | Razorpay services unavailable! Please try again later. | Gateway down — claim rollback ho jaata hai |
+
+> **409 ke baare me:** ONCE_PER_USER offer par ek hi khula claim ho sakta hai, aur wo slot claim **bante hi** lag jaata hai — payment ka intezaar nahi karta. Warna do checkout ek saath khule rehte, koi kuch pakde nahi hota, aur dono nikal jaate. Customer ko purana claim poora karna ya chhodna padega (10 min me sweep khud band kar deti hai).
+
+---
+
+## 17b. POST /voucher-claims/verify
+
+Razorpay checkout band hone par uska callback yahan bhejein.
+
+**Access:** 🔒 **CUSTOMER only** + ownership
+
+### Body
+| Field | Type | Required |
+|---|---|---|
+| `razorpayOrderId` | string | ✅ |
+| `razorpayPaymentId` | string | ✅ |
+| `razorpaySignature` | string | ✅ |
+| `transactionId` | ObjectId | ✅ |
+
+### Success — `200`
+```jsonc
+{
+  "success": true,
+  "message": "Payment confirmed successfully.",
+  "data": {
+    "alreadySettled": false,
+    "alreadyVerified": false,
+    "claim": { "status": "REDEEMED", "claimCode": "TD-8F3K2Q" },
+    "transaction": {},
+    "ledger": { "posted": 5, "duplicates": 0 },
+    "promo": { "code": "WELCOME50", "discount": 50 }
+  }
+}
+```
+
+### ⚠️ `alreadyVerified: true` **safalta hai**
+
+Webhook aur ye callback **har payment par** milliseconds ke faasle par chalte hain. Jo jeet jaye wo settle karta hai; doosre ko `alreadyVerified: true` milta hai.
+
+**App ka kaam:** `alreadyVerified` par bhi success screen dikhayein. Use error samajhna sabse aam galti hai — payment ho chuki hai.
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `400` | Invalid signature. Payment may be tampered. | |
+| `403` | You are not authorized to confirm this payment. | Kisi aur customer ki payment |
+| `404` | Payment not found. | Galat `transactionId`, ya wo subscription payment hai |
+| `422` | This payment does not belong to the given order. | |
+| `422` | This payment belongs to a different order. | Razorpay ka `order_id` mel nahi khaata |
+| `422` | The amount paid does not match this claim. Please contact support. | |
+| `402` | *(gateway ki wajah)* | Payment capture hi nahi hui — claim FAILED, slot chhoot gaya |
+
+---
+
+## 17c. GET /transactions/invoice/:token
+
+Invoice download. **Public — koi JWT nahi.**
+
+Link WhatsApp message aur email se khulta hai, jahan browser me koi session hota hi nahi. Login maangna matlab Download button kaam na kare, jo uska ekmatra kaam hai. **32-byte random token hi credential hai.**
+
+`302` redirect deta hai asli PDF par.
+
+| Status | Kab |
+|---|---|
+| `302` | Theek — `Location` header par PDF |
+| `404` | Token galat hai ya hai hi nahi. **Dono ka ek hi jawab** — "lagbhag sahi" batana guessing ko raasta dikhana hai |
+| `409` | Settle abhi invoice stage tak pahuncha nahi. Kuch minute me phir |
+
+**PDF pehli request par banti hai** aur uske baad cache hoti hai. Invoice **number** phir bhi settle par hi mil jaata hai, taaki series me gap na aaye.
+
+> **GST band hai to document `PAYMENT RECEIPT` kehlata hai, `TAX INVOICE` nahi**, aur koi tax row nahi chhapti. Bina tax wale document par "TAX INVOICE" chhapna galat hai. Aur bill ki line kehti hai *"Bill collected on behalf of \<Brand\>"* — khana Trydood ne nahi becha, vendor ne becha aur humne unke liye wasoola.
+
+---
+
+## 17d. GET /voucher-claims — meri claims
+
+**Access:** 🔒 koi bhi logged-in role (`verifyJwtToken`)
+
+**"Maine kya khareeda"** — order history. *"Kaunsa paisa hila"* ke liye #17e.
+
+### ⚠️ Ek endpoint, teen shapes
+
+Ye URL customer, vendor, outlet aur admin — sabke liye ek hi hai. **Scope aur projection
+dono token se nikalte hain**, isliye har koi apna jawab paata hai. App ko role ke hisaab
+se alag URL nahi chunna:
+
+| Field | Customer | Vendor / Outlet | Admin |
+|---|:-:|:-:|:-:|
+| `pricing.convenienceFee` | ✅ | — | ✅ |
+| `pricing.vendorPayable` · `pricing.netBill` | — | ✅ | ✅ |
+| `pricing.platformPromoCost` | — | — | ✅ |
+| `customerId` | ✅ (apna) | — | ✅ |
+| `refundAmount` · `refundedAt` | ✅ | — | ✅ |
+
+### Query
+| Param | Default | Notes |
+|---|---|---|
+| `page` / `limit` | `1` / `20` | `limit` max **100** |
+| `status` | – | `PENDING · PAID · REDEEMED · FAILED · CANCELLED · EXPIRED · REFUNDED` |
+| `claimCode` | – | Poora code |
+| `brandId` / `outletId` / `voucherId` | – | Narrow karne ke liye |
+| `from` / `to` | – | ISO date. `to` **poora din** include karta hai (23:59:59) |
+
+### Snapshots — join nahi
+
+`voucherSnapshot`, `brandSnapshot`, `outletSnapshot` claim banate waqt **freeze** hote hain.
+September ki claim March me bhi sahi padhti hai — voucher republish ho chuka ho aur outlet
+ka naam badal chuka ho, tab bhi. Jo dikhaya gaya tha wahi dikhta rahega.
+
+### ⚠️ Scope query se chaudi nahi ho sakti
+
+Filter aur scope **intersect** hote hain. Vendor `?brandId=<dusra brand>` bheje to **kuch
+nahi** milta — apne rows nahi.
+
+> Pehle scope filter ke **upar** lagta tha. Surakshit tha (vendor dusra brand kabhi nahi
+> dekhta), par chup: use apne hi rows waapas milte the, jo bilkul aisa lagta hai jaise
+> filter chala ho. Koi us par report bana leta aur pata tab chalta jab numbers par sawaal
+> uthta.
+
+### Khaali list `200` hai, `404` nahi
+
+Jis customer ne kuch khareeda hi nahi uski history **khaali** hai, gayab nahi:
+
+```json
+{ "success": true, "message": "Claims fetched successfully.", "data": { "total": 0, "totalPages": 0, "page": 1, "limit": 20, "data": [] } }
+```
+
+404 pehli baar app kholne par error screen dikha deta — ek bilkul sahi jawab ke liye.
+
+---
+
+## 17e. GET /voucher-claims/payments — mere payments
+
+**Access:** 🔒 koi bhi logged-in role (`verifyJwtToken`)
+
+Wahi teen-shape niyam. Ye **"kaunsa paisa hila"** hai.
+
+`status` yahan **payment** ki vocabulary hai — `created · authorized · captured · failed` —
+claim ki nahi. Baaki query params #17d jaise.
+
+| Field | Customer | Vendor / Outlet | Admin |
+|---|:-:|:-:|:-:|
+| `voucher.convenienceFee` | ✅ | — | ✅ |
+| `voucher.vendorPayable` | — | ✅ | ✅ |
+| `gatewayFee` · `netReceived` | — | — | ✅ |
+| `voucher.platformPromoCost` | — | — | ✅ |
+| `email` · `contact` | ✅ (apna) | — | ✅ |
+
+> Vendor ko `gatewayFee` **kabhi nahi** — Razorpay ne humse kya liya wo commercial
+> disclosure hai. `email` / `contact` bhi nahi — wo privacy hai. Dono ek hi document par
+> hain, isiliye faisla `claimProjection()` me **ek jagah** hota hai.
+
+`purpose` se scope hai, isliye ek galat filter bhi kabhi **subscription** payment nahi
+dikha sakta — ek hi collection dono flows rakhti hai.
+
+---
+
+## 17f. GET /voucher-claims/payments/:transactionId — ek payment
+
+**Access:** 🔒 koi bhi logged-in role (`verifyJwtToken`)
+
+**Push notification ka deep link yahin utarta hai.**
+
+### Response
+```jsonc
+{
+  "payment": { /* wahi projection jo #17e deti hai */
+    "invoiceDownloadUrl": "https://api.trydood.com/trydood/v1/transactions/invoice/<token>"
+  },
+  "claim":   { /* judi hui claim, frozen snapshots ke saath */ },
+  "brand":   { "brandName": "cafe mocha", "logo": "https://…" },
+  "outlet":  { "storeId": "T-01", "uniqueId": "…", "address": "…" },
+  "viewer":  { "role": "CUSTOMER", "scope": "OWN", "canSeePlatformCosts": false, "canSeeCustomerContact": true }
+}
+```
+
+- **`claim` saath aata hai** kyunki akela payment sirf ek raqam aur ek timestamp hai —
+  customer ko wo dekhna hai *jo usne khareeda*: voucher ka naam, outlet, claim code
+- **`viewer`** batata hai caller kya render kar sakta hai. App ko *"main vendor hoon kya?"*
+  ka andaza field ki maujoodgi se nahi lagana chahiye — pehli baar hi galat hoga jab koi
+  field jayaz taur par khaali ho
+- **`invoiceDownloadUrl`, token nahi.** Token PDF ka bina-auth bearer credential hai; bana
+  hua URL hi uska poora istemaal hai. Token bhi bhejna client ko ek aur cheez de deta hai
+  jo leak ho sake
+- `PUBLIC_API_URL` set na ho to **link aata hi nahi** — kahin na jaane wala Download
+  button na hone se bura hai. Vendor ko bhi nahi milta: customer ka tax invoice customer
+  ke apne details rakhta hai
+
+### Errors
+| Status | Kab |
+|---|---|
+| `404` | Id galat **ya** row kisi aur ka. **Dono ka ek hi jawab** — *"aap ise nahi dekh sakte"* kehna prober ko bata deta hai ki row hai |
+| `403` | Dusre brand ka, ya sub-vendor ke liye dusre outlet ka |
+| `422` | Malformed id |
+
+⚠️ **Subscription payment yahan nahi khulta.** `purpose` scope ke bina ye endpoint vendor
+ka apna billing row khol deta — dusre Razorpay account ka, aur aisi projection se jo voucher
+claim ke liye bani hai. **Id ka unique hona iska jawab nahi hai.**
+
+---
+
+## 17g. GET /voucher-claims/:claimId — ek claim, timeline ke saath
+
+**Access:** 🔒 koi bhi logged-in role (`verifyJwtToken`)
+
+### Response
+`claim` · `payment` · `brand` · `outlet` · **`timeline`** · `viewer`
+
+```jsonc
+"timeline": [
+  { "at": "2026-08-20T10:00:00Z", "action": "CLAIM_CREATED",    "label": "Voucher claim started", "toStatus": "PENDING", "by": "CUSTOMER", "amount": 810 },
+  { "at": "2026-08-20T11:00:00Z", "action": "PAYMENT_CAPTURED", "label": "Payment received",      "fromStatus": "PENDING", "toStatus": "PAID", "by": "SYSTEM", "amount": 810 },
+  { "at": "2026-08-20T12:00:00Z", "action": "REDEEMED",         "label": "Redeemed at the outlet","fromStatus": "PAID", "toStatus": "REDEEMED", "by": "VENDOR" }
+]
+```
+
+**Purani pehle** — timeline aage se padhi jaati hai. Listing ulti hai, kyunki list me
+sabse naya khoja jaata hai.
+
+### ⚠️ Timeline **banayi** jaati hai, chhaani nahi
+
+`VoucherClaimHistory` append-only hai aur jaan-boojhkar **poori** — jo us waqt mayne rakhta
+tha wo sab, forensics ke liye. Wahi poornata wajah hai ki use jaisa ka taisa page par nahi
+bheja ja sakta:
+
+| Field | Kyun nahi | Kise milta hai |
+|---|---|---|
+| `snapshot` | `Mixed` hai; aaj `CLAIM_CREATED` par **poora pricing block** rakhta hai, `platformPromoCost` samet | Sirf admin |
+| `reason` | Staff ne **staff ke liye** likha free text. *"Refunded, customer disputes the bill"* wo vaakya nahi hai jo usi customer ko dikhaya jaaye | Sirf admin |
+| `performedBy` | Aadmi ki id. `by` (role) kaafi hai — *"expiry job ne kiya"* asli jawab hai aur sensitive nahi | Sirf admin |
+| `PROMO_RELEASED` row | Hamari apni budget bookkeeping, internal cost split naam leti hai | Sirf admin |
+
+Kaccha row bhejne ka matlab hota vendor ko hamara margin **pichhle darwaze se** dena — us
+projection ko paar karke jo use rokne ke liye bani hai. Aur aage jo bhi field koi call site
+`snapshot` me daal de, uske saath bhi wahi hota rehta.
+
+Isliye har row **banayi** jaati hai: `label` · `at` · `fromStatus` → `toStatus` · `by`.
+Audit trail me kal juda field default roop se **adrishya** hai, default roop se ujaagar nahi.
+
+---
+
+## 17h. GET /voucher-claims/code/:claimCode — code se kholo
+
+**Access:** 🔒 koi bhi logged-in role (`verifyJwtToken`)
+
+Wahi service jo #17g chalati hai — isliye ek hi access rule dono par.
+
+Code hi wo cheez hai jo **asli duniya me maujood** hai: screen par chhapa, bolkar padha,
+counter par type kiya. Sirf ObjectId lene wala surface outlet ko pehle search karne par
+majboor karta — matlab dusra endpoint aur access rules ka dusra set galat hone ke liye.
+
+⚠️ **Code lookup ko narrow karta hai, authorise nahi karta.** Kisi aur ki screen se padha
+gaya code bhi kuch nahi kholta — access wahi check hota hai.
+
+### Code ka alphabet
+
+`TD-` + 6 characters `34679ACDEFGHJKMNPQRTUVWXY` me se. `0/O`, `1/I/L`, `5/S`, `2/Z`, `8/B`
+**jaan-boojhkar chhode gaye hain** — ye code log counter par ek dusre ko bolkar padhte hain.
+
+Isliye galat character wale code par jawab **`422` "mistyped character"** hai, `404` nahi —
+404 lagta hai claim maujood hi nahi.
 
 ---
 

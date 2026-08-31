@@ -1,4 +1,13 @@
 const {
+  calculateVoucherPricing,
+  computeOfferDiscount,
+} = require("./calculateVoucherPricing");
+const {
+  buildVoucherOrderSummary,
+} = require("./buildVoucherOrderSummary");
+const { resolveClaimOffer } = require("./resolveClaimOffer");
+const { buildClaimPreview } = require("./buildClaimPreview");
+const {
   normalizeVoucherName,
   getUniqueTags,
   validateVoucherCategory,
@@ -60,4 +69,14 @@ module.exports = {
   pickVoucherBanner,
   uploadVoucherBannerMedia,
   deleteVoucherBannerMedia,
+  // The single source for what a claim costs. Nothing else may compute these.
+  calculateVoucherPricing,
+  computeOfferDiscount,
+  // The rows a claim checkout renders. The client does no arithmetic.
+  buildVoucherOrderSummary,
+  // Which offer applies. Ranks with the same computeOfferDiscount that charges.
+  resolveClaimOffer,
+  // One builder for preview AND order creation, so the price shown is the price
+  // charged. `strictPromo` is the only difference between the two.
+  buildClaimPreview,
 };

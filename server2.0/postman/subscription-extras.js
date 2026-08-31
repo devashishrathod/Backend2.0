@@ -31,6 +31,10 @@ module.exports = ({
       "",
       "The per-brand cap counts the ledger (RESERVED + CONSUMED), not `usedCount`, so a vendor cannot hold two open orders against a one-per-brand code.",
       "",
+      "**Two audiences share this collection.** `audience: \"VENDOR\"` (the default) is the subscription code described above; `audience: \"CUSTOMER\"` is a voucher-claim code, redeemed by a customer against a bill rather than by a vendor against a plan. They are fully isolated — a code of one audience offered at the other's checkout is reported exactly like a code that does not exist, so the response cannot be used to enumerate live codes — and each has its own scope fields, its own per-owner cap, and its own ledger rows. Only a CUSTOMER code can be vendor-funded (`costBearing`); a subscription discount always comes out of the platform's pocket. `audience` cannot be changed after creation.",
+      "",
+      "The window, the platform-wide `totalUsageLimit`, and the discount arithmetic (percent, `maxDiscountAmount` cap, clamp to the base) are **shared** between the two by `helpers/promoCodes/assertPromoWindowAndCaps.js`, so the two checkouts can never disagree on what a code is worth. Only the audience-specific gates differ.",
+      "",
       "Soft in preview, strict at order: an unusable code shows its specific reason in `promo.message` so the Apply button can render inline, but returns **422** from create-order — silently charging full price on a code the vendor believes they applied is not acceptable.",
       "",
       "⚠️ Gated by `Setting.vendor.subscription.isPromoCodeEnabled`, which is **false** by default. Turn it on in folder 01 first.",
@@ -42,6 +46,8 @@ module.exports = ({
         segments: ["promoCodes", "create"],
         reqBody: {
           code: "LAUNCH20",
+          // Which checkout the code belongs to. Omitting it means VENDOR.
+          audience: "VENDOR",
           description: "Launch offer - 20% off, capped at Rs1,000",
           discountType: "PERCENT",
           discountPercent: 20,
@@ -56,7 +62,7 @@ module.exports = ({
           isActive: true,
         },
         description:
-          "Admin only. `discountType`: PERCENT | FLAT. `maxDiscountAmount` caps a PERCENT code and is rejected on a FLAT one. `minOrderValue` is checked against the **plan-discounted** subtotal, matching where the promo actually applies. Empty `subscriptionIds` / `applicableActions` mean no restriction.",
+          "Admin only. `discountType`: PERCENT | FLAT. `maxDiscountAmount` caps a PERCENT code and is rejected on a FLAT one. `minOrderValue` is checked against the **plan-discounted** subtotal, matching where the promo actually applies. Empty `subscriptionIds` / `applicableActions` mean no restriction.\n\n**`audience`** decides which checkout the code belongs to — `VENDOR` (subscriptions, the default) or `CUSTOMER` (voucher claims). The two are fully isolated: a CUSTOMER code offered at subscription checkout is reported exactly like a code that does not exist, so the response cannot be used to probe which codes are live.\n\nEach audience has its own scope fields, and supplying the other side's is a **422** rather than a code that silently never matches:\n\n| | VENDOR | CUSTOMER |\n|---|---|---|\n| scope | `subscriptionIds`, `applicableActions` | `voucherIds`, `brandIds`, `categoryIds` |\n| minimum | `minOrderValue` (plan-discounted subtotal) | `minBillAmount` (the raw bill the customer typed) |\n| per-owner cap | `perBrandUsageLimit` | `perCustomerUsageLimit` |\n| first-time | `firstTimeOnly` | `firstOrderOnly` |\n| applies to | the plan subtotal | `appliesTo`: NET_BILL or CONVENIENCE_FEE |\n\n`audience` is **immutable after creation** — the ledger counts redemptions per audience, so flipping it would orphan that history and let a single-use code be redeemed again. See the next request for a CUSTOMER code.",
         tests: [
           ...baseAsserts(201),
           'pm.test("code normalised and stored", function () {',
@@ -78,6 +84,7 @@ module.exports = ({
             data: {
               _id: "68c3d5e6f70819a0b1c2d3e4",
               code: "LAUNCH20",
+              audience: "VENDOR",
               description: "Launch offer - 20% off, capped at Rs1,000",
               discountType: "PERCENT",
               discountPercent: 20,
@@ -126,6 +133,141 @@ module.exports = ({
             "Unprocessable Entity",
             "One or more subscriptionIds do not exist.",
           ),
+          err(
+            "422 — customer field on a vendor code",
+            422,
+            "Unprocessable Entity",
+            "voucherIds, minBillAmount are not valid on a VENDOR promo code.",
+          ),
+          err(
+            "422 — vendor-funded on a vendor code",
+            422,
+            "Unprocessable Entity",
+            "costBearing applies to CUSTOMER promo codes — a subscription discount is always funded by the platform.",
+          ),
+          e403Role(),
+          e401(),
+        ],
+      }),
+
+      // ------------------------------------------------------------------
+      // The customer-audience twin. Kept as its own request rather than a
+      // variant body, so the scope fields, the funding split and every one of
+      // their rejections have saved examples an admin can read side by side.
+      // ------------------------------------------------------------------
+      request({
+        name: "Create Promo Code — CUSTOMER audience  [NEW]",
+        method: "POST",
+        segments: ["promoCodes", "create"],
+        reqBody: {
+          code: "PIZZA50",
+          audience: "CUSTOMER",
+          description: "Rs50 off any pizza voucher, brand-funded",
+          discountType: "FLAT",
+          discountAmount: 50,
+          // Scope. Each list is AND-ed; an empty one means no restriction.
+          brandIds: ["{{brand_id}}"],
+          voucherIds: [],
+          categoryIds: [],
+          // Checked against the raw bill the customer typed, before any offer.
+          minBillAmount: 300,
+          appliesTo: "NET_BILL",
+          perCustomerUsageLimit: 2,
+          firstOrderOnly: false,
+          // Who funds it: PLATFORM (default) | VENDOR | SHARED.
+          costBearing: { mode: "SHARED", vendorPercent: 40 },
+          validFrom: "2026-09-01",
+          validTill: "2026-12-31",
+          totalUsageLimit: 5000,
+          isActive: true,
+        },
+        description:
+          "Admin only. A code redeemable at **voucher-claim** checkout. Invisible to subscription checkout, and vice versa.\n\n**`costBearing` — who pays for the discount.** This is the field that reaches the vendor's bank account, so it is checked hard:\n\n| mode | meaning | requires |\n|---|---|---|\n| `PLATFORM` *(default)* | Trydood absorbs it; the vendor settles as if no code was used | — |\n| `VENDOR` | the brand absorbs it; deducted from that day's settlement | non-empty `brandIds` |\n| `SHARED` | split between the two | non-empty `brandIds` + `vendorPercent` 1–99 |\n\n`brandIds` is mandatory for anything but PLATFORM because without it the discount would be deducted from whichever brand the customer happened to visit — a code no brand ever agreed to fund.\n\nThe split is **frozen onto the `PromoCodeUsage` row at claim time** as `vendorCost` + `platformCost`, so editing or deleting the code later never rewrites a settlement that has already been computed.\n\n**`appliesTo`** picks the base the discount comes off — `NET_BILL` (the bill after the voucher offer) or `CONVENIENCE_FEE`. The discount is always clamped to that base, so a Rs50 code against a Rs10 convenience fee is worth Rs10, never Rs50.",
+        tests: [
+          ...baseAsserts(201),
+          'pm.test("customer scope stored", function () {',
+          "    const d = pm.response.json().data;",
+          '    pm.expect(d.audience).to.eql("CUSTOMER");',
+          '    pm.expect(d.costBearing.mode).to.eql("SHARED");',
+          "    pm.expect(d.costBearing.vendorPercent).to.eql(40);",
+          "});",
+          "",
+          "const b = pm.response.json();",
+          "if (b.data && b.data._id) {",
+          '    pm.environment.set("customer_promo_code_id", b.data._id);',
+          '    pm.environment.set("customer_promo_code", b.data.code);',
+          "}",
+        ],
+        responses: [
+          ok("201 — created", 201, {
+            success: true,
+            message: "Promo code created successfully",
+            data: {
+              _id: "68d4e6f708192a3b4c5d6e7f",
+              code: "PIZZA50",
+              audience: "CUSTOMER",
+              description: "Rs50 off any pizza voucher, brand-funded",
+              discountType: "FLAT",
+              discountAmount: 50,
+              discountPercent: 0,
+              brandIds: ["68a1b2c3d4e5f60718293a4b"],
+              voucherIds: [],
+              categoryIds: [],
+              minBillAmount: 300,
+              appliesTo: "NET_BILL",
+              perCustomerUsageLimit: 2,
+              firstOrderOnly: false,
+              costBearing: { mode: "SHARED", vendorPercent: 40 },
+              validFrom: "2026-09-01T00:00:00.000Z",
+              validTill: "2026-12-31T00:00:00.000Z",
+              totalUsageLimit: 5000,
+              usedCount: 0,
+              isActive: true,
+              isDeleted: false,
+            },
+          }),
+          err(
+            "422 — vendor-funded with no brandIds",
+            422,
+            "Unprocessable Entity",
+            "A VENDOR promo code must be scoped with brandIds. Without it the discount would be deducted from whichever brand the customer happens to visit.",
+          ),
+          err(
+            "422 — SHARED without a split",
+            422,
+            "Unprocessable Entity",
+            "A SHARED promo code needs a vendorPercent between 1 and 99. Use PLATFORM for 0 or VENDOR for 100.",
+          ),
+          err(
+            "422 — vendorPercent on a non-SHARED code",
+            422,
+            "Unprocessable Entity",
+            "vendorPercent only applies to a SHARED promo code — VENDOR already decides who pays in full.",
+          ),
+          err(
+            "422 — vendor field on a customer code",
+            422,
+            "Unprocessable Entity",
+            "subscriptionIds, applicableActions are not valid on a CUSTOMER promo code.",
+          ),
+          err(
+            "422 — per-customer cap above the platform cap",
+            422,
+            "Unprocessable Entity",
+            "perCustomerUsageLimit cannot exceed totalUsageLimit.",
+          ),
+          err(
+            "422 — unknown brand referenced",
+            422,
+            "Unprocessable Entity",
+            "One or more brandIds do not exist.",
+          ),
+          err(
+            "409 — code exists",
+            409,
+            "Conflict",
+            'Promo code "PIZZA50" already exists.',
+          ),
           e403Role(),
           e401(),
         ],
@@ -145,11 +287,17 @@ module.exports = ({
             true,
           ),
           q("isActive", "true", "true | false", true),
+          q(
+            "audience",
+            "VENDOR",
+            "VENDOR | CUSTOMER — subscription codes or voucher-claim codes. Omit to list both, which is rarely what a campaign view wants: the two have different economics and different scope fields.",
+            true,
+          ),
           q("sortBy", "createdAt", "createdAt | code | usedCount | validTill"),
           q("sortOrder", "desc", "asc | desc"),
         ],
         description:
-          "Admin only. `consumedCount` and `reservedCount` come from the **ledger**, not the `usedCount` counter, so you can tell actual redemptions apart from codes sitting in open checkouts. ⚠️ Returns 404 when empty.",
+          "Admin only. `consumedCount` and `reservedCount` come from the **ledger**, not the `usedCount` counter, so you can tell actual redemptions apart from codes sitting in open checkouts. ⚠️ Returns 404 when empty.\n\nUse **`?audience=`** to separate the two campaign types. Codes created before `audience` existed have no stored value and are treated as `VENDOR` everywhere, including here.",
         tests: [
           ...baseAsserts(200),
           'pm.test("ledger counts present", function () {',
@@ -171,6 +319,7 @@ module.exports = ({
                 {
                   _id: "68c3d5e6f70819a0b1c2d3e4",
                   code: "LAUNCH20",
+                  audience: "VENDOR",
                   discountType: "PERCENT",
                   discountPercent: 20,
                   maxDiscountAmount: 1000,
@@ -252,7 +401,7 @@ module.exports = ({
           isActive: true,
         },
         description:
-          "Admin only. The `code` string itself is **immutable** — it is the identity vendors were given and every ledger row references it. `totalUsageLimit` cannot be lowered below what has already been claimed, which would silently disable the code.",
+          "Admin only. The `code` string itself is **immutable** — it is the identity vendors were given and every ledger row references it. `totalUsageLimit` cannot be lowered below what has already been claimed, which would silently disable the code.\n\n**`audience` is immutable too**, for the same reason: every `PromoCodeUsage` row froze it at claim time and the per-owner cap is counted by it, so flipping it would orphan that history and let a single-use code be redeemed a second time. Re-sending the value it already has is fine; changing it is a 422. Codes created before the field existed count as `VENDOR`, so they cannot be promoted to `CUSTOMER` either.\n\n**`costBearing` merges rather than replaces.** Sending `{ \"costBearing\": { \"mode\": \"SHARED\" } }` on a code that already has `vendorPercent: 40` keeps the 40 — a partial patch that silently dropped it would leave a shared-cost code settling nothing to the vendor. Send the field you want to change and only that field changes.",
         tests: [
           ...baseAsserts(200),
           'pm.test("updated, ledger echoed", function () {',
@@ -269,6 +418,7 @@ module.exports = ({
               promoCode: {
                 _id: "68c3d5e6f70819a0b1c2d3e4",
                 code: "LAUNCH20",
+                audience: "VENDOR",
                 totalUsageLimit: 1000,
                 validTill: "2027-03-31T00:00:00.000Z",
                 usedCount: 12,
@@ -288,6 +438,18 @@ module.exports = ({
             422,
             "Unprocessable Entity",
             "totalUsageLimit cannot be lower than the 12 use(s) already claimed.",
+          ),
+          err(
+            "422 — changing the audience",
+            422,
+            "Unprocessable Entity",
+            "A promo code's audience cannot be changed from VENDOR to CUSTOMER — its redemption history is counted per audience. Deactivate this one and create a new code instead.",
+          ),
+          err(
+            "422 — funding split removed from a SHARED code",
+            422,
+            "Unprocessable Entity",
+            "A SHARED promo code needs a vendorPercent between 1 and 99. Use PLATFORM for 0 or VENDOR for 100.",
           ),
           err("404 — not found", 404, "Not Found", "Promo code not found"),
           e403Role(),
@@ -583,9 +745,17 @@ module.exports = ({
           q("from", "2026-08-01", "ISO date, inclusive", true),
           q("to", "2026-08-31", "ISO date, inclusive of the whole day", true),
           q("groupBy", "day", "day | month - buckets for the overTime series", true),
+          q(
+            "audience",
+            "VENDOR",
+            "VENDOR | CUSTOMER — scopes the whole report to one campaign type. Omit to report on both together, which mixes subscription revenue with voucher-claim revenue. When `code` or `promoCodeId` names a single code, that code's own audience is used and contradicting it here is a 422 rather than a page of zeroes.",
+            true,
+          ),
         ],
         description: [
           "How a campaign actually performed. Every filter is optional; with none it reports on every code over all time, which is the dashboard-landing case.",
+          "",
+          "**Scope it with \`audience\`.** Vendor subscription codes and customer voucher codes have different economics, so summing them produces a number that means nothing. It also matters mechanically: \`brandId\` is not set on a customer claim, so without the filter every customer row collapses into one null bucket in the by-brand sections. Naming a specific \`code\` takes the audience from the code itself — including codes created before the field existed, which count as \`VENDOR\`.",
           "",
           "**Reads the ledger, not \`usedCount\`.** The counter is a fast approximation kept for the cap check. Only \`CONSUMED\` rows are redemptions — a \`RESERVED\` row is an open checkout and a \`RELEASED\` one is abandoned, and counting either as a redemption would overstate every campaign. \`campaign.usedCount\` is still returned alongside, so drift between the two is visible.",
           "",
@@ -768,6 +938,12 @@ module.exports = ({
             422,
             "Unprocessable Entity",
             "\`from\` cannot be later than \`to\`.",
+          ),
+          err(
+            "422 - audience contradicts the named code",
+            422,
+            "Unprocessable Entity",
+            "LAUNCH20 is a VENDOR promo code — asking for the CUSTOMER audience would report on nothing. Drop the audience filter, or use it without naming a code.",
           ),
           err("404 - no such code", 404, "Not Found", "Promo code not found"),
           e403Role(),
@@ -1168,12 +1344,23 @@ module.exports = ({
       "**Configure it in the Razorpay dashboard** → Settings → Webhooks:",
       "",
       "```",
-      "URL     {{base_url}}/transactions/webhook/razorpay",
-      "Events  payment.captured, order.paid, payment.failed, refund.processed",
-      "Secret  -> put the same value in RAZORPAY_WEBHOOK_SECRET",
+      "VENDOR account   (subscriptions)",
+      "  URL     {{base_url}}/transactions/webhook/razorpay",
+      "  Secret  -> RAZORPAY_WEBHOOK_SECRETS",
+      "",
+      "CUSTOMER account (voucher claims)",
+      "  URL     {{base_url}}/transactions/webhook/razorpay/customer",
+      "  Secret  -> RAZORPAY_CUSTOMER_WEBHOOK_SECRETS",
+      "",
+      "Events  payment.captured, order.paid, payment.authorized, payment.failed,",
+      "        refund.processed, payment.dispute.*",
       "```",
       "",
-      "⚠️ **`RAZORPAY_WEBHOOK_SECRET` must be set in `.env`.** Without it every delivery is rejected — there is no unverified fallback.",
+      "**One endpoint per Razorpay account.** They are separate merchants with separate secrets, and Razorpay configures a webhook URL per account anyway. Splitting them makes the account a property of the **URL**, so a signature only has to prove the payload is authentic — not tell us whose it is. If the same secret string were ever set on both dashboards, deriving the account from the match would send every customer payment into the vendor lookup.",
+      "",
+      "**Both vars take a comma-separated list**, newest first. Rotating a webhook secret otherwise leaves a window where deliveries are still signed with the old one and silently fail. With a list: add the new secret → rotate in the dashboard → remove the old one. The legacy singular `RAZORPAY_WEBHOOK_SECRET` is still read as the last VENDOR entry.",
+      "",
+      "⚠️ **At least one secret must be set.** Without it every delivery is rejected — there is no unverified fallback. A rejected delivery is now *recorded* (`WebhookEvent` with status `REJECTED`) so a wrong or undeployed secret is visible instead of producing captured payments with no trace.",
       "",
       "**Public and unauthenticated on purpose** — Razorpay cannot present a JWT. Authenticity comes from an HMAC-SHA256 over the **raw request body**; `index.js` keeps the untouched buffer on `req.rawBody` because re-serialised JSON would not match the signature.",
       "",
@@ -1342,8 +1529,293 @@ module.exports = ({
             "400 — secret not configured on the server",
             400,
             "Bad Request",
-            "Webhook signature verification failed. RAZORPAY_WEBHOOK_SECRET is not configured — webhook deliveries cannot be verified.",
+            "Webhook signature verification failed. No Razorpay webhook secret is configured — deliveries cannot be verified. Set RAZORPAY_WEBHOOK_SECRETS and RAZORPAY_CUSTOMER_WEBHOOK_SECRETS.",
           ),
+        ],
+      },
+      {
+        name: "payment.authorized — recorded only, never settled",
+        event: [
+          {
+            listen: "prerequest",
+            script: {
+              type: "text/javascript",
+              exec: [
+                'const secret = pm.environment.get("razorpay_webhook_secret");',
+                "const raw = pm.request.body.raw;",
+                'const sig = CryptoJS.HmacSHA256(raw, secret || "").toString(CryptoJS.enc.Hex);',
+                'pm.request.headers.upsert({ key: "x-razorpay-signature", value: sig });',
+                'pm.request.headers.upsert({ key: "x-razorpay-event-id", value: "evt_auth_" + Date.now() });',
+              ],
+            },
+          },
+          {
+            listen: "test",
+            script: {
+              type: "text/javascript",
+              exec: [
+                'pm.test("acknowledged", function () {',
+                "    pm.response.to.have.status(200);",
+                "});",
+                "",
+                'pm.test("recorded, NOT settled", function () {',
+                "    const d = pm.response.json().data;",
+                '    pm.expect(d.status).to.eql("PROCESSED");',
+                '    pm.expect(d.outcome).to.contain("Waiting for capture");',
+                "});",
+              ],
+            },
+          },
+        ],
+        request: {
+          auth: { type: "noauth" },
+          method: "POST",
+          header: [{ key: "Content-Type", value: "application/json" }],
+          body: {
+            mode: "raw",
+            raw: JSON.stringify(
+              {
+                entity: "event",
+                event: "payment.authorized",
+                created_at: 1756900000,
+                payload: {
+                  payment: {
+                    entity: {
+                      id: "pay_QxYz987ZyXwVu6",
+                      order_id: "{{razorpay_order_id}}",
+                      status: "authorized",
+                      captured: false,
+                      amount: 589882,
+                    },
+                  },
+                },
+              },
+              null,
+              2,
+            ),
+          },
+          url: {
+            raw: "{{base_url}}/transactions/webhook/razorpay",
+            host: ["{{base_url}}"],
+            path: ["transactions", "webhook", "razorpay"],
+          },
+          description: [
+            "`payment.authorized` fires on virtually **every** successful payment, moments before the capture — so it gets its own branch, above the settlement router, and never reaches a settler.",
+            "",
+            "Why that matters: the settler's first money check is `payment.captured`. Routing this event into one would take the not-captured branch on every single payment — releasing the promo hold and paging admins CRITICAL — right before the real capture arrived and settled it.",
+            "",
+            "So this only records `authorizedAt`. The signal actually worth acting on is a payment that **stays** authorized: auto-capture is a per-account dashboard setting, and with it off Razorpay auto-refunds after about five days while the customer believes they have paid. A background job watches for that.",
+          ].join("\n"),
+        },
+        response: [
+          ok("200 — authorization recorded, capture awaited", {
+            success: true,
+            message: "Webhook received",
+            data: {
+              received: true,
+              event: "payment.authorized",
+              status: "PROCESSED",
+              outcome:
+                "Authorization recorded. Waiting for capture — no settlement attempted.",
+            },
+          }),
+        ],
+      },
+      {
+        name: "CUSTOMER account — voucher claim payment",
+        event: [
+          {
+            listen: "prerequest",
+            script: {
+              type: "text/javascript",
+              exec: [
+                "// Signed with the CUSTOMER account's secret, not the vendor one.",
+                'const secret = pm.environment.get("razorpay_customer_webhook_secret");',
+                "if (!secret) {",
+                '    console.warn("razorpay_customer_webhook_secret is not set — the server will reject this.");',
+                "}",
+                "const raw = pm.request.body.raw;",
+                'const sig = CryptoJS.HmacSHA256(raw, secret || "").toString(CryptoJS.enc.Hex);',
+                'pm.request.headers.upsert({ key: "x-razorpay-signature", value: sig });',
+                'pm.request.headers.upsert({ key: "x-razorpay-event-id", value: "evt_cust_" + Date.now() });',
+              ],
+            },
+          },
+          {
+            listen: "test",
+            script: {
+              type: "text/javascript",
+              exec: [
+                'pm.test("acknowledged", function () {',
+                "    pm.response.to.have.status(200);",
+                "});",
+                "",
+                'pm.test("never routed into the subscription settler", function () {',
+                "    const d = pm.response.json().data;",
+                '    pm.expect(d.outcome || "").to.not.contain("Subscription plan not found");',
+                "});",
+              ],
+            },
+          },
+        ],
+        request: {
+          auth: { type: "noauth" },
+          method: "POST",
+          header: [{ key: "Content-Type", value: "application/json" }],
+          body: {
+            mode: "raw",
+            raw: JSON.stringify(
+              {
+                entity: "event",
+                event: "payment.captured",
+                created_at: 1756900000,
+                payload: {
+                  payment: {
+                    entity: {
+                      id: "pay_CustVoucher001",
+                      order_id: "order_CustVoucher001",
+                      status: "captured",
+                      captured: true,
+                      amount: 76000,
+                      method: "upi",
+                      fee: 0,
+                      tax: 0,
+                    },
+                  },
+                },
+              },
+              null,
+              2,
+            ),
+          },
+          url: {
+            raw: "{{base_url}}/transactions/webhook/razorpay/customer",
+            host: ["{{base_url}}"],
+            path: ["transactions", "webhook", "razorpay", "customer"],
+          },
+          description: [
+            "The **CUSTOMER** Razorpay account's endpoint — voucher claim payments.",
+            "",
+            "Before this existed, a customer payment hit the vendor endpoint, was looked up without an account scope, and ran straight into `settleSubscriptionPayment` — failing on *\"Subscription plan not found\"*, recording the delivery FAILED and paging admins CRITICAL. On **every** payment.",
+            "",
+            "Now the account comes from the route, the transaction lookup is scoped to it, and the settler is chosen from `transaction.purpose`. An unknown purpose is a **hard stop with an admin alert**, never a guess — running the wrong settler on a money row is not recoverable the way a FAILED delivery is.",
+            "",
+            "Until Phase 1B lands there is no `VOUCHER_CLAIM` settler, so a voucher transaction returns the hard-stop outcome below. No such transaction can exist yet either, so in practice this returns `IGNORED`.",
+          ].join("\n"),
+        },
+        response: [
+          ok("200 — no voucher transaction yet (pre-1B)", {
+            success: true,
+            message: "Webhook received",
+            data: {
+              received: true,
+              event: "payment.captured",
+              status: "IGNORED",
+              outcome:
+                "No CUSTOMER transaction for order order_CustVoucher001.",
+            },
+          }),
+          ok("200 — purpose has no settler (hard stop, admins alerted)", {
+            success: true,
+            message: "Webhook received",
+            data: {
+              received: true,
+              event: "payment.captured",
+              status: "FAILED",
+              outcome:
+                'No settlement path for purpose "VOUCHER_CLAIM" — admins notified. Replay once a settler exists.',
+            },
+          }),
+          err(
+            "400 — customer secret not set",
+            400,
+            "Bad Request",
+            "Webhook signature verification failed. Signature mismatch.",
+          ),
+        ],
+      },
+      {
+        name: "Misrouted — customer delivery on the vendor URL",
+        event: [
+          {
+            listen: "prerequest",
+            script: {
+              type: "text/javascript",
+              exec: [
+                "// Deliberately wrong: signed with the CUSTOMER secret but sent to the",
+                "// VENDOR endpoint — i.e. the dashboard is pointed at the wrong URL.",
+                'const secret = pm.environment.get("razorpay_customer_webhook_secret");',
+                "const raw = pm.request.body.raw;",
+                'const sig = CryptoJS.HmacSHA256(raw, secret || "").toString(CryptoJS.enc.Hex);',
+                'pm.request.headers.upsert({ key: "x-razorpay-signature", value: sig });',
+                'pm.request.headers.upsert({ key: "x-razorpay-event-id", value: "evt_misroute_" + Date.now() });',
+              ],
+            },
+          },
+          {
+            listen: "test",
+            script: {
+              type: "text/javascript",
+              exec: [
+                'pm.test("self-heals rather than rejecting", function () {',
+                "    pm.response.to.have.status(200);",
+                "});",
+              ],
+            },
+          },
+        ],
+        request: {
+          auth: { type: "noauth" },
+          method: "POST",
+          header: [{ key: "Content-Type", value: "application/json" }],
+          body: {
+            mode: "raw",
+            raw: JSON.stringify(
+              {
+                entity: "event",
+                event: "payment.captured",
+                created_at: 1756900000,
+                payload: {
+                  payment: {
+                    entity: {
+                      id: "pay_Misrouted001",
+                      order_id: "order_Misrouted001",
+                      status: "captured",
+                      captured: true,
+                      amount: 76000,
+                    },
+                  },
+                },
+              },
+              null,
+              2,
+            ),
+          },
+          url: {
+            raw: "{{base_url}}/transactions/webhook/razorpay",
+            host: ["{{base_url}}"],
+            path: ["transactions", "webhook", "razorpay"],
+          },
+          description: [
+            "A delivery that belongs to the CUSTOMER account, sent to the VENDOR URL — what happens when a dashboard is configured against the wrong endpoint.",
+            "",
+            "The route's own secrets are tried first; the other account's are a fallback. So the delivery **is** processed — it is authentic and the money is real, and dropping it would mean a captured payment that never settles.",
+            "",
+            "But it is not processed *silently*: `matchedExpectedAccount: false` is stored on the delivery and a WARNING notification tells admins which dashboard to fix. A misconfiguration that quietly works is a misconfiguration that breaks the day the two secrets diverge.",
+          ].join("\n"),
+        },
+        response: [
+          ok("200 — processed, and admins warned about the wrong URL", {
+            success: true,
+            message: "Webhook received",
+            data: {
+              received: true,
+              event: "payment.captured",
+              status: "IGNORED",
+              outcome:
+                "No CUSTOMER transaction for order order_Misrouted001.",
+            },
+          }),
         ],
       },
       request({

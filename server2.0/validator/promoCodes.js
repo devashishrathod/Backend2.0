@@ -5,6 +5,9 @@ const {
   PROMO_APPLICABLE_ACTIONS,
   PROMO_CODE_LIMITS,
   REPORT_GROUP_BY,
+  PROMO_AUDIENCE,
+  PROMO_APPLIES_TO,
+  PROMO_COST_BEARING_MODE,
 } = require("../constants/promoCode");
 
 const codeRule = Joi.string()
@@ -51,12 +54,67 @@ const sharedFields = {
       "any.only": `applicableActions may only contain: ${Object.values(PROMO_APPLICABLE_ACTIONS).join(", ")}`,
     }),
   firstTimeOnly: Joi.boolean().optional(),
+
+  // ---------- audience ----------
+  // Which checkout the code belongs to. Defaults to VENDOR on write; the two
+  // audiences never see each other's codes.
+  audience: Joi.string()
+    .valid(...Object.values(PROMO_AUDIENCE))
+    .optional()
+    .messages({
+      "any.only": `audience must be one of: ${Object.values(PROMO_AUDIENCE).join(", ")}`,
+    }),
+
+  // ---------- customer scope ----------
+  // Joi only checks shape. Which audience each of these belongs to, and the
+  // costBearing rules, are cross-field and live in `assertCoherent` — which is
+  // also the only place that can see the STORED document on a PATCH.
+  voucherIds: Joi.array().items(objectId()).optional().messages({
+    "any.invalid": "Invalid voucherId in voucherIds",
+  }),
+  brandIds: Joi.array().items(objectId()).optional().messages({
+    "any.invalid": "Invalid brandId in brandIds",
+  }),
+  categoryIds: Joi.array().items(objectId()).optional().messages({
+    "any.invalid": "Invalid categoryId in categoryIds",
+  }),
+  perCustomerUsageLimit: Joi.number().integer().min(1).optional(),
+  firstOrderOnly: Joi.boolean().optional(),
+  // Compared against the raw bill the customer typed, before any offer.
+  minBillAmount: Joi.number().min(0).optional(),
+  appliesTo: Joi.string()
+    .valid(...Object.values(PROMO_APPLIES_TO))
+    .optional()
+    .messages({
+      "any.only": `appliesTo must be one of: ${Object.values(PROMO_APPLIES_TO).join(", ")}`,
+    }),
+
+  // ---------- who funds the discount ----------
+  costBearing: Joi.object({
+    mode: Joi.string()
+      .valid(...Object.values(PROMO_COST_BEARING_MODE))
+      .optional()
+      .messages({
+        "any.only": `costBearing.mode must be one of: ${Object.values(PROMO_COST_BEARING_MODE).join(", ")}`,
+      }),
+    vendorPercent: Joi.number().min(0).max(100).optional(),
+  }).optional(),
+
   validFrom: Joi.date().optional(),
   validTill: Joi.date().optional(),
   totalUsageLimit: Joi.number().integer().min(1).optional(),
   perBrandUsageLimit: Joi.number().integer().min(1).optional(),
   isActive: Joi.boolean().optional(),
 };
+
+// Reused by the listing and the report — both must be able to scope by audience
+// or they silently mix two campaigns with different economics.
+const audienceQueryRule = Joi.string()
+  .valid(...Object.values(PROMO_AUDIENCE))
+  .optional()
+  .messages({
+    "any.only": `audience must be one of: ${Object.values(PROMO_AUDIENCE).join(", ")}`,
+  });
 
 exports.validateCreatePromoCode = {
   body: Joi.object({
@@ -113,6 +171,7 @@ exports.validateGetAllPromoCodes = {
       .optional(),
     // Effective state, which the stored flags alone do not express.
     status: Joi.string().valid("LIVE", "SCHEDULED", "EXPIRED").optional(),
+    audience: audienceQueryRule,
     sortBy: Joi.string()
       .valid("createdAt", "code", "usedCount", "validTill")
       .optional(),
@@ -131,6 +190,7 @@ exports.validatePromoCodeReport = {
       "any.invalid": "Invalid promoCodeId",
     }),
     code: Joi.string().trim().uppercase().optional(),
+    audience: audienceQueryRule,
     from: Joi.date().iso().optional().messages({
       "date.format": "from must be an ISO date, e.g. 2026-08-01",
     }),

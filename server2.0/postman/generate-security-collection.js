@@ -1518,10 +1518,19 @@ const pricingFolder = folder(
           }),
         },
         {
-          name: "400 — bill ≤ 0 ab bhi error hai",
-          code: 400,
-          status: "Bad Request",
-          body: err("Valid bill amount is required."),
+          // Was pinned at 400 here and at 422 in the customer collection — the two
+          // committed collections contradicted each other. Settled by reading the
+          // code rather than by picking one: `validateCustomerVoucherPreview`
+          // declares `billAmount` as `.positive()`, and `validateSchema` runs
+          // BEFORE the controller. Joi answers first, and Joi answers 422.
+          //
+          // `calculateVoucherOffer`'s own `throwError(400, "Valid bill amount is
+          // required.")` is therefore unreachable through the API. It stays as a
+          // guard for direct callers, but no client will ever see it.
+          name: "422 — bill ≤ 0 (Joi answers before the service)",
+          code: 422,
+          status: "Unprocessable Entity",
+          body: err("Bill amount must be greater than zero."),
         },
       ],
     }),
