@@ -43,6 +43,31 @@ to connect, and `clearCollections` refuses to run, unless the live connection's
 database name ends in `_test`. Never bypass it, and never point a test at
 `mongoose.connect(process.env.MONGO_URL)` directly.
 
+> ### ⚠️ One run at a time — the suite takes a lock
+>
+> `maxWorkers: 1` stops two workers colliding **inside** one run. It does nothing
+> about two runs. Every file shares one database, so a second `jest` started while
+> the first is going has its own `beforeEach` clearing collections the first is
+> mid-way through.
+>
+> That does **not** fail cleanly. It is a scatter of unrelated tests failing on
+> assertions that are individually correct, which then pass when re-run alone —
+> so it reads as flakiness and sends you looking in the wrong place. It cost two
+> separate debugging detours before the cause was obvious.
+>
+> `globalSetup` now takes a lock and a second run is refused by name. If a run is
+> killed the lock self-heals after 15 minutes, or:
+>
+> ```bash
+> node scripts/testRunLock.js           # who holds it
+> node scripts/testRunLock.js --clear   # take it back
+> ```
+>
+> Setup and teardown are loaded in **separate module registries**, so they share
+> only `__tests__/money/setup/runLock.js` — hanging the id off `globalSetup`'s
+> export read back as `undefined`, and the release then filtered on
+> `{_id: undefined}`, matched nothing, and reported success.
+
 > ⚠️ `NODE_ENV=production` is set in some shells here, which makes npm set
 > `omit=dev` and skip devDependencies entirely — `npm install` reports success
 > and jest never lands. Install dev tooling with

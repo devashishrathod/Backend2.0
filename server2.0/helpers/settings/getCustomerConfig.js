@@ -154,6 +154,12 @@ exports.getCustomerConfig = async () => {
         refund.releasePromoOnRefund ?? REFUND_DEFAULTS.releasePromoOnRefund,
       authorizedAlertMinutes:
         refund.authorizedAlertMinutes ?? REFUND_DEFAULTS.authorizedAlertMinutes,
+      maxOpenRequests:
+        refund.maxOpenRequests ?? REFUND_DEFAULTS.maxOpenRequests,
+      maxRejectedPerWindow:
+        refund.maxRejectedPerWindow ?? REFUND_DEFAULTS.maxRejectedPerWindow,
+      requestWindowDays:
+        refund.requestWindowDays ?? REFUND_DEFAULTS.requestWindowDays,
     },
 
     chargeback: {

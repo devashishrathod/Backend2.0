@@ -231,6 +231,40 @@ const REFUND_DEFAULTS = Object.freeze({
   // A payment stuck in `authorized` without capture is money neither party has.
   // Alert rather than wait.
   authorizedAlertMinutes: 30,
+
+  /**
+   * ---------- abuse limits ----------
+   *
+   * ⚠️ These count **refused** requests, never approved ones.
+   *
+   * The signal that something is wrong is not how much money went back — it is
+   * *"the vendor looked at this and said it was not legitimate"*. A customer with
+   * five approved refunds had five genuinely bad experiences, and blocking their
+   * sixth punishes exactly the person the process exists for. Worse, the
+   * customers of the worst brand hit a raw request cap first, and they are the
+   * ones most entitled to ask.
+   */
+
+  /**
+   * How many refunds one customer may have in flight **across all their
+   * claims**.
+   *
+   * Different from the unique index on `RefundRequest`, which allows one open
+   * request per *payment*. This one stops somebody opening a request against
+   * every claim they have ever made and burying the vendor.
+   */
+  maxOpenRequests: 1,
+
+  /**
+   * Refused or withdrawn requests allowed in the rolling window.
+   *
+   * `CANCELLED` counts alongside the rejections, and deliberately: raise →
+   * vendor sees it → withdraw → raise again is a way to keep a vendor busy
+   * without ever collecting a rejection. Withdrawing once is nothing; doing it
+   * five times is the pattern this is here for.
+   */
+  maxRejectedPerWindow: 3,
+  requestWindowDays: 30,
 });
 
 /**

@@ -63,6 +63,21 @@ const NOTIFICATION_TYPES = Object.freeze({
   VOUCHER_PAYMENT_SUCCESS: "VOUCHER_PAYMENT_SUCCESS",
   VOUCHER_PAYMENT_FAILED: "VOUCHER_PAYMENT_FAILED",
   VOUCHER_REFUNDED: "VOUCHER_REFUNDED",
+
+  /**
+   * ---------- refunds ----------
+   *
+   * One type per state the reader can act on, not one per state that exists.
+   * `PROCESSING` and `ADMIN_APPROVED` are real transitions but there is nothing
+   * for anyone to do about them, and a notification nobody acts on trains
+   * people to ignore the ones that matter.
+   */
+  REFUND_REQUESTED: "REFUND_REQUESTED",
+  REFUND_APPROVED: "REFUND_APPROVED",
+  REFUND_REJECTED: "REFUND_REJECTED",
+  REFUND_FAILED: "REFUND_FAILED",
+  REFUND_ESCALATED: "REFUND_ESCALATED",
+  REFUND_REMINDER: "REFUND_REMINDER",
   // To the vendor and the outlet, not the customer.
   VOUCHER_CLAIM_RECEIVED: "VOUCHER_CLAIM_RECEIVED",
   // Phase 2: a paid claim that was never scanned inside its window.

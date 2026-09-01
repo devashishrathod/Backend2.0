@@ -11,7 +11,7 @@ const {
   voucherClaimField,
   billField,
   settlementField,
-  refundField,
+  refundRequestField,
   subscribedField,
 } = require("./validObjectId");
 const { pricingSchema } = require("./pricingSchema");
@@ -108,7 +108,16 @@ const transactionSchema = new mongoose.Schema(
     billId: billField,
     createdBy: userField,
     settlementId: settlementField,
-    refundId: refundField,
+    /**
+     * A convenience pointer to the **most recent** request, not the whole story.
+     *
+     * Named for what it is. The old name — `refundId`, one ObjectId — read as
+     * *"the refund"*, so a second partial refund silently orphaned the first and
+     * every reader believed the one id it found was complete. The real answer is
+     * always `RefundRequest.find({ transactionId })`; `amountRefunded` is the
+     * cumulative figure.
+     */
+    latestRefundRequestId: refundRequestField,
 
     // Only populated on purpose: VOUCHER_CLAIM.
     voucher: { type: voucherTransactionSchema, default: undefined },
@@ -270,6 +279,17 @@ const transactionSchema = new mongoose.Schema(
     // writes `isDisputed: false` and a lost chargeback must not become payable.
     settlementHold: { type: Boolean, default: false, index: true },
     settlementHoldReason: { type: String, trim: true, maxlength: 300 },
+    /**
+     * When the hold came off, and why.
+     *
+     * Kept after the release rather than cleared with it. A hold that went on
+     * and came off is the most common thing an admin has to explain — *"why was
+     * this payout late?"* — and a field that is only ever `null` when correct
+     * answers nothing. `reconcileLedger` also reads it to tell a hold that was
+     * released from one that was never applied.
+     */
+    settlementHoldReleasedAt: { type: Date },
+    settlementHoldReleaseReason: { type: String, trim: true, maxlength: 300 },
     // Razorpay's own settlement of this payment INTO our bank. Observed, never
     // inferred from a calendar offset: Razorpay settles in T+2 *working* days,
     // and suspends settlement entirely when an account is under review.

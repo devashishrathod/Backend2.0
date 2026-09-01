@@ -37,6 +37,16 @@ const PANEL_PATHS = Object.freeze({
 const ADMIN_PATHS = Object.freeze({
   BRAND_VERIFICATION: "brands/verification",
   brandVerification: (brandId) => `brands/verification/${brandId}`,
+  /**
+   * The refund worklist.
+   *
+   * ⚠️ A missing key here does not throw — it produces `undefined`, which
+   * `deepLink` turns into a link ending in "undefined". The notification still
+   * sends and still looks fine; it just goes nowhere, and nobody finds out until
+   * an admin taps one.
+   */
+  REFUNDS: "refunds",
+  refund: (requestId) => `refunds/${requestId}`,
 });
 
 /**

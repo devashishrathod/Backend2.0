@@ -1,0 +1,323 @@
+const RefundRequest = require("../../models/RefundRequest");
+const Transaction = require("../../models/Transaction");
+const { CLAIM_HISTORY_ACTION } = require("../../constants/voucherClaim");
+const {
+  REFUND_REQUEST_STATUS,
+  REFUND_ACTOR,
+} = require("../../constants/refund");
+const { VENDOR_TIMEOUT_ACTIONS } = require("../../constants/customer");
+const { getCustomerConfig } = require("../../helpers/settings");
+const { getRazorpayAccount } = require("../../configs/razorpay");
+const { applyRefundCompletion } = require("../../helpers/refunds");
+const { recordClaimHistory } = require("../../helpers/voucherClaims");
+const {
+  sendQuietly,
+  notifyAdminRefundEscalated,
+  notifyVendorRefundReminder,
+  notifyCustomerRefundApproved,
+} = require("../../helpers/notifications");
+
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+
+/**
+ * A silent outlet cannot hold a customer's money.
+ *
+ * The vendor gets `refund.vendorApprovalHours` to answer. When that runs out the
+ * request stops being theirs and moves on — either to an admin (`ESCALATE`) or
+ * straight through (`AUTO_APPROVE`), whichever `refund.onVendorTimeout` says.
+ *
+ * ### Why the deadline is stored rather than computed here
+ *
+ * `vendorRespondBy` is written when the request is created. Computing it here
+ * from `createdAt + settings` would mean raising the setting tomorrow silently
+ * extends every request already waiting on today's promise — a customer told
+ * "within 24 hours" would find themselves waiting 48 because of a change they
+ * never saw. It also lets this query use an index instead of scanning.
+ *
+ * ### The hold stays on either way
+ *
+ * A timeout is not a rejection. The money is still owed until somebody decides,
+ * so `settlementHold` is untouched — only a terminal *no* releases it.
+ */
+exports.escalateStaleRefunds = async () => {
+  const config = await getCustomerConfig();
+  const refundConfig = config.refund || {};
+  const now = new Date();
+
+  const due = await RefundRequest.find({
+    status: REFUND_REQUEST_STATUS.REQUESTED,
+    vendorRespondBy: { $lte: now },
+    isDeleted: false,
+  })
+    .select("_id claimId customerId brandId transactionId claimCode requestedAmount approvedAmount vendorRespondBy")
+    .limit(200)
+    .lean();
+
+  if (!due.length) return { checked: 0, escalated: 0, autoApproved: 0 };
+
+  const autoApprove =
+    refundConfig.onVendorTimeout === VENDOR_TIMEOUT_ACTIONS.AUTO_APPROVE;
+
+  let escalated = 0;
+  let autoApproved = 0;
+
+  for (const request of due) {
+    /**
+     * The conditional claim again — `status` is in the filter.
+     *
+     * Two instances can run this at the same moment, and the job lock only
+     * covers the common case. A vendor answering in the same second as the sweep
+     * must not have their decision overwritten by a timeout.
+     */
+    const updated = await RefundRequest.findOneAndUpdate(
+      { _id: request._id, status: REFUND_REQUEST_STATUS.REQUESTED },
+      {
+        $set: {
+          status: autoApprove
+            ? REFUND_REQUEST_STATUS.VENDOR_APPROVED
+            : REFUND_REQUEST_STATUS.VENDOR_TIMEOUT,
+          // Both are open states: the money still has to be decided on and then
+          // paid.
+          isOpen: true,
+          ...(autoApprove
+            ? {
+                approvedAmount: request.approvedAmount ?? request.requestedAmount,
+                vendorDecisionAt: new Date(),
+              }
+            : {}),
+        },
+      },
+      { returnDocument: "after" },
+    ).lean();
+
+    if (!updated) continue;
+
+    if (autoApprove) autoApproved += 1;
+    else escalated += 1;
+
+    await recordClaimHistory({
+      claimId: request.claimId,
+      customerId: request.customerId,
+      brandId: request.brandId,
+      transactionId: request.transactionId,
+      action: CLAIM_HISTORY_ACTION.REFUND_ESCALATED,
+      // No person behind a sweep. "The timeout job did it" is the real answer.
+      performedByRole: REFUND_ACTOR.SYSTEM,
+      reason: autoApprove
+        ? "Outlet did not respond in time; approved automatically"
+        : "Outlet did not respond in time; sent to Trydood for review",
+      snapshot: {
+        requestId: request._id,
+        vendorRespondBy: request.vendorRespondBy,
+        action: autoApprove ? "AUTO_APPROVE" : "ESCALATE",
+      },
+    });
+
+    if (autoApprove) {
+      await sendQuietly(
+        () => notifyCustomerRefundApproved({ request: updated }),
+        "customer refund auto-approved",
+      );
+    } else {
+      // Nobody else can move it now, and the customer has already waited a full
+      // window.
+      await sendQuietly(
+        () => notifyAdminRefundEscalated({ request: updated }),
+        "admin refund escalated",
+      );
+    }
+  }
+
+  return { checked: due.length, escalated, autoApproved };
+};
+
+/**
+ * Refunds that left for Razorpay and never came back.
+ *
+ * A `PROCESSING` request is one where the money has been asked for but no
+ * terminal webhook has landed. Most of the time that means it is simply in
+ * flight — bank refunds take days. It becomes a problem when the webhook was
+ * **lost**: the customer has their money, the claim still says redeemed, the
+ * once-per-user slot is still held, and no ledger row exists.
+ *
+ * So this asks Razorpay directly rather than waiting, and runs the same
+ * `applyRefundCompletion` the webhook would have. Idempotent for the same
+ * reason: the conditional claim on the request's status decides who does the
+ * work.
+ *
+ * ⚠️ Reads, never writes, at the gateway. This job must not be able to *issue* a
+ * refund — that is `executeRefund`'s job and it has its own double-payment
+ * guards. A reconcile that could pay would be a second, unguarded path to money
+ * leaving.
+ */
+exports.reconcileRefunds = async () => {
+  const config = await getCustomerConfig();
+  // Give the gateway a sensible head start before calling anything stuck.
+  const graceMinutes = Number(config.refund?.authorizedAlertMinutes) || 30;
+  const cutoff = new Date(Date.now() - graceMinutes * MINUTE_MS);
+
+  const inFlight = await RefundRequest.find({
+    status: REFUND_REQUEST_STATUS.PROCESSING,
+    razorpayRefundId: { $type: "string" },
+    initiatedAt: { $lte: cutoff },
+    isDeleted: false,
+  })
+    .limit(100)
+    .lean();
+
+  if (!inFlight.length) {
+    return { checked: 0, completed: 0, failed: 0, stillPending: 0, unreachable: 0 };
+  }
+
+  let completed = 0;
+  let failed = 0;
+  let stillPending = 0;
+  let unreachable = 0;
+
+  for (const request of inFlight) {
+    const transaction = await Transaction.findById(request.transactionId)
+      .select("gatewayAccount razorpayPaymentId paidAmount amountRefunded")
+      .lean();
+    if (!transaction) continue;
+
+    let refund;
+    try {
+      const { instance } = getRazorpayAccount(transaction.gatewayAccount);
+      refund = await instance.refunds.fetch(request.razorpayRefundId);
+    } catch (error) {
+      // A gateway that cannot be reached is not a failed refund. Counted so a
+      // rising number is visible, and left exactly as it was.
+      unreachable += 1;
+      continue;
+    }
+
+    if (refund?.status === "processed") {
+      const payment = await fetchPaymentQuietly(transaction);
+      const result = await applyRefundCompletion({
+        refundRequest: request,
+        gatewayTotalRefunded:
+          payment?.amount_refunded !== undefined
+            ? payment.amount_refunded / 100
+            : undefined,
+        utr: refund?.acquirer_data?.arn,
+      });
+      if (result.applied) completed += 1;
+      continue;
+    }
+
+    if (refund?.status === "failed") {
+      await RefundRequest.updateOne(
+        { _id: request._id, status: REFUND_REQUEST_STATUS.PROCESSING },
+        {
+          $set: {
+            status: REFUND_REQUEST_STATUS.FAILED,
+            failedAt: new Date(),
+            failureReason:
+              refund?.status_reason || "Razorpay reported the refund as failed",
+            // Still open, and the hold stays on: the money has not gone back.
+            isOpen: true,
+          },
+        },
+      );
+      failed += 1;
+      continue;
+    }
+
+    stillPending += 1;
+  }
+
+  return {
+    checked: inFlight.length,
+    completed,
+    failed,
+    stillPending,
+    unreachable,
+  };
+};
+
+/**
+ * The payment entity, for its cumulative `amount_refunded`.
+ *
+ * Best-effort: without it `applyRefundCompletion` falls back to adding this
+ * refund onto the stored total, which is still monotonic because of the `$max`.
+ * A failure here must not stop a completed refund being recorded.
+ */
+const fetchPaymentQuietly = async (transaction) => {
+  try {
+    const { instance } = getRazorpayAccount(transaction.gatewayAccount);
+    return await instance.payments.fetch(transaction.razorpayPaymentId);
+  } catch (error) {
+    return null;
+  }
+};
+
+/**
+ * Nudge the outlet before their window runs out.
+ *
+ * Two reminders, spread across the window, and `remindersSent` is incremented in
+ * the **same** conditional update that selects the row — so two instances
+ * running the sweep together cannot send the same nudge twice.
+ */
+exports.remindVendorsAboutRefunds = async () => {
+  const config = await getCustomerConfig();
+  const windowHours = Number(config.refund?.vendorApprovalHours) || 24;
+  const now = Date.now();
+
+  /**
+   * At most **one** nudge per row per sweep.
+   *
+   * ⚠️ An earlier version looped both marks in one pass with a `$lte` filter,
+   * and a request already close to its deadline matched both: the second query
+   * re-read the row the first had just bumped and fired again. The outlet got
+   * two identical reminders a millisecond apart, which reads as a broken system
+   * rather than a helpful one.
+   *
+   * So the sweep asks a different question — *how many nudges should this row
+   * have had by now?* — and sends at most the next one. The job runs hourly, so
+   * the spacing comes from the schedule rather than from arithmetic here.
+   */
+  const marks = [0.5, 0.75];
+
+  const candidates = await RefundRequest.find({
+    status: REFUND_REQUEST_STATUS.REQUESTED,
+    vendorRespondBy: { $gt: new Date(now) },
+    remindersSent: { $lt: marks.length },
+    isDeleted: false,
+  })
+    .select("_id brandId claimCode vendorRespondBy remindersSent")
+    .limit(200)
+    .lean();
+
+  let sent = 0;
+
+  for (const request of candidates) {
+    const remaining = new Date(request.vendorRespondBy).getTime() - now;
+    const elapsedFraction = 1 - remaining / (windowHours * HOUR_MS);
+
+    // How many marks this row has passed.
+    const due = marks.filter((mark) => elapsedFraction >= mark).length;
+    if (due <= request.remindersSent) continue;
+
+    /**
+     * The count is bumped in the **same** update that claims the row, and the
+     * filter names the value it expects to find. Two instances reading the same
+     * batch cannot both win: the second one's filter no longer matches.
+     */
+    const claimed = await RefundRequest.findOneAndUpdate(
+      { _id: request._id, remindersSent: request.remindersSent },
+      { $set: { remindersSent: request.remindersSent + 1 } },
+      { returnDocument: "after" },
+    ).lean();
+
+    if (!claimed) continue;
+
+    await sendQuietly(
+      () => notifyVendorRefundReminder({ request: claimed }),
+      "vendor refund reminder",
+    );
+    sent += 1;
+  }
+
+  return { sent };
+};

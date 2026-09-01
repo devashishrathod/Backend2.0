@@ -13,6 +13,11 @@ module.exports = {
   // elsewhere in the repo is never picked up by accident.
   testMatch: ["<rootDir>/__tests__/money/**/*.test.js"],
   globalSetup: "<rootDir>/__tests__/money/setup/globalSetup.js",
+  /**
+   * Releases the run lock the setup takes. Without it a finished run would keep
+   * the database to itself until the lock's TTL expired.
+   */
+  globalTeardown: "<rootDir>/__tests__/money/setup/globalTeardown.js",
   // Every test file shares one database on a real cluster, so they must not run
   // concurrently — two files clearing the same collection would fail each other
   // in ways that look like real bugs. `--runInBand` in the npm script does the

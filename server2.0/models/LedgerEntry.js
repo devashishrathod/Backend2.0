@@ -139,6 +139,23 @@ ledgerEntrySchema.index({ voucherClaimId: 1 });
  * of times. `$type: "objectId"` keeps entries with no transaction out of the
  * index entirely, so two settlement payouts do not collide on a shared null.
  */
+/**
+ * One row per entry type per refund.
+ *
+ * `$type: "objectId"` rather than `sparse: true` — sparse still indexes an
+ * explicit `null`, so every non-refund row in the collection would collide on a
+ * rule that was never meant to apply to it. That is the same bug the legacy
+ * `invoiceId_1` index caused, and it actually fired in 1B.
+ */
+ledgerEntrySchema.index(
+  { refundRequestId: 1, entryType: 1 },
+  {
+    name: LEDGER_INDEXES.ONCE_PER_REFUND,
+    unique: true,
+    partialFilterExpression: { refundRequestId: { $type: "objectId" } },
+  },
+);
+
 ledgerEntrySchema.index(
   { entryType: 1, transactionId: 1 },
   {

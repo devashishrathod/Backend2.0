@@ -174,6 +174,19 @@ const LEDGER_ENTRY_RULES = Object.freeze({
 
 const LEDGER_INDEXES = Object.freeze({
   ONCE_PER_TRANSACTION: "ledger_type_transaction_unique",
+  /**
+   * One row per entry type per refund.
+   *
+   * ⚠️ `ONCE_PER_TRANSACTION` does not cover a refund and cannot: a payment may
+   * be refunded twice, and each refund posts its own set of rows against the
+   * same `transactionId`. Without this index a replayed `refund.processed`
+   * webhook — which Razorpay does send — books the whole set a second time, and
+   * the vendor is clawed back twice for one refund.
+   *
+   * Keyed on `refundRequestId` rather than the transaction, so two genuine
+   * partial refunds each get their own set while neither can be booked twice.
+   */
+  ONCE_PER_REFUND: "ledger_type_refund_unique",
 });
 
 /** What `reconcileLedger` reports when the books disagree. */

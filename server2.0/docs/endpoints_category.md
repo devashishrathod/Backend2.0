@@ -579,6 +579,51 @@ Customer ka voucher claim — paisa andar. **Likhne wale** do endpoint `isCustom
 
 ---
 
+## 22b. Refunds 🆕 — `/refunds` (9)
+
+Grahak maange → **vendor tay kare** → admin nikaale. Admin normal raaste par doosra gate **nahi** hai; wo sirf paisa chhodta hai.
+
+> ### Golden rule — settings validator me enforce hai
+>
+> ```
+> settlementDelayHours >= refundWindowHours + vendorApprovalHours + adminBufferHours
+>          72h         >=        24h        +        24h         +       12h
+> ```
+>
+> Jab tak ye sach hai, **koi refund kabhi aise paise ko chhoo hi nahi sakta jo vendor ko ja chuka ho.** Na recovery, na negative balance, na vendor ko kuch samjhana. Refund us cycle ka payable kam karta hai, bas.
+
+> ### ⚠️ `settlementHold` lagta bhi hai, **hatta bhi** hai
+>
+> Refund `REQUESTED` hote hi hold lag jaata hai — wahi ek line poori "pehle pay kar diya, ab wapas lo" wali samasya khatam karti hai. Ulta utna hi khatarnak hai: **jo hold koi nahi hataata, wo vendor ka paisa har aane wali settlement se hamesha ke liye bahar kar deta hai — chup-chaap**, kyunki eligibility predicate bas match karna band kar deta hai. Koi error nahi, koi log nahi.
+>
+> Isliye `releaseSettlementHold()` teeno terminal states se bulaya jaata hai jahan paisa hilta hi nahi — `VENDOR_REJECTED`, `ADMIN_REJECTED`, `CANCELLED`. `FAILED` aur `COMPLETED` se **nahi**: pehle me paisa abhi bhi wapas jaana hai, doosre me wo vendor ka tha hi nahi. Aur wo kisi aur ki taraf se release **nahi** karta — chargeback ka hold sirf explicit admin action se hatta hai, webhook se kabhi nahi.
+
+> ### Abuse limits — admin config se
+>
+> `refund.maxOpenRequests` (1) · `refund.maxRejectedPerWindow` (3) · `refund.requestWindowDays` (30)
+>
+> ⚠️ Ginti **thukrai** requests ki hoti hai, approve hui ki **kabhi nahi**. Galat ka sanket ye nahi ki kitna paisa wapas gaya — wo hai *"vendor ne dekhkar kaha ki ye jayaz nahi thi"*. Jis grahak ki 5 refunds approve hui, uske saath 5 baar sach me bura hua; uski chhathi rokna theek usi ko saza dena hai jiske liye ye poori vyavastha bani hai. Aur raw count rakhne par **sabse kharab brand ka grahak sabse pehle block** hota — jo sabse zyada haqdaar hai. `CANCELLED` bhi ginta hai: raise → vendor dekhe → withdraw → phir raise, ye vendor ko vyast rakhne ka tareeka hai bina kabhi rejection kamaye.
+>
+> Limit chhoone par jawab **support par bhejta hai, raasta band nahi karta** — admin uski taraf se refund khol sakta hai.
+
+| # | Method | Endpoint | Access | Cat | Notes |
+|---|---|---|---|---|---|
+| 133a 🆕 | POST | `/refunds` | Intended: Customer · Enforced: **CUSTOMER + ownership** | 🔵 | **Kram hi design hai:** eligibility → allowance → window → split freeze → **request banao** → hold lagao. Request pehle, hold baad me: request hi record hai aur hold usse nikalta hai. Do tap ka faisla `(transactionId, isOpen)` wala unique index karta hai, uske upar wala read-then-write check nahi (dono use paas kar jaate hain) — haarne wale ko wahi request milti hai `reused: true` ke saath. Window **`paidAt` se** napi jaati hai, `createdAt` se nahi. `amount` optional — na do to poora |
+| 133b 🆕 | PATCH | `/refunds/:requestId/withdraw` | Intended: Customer · Enforced: **CUSTOMER + ownership** | 🔵 | `PROCESSING` ke baad nahi — paisa Razorpay ke paas hai, wapas lene ko kuch hai hi nahi. Hold hattta hai |
+| 133c 🆕 | PATCH | `/refunds/:requestId/approve` | Intended: Vendor / Outlet · Enforced: **brand + outlet** | 🟢 | **Rakam ghat sakti hai, badh nahi** — *"aadha order theek tha"* asli jawab hai; badhana approval nahi, naya faisla hai, aur ek extra shunya das guna pay out kar deta. Split wahin dobara freeze hota hai. `status` update filter me hai (conditional claim): owner aur outlet manager ek hi request dekh sakte hain, warna dono clicks lagte aur grahak ka jawab is par nirbhar karta ki kaun dheema tha |
+| 133d 🆕 | PATCH | `/refunds/:requestId/reject` | Intended: Vendor / Outlet · Enforced: **brand + outlet** | 🟢 | `note` **zaroori** — jab grahak inkaar ko chunauti de, admin ke paas sameeksha karne ko yahi ek cheez hoti hai. `settlementHold` yahin hattta hai |
+| 133e 🆕 | PATCH | `/refunds/admin/:requestId/approve` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Normal raaste par doosra gate nahi. Vendor ki *"na"* ya chuppi palatne par `overrideReason` **zaroori** aur `isOverride: true` — alag se gina jaata hai: badhti override dar ka matlab admin udaar nahi, matlab upar kahin gadbad hai |
+| 133f 🆕 | PATCH | `/refunds/admin/:requestId/reject` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Hold hattta hai |
+| 133g 🆕 | PATCH | `/refunds/admin/:requestId/pay` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | ⚠️ **`attemptCount` gateway call se PEHLE badhta hai.** Agar process us beech mare jab Razorpay ne refund maan liya par id sahej na paye — row `PROCESSING` kehti hai, `attemptCount: 1`, koi `razorpayRefundId` nahi — aur agli koshish `payments.fetchMultipleRefund()` se **poochti hai**, doosra refund bhejti nahi. Baad me badhate to counter shunya rehta aur retry grahak ko paisa **do baar** bhej deta. Match hamare stamp kiye `notes.refundRequestId` par, rakam par nahi. Lookup khud fail ho to **503**, row `PROCESSING` chhod deta — galat hone ka surakshit tareeka |
+| 133h 🆕 | GET | `/refunds` | Intended: sab · Enforced: **token se scope** | 🔵 | Ek endpoint, teen shapes. `?open=true` worklist hai — **sabse purani upar**, kyunki wahi timeout ke sabse kareeb hai aur usi grahak ne sabse lamba intezaar kiya. ⚠️ `split` me `platformPromoReversal` aur `gatewayFeeAbsorbed` (hamara margin) **usi sub-document par** hain jis par `vendorClawback` hai — isiliye faisla ek jagah hota hai. `canDecide` / `canWithdraw` response me **bataye** jaate hain: jo panel status se nikalega wo naye state judte hi galat hoga |
+| 133i 🆕 | GET | `/refunds/:requestId` | Intended: sab · Enforced: **`assertRefundAccess`** | 🔵 | Refund + claim + **claim ki timeline** (alag refund timeline nahi — refund claim ke saath hui cheez hai, aur claim ki kahani wahi jagah hai jahan teeno jaate hain). Poora row padhkar, jaanchkar, phir `pickByProjection` se chhanta hai: ownership `customerId`/`brandId` me hai aur vendor projection unhi ko chhupati hai |
+
+**Webhooks:** `refund.created` · `refund.processed` · `refund.failed` — teeno ab handle hote hain. ⚠️ Pehle sirf `refund.processed` tha; baaki do enum me the par kisi branch me nahi, to **failed refund chup-chaap `IGNORED` hokar gir jaata** — grahak ka paisa kabhi nahi pahuncha, request abhi bhi `PROCESSING` kehti thi, aur koi kuch nahi batata tha.
+
+**Jobs (3):** `escalateStaleRefunds` (15m) · `reconcileRefunds` (30m, **sirf padhta hai** — refund jaari karna `executeRefund` ka kaam hai aur uske apne double-payment guards hain) · `remindVendorsAboutRefunds` (60m)
+
+---
+
 ## 23. Settings — `/settings` (2)
 
 | # | Method | Endpoint | Access | Cat |

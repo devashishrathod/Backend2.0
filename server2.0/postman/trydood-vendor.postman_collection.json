@@ -12393,7 +12393,379 @@
       ]
     },
     {
-      "name": "19 — Access control (vendor token refuse hona chahiye)",
+      "name": "19 — Refunds",
+      "description": "**Aap tay karte hain, Trydood sirf nikaalta hai.**\n\nAapke paas `refund.vendorApprovalHours` (24) ki window hai. Beet gayi to request\naapki rehti hi nahi — Trydood ke paas chali jaati hai. Do reminder pehle aate hain,\ntaaki timeout kabhi achanak na ho.",
+      "item": [
+        {
+          "name": "Refund worklist ⭐",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/refunds?open=true&page=1&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "refunds"
+              ],
+              "query": [
+                {
+                  "key": "open",
+                  "value": "true"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "outletId",
+                  "value": "{{sub_brand_id}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** 🔒 `verifyJwtToken` — `VENDOR` aur `SUB_VENDOR` dono. Outlet token isi URL\npar **sirf apne outlet** ki rows paata hai.\n\n`?open=true` par **sabse purani upar** — wahi timeout ke sabse kareeb hai aur usi\ngrahak ne sabse lamba intezaar kiya. Bina uske sabse nayi upar (history browse karne\nke liye).\n\n| Field | Customer | Vendor / Outlet | Admin |\n|---|:-:|:-:|:-:|\n| `split.totalRefund` | ✅ | — | ✅ |\n| `split.vendorClawback` · `vendorPromoReversal` | — | ✅ | ✅ |\n| `split.platformPromoReversal` · `gatewayFeeAbsorbed` | — | — | ✅ |\n| `utr` | ✅ | — | ✅ |\n| `vendorNote` | ❌ | apna | ✅ |\n| `adminNote` · `overrideReason` | ❌ | ❌ | ✅ |\n| `customerId` | ✅ (apna) | ❌ | ✅ |\n\n> ⚠️ `split` me hamara promo hissa aur wo MDR jo hum khaate hain **usi**\n> sub-document par hain jis par `vendorClawback` hai — jo vendor ko sach me\n> chahiye. Isiliye ye faisla `refundProjection()` me ek jagah hota hai, har call\n> site par yaad nahi rakha jaata.\n\n`canDecide` response me bataya jaata hai."
+          },
+          "response": []
+        },
+        {
+          "name": "Refund approve karo ⭐",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"approvedAmount\": 400,\n  \"note\": \"Only the starter was wrong.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/refunds/{{refund_request_id}}/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "refunds",
+                "{{refund_request_id}}",
+                "approve"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** 🔒 `verifyJwtToken` — apne brand ka, aur `SUB_VENDOR` ke liye apne outlet ka\n\n### ⚠️ Rakam **ghat** sakti hai, **badh nahi**\n\n*\"Aadha order theek tha, starter nahi\"* asli jawab hai, aur rakam kam karna use dene\nka tareeka hai. Badhana grahak ne jo maanga uski approval nahi — wo naya faisla hai,\naur is step par ek extra shunya **das guna** pay out kar deta us aadmi ko jisne maanga\nhi nahi. `422` milega.\n\n`approvedAmount` na do to poora. `requestedAmount` kabhi overwrite nahi hota — antar\ndikhta rehta hai, kyunki wo baad me kisi ko samjhana pad sakta hai.\n\n**Split wahin dobara freeze hota hai** — jo paisa asal me hilega wahi block me likha\nhona chahiye.\n\n### Do log ek hi request nahi tay kar sakte\n\n`status` update filter ka hissa hai. Owner aur outlet manager ek hi request dekh sakte\nhain; iske bina dono clicks lagte aur doosra pehle ko chup-chaap mita deta — yaani\ngrahak ka jawab is par nirbhar karta ki kaun dheema tha. Haarne wale ko `409` milta hai\njo **batata hai kya hua**: *\"already been decided (vendor approved)\"* ya\n*\"already gone to Trydood for review\"*. Dono ke aage ke kadam alag hain.\n\nHold **laga rehta hai** — paisa abhi bhi wapas jaana hai."
+          },
+          "response": []
+        },
+        {
+          "name": "Refund reject karo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Customer collected the order in full.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/refunds/{{refund_request_id}}/reject",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "refunds",
+                "{{refund_request_id}}",
+                "reject"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** 🔒 `verifyJwtToken` — apne brand ka\n\n`note` **zaroori** (min 3 chars). Jab grahak inkaar ko chunauti de, admin ke paas\nsameeksha karne ko yahi ek cheez hoti hai — akela *\"rejected\"* har appeal ko phone\ncall bana deta hai.\n\n⚠️ Aapka note **grahak ko kabhi nahi dikhta**. Wo staff ke liye hai.\n\n### `settlementHold` yahin hattta hai\n\nRefund maangte hi aapke us claim ka paisa har settlement se bahar ho jaata hai. Reject\nkarne par wo **wapas aa jaata hai**.\n\n> ⚠️ Ulta utna hi khatarnak hai: **jo hold koi na hataaye wo aapka paisa hamesha ke liye\n> har aane wali settlement se bahar kar deta hai — chup-chaap**, kyunki eligibility\n> predicate bas match karna band kar deta hai. Koi error nahi aata, koi log nahi. Isiliye\n> teeno terminal states (`VENDOR_REJECTED`, `ADMIN_REJECTED`, `CANCELLED`) se release\n> bulaya jaata hai — aur `FAILED` / `COMPLETED` se **nahi**: pehle me paisa abhi bhi\n> wapas jaana hai, doosre me wo aapka tha hi nahi.\n\nEk apwaad: us payment par **chargeback** khula ho to hold nahi hattta. Use hataana\nexplicit admin action hai — refund ki logic se hataane ka matlab hota wo paisa settle\nkar dena jise bank usi waqt wapas kheench raha hai."
+          },
+          "response": []
+        },
+        {
+          "name": "Ek refund — claim aur timeline ke saath",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/refunds/{{refund_request_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "refunds",
+                "{{refund_request_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** 🔒 `verifyJwtToken`\n\n`refund` · `claim` · **`timeline`** · `viewer`. Timeline har audience ke liye\n**banayi** jaati hai, chhaani nahi — kaccha audit row `snapshot` me poora pricing\nblock rakhta hai (`platformPromoCost` samet) aur `reason` staff ka note hai."
+          },
+          "response": []
+        },
+        {
+          "name": "Approve karne ki koshish, jab rakam badha rahe ho — 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 422\", function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test(\"failure envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(false);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"approvedAmount\": 8100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/refunds/{{refund_request_id}}/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "refunds",
+                "{{refund_request_id}}",
+                "approve"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Ek extra shunya das guna pay out kar deta us aadmi ko jisne maanga hi nahi. Jawab naam lekar batata hai: *\"The customer asked for ₹810.00. You can approve that or less, not more.\"*"
+          },
+          "response": []
+        },
+        {
+          "name": "Dusre brand ki refund — 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "});",
+                  "",
+                  "pm.test(\"failure envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(false);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Not ours.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/refunds/{{other_brand_refund_id}}/reject",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "refunds",
+                "{{other_brand_refund_id}}",
+                "reject"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Faisla lena padhne se strong action hai, isliye gate usse dheela nahi ho sakta — `SUB_VENDOR` ko dusre outlet ki refund par bhi 403 milta hai."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "20 — Access control (vendor token refuse hona chahiye)",
       "description": "**Negative tests** — har request ka pass hona matlab gate kaam kar raha hai.\nSab vendor ke apne token se chalti hain.\n\n| Status | Kab |\n|---|---|\n| `401` | Token hai hi nahi, ya expire |\n| `403` | Token malformed, ya role allowed nahi |\n| `422` | Role validator se reject (password flow) |\n\n### ⚠️ Kuch customer endpoints ab **public** hain\n\nGuest browsing aane ke baad `/brands/customer/*`, `/showcase/get-brand-showcase/*`\naur voucher browse endpoints pe koi gate nahi hai — vendor token pe wo `200` denge,\n`403` nahi. Isliye wo yahan negative tests me nahi hain.\n\nReachable hona use karne ka karan nahi hai: wo customer app ka data model hain, vendor\npanel ka nahi. [Appendix A](../docs/vendor_panel_api_doc.md#appendix-a--not-for-vendor-panel) dekhein.",
       "item": [
         {

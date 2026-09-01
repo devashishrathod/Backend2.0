@@ -487,6 +487,30 @@ const refundSettingSchema = new mongoose.Schema(
       default: REFUND_DEFAULTS.authorizedAlertMinutes,
       min: 1,
     },
+
+    /**
+     * ---------- abuse limits ----------
+     *
+     * These count **refused** requests, never approved ones — see
+     * `REFUND_DEFAULTS`. A customer with five approved refunds had five bad
+     * experiences, and blocking their sixth punishes the person the process
+     * exists for.
+     */
+    maxOpenRequests: {
+      type: Number,
+      default: REFUND_DEFAULTS.maxOpenRequests,
+      min: 1,
+    },
+    maxRejectedPerWindow: {
+      type: Number,
+      default: REFUND_DEFAULTS.maxRejectedPerWindow,
+      min: 1,
+    },
+    requestWindowDays: {
+      type: Number,
+      default: REFUND_DEFAULTS.requestWindowDays,
+      min: 1,
+    },
   },
   { _id: false },
 );

@@ -8,6 +8,7 @@ const {
   getPlatformTotals,
 } = require("./getVendorBalance");
 const { postCaptureEntries } = require("./postCaptureEntries");
+const { postRefundEntries } = require("./postRefundEntries");
 
 module.exports = {
   // The only way a ledger row is created. Never write one directly.
@@ -20,4 +21,7 @@ module.exports = {
   getPlatformTotals,
   // Every row a captured claim produces, idempotent so a resume is safe.
   postCaptureEntries,
+  // The mirror image: each row reverses the capture row it matches, under the
+  // same entry type, so a report grouped by type nets out on its own.
+  postRefundEntries,
 };

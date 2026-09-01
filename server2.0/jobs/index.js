@@ -12,6 +12,11 @@ const {
   reconcileClaimPayments,
   alertStuckAuthorizations,
 } = require("../services/voucherClaims");
+const {
+  escalateStaleRefunds,
+  reconcileRefunds,
+  remindVendorsAboutRefunds,
+} = require("../services/refunds");
 const { getSubscriptionConfig } = require("../helpers/settings");
 const {
   acquireJobLock,
@@ -124,6 +129,37 @@ const registry = [
     name: "alertStuckAuthorizations",
     run: alertStuckAuthorizations,
     intervalMinutes: () => 30,
+  },
+
+  // ---------------- refunds ----------------
+  {
+    /**
+     * A silent outlet cannot hold a customer's money. After
+     * `refund.vendorApprovalHours` the request stops being theirs.
+     */
+    name: "escalateStaleRefunds",
+    run: escalateStaleRefunds,
+    intervalMinutes: () => 15,
+  },
+  {
+    /**
+     * Refunds that left for Razorpay and never came back.
+     *
+     * A lost `refund.processed` leaves the customer with their money, the claim
+     * still redeemed, the once-per-user slot still held and no ledger row. This
+     * asks Razorpay rather than waiting — and **reads only**: issuing a refund
+     * is `executeRefund`'s job, and a reconcile that could pay would be a
+     * second, unguarded path to money leaving.
+     */
+    name: "reconcileRefunds",
+    run: reconcileRefunds,
+    intervalMinutes: () => 30,
+  },
+  {
+    // Two nudges before the window closes, so a timeout is never a surprise.
+    name: "remindVendorsAboutRefunds",
+    run: remindVendorsAboutRefunds,
+    intervalMinutes: () => 60,
   },
 ];
 

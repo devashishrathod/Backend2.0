@@ -29,7 +29,14 @@ const {
   notifyBrandCustomerVisibilityChanged,
 } = require("./brandStatusNotices");
 
+const refundNotices = require("./refundNotices");
+
+const { sendQuietly } = require("./sendQuietly");
+
 module.exports = {
+  sendQuietly,
+  // Refund notices, one per state somebody can act on.
+  ...refundNotices,
   notify,
   notifyAdmins,
   notifyAudience,

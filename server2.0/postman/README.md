@@ -6,8 +6,8 @@ jhooth nahi bol sakti.
 
 | Collection | Endpoints | Status |
 |---|---:|---|
-| `trydood-customer.postman_collection.json` | 42 | ⚠️ 99 requests · **132 captured examples** — 11 naye (Voucher Claims) **abhi capture nahi hue** |
-| `trydood-vendor.postman_collection.json` | 83 | ⚠️ 106 requests · **105 captured examples** — 7 naye (Voucher Claims) **abhi capture nahi hue** |
+| `trydood-customer.postman_collection.json` | 48 | ⚠️ 105 requests · **132 captured examples** — 17 naye (Voucher Claims + Refunds) **abhi capture nahi hue** |
+| `trydood-vendor.postman_collection.json` | 89 | ⚠️ 112 requests · **105 captured examples** — 13 naye (Voucher Claims + Refunds) **abhi capture nahi hue** |
 | `trydood-admin.postman_collection.json` | 114 | ⬜ Phase 3 |
 | `trydood-security-changes.postman_collection.json` | – | ⏳ Teeno panel collections ready hone par retire hogi |
 
@@ -19,12 +19,15 @@ Companion docs: [`../docs/customer_mobile_api_doc.md`](../docs/customer_mobile_a
 
 ## Naye endpoints haath se jode jaate hain, generate nahi
 
-Voucher-claim ke 18 requests `scripts/addClaimRequestsToPostman.js` ne **jode** — generator
+Voucher-claim ke 18 aur refund ke 12 requests do scripts ne **jode** — generator kabhi
 nahi chalaya gaya:
 
 ```bash
 node scripts/addClaimRequestsToPostman.js           # kya badlega
 node scripts/addClaimRequestsToPostman.js --apply   # badlo
+
+node scripts/addRefundRequestsToPostman.js
+node scripts/addRefundRequestsToPostman.js --apply
 ```
 
 Script sirf **insert** karti hai aur teen guard rakhti hai:
@@ -39,7 +42,7 @@ Script sirf **insert** karti hai aur teen guard rakhti hai:
    gaye the: Postman array order me dikhata hai, isliye kuch error nahi hota aur kisi ko
    pata nahi chalta
 
-⚠️ **In 18 requests ke examples abhi capture nahi hue.** Neeche wala capture step chalana
+⚠️ **In 30 requests ke examples abhi capture nahi hue.** Neeche wala capture step chalana
 baaki hai — usme `newman` chahiye, jo is machine par install nahi hai.
 
 ---

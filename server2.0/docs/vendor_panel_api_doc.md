@@ -5809,6 +5809,126 @@ code par `422` *"mistyped character"* — `404` lagta hai claim maujood hi nahi.
 
 ---
 
+# Refund APIs 🆕
+
+**Aap tay karte hain, Trydood sirf nikaalta hai.** Normal raaste par Trydood doosra gate
+nahi hai — aap approve karein, paisa chala jaata hai.
+
+## ⚠️ Aapke paas ek window hai
+
+`refund.vendorApprovalHours` (default **24**), aur wo `vendorRespondBy` par row me likhi
+hoti hai. Beet gayi to request **aapki rehti hi nahi** — Trydood ke paas chali jaati hai,
+aur aap uspar kuch nahi kar sakte (`409` *"already gone to Trydood for review"*). Do
+reminder pehle aate hain, taaki timeout kabhi achanak na ho.
+
+Ek chup outlet grahak ka paisa nahi rok sakta — par window ke andar faisla aapka hi hai.
+
+## 87. GET /refunds — mere brand ki refunds
+
+**Access:** 🔒 `verifyJwtToken` — `VENDOR` aur `SUB_VENDOR` dono
+
+`SUB_VENDOR` token isi URL par **sirf apne outlet** ki rows paata hai.
+
+| Param | Notes |
+|---|---|
+| `open=true` | **Worklist** — sabse purani upar, kyunki wahi timeout ke sabse kareeb hai aur usi grahak ne sabse lamba intezaar kiya |
+| `status` | `REQUESTED · VENDOR_APPROVED · VENDOR_REJECTED · VENDOR_TIMEOUT · ADMIN_APPROVED · ADMIN_REJECTED · ADMIN_OVERRIDE · PROCESSING · COMPLETED · FAILED · CANCELLED` |
+| `claimCode` · `outletId` · `from` / `to` | Narrow karne ke liye |
+
+### Aapko kya dikhta hai
+
+| Field | Aapko | Kyun |
+|---|:-:|---|
+| `reasonNote` | ✅ | Grahak ne kya kaha — aapke faisle ka poora aadhaar |
+| `split.vendorClawback` | ✅ | Aapse kitna katega |
+| `split.vendorPromoReversal` | ✅ | Promo me aapka hissa, wapas |
+| `split.platformPromoReversal` · `gatewayFeeAbsorbed` | ❌ | Hamara margin — commercial disclosure |
+| `vendorNote` | ✅ (apna) | |
+| `adminNote` · `overrideReason` | ❌ | Staff-to-staff, aur override aapke khilaf liya faisla naam leta hai |
+| `customerId` | ❌ | Privacy |
+
+⚠️ `split` me hamara promo hissa aur MDR **usi sub-document par** hain jis par
+`vendorClawback` hai, jo aapko sach me chahiye. Isiliye ye faisla `refundProjection()` me
+**ek jagah** hota hai.
+
+`canDecide` response me **bataya** jaata hai — panel ko status se andaza nahi lagana chahiye.
+
+---
+
+## 88. PATCH /refunds/:requestId/approve — haan
+
+**Access:** 🔒 `verifyJwtToken` — `VENDOR` / `SUB_VENDOR` (apne outlet ka)
+
+| Field | Zaroori | Notes |
+|---|:-:|---|
+| `approvedAmount` | — | Na do to poora |
+| `note` | — | |
+
+### ⚠️ Rakam **ghat** sakti hai, **badh nahi**
+
+*"Aadha order theek tha, starter nahi"* asli jawab hai, aur rakam kam karna use dene ka
+tareeka hai. Badhana grahak ne jo maanga uski approval nahi — wo naya faisla hai, aur is
+step par ek extra shunya **das guna** pay out kar deta us aadmi ko jisne maanga hi nahi.
+`422` milega.
+
+Split wahin **dobara freeze** hota hai — jo paisa asal me hilega wahi block me likha hona
+chahiye.
+
+Hold **laga rehta hai**: paisa abhi bhi wapas jaana hai.
+
+> **Do log ek hi request nahi tay kar sakte.** `status` update filter ka hissa hai. Owner
+> aur outlet manager ek hi request dekh sakte hain; iske bina dono clicks lagte aur doosra
+> pehle ko chup-chaap mita deta — yaani grahak ka jawab is par nirbhar karta ki kaun dheema
+> tha. Haarne wale ko `409` milta hai jo **batata hai kya hua**, sirf ye nahi ki nakaam raha.
+
+---
+
+## 89. PATCH /refunds/:requestId/reject — na
+
+**Access:** 🔒 `verifyJwtToken` — `VENDOR` / `SUB_VENDOR`
+
+`note` **zaroori** (min 3 chars). Jab grahak inkaar ko chunauti de, admin ke paas sameeksha
+karne ko yahi ek cheez hoti hai — akela *"rejected"* har appeal ko phone call bana deta hai.
+
+⚠️ Aapka note **grahak ko kabhi nahi dikhta**. Wo staff ke liye hai.
+
+### `settlementHold` yahin hattta hai
+
+Refund maangte hi aapke us claim ka paisa har settlement se bahar ho jaata hai. Reject
+karne par wo **wapas aa jaata hai**.
+
+> Ye ulta utna hi khatarnak hai: jo hold koi na hataaye wo aapka paisa **hamesha ke liye**
+> har aane wali settlement se bahar kar deta hai — chup-chaap, kyunki eligibility predicate
+> bas match karna band kar deta hai. Koi error nahi aata. Isiliye teeno terminal states se
+> release bulaya jaata hai.
+
+Ek apwaad: us payment par **chargeback** khula ho to hold nahi hattta. Use hataana explicit
+admin action hai — refund ki logic se hataane ka matlab hota wo paisa settle kar dena jise
+bank usi waqt wapas kheench raha hai.
+
+---
+
+## 90. GET /refunds/:requestId — ek refund
+
+**Access:** 🔒 `verifyJwtToken`
+
+`refund` · `claim` · **`timeline`** · `viewer`. Timeline claim ki hai, aur har audience ke
+liye **banayi** jaati hai — kaccha audit row `snapshot` me poora pricing block rakhta hai
+(`platformPromoCost` samet).
+
+---
+
+## Refund ke notifications
+
+| Kab | Severity | Kya |
+|---|:-:|---|
+| Refund maanga gaya | ⚠️ WARNING | *"Please respond by \<date\> — after that it goes to Trydood"* |
+| Window band ho rahi hai | ⚠️ WARNING | Do nudges, adhe aur teen-chauthai par |
+
+WARNING isliye ki deadline hai, aur use chookne par faisla aapke haath se nikal jaata hai.
+
+---
+
 # Appendix A — Not For Vendor Panel
 
 Ye 62 endpoints backend me hain par vendor panel inko use na kare. Zyada tar ab properly gated hain (`403` denge), par kuch pe abhi bhi role check nahi hai — un pe app ko khud discipline rakhni hogi.

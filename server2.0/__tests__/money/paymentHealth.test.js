@@ -8,6 +8,7 @@ const {
 const Transaction = require("../../models/Transaction");
 const VoucherClaim = require("../../models/VoucherClaim");
 const JobLock = require("../../models/JobLock");
+const RefundRequest = require("../../models/RefundRequest");
 const { getPaymentHealth } = require("../../services/transactions");
 const { getJobRegistry } = require("../../jobs");
 const {
@@ -17,6 +18,10 @@ const {
   PAYMENT_HEALTH_STATUS,
 } = require("../../constants/transaction");
 const { VOUCHER_CLAIM_STATUS } = require("../../constants/voucherClaim");
+const {
+  REFUND_REQUEST_STATUS,
+  REFUND_REASON,
+} = require("../../constants/refund");
 const { PAYMENT_STATUS } = require("../../constants");
 
 const oid = () => new mongoose.Types.ObjectId();
@@ -55,16 +60,18 @@ const claimPayment = (overrides = {}) => ({
 
 beforeAll(async () => {
   await connectTestDb();
-  for (const m of [Transaction, VoucherClaim, JobLock]) await m.createIndexes();
+  for (const m of [Transaction, VoucherClaim, JobLock, RefundRequest]) {
+    await m.createIndexes();
+  }
 });
 
 afterAll(async () => {
-  await clearCollections(Transaction, VoucherClaim, JobLock);
+  await clearCollections(Transaction, VoucherClaim, JobLock, RefundRequest);
   await disconnectTestDb();
 });
 
 beforeEach(async () => {
-  await clearCollections(Transaction, VoucherClaim, JobLock);
+  await clearCollections(Transaction, VoucherClaim, JobLock, RefundRequest);
   await seedHealthyJobs();
 });
 
@@ -79,6 +86,9 @@ describe("a quiet system reports quiet", () => {
       openDisputes: 0,
       disputesDueSoon: 0,
       unsettledCaptures: 0,
+      stuckFailedRefunds: 0,
+      stuckProcessingRefunds: 0,
+      unattendedEscalations: 0,
     });
   });
 
@@ -358,5 +368,104 @@ describe("the index guarantee is reported, not assumed", () => {
     const health = await getPaymentHealth();
     expect(health.checkedAt).toBeInstanceOf(Date);
     expect(Date.now() - health.checkedAt.getTime()).toBeLessThan(60_000);
+  });
+});
+
+describe("refunds that nobody has moved", () => {
+  /**
+   * `status` is set after creation because the `pre("save")` hook derives
+   * `isOpen` from it — creating straight into a terminal state is a shape the
+   * real flow never produces.
+   */
+  const seedRefund = async ({ status, failedAt, initiatedAt, updatedAt }) => {
+    const doc = await RefundRequest.create({
+      claimId: oid(),
+      transactionId: oid(),
+      customerId: oid(),
+      brandId: oid(),
+      claimCode: "TD-ACD349",
+      requestedAmount: 810,
+      reason: REFUND_REASON.NOT_HONOURED,
+      ...(failedAt ? { failedAt } : {}),
+      ...(initiatedAt ? { initiatedAt } : {}),
+    });
+    doc.status = status;
+    await doc.save();
+    if (updatedAt) {
+      await RefundRequest.collection.updateOne(
+        { _id: doc._id },
+        { $set: { updatedAt } },
+      );
+    }
+    return doc;
+  };
+
+  /**
+   * ⚠️ CRITICAL, and for the mirror image of the reason an uncaptured
+   * authorization is: a customer's money is being **held** and nothing automated
+   * will release it. `SOURCE` is the only automated path and it has already
+   * failed, usually because the instrument cannot accept a refund at all.
+   */
+  it("flags a failed refund nobody has picked up", async () => {
+    await seedRefund({
+      status: REFUND_REQUEST_STATUS.FAILED,
+      failedAt: ago(3 * DAY),
+    });
+
+    const health = await getPaymentHealth();
+    expect(health.stuck.stuckFailedRefunds).toBe(1);
+    expect(health.status).toBe(PAYMENT_HEALTH_STATUS.CRITICAL);
+  });
+
+  it("gives a fresh failure a day before calling it stuck", async () => {
+    await seedRefund({
+      status: REFUND_REQUEST_STATUS.FAILED,
+      failedAt: new Date(),
+    });
+
+    const health = await getPaymentHealth();
+    expect(health.stuck.stuckFailedRefunds).toBe(0);
+    expect(health.status).toBe(PAYMENT_HEALTH_STATUS.OK);
+  });
+
+  /**
+   * `reconcileRefunds` asks Razorpay every 30 minutes, so a count above zero
+   * means that job is not working — not that a bank is slow.
+   */
+  it("flags one that left for Razorpay and never came back", async () => {
+    await seedRefund({
+      status: REFUND_REQUEST_STATUS.PROCESSING,
+      initiatedAt: ago(5 * DAY),
+    });
+
+    const health = await getPaymentHealth();
+    expect(health.stuck.stuckProcessingRefunds).toBe(1);
+    // Real, but it waits for a human without getting worse.
+    expect(health.status).toBe(PAYMENT_HEALTH_STATUS.ATTENTION);
+  });
+
+  /**
+   * Escalation moves a request to an admin; it does not decide it. A customer
+   * who sat out a vendor window and is now sitting out ours has been waiting
+   * two full windows for anyone at all to look.
+   */
+  it("flags an escalation nobody has looked at", async () => {
+    await seedRefund({
+      status: REFUND_REQUEST_STATUS.VENDOR_TIMEOUT,
+      updatedAt: ago(3 * DAY),
+    });
+
+    const health = await getPaymentHealth();
+    expect(health.stuck.unattendedEscalations).toBe(1);
+    expect(health.status).toBe(PAYMENT_HEALTH_STATUS.ATTENTION);
+  });
+
+  it("does not count a refund that completed normally", async () => {
+    await seedRefund({ status: REFUND_REQUEST_STATUS.COMPLETED });
+
+    const health = await getPaymentHealth();
+    expect(health.stuck.stuckFailedRefunds).toBe(0);
+    expect(health.stuck.stuckProcessingRefunds).toBe(0);
+    expect(health.status).toBe(PAYMENT_HEALTH_STATUS.OK);
   });
 });

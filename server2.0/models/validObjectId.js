@@ -42,10 +42,15 @@ module.exports = Object.freeze({
   promoCodeField: refField("PromoCode"),
   billField: refField("Bill"),
   settlementField: refField("Settlement"),
-  // Dangling in the same way: there is no Refund model and there will not be
-  // one — the refund record is RefundRequest. Left in place only because
-  // Transaction.refundId still uses it; that field is dropped in Phase S1.
-  refundField: refField("Refund"),
+  /**
+   * The refund record is `RefundRequest`; there is no `Refund` model and there
+   * will not be one.
+   *
+   * This used to ref `"Refund"` — a model that never existed. Mongoose only
+   * raises that at `populate()` time, and nothing ever populated it, so it sat
+   * silently valid-looking for as long as it existed.
+   */
+  refundRequestField: refField("RefundRequest"),
 
   // Array of ObjectIds with validation
   locationsField: Object.freeze({

@@ -420,6 +420,45 @@ Settlement PENDING_APPROVAL
 
 ## 5. Refund
 
+> ### ✅ Ban gaya — Phase S1 (1 Sep 2026), `SOURCE` refunds ke liye
+>
+> `models/RefundRequest.js` · `constants/refund.js` · `helpers/refunds/*` ·
+> `services/refunds/*` · 9 endpoints · 3 jobs · 3 webhook handlers.
+> Tests: `refundRequest` · `refundSplit` · `refundAllowance` · `requestRefund` ·
+> `decideRefund` · `executeRefund` · `refundCompletion` · `refundJobs` ·
+> `refundListings` · `refundNotices`.
+>
+> **Plan se do jagah hataa gaya, dono jaan-boojhkar:**
+>
+> 1. **`PayoutLeg` nahi bana.** §3.2 me wo `MANUAL_BANK` aur settlement dono ke liye
+>    socha gaya tha. `SOURCE` refund me leg jaisa kuch hai hi nahi — Razorpay ka
+>    `refund.id` + `acquirer_data.arn` hi poora record hai, aur wo `RefundRequest` par
+>    hi rakha gaya. `PayoutLeg` tab banega jab `MANUAL_BANK` ya settlement aayegi,
+>    yaani jab uski zaroorat sach me hogi.
+> 2. **`MANUAL_BANK` aur `CustomerBankAccount` nahi bane** (§6.5). Wo sirf
+>    `refund.failed` par chahiye — 90%+ refunds `SOURCE` se nikal jaate hain — aur
+>    unhe banane ka matlab `models/Bank.js` wali landmine ke paas jaana hai:
+>    account-number uniqueness Mongo index nahi, teen jagah collection-wide query hai
+>    (`createBank.js:62`, `verifyBankAndFetchDetails.js:24`, `verifyVendor.js:228`),
+>    aur banks collection me ek customer row vendor ka KYC score gira sakti hai.
+>    Tab tak failed refund admin worklist me `FAILED` par khula baithta hai, hold laga
+>    rehta hai, aur admin ko CRITICAL notification jaati hai.
+>
+> **Jo audit findings §6.4 me the, teeno theek ho gaye:**
+> `$set → $max` cumulative (`payment.amount_refunded` se) · `REFUND_STATUS.PARTIAL`
+> juda · `Transaction.refundId` → `latestRefundRequestId` (wo `Refund` model ko ref
+> karta tha jo kabhi bana hi nahi) · `refund.created` / `refund.failed` ko handler mile
+> (pehle enum me the par kisi branch me nahi, to failed refund chup-chaap `IGNORED`
+> hokar girta tha).
+>
+> **Do aur cheezein jo plan me nahi thi aur banate waqt zaroori nikli:**
+> - `ledger_type_refund_unique` — `REFUND` rows kisi unique index se surakshit nahi thi.
+>   `ONCE_PER_TRANSACTION` unhe cover kar hi nahi sakta: ek payment do baar refund ho
+>   sakta hai aur dono ki rows ek hi `transactionId` par hain. Iske bina dobara bheja
+>   gaya `refund.processed` vendor ko **do baar** claw back kar deta.
+> - Abuse limits (`maxOpenRequests`, `maxRejectedPerWindow`, `requestWindowDays`) —
+>   ginti **thukrai** requests ki, approve hui ki kabhi nahi.
+
 ### 5.1 States
 
 ```

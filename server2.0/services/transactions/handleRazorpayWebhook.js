@@ -1,4 +1,6 @@
+const mongoose = require("mongoose");
 const Transaction = require("../../models/Transaction");
+const RefundRequest = require("../../models/RefundRequest");
 const WebhookEvent = require("../../models/WebhookEvent");
 const {
   RAZORPAY_WEBHOOK_EVENTS,
@@ -17,12 +19,14 @@ const {
   SUBSCRIPTION_SOURCE,
 } = require("../../constants/subscription");
 const { REFUND_STATUS } = require("../../constants");
+const { REFUND_REQUEST_STATUS } = require("../../constants/refund");
 const { throwError } = require("../../utils");
 const {
   verifyRazorpayWebhook,
   recordRejectedWebhook,
 } = require("../../helpers/transactions");
 const { releasePromoCode } = require("../../helpers/promoCodes");
+const { applyRefundCompletion } = require("../../helpers/refunds");
 const { notifyAdmins } = require("../../helpers/notifications");
 const { formatMoney } = require("../../helpers/subscribeds");
 const {
@@ -383,28 +387,195 @@ const processWebhookEvent = async ({
     );
   }
 
-  // ---------------- refunded ----------------
-  if (event === RAZORPAY_WEBHOOK_EVENTS.REFUND_PROCESSED) {
-    const refunded = (ids.refund?.amount ?? 0) / 100;
-    const fullyRefunded = refunded >= (transaction.paidAmount ?? 0);
-    await Transaction.updateOne(
-      { _id: transaction._id },
-      {
-        $set: {
-          amountRefunded: refunded,
-          refundStatus: REFUND_STATUS.COMPLETED,
-          isRefunded: fullyRefunded,
-          paidRefundAt: new Date(),
+/**
+ * Every refund event Razorpay sends, in one place.
+ *
+ * ### Matching the request
+ *
+ * By `razorpayRefundId` first — the executor stored it — and by the note we
+ * stamped on the refund second, which covers a refund created before we managed
+ * to save the id. If neither matches, the refund was issued from the Razorpay
+ * dashboard by hand: the payment is still updated so the money is recorded, but
+ * no request is invented for it.
+ */
+const handleRefundEvent = async ({ event, ids, transaction, finish }) => {
+  const refund = ids.refund || {};
+  const thisRefund = (refund.amount ?? 0) / 100;
+
+  /**
+   * The **cumulative** figure, straight from the payment entity.
+   *
+   * ⚠️ The old branch wrote `$set: { amountRefunded: thisRefundsAmount }`. Two
+   * partial refunds and the second overwrote the first — ₹300 then ₹200
+   * reported ₹200, and the ₹310 still owed to the vendor was invisible.
+   * `payment.amount_refunded` is the running total Razorpay itself holds, which
+   * survives redelivery, out-of-order delivery and dashboard refunds alike.
+   */
+  const gatewayTotalRefunded =
+    ids.payment?.amount_refunded !== undefined
+      ? ids.payment.amount_refunded / 100
+      : undefined;
+
+  const request = await findRefundRequest(refund, transaction);
+
+  if (event === RAZORPAY_WEBHOOK_EVENTS.REFUND_CREATED) {
+    // Nothing has moved yet — Razorpay has only accepted it. Recorded so a
+    // refund created in the dashboard is visible to us before it settles.
+    if (request) {
+      await RefundRequest.updateOne(
+        { _id: request._id, status: { $ne: REFUND_REQUEST_STATUS.COMPLETED } },
+        {
+          $set: {
+            status: REFUND_REQUEST_STATUS.PROCESSING,
+            razorpayRefundId: refund.id,
+            isOpen: true,
+          },
         },
-      },
-    );
-    // The subscription is deliberately left alone. Revoking access on a refund
-    // is a business decision with vendor-facing consequences, so it goes through
-    // PUT /subscribeds/admin/cancel rather than happening silently here.
+      );
+    }
     return finish(
       WEBHOOK_STATUS.PROCESSED,
-      `Refund of ${formatMoney(refunded)} recorded${fullyRefunded ? " (full)" : " (partial)"}. Subscription left active — cancel it explicitly if intended.`,
+      `Refund of ${formatMoney(thisRefund)} accepted by Razorpay${
+        request ? "" : " (no matching request — raised outside Trydood)"
+      }.`,
     );
+  }
+
+  if (event === RAZORPAY_WEBHOOK_EVENTS.REFUND_FAILED) {
+    if (request) {
+      await RefundRequest.updateOne(
+        { _id: request._id },
+        {
+          $set: {
+            status: REFUND_REQUEST_STATUS.FAILED,
+            failedAt: new Date(),
+            failureReason:
+              refund.error_description ||
+              refund.status_reason ||
+              "Razorpay could not complete the refund",
+            // Still open, and the hold stays on: the money has not gone back.
+            isOpen: true,
+          },
+        },
+      );
+    }
+    /**
+     * ⚠️ This event had no branch at all before. A failed refund fell through
+     * as `IGNORED`: the customer's money never arrived, the request still said
+     * PROCESSING, and nothing anywhere said otherwise until somebody asked.
+     */
+    return finish(
+      WEBHOOK_STATUS.PROCESSED,
+      `Refund of ${formatMoney(thisRefund)} FAILED at Razorpay. The money has not gone back — an admin has to retry it.`,
+    );
+  }
+
+  // ---------------- processed ----------------
+  if (request) {
+    const result = await applyRefundCompletion({
+      refundRequest: request,
+      gatewayTotalRefunded,
+      utr: refund?.acquirer_data?.arn,
+    });
+
+    if (!result.applied) {
+      return finish(
+        WEBHOOK_STATUS.PROCESSED,
+        "Refund already recorded; nothing to do (redelivery).",
+      );
+    }
+
+    return finish(
+      WEBHOOK_STATUS.PROCESSED,
+      `Refund of ${formatMoney(thisRefund)} completed${
+        result.isFullyRefunded ? " (full)" : " (partial)"
+      }. ${result.ledger.posted} ledger row(s) posted.`,
+    );
+  }
+
+  /**
+   * No request behind it — somebody refunded from the Razorpay dashboard.
+   *
+   * The payment is still brought up to date, because the money genuinely moved
+   * and a settlement must not pay a vendor for it. What is deliberately **not**
+   * done is inventing a `RefundRequest`: a record with no customer behind it
+   * would make every refund report wrong about who asked for what.
+   */
+  const cumulative =
+    gatewayTotalRefunded !== undefined
+      ? gatewayTotalRefunded
+      : (transaction.amountRefunded || 0) + thisRefund;
+  const fullyRefunded = cumulative >= (transaction.paidAmount ?? 0) - 0.005;
+
+  await Transaction.updateOne(
+    { _id: transaction._id },
+    {
+      $max: { amountRefunded: cumulative },
+      $set: {
+        refundStatus: fullyRefunded
+          ? REFUND_STATUS.COMPLETED
+          : REFUND_STATUS.PARTIAL,
+        isRefunded: fullyRefunded,
+        paidRefundAt: new Date(),
+        // Every refund landing puts a hold on, not just one we filed. This is
+        // what covers a dashboard refund and Razorpay's own auto-refund.
+        settlementHold: true,
+        settlementHoldReason: "Refunded outside Trydood",
+      },
+    },
+  );
+
+  // A subscription is deliberately left alone. Revoking access on a refund is a
+  // business decision with vendor-facing consequences, so it goes through
+  // PUT /subscribeds/admin/cancel rather than happening silently here.
+  return finish(
+    WEBHOOK_STATUS.PROCESSED,
+    `Refund of ${formatMoney(thisRefund)} recorded${
+      fullyRefunded ? " (full)" : " (partial)"
+    } with no matching request — raised outside Trydood.`,
+  );
+};
+
+/**
+ * Find the request a Razorpay refund belongs to.
+ *
+ * The stored id first; the note we stamped second, which is what covers a
+ * refund created before the executor managed to save the id.
+ */
+const findRefundRequest = async (refund, transaction) => {
+  if (refund?.id) {
+    const byId = await RefundRequest.findOne({
+      razorpayRefundId: refund.id,
+      isDeleted: false,
+    }).lean();
+    if (byId) return byId;
+  }
+
+  const noteId = refund?.notes?.refundRequestId;
+  if (noteId && mongoose.isValidObjectId(noteId)) {
+    const byNote = await RefundRequest.findOne({
+      _id: noteId,
+      transactionId: transaction._id,
+      isDeleted: false,
+    }).lean();
+    if (byNote) return byNote;
+  }
+
+  return null;
+};
+
+  // ---------------- refunds ----------------
+  //
+  // All three events are handled. `refund.created` and `refund.failed` used to
+  // be in the enum but in no branch at all, so a failed refund fell through
+  // silently — the customer's money never arrived, the request still said
+  // PROCESSING, and nothing anywhere said so.
+  if (
+    event === RAZORPAY_WEBHOOK_EVENTS.REFUND_CREATED ||
+    event === RAZORPAY_WEBHOOK_EVENTS.REFUND_PROCESSED ||
+    event === RAZORPAY_WEBHOOK_EVENTS.REFUND_FAILED
+  ) {
+    return handleRefundEvent({ event, ids, transaction, finish });
   }
 
   // ---------------- dispute ----------------

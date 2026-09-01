@@ -66,6 +66,20 @@ const CLAIM_HISTORY_ACTION = Object.freeze({
   EXPIRED: "EXPIRED",
   CANCELLED: "CANCELLED",
   REFUND_REQUESTED: "REFUND_REQUESTED",
+  /**
+   * The refund's own transitions live here rather than in a separate history
+   * collection, because a refund is something that happened **to a claim** —
+   * and the claim's timeline is exactly where a customer, a vendor and an admin
+   * all go to ask "what happened to this?".
+   *
+   * A second collection would mean a join to answer that, and two timelines to
+   * keep in the same order.
+   */
+  REFUND_APPROVED: "REFUND_APPROVED",
+  REFUND_REJECTED: "REFUND_REJECTED",
+  REFUND_ESCALATED: "REFUND_ESCALATED",
+  REFUND_CANCELLED: "REFUND_CANCELLED",
+  REFUND_FAILED: "REFUND_FAILED",
   REFUNDED: "REFUNDED",
   PROMO_RELEASED: "PROMO_RELEASED",
 });
@@ -130,6 +144,14 @@ const CLAIM_TIMELINE_LABEL = Object.freeze({
   [CLAIM_HISTORY_ACTION.EXPIRED]: "Voucher expired",
   [CLAIM_HISTORY_ACTION.CANCELLED]: "Claim cancelled",
   [CLAIM_HISTORY_ACTION.REFUND_REQUESTED]: "Refund requested",
+  [CLAIM_HISTORY_ACTION.REFUND_APPROVED]: "Refund approved",
+  [CLAIM_HISTORY_ACTION.REFUND_REJECTED]: "Refund declined",
+  // Deliberately not "the outlet did not respond". Telling a customer the
+  // outlet ignored them starts a fight the platform then has to referee, and
+  // it is not something they can act on.
+  [CLAIM_HISTORY_ACTION.REFUND_ESCALATED]: "Refund under review by Trydood",
+  [CLAIM_HISTORY_ACTION.REFUND_CANCELLED]: "Refund request withdrawn",
+  [CLAIM_HISTORY_ACTION.REFUND_FAILED]: "Refund failed",
   [CLAIM_HISTORY_ACTION.REFUNDED]: "Refunded",
   [CLAIM_HISTORY_ACTION.PROMO_RELEASED]: "Promo reservation released",
 });

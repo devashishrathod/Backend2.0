@@ -1,11 +1,13 @@
 const Transaction = require("../../models/Transaction");
 const VoucherClaim = require("../../models/VoucherClaim");
+const RefundRequest = require("../../models/RefundRequest");
 const {
   TRANSACTION_PURPOSE,
   SETTLEMENT_STAGE,
   PAYMENT_HEALTH_STATUS,
 } = require("../../constants/transaction");
 const { VOUCHER_CLAIM_STATUS } = require("../../constants/voucherClaim");
+const { REFUND_REQUEST_STATUS } = require("../../constants/refund");
 const { PAYMENT_STATUS } = require("../../constants");
 const { JOB_HEALTH_STATUS } = require("../../constants/job");
 const {
@@ -53,6 +55,9 @@ exports.getPaymentHealth = async () => {
     openDisputes,
     disputesDueSoon,
     unsettledCaptures,
+    stuckFailedRefunds,
+    stuckProcessingRefunds,
+    unattendedEscalations,
   ] = await Promise.all([
     getJobsHealth(),
 
@@ -139,6 +144,49 @@ exports.getPaymentHealth = async () => {
       createdAt: { $lte: new Date(now - 10 * DAY_MS) },
       isDeleted: false,
     }),
+
+    /**
+     * ⚠️ A refund the gateway refused, and nobody has moved since.
+     *
+     * The customer has been told their money is coming and it is not arriving.
+     * Nothing in the system will fix this on its own — `SOURCE` is the only
+     * automated path and it has already failed, usually because the instrument
+     * cannot accept a refund at all. It needs a person, and until `MANUAL_BANK`
+     * exists (S1.5) that person has no button either.
+     *
+     * The vendor is stuck alongside them: `FAILED` deliberately does **not**
+     * release `settlementHold`, because the money is still owed.
+     */
+    RefundRequest.countDocuments({
+      status: REFUND_REQUEST_STATUS.FAILED,
+      failedAt: { $lte: new Date(now - DAY_MS) },
+      isDeleted: false,
+    }),
+
+    /**
+     * Sent to Razorpay and never heard about again.
+     *
+     * `reconcileRefunds` asks the gateway every 30 minutes, so a count that
+     * stays above zero means that job is not working — not that a bank is slow.
+     */
+    RefundRequest.countDocuments({
+      status: REFUND_REQUEST_STATUS.PROCESSING,
+      initiatedAt: { $lte: new Date(now - 3 * DAY_MS) },
+      isDeleted: false,
+    }),
+
+    /**
+     * The outlet did not answer, and neither did we.
+     *
+     * Escalation moves a request to an admin; it does not decide it. A customer
+     * whose refund sat out a vendor window and is now sitting out ours has been
+     * waiting two full windows for anyone at all to look.
+     */
+    RefundRequest.countDocuments({
+      status: REFUND_REQUEST_STATUS.VENDOR_TIMEOUT,
+      updatedAt: { $lte: new Date(now - DAY_MS) },
+      isDeleted: false,
+    }),
   ]);
 
   const stuck = {
@@ -148,6 +196,9 @@ exports.getPaymentHealth = async () => {
     openDisputes,
     disputesDueSoon,
     unsettledCaptures,
+    stuckFailedRefunds,
+    stuckProcessingRefunds,
+    unattendedEscalations,
   };
 
   /**
@@ -161,7 +212,13 @@ exports.getPaymentHealth = async () => {
     jobs.status === JOB_HEALTH_STATUS.CRITICAL ||
     !indexes.ok ||
     stuckAuthorizations > 0 ||
-    disputesDueSoon > 0;
+    disputesDueSoon > 0 ||
+    /**
+     * CRITICAL, alongside the two that lose money on a timer — and for the same
+     * reason read the other way round: a customer's money is being held and
+     * nothing automated will release it.
+     */
+    stuckFailedRefunds > 0;
 
   const attention =
     jobs.status === JOB_HEALTH_STATUS.STALE ||
@@ -177,7 +234,9 @@ exports.getPaymentHealth = async () => {
     interruptedSettles > 0 ||
     unsettledCaptures > 0 ||
     stalePendingClaims > 0 ||
-    openDisputes > 0;
+    openDisputes > 0 ||
+    stuckProcessingRefunds > 0 ||
+    unattendedEscalations > 0;
 
   return {
     status: critical

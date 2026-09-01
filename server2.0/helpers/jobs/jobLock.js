@@ -7,7 +7,7 @@ const {
 } = require("../../constants/job");
 
 const MINUTE_MS = 60 * 1000;
-const DUPLICATE_KEY = 11000;
+const { DUPLICATE_KEY } = require("../../constants/mongo");
 
 /**
  * Take the lock for a job, if nobody else holds it.

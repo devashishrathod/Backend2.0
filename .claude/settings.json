@@ -34,7 +34,14 @@
       "Bash(sed -i 's|^const run = async \\(\\) => {|const dns = require\\(\"dns\"\\);\\\\nconst run = async \\(\\) => {\\\\n  dns.setServers\\([\"8.8.8.8\", \"1.1.1.1\"]\\);|' verifyShowcase.js)",
       "Bash(sed -i 's|const sample = await ShowcaseSection.findOne\\({ isDeleted: false }\\)|const sample = await ShowcaseSection.findOne\\({ brandId: process.argv[2], isDeleted: false }\\)|' verifyShowcase.js)",
       "Bash(node verifyShowcase.js 6a8072c9003180a42ba08a1d)",
-      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/ca329627-762e-49c8-9478-a9197643cf39/scratchpad/verifyRules.js\")"
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/ca329627-762e-49c8-9478-a9197643cf39/scratchpad/verifyRules.js\")",
+      "Bash(node --check helpers/notifications/refundNotices.js)",
+      "Bash(grep -nB3 -A6 \"const ADMIN_PATHS\" helpers/notifications/panelLinks.js)",
+      "Bash(node --check services/refunds/decideRefund.js)",
+      "Bash(node --check services/refunds/executeRefund.js)",
+      "Bash(node --check helpers/refunds/applyRefundCompletion.js)",
+      "Bash(cp helpers/notifications/refundNotices.js helpers/notifications/.bak.js)",
+      "Bash(timeout 45 node -e ' *)"
     ]
   }
 }

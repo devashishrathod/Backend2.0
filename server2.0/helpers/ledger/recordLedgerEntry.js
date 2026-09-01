@@ -9,7 +9,7 @@ const {
 const { round2 } = require("../subscribeds/calculatePricing");
 const { throwError } = require("../../utils");
 
-const DUPLICATE_KEY = 11000;
+const { DUPLICATE_KEY } = require("../../constants/mongo");
 
 /**
  * Write one ledger row.
@@ -148,8 +148,20 @@ exports.recordLedgerEntry = async ({
     return { entry, duplicate: false, skipped: false };
   } catch (error) {
     if (error?.code === DUPLICATE_KEY) {
-      // Already posted. The retry did its job; nothing is wrong.
-      const entry = await LedgerEntry.findOne({ entryType, transactionId });
+      /**
+       * Already posted. The retry did its job; nothing is wrong.
+       *
+       * ⚠️ `refundRequestId` has to be part of the lookup when it is set. A
+       * refund row shares its `entryType` and `transactionId` with the capture
+       * row it reverses, so looking up by those two alone would hand back the
+       * **capture** — and the caller would report a ₹800 collection as the
+       * refund it had just tried to write.
+       */
+      const entry = await LedgerEntry.findOne(
+        refundRequestId
+          ? { entryType, refundRequestId }
+          : { entryType, transactionId },
+      );
       return { entry, duplicate: true, skipped: false };
     }
     throw error;

@@ -6525,6 +6525,140 @@ Terms endpoints (#101–105) se **bilkul identical** — `title` (3–120), `des
 
 ---
 
+# Refund APIs 🆕
+
+Grahak maange → **vendor tay kare** → admin nikaale.
+
+> ### Aap normal raaste par doosra gate nahi hain
+>
+> Vendor pehle hi tay kar chuka; aap sirf paisa chhodte hain. Vendor ki *"na"* ya uski
+> chuppi palatna **alag raasta** hai — likhit wajah ke saath, `isOverride: true` se alag
+> gina jaata hai. Badhti override dar ka matlab ye **nahi** ki admin udaar hain; matlab
+> hai ki upar kahin gadbad hai — koi outlet jo kabhi jawab nahi deta, ya koi voucher jo
+> nibhaya nahi ja sakta. Wo number badhe to dekhne ki jagah refund nahi, wo outlet hai.
+
+## GET /refunds — poori list
+
+**Access:** 🔒 `verifyJwtToken` (admin ko scope se sab dikhta hai)
+
+`?open=true` worklist deta hai — **sabse purani upar**. Admin ko poora `split` milta hai:
+`platformPromoReversal`, `gatewayFeeAbsorbed`, `commissionReversal` — reconciliation ko
+ye chahiye, aur sirf admin ko.
+
+## PATCH /refunds/admin/:requestId/approve
+
+**Access:** 🔒 `isAdmin`
+
+| Se | `overrideReason` | Nateeja |
+|---|:-:|---|
+| `VENDOR_APPROVED` | — | `ADMIN_APPROVED` |
+| `VENDOR_REJECTED` | ✅ **zaroori** | `ADMIN_OVERRIDE` |
+| `VENDOR_TIMEOUT` | ✅ **zaroori** | `ADMIN_OVERRIDE` |
+
+Dono halaton me sawaal alag hai — *"outlet ne mana kiya, batayein aap kyun palat rahe
+hain"* banaam *"outlet ne jawab nahi diya, batayein aap khud kyun approve kar rahe hain"*.
+Aage ke kadam alag hain.
+
+Override par hi grahak ko doosra "approved" jaata hai. Normal raaste par vendor ki approval
+pehle hi bata chuki hoti hai, aur ek ghante baad doosra sandesh doosra refund jaisa padha
+jaata hai.
+
+## PATCH /refunds/admin/:requestId/reject
+
+`note` **zaroori**. `settlementHold` hattta hai.
+
+## PATCH /refunds/admin/:requestId/pay — paisa bhejo
+
+**Access:** 🔒 `isAdmin` · Body: **kuch nahi** (har figure approval par freeze ho chuka)
+
+### ⚠️ Ye do baar chalana surakshit hai
+
+```
+PROCESSING likho + attemptCount++     ← Razorpay call se PEHLE
+  → Razorpay se poocho kya pehle se hai  ← sirf retry par
+  → payments.refund()                    ← jiska koi undo nahi
+  → refund id sahejo
+```
+
+Agar process us beech mare jab Razorpay ne refund maan liya par id sahej na paye — row
+`PROCESSING` kehti hai, `attemptCount: 1`, koi `razorpayRefundId` nahi. Agli koshish
+`payments.fetchMultipleRefund()` se **poochti hai** aur us refund ko apna leti hai. Counter
+baad me badhate to wo shunya rehta aur retry grahak ko paisa **do baar** bhej deta.
+
+Match hamare stamp kiye `notes.refundRequestId` par hota hai, **rakam par nahi** — ek hi
+rakam ke do partial refunds rakam se alag nahi kiye ja sakte, aur galat wala apnane se ek
+asli refund behisaab reh jaata.
+
+Lookup khud fail ho jaye to **`503`** milta hai aur row `PROCESSING` chhod di jaati hai.
+Galat hone ka surakshit tareeka yahi hai.
+
+### Jawab do tarah ka hota hai
+
+| Message | Matlab |
+|---|---|
+| *"Refund sent to Razorpay successfully"* | Naya refund bheja gaya |
+| *"This refund had already reached Razorpay; it is now linked and processing"* | Kuch naya nahi bheja — pichhli koshish pahunch chuki thi, ye run ne use apna liya |
+
+### Fail hone par
+
+Row `FAILED` hoti hai par **khuli rehti hai**, aur `settlementHold` **laga rehta hai** —
+paisa abhi bhi wapas jaana hai, aur retry yahin se hoti hai. Admin ko **CRITICAL**
+notification jaati hai (attempt number par keyed, taaki har nayi nakaami bhi pahunche — wahi
+batati hai ki instrument paisa wapas le hi nahi sakta).
+
+`MANUAL_BANK` abhi automate nahi hai — `422` deta hai. Wo Phase S1.5 hai.
+
+---
+
+## Refund settings (`/settings` → `customer.refund`)
+
+| Key | Default | Kya |
+|---|---|---|
+| `windowHours` | 24 | Payment ke baad kitni der tak maang sakte hain |
+| `vendorApprovalHours` | 24 | Vendor ki window |
+| `adminBufferHours` | 12 | Aapka buffer |
+| `onVendorTimeout` | `ESCALATE` | Ya `AUTO_APPROVE` |
+| `allowPartial` | `true` | |
+| `releasePromoOnRefund` | `false` | |
+| `maxOpenRequests` | 1 | Ek grahak ki ek saath khuli requests |
+| `maxRejectedPerWindow` | 3 | **Thukrai/wapas li** — approve hui nahi gintin |
+| `requestWindowDays` | 30 | |
+
+> ### ⚠️ Golden rule — save par `422`
+>
+> ```
+> settlementDelayHours >= windowHours + vendorApprovalHours + adminBufferHours
+> ```
+>
+> Jab tak ye sach hai, **koi refund kabhi aise paise ko chhoo hi nahi sakta jo vendor ko
+> ja chuka ho.** Ye config me chhodi hui salah nahi — ek galat setting mahine baad jaakar
+> hisaab bigaadti hai, isiliye validator use save hi nahi hone deta.
+
+> ### Abuse limits me approve hui refunds **kabhi nahi** gintin
+>
+> Galat ka sanket rakam nahi, wo hai *"vendor ne dekhkar kaha ki ye jayaz nahi thi"*. Raw
+> count rakhne par sabse kharab brand ka grahak sabse pehle block hota — jo sabse zyada
+> haqdaar hai. Limit chhoone par jawab support par bhejta hai, raasta band nahi karta, aur
+> aap uski taraf se refund khol sakte hain.
+
+---
+
+## Jobs
+
+| Job | Har | Kya |
+|---|---|---|
+| `escalateStaleRefunds` | 15m | Vendor ki window khatam → aapke paas (ya auto-approve) |
+| `reconcileRefunds` | 30m | Jo Razorpay gaye aur laute nahi — **sirf padhta hai** |
+| `remindVendorsAboutRefunds` | 60m | Vendor ko do nudges |
+
+⚠️ `reconcileRefunds` gateway par **kabhi nahi likhta**. Refund jaari karna
+`/admin/:requestId/pay` ka kaam hai aur uske apne double-payment guards hain; aisa
+reconcile jo pay kar sake, paisa bahar jaane ka doosra bina-pahre wala raasta ban jaata.
+
+Teeno ki sehat `GET /transactions/admin/health` par dikhti hai.
+
+---
+
 # Appendix A — Not For Admin Panel
 
 Admin ke paas platform ka sabse zyada access hai, par **33 endpoints** aise hain jo admin panel me nahi aane chahiye.
