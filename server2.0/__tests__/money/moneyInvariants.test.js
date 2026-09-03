@@ -33,6 +33,7 @@ const {
   confirmPayout,
   failPayout,
   reversePayout,
+  writeOffVendorDebt,
 } = require("../../services/settlements");
 const { generateBrandMerchantId } = require("../../helpers/brands");
 const { SETTLEMENT_STATUS } = require("../../constants/settlement");
@@ -448,6 +449,63 @@ describe("a sale refunded after the vendor was already paid", () => {
 
     // Two sales, one partial refund: the vendor keeps both shares less one clawback.
     expect(await vendorPaid()).toBe(r2(2 * VENDOR_SHARE - CLAWBACK));
+  });
+});
+
+/**
+ * ⚠️ A write-off is the one thing that deliberately breaks the plain identity —
+ * and the extended one is what makes it honest.
+ *
+ * `stillOwed + paid === entitlement` describes a world where every debt is
+ * eventually collected. Forgiving one takes money out of the vendor's column and
+ * puts it nowhere, so the identity has to grow a third term:
+ *
+ *     what they are still owed  +  what we paid them  +  what we forgave
+ *         ===  their share of the sale  −  their share of anything refunded
+ *
+ * If the `PLATFORM_COST` side were ever dropped — and it very nearly was, because
+ * `ONCE_PER_REFUND` would have made it a duplicate-key no-op had the reference
+ * gone on both rows — this is the assertion that catches it: the vendor's debt
+ * would clear, the platform's cost would never appear, and the books would be
+ * short by exactly the amount forgiven.
+ */
+describe("a debt we decide not to chase", () => {
+  it("moves the loss from the vendor's column to ours, and nowhere else", async () => {
+    const first = await sale();
+
+    const s1 = await settle();
+    await approve(s1._id);
+    await startPayout(admin(), s1._id);
+    await confirmPayout(admin(), s1._id, { utr: "N100000000000009" });
+
+    // Refunded after payout, so the clawback has nowhere to come from.
+    await refund(first, { total: 300, clawback: 296.3, promoReversal: 5.55 });
+
+    /**
+     * The clawback only. `vendorPromoReversal` hands back part of what the
+     * vendor had contributed to the promo, so it does not reduce what they are
+     * owed — the same figure the carry-back case above pins.
+     */
+    const entitlement = r2(VENDOR_SHARE - 296.3);
+    await assertVendorWhole(entitlement, "clawback owed, brand stops trading");
+
+    const forgiven = await writeOffVendorDebt(
+      admin(),
+      { brandId: BRAND, reason: "Outlet closed; nothing left to recover from" },
+    );
+    expect(forgiven.writtenOff).toBe(296.3);
+
+    /**
+     * ⚠️ The plain identity is now short by exactly what we forgave — that is
+     * the write-off working, not a defect. Asserted explicitly so nobody later
+     * "fixes" it by dropping the platform-cost row.
+     */
+    const books = await balances();
+    const stillOwed = books[LEDGER_ACCOUNT.VENDOR_PAYABLE] || 0;
+    const paid = await vendorPaid();
+
+    expect(r2(stillOwed + paid)).toBe(r2(entitlement + 296.3));
+    expect(r2(stillOwed + paid - forgiven.writtenOff)).toBe(entitlement);
   });
 });
 
