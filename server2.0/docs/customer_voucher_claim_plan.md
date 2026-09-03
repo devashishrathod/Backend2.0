@@ -1000,20 +1000,57 @@ WhatsApp template ka URL button Meta se **base URL ke saath** approve hota hai �
 
 ## 10. Read APIs
 
+> ### ⚠️ Ye table pehle **nau aise path** listing karti thi jo bane hi nahi
+>
+> Wo Phase 1 ke *prastaav* the — `/transactions/customer/get-all`,
+> `/voucher-claims/vendor/get-all`, `/voucher-claims/verify/:claimCode` jaise. Ban
+> kuch aur, kyunki teen alag role-wise endpoints ki jagah **ek endpoint, teen
+> shapes** wala tarika chuna gaya (jo `settlement_flow.md` §6 aur `/disputes`
+> dono par hai): scope aur projection token se nikalte hain, to leak ke do mauke
+> ke bajaye ek jagah faisla hota hai.
+>
+> Doc us badlav ke saath nahi chali. Jo panel is table se banta, use **nau 404**
+> milte. Neeche ab code se nikali hui asli list hai.
+
 | Endpoint | Gate | Scope |
 |---|---|---|
-| `GET /transactions/customer/get-all` | isCustomer | Sirf apni, `purpose: VOUCHER_CLAIM` |
-| `GET /transactions/vendor/get-all` | isVendorOrAdmin | brand-scoped |
-| `GET /transactions/admin/get-all` | isAdmin | Sab + purpose/account/status/date filters |
-| `GET /transactions/get/:transactionId` | verifyJwtToken | Role-scoped — notification ka landing page |
-| `GET /transactions/invoice/:token` | public | 302 → PDF |
-| `POST /transactions/invoice/regenerate` | + isCustomer | Customer apni re-issue kar sake |
-| `GET /voucher-claims/customer/get-all` | isCustomer | Claim history |
-| `GET /voucher-claims/vendor/get-all` | isVendorOrAdmin | Brand ke claims |
-| `GET /voucher-claims/admin/get-all` | isAdmin | Sab + filters |
-| `GET /voucher-claims/get/:claimId` | verifyJwtToken | Role-scoped detail |
-| `GET /voucher-claims/verify/:claimCode` | isVendor / isSubVendor | Outlet counter par read-only verification — **§10.1 padhein** |
+| `POST /voucher-claims/create-order` | isCustomer | Claim + Razorpay order |
+| `POST /voucher-claims/verify` | isCustomer | Browser callback — webhook ke saath race karta hai, dono surakshit |
+| `GET /voucher-claims` | verifyJwtToken | **Ek endpoint, teen shapes** — customer apni, vendor apne brand ki, admin sab |
+| `GET /voucher-claims/:claimId` | verifyJwtToken | Wahi teen shapes, ek claim par |
+| `GET /voucher-claims/code/:claimCode` | verifyJwtToken | Counter par read-only verification — **§10.1 padhein** |
+| `GET /voucher-claims/payments` | verifyJwtToken | Payment history — `purpose: VOUCHER_CLAIM` par scoped |
+| `GET /voucher-claims/payments/:transactionId` | verifyJwtToken | Ek payment — notification ka landing page |
+| `GET /transactions/invoice/:token` | **public** | 302 → PDF. Token hi credential hai — WhatsApp se aane wale browser me session nahi hota |
+| `POST /transactions/invoice/regenerate` | isVendorOrAdmin | Frozen pricing se dobara banta hai, rakam kabhi dobara nahi gini jaati |
 | `GET /transactions/admin/health` | isAdmin | "Abhi kuch atka hua hai?" |
+
+⚠️ **Payment history `/voucher-claims/payments` par hai, `/transactions` par nahi.**
+`transactions` collection me vendor ki subscriptions **aur** customer ke voucher claims
+dono rehte hain, aur `buildTransactionFilter` ke bina ek bhoola hua `purpose` dono ko
+chup-chaap mila deta hai. Customer ka raasta claim domain me rakhne ka matlab hai ki wo
+galti ho hi nahi sakti.
+
+### 10.0 ⚠️ Phase 2 ke placeholders — jo jaan-boojh kar khaali hain
+
+Code me kuch cheezein aisi hain jo **audit me har baar "gap" jaisi dikhti hain** aur
+hain nahi. Ek jagah likhi ja rahi hain taaki agli baar koi inhe na to "theek" kare, na
+dobara gap likhe.
+
+| Kya | Kahan | Kyun khaali hai |
+|---|---|---|
+| `VOUCHER_CLAIM_STATUS.PAID` par rukna | `constants/voucherClaim.js` | Phase 1 me capture seedhe `REDEEMED` karta hai — counter par pay karna **hi** redemption hai. Phase 2 me `PAID` par rukega aur outlet ke scan ka intezaar karega |
+| `VOUCHER_CLAIM_STATUS.EXPIRED` | wahi | Ye us claim ke liye hai jo `PAID` rahi aur kabhi scan hi nahi hui. Phase 1 me aisi claim ban hi nahi sakti, to **koi ise set nahi karta** |
+| `CLAIM_REDEMPTION_MODE.OUTLET_SCAN` | wahi | Phase 1 hamesha `AUTO` likhta hai. Migration ke bina Phase 2 me switch ho jaata hai |
+| `claim.redemptionWindowHours` (24) | `constants/customer.js` | Scan ki window. Jab scan hi nahi hota, window ka koi matlab nahi — isliye **koi code ise padhta nahi** |
+| `NOTIFICATION_TYPES.VOUCHER_CLAIM_EXPIRED` | `constants/notification.js` | Us lapse ki khabar. Lapse ho hi nahi sakta, to bhejta koi nahi |
+| `VoucherClaim` ka unscanned-claims index | `models/VoucherClaim.js` | Us sweep ke liye jo Phase 2 me `PAID` claims ko `EXPIRED` karegi |
+
+⚠️ **Chhah cheezein, ek hi switch.** Ye alag-alag adhoore kaam nahi hain — ye ek hi
+feature ke chhah sire hain, aur `redemptionMode` ko `OUTLET_SCAN` karte hi saath me
+zinda ho jaate hain. Inme se koi **ek** bana dena sabse bura nateeja hai: ek window jo
+napi jaati hai par kuch expire nahi karti, ya ek status jo set to hota hai par jise koi
+job nahi dekhti.
 
 ### 10.1 ⚠️ Phase 1 me counter par verify karne ka koi surface nahi hai
 

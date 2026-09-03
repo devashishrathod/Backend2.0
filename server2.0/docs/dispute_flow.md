@@ -10,9 +10,17 @@ Design ka "kyun" `vendor_settlement_plan.md` §7 me hai. Paisa nikalne ka rasta
 [`settlement_flow.md`](./settlement_flow.md), refund ka
 [`refund_flow.md`](./refund_flow.md).
 
-> **Status:** dispute ka **record aur paisa** poora bana hai — har dispute ki apni row,
-> deadline ka alert, ledger, aur agle cycle se vasooli. **Evidence file karna abhi
-> haath se hota hai** (Razorpay dashboard par) — §9 dekho.
+> **Status:** S3 ka code poora hai — har dispute ki apni row, deadline ka alert, ledger,
+> agle cycle se vasooli, **vendor ko khabar aur apni list** (§4), **evidence pack likhe
+> hue argument ke saath** (§5.3), aur **jo vasooli ho hi nahi sakti** uska alert aur
+> write-off (§6.3a).
+>
+> ⚠️ **Evidence Razorpay par file karna abhi bhi haath se hota hai — aur wo jaan-boojh
+> kar hai**, adhoora kaam nahi: har dispute par **ek hi jawab** milta hai aur submit ke
+> baad badla nahi ja sakta, to ye faisla aadmi ka rehna chahiye. Pack banata hai, bhejta
+> aadmi hai — §5.3.
+>
+> Bacha sirf Postman ka dispute folder — §9.
 
 ---
 

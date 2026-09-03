@@ -1312,6 +1312,66 @@ sakta wo index bana hi nahi sakta.
 
 ---
 
+## 10.8 ✅ Poore flow ka cross-verify — claim se dispute tak
+
+Aakhri pass: har layer ko **code se ginkar** doc se milaya gaya, padhkar nahi.
+
+| Sweep | Natija |
+|---|---|
+| 60 money endpoints (claim · settlement · refund · dispute · bank) | **Sab documented** — ek bhi aisa nahi jo kisi doc me na ho |
+| 21 background jobs | Sab registered aur doc me |
+| 63 notification types | Do aise jinhe **koi bhejta nahi** — neeche |
+| Ledger entry types | Ek aisa jise **koi nahi likhta** — `REFUND`, hata diya gaya |
+| Settlement / refund / payout / claim / dispute statuses | Har status ka nikalne ka raasta hai. Chaar terminal hain aur sahi hain |
+| Doc me cite kiye gaye har `file.js:NNN` | Ek bhi line file ke end ke baad nahi |
+
+### Jo mila
+
+**1. 🔴 `customer_voucher_claim_plan.md` ki endpoint table me nau path jo bane hi nahi.**
+
+`/transactions/customer/get-all`, `/voucher-claims/vendor/get-all`,
+`/voucher-claims/verify/:claimCode` — ye Phase 1 ke *prastaav* the. Ban kuch aur, kyunki
+teen role-wise endpoints ki jagah **ek endpoint, teen shapes** chuna gaya. Doc us badlav
+ke saath nahi chali, aur jo panel us table se banta use **nau 404** milte. Table ab code
+se nikali gayi hai.
+
+⚠️ Ye is poore audit ka sabse mehnga drift tha, aur wo isliye ki wo **plan** doc me tha —
+jise log design padhne aate hain, par jo lagta reference jaisa hai.
+
+**2. `LEDGER_ENTRY_TYPE.REFUND` — declared, rules table me nahi, kabhi kisi ne nahi
+likha.**
+
+Refund har row usi entry type ke tehat bookta hai jise wo ulat raha hai, ulti disha me —
+tabhi type se grouped report apne aap net hoti hai (`refund_flow.md` §5.4). Ek sapaat
+`REFUND` row wo netting tod deti: promo cost dikhta jo kabhi ghata hi nahi.
+
+Chup-chaap istemaal to nahi ho sakta tha — bina rule ke `recordLedgerEntry` account maangta
+hai — par jo `account` aur `direction` haath se de deta, use ek aisi row milti jo post bhi
+hoti, balance bhi hoti, aur us din se har type-grouped report chup-chaap todti. **18 live
+rows me se ek bhi nahi tha, kisi commit ne kabhi nahi likha** — to hata diya gaya, aur
+uski **gair-maujoodgi ki wajah** wahin likh di gayi.
+
+⚠️ Ek test isi type se ye sabit kar raha tha ki "kuch types ek hi transaction par dobara
+aa sakti hain" — aur wo theek wahi misuse tha. Ab wo chargeback se sabit hota hai, jo
+asli wajah se dobara aata hai: ek payment disputed, phir pre-arbitration — do dispute, do
+id.
+
+**3. Phase 2 ke chhah placeholders bikhre hue the.**
+
+`VOUCHER_CLAIM_STATUS.PAID` par rukna, `EXPIRED`, `CLAIM_REDEMPTION_MODE.OUTLET_SCAN`,
+`claim.redemptionWindowHours`, `VOUCHER_CLAIM_EXPIRED` notice, aur ek index — chhah sire,
+**ek hi switch**. Har audit inhe naye gap jaisa padhta tha. Ab ek jagah:
+`customer_voucher_claim_plan.md` §10.0, is chetavani ke saath ki inme se **ek** bana dena
+sabse bura nateeja hai — ek window jo napi jaaye par kuch expire na kare.
+
+**4. Do notification types jinhe koi nahi bhejta** — `LIMIT_REACHED` aur
+`BRAND_SUBSCRIPTION_LAPSED`. Dono **subscription domain** ke hain, money flow ke nahi.
+Nahi banaye gaye: jo notice kisi ne maangi nahi, use bana dena scope badhana hai, aur
+`SUBSCRIPTION_EXPIRED` pehle se jaati hai. Yahan darj hain taaki agla audit inhe dobara
+na khode.
+
+---
+
 ## 11. Har phase ki definition of done
 
 Ek phase tabhi poora hai jab:
