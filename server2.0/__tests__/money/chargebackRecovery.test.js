@@ -13,6 +13,7 @@ const {
 } = require("./setup/testDb");
 
 const Transaction = require("../../models/Transaction");
+const Dispute = require("../../models/Dispute");
 const Settlement = require("../../models/Settlement");
 const SettlementHistory = require("../../models/SettlementHistory");
 const RefundRequest = require("../../models/RefundRequest");
@@ -31,6 +32,10 @@ const {
   LEDGER_DIRECTION,
 } = require("../../constants/ledger");
 const { DISPUTE_STATUS } = require("../../constants/webhook");
+const {
+  NOTIFICATION_TYPES,
+  NOTIFICATION_AUDIENCE,
+} = require("../../constants/notification");
 const { SETTLEMENT_STATUS } = require("../../constants/settlement");
 const {
   TRANSACTION_PURPOSE,
@@ -66,8 +71,19 @@ let seq = 0;
 
 const VENDOR_SHARE = 785; // netBill 800 − vendorPromoCost 15
 
-const payment = (overrides = {}) =>
-  Transaction.create({
+/**
+ * A captured payment, and — when the overrides describe one — the dispute
+ * against it.
+ *
+ * ⚠️ The dispute is its **own row** now. It was ten fields on the payment, which
+ * holds exactly one; Razorpay does not promise one, and the second silently
+ * replaced the first. `disputeStatus` / `disputeId` are still accepted here so
+ * every test below reads as it did, and they now build a `Dispute` as well.
+ */
+const payment = async (overrides = {}) => {
+  const { disputeStatus, disputeId, ...fields } = overrides;
+
+  const transaction = await Transaction.create({
     purpose: TRANSACTION_PURPOSE.VOUCHER_CLAIM,
     gatewayAccount: RAZORPAY_ACCOUNTS.CUSTOMER,
     customerId: oid(),
@@ -88,8 +104,40 @@ const payment = (overrides = {}) =>
       vendorPromoCost: 15,
       commissionAmount: 0,
     },
-    ...overrides,
+    // Kept on the payment as the denormalised summary a worklist filters on.
+    ...(disputeStatus ? { disputeStatus, disputeId, isDisputed: false } : {}),
+    ...fields,
   });
+
+  if (disputeStatus) {
+    const id = disputeId || `disp_${Math.random().toString(36).slice(2, 12)}`;
+
+    await Dispute.create({
+      disputeId: id,
+      transactionId: transaction._id,
+      brandId: transaction.brandId,
+      status: disputeStatus,
+      amount: 811.8,
+      lastEventAt: new Date(),
+    });
+
+    /**
+     * ⚠️ And the ledger row, because a `LOST` dispute never exists without one —
+     * the webhook writes both in the same breath.
+     *
+     * `claimChargebackAdjustments` recovers exactly what the ledger booked, and
+     * deliberately refuses to claim a loss the books do not carry: claiming it
+     * would stamp the recovery lock for a recovery of zero and mark it settled
+     * for ever, having taken nothing. A fixture without this row is testing a
+     * state production cannot reach.
+     */
+    if (disputeStatus === DISPUTE_STATUS.LOST) {
+      await postChargebackLoss({ transaction, disputeId: id });
+    }
+  }
+
+  return transaction;
+};
 
 const settlement = (overrides = {}) => {
   seq += 1;
@@ -119,6 +167,7 @@ const vendorPayable = async () => {
 
 const COLLECTIONS = [
   Transaction,
+  Dispute,
   Settlement,
   SettlementHistory,
   RefundRequest,
@@ -128,7 +177,7 @@ const COLLECTIONS = [
 
 beforeAll(async () => {
   await connectTestDb();
-  for (const m of [Transaction, Settlement, LedgerEntry]) await m.createIndexes();
+  for (const m of [Transaction, Dispute, Settlement, LedgerEntry]) await m.createIndexes();
 });
 
 afterAll(async () => {
@@ -384,8 +433,83 @@ describe("recovering it from the next cycle", () => {
     expect(cycle).toBeTruthy();
     expect(cycle.netPayable).toBe(0);
 
-    // Released, so the next cycle can recover it for real.
-    const after = await Transaction.findById(disputed._id).lean();
-    expect(after.chargebackSettlementId).toBeNull();
+    /**
+     * Released, so the next cycle can recover it for real.
+     *
+     * ⚠️ Checked on `Dispute`, not on the payment. The recovery lock moved there
+     * when one payment turned out to be able to carry several disputes, and a
+     * test still asserting on `Transaction.chargebackSettlementId` would pass
+     * for ever by reading a field nothing writes.
+     */
+    const stillClaimed = await Dispute.countDocuments({
+      transactionId: disputed._id,
+      recoverySettlementId: { $ne: null },
+    });
+    expect(stillClaimed).toBe(0);
+  });
+
+  /**
+   * ⚠️ And the vendor is **told**.
+   *
+   * `CARRIED_FORWARD` is deliberately silent — for the routine case, a cycle
+   * below the minimum payout that rolls into the next one. This is not that. The
+   * outlet traded, expected a payout, and got nothing because a chargeback ate
+   * it, and until this notice existed nothing anywhere said so. From their side
+   * that is indistinguishable from a payout that quietly failed: the first
+   * anybody heard was a support call, usually weeks later, usually about a
+   * dispute whose deadline had already gone.
+   */
+  it("tells the vendor why the cycle paid them nothing", async () => {
+    const old = await settlement();
+    await payment({
+      settlementId: old._id,
+      disputeStatus: DISPUTE_STATUS.LOST,
+      disputeId: "disp_A1",
+      settlementHold: true,
+    });
+    await payment();
+
+    await buildSettlements();
+
+    const notice = mockNotify.mock.calls.find(
+      ([a]) => a.type === NOTIFICATION_TYPES.SETTLEMENT_CARRIED_FORWARD,
+    );
+
+    expect(notice).toBeDefined();
+    expect(notice[0].audience).toBe(NOTIFICATION_AUDIENCE.VENDOR);
+    // The cause, in their words — not "carried forward", which is ours.
+    expect(notice[0].body).toContain("chargeback");
+    expect(notice[0].meta.chargebackAdjustment).toBe(VENDOR_SHARE);
+    // ⚠️ Never an invoice. There is nothing for them to pay us.
+    expect(notice[0].body).toMatch(/nothing you need to do/i);
+  });
+
+  /**
+   * The routine `CARRIED_FORWARD` stays silent. A cycle below the minimum payout
+   * is not news, and sending one anyway trains people to ignore the message that
+   * says their money is not coming.
+   */
+  it("says nothing when the cycle merely fell below the minimum", async () => {
+    // ⚠️ `customer.settlement.…` — the config is namespaced by audience.
+    await Setting.findOneAndUpdate(
+      {},
+      { $set: { "customer.settlement.minPayoutAmount": 100000 } },
+      { upsert: true },
+    );
+    await payment();
+
+    await buildSettlements();
+
+    const cycle = await Settlement.findOne({
+      brandId: BRAND,
+      status: SETTLEMENT_STATUS.CARRIED_FORWARD,
+    }).lean();
+    expect(cycle).toBeTruthy();
+
+    expect(
+      mockNotify.mock.calls.some(
+        ([a]) => a.type === NOTIFICATION_TYPES.SETTLEMENT_CARRIED_FORWARD,
+      ),
+    ).toBe(false);
   });
 });

@@ -9,6 +9,7 @@ const {
   REFUND_REQUEST_STATUS,
 } = require("../../constants/refund");
 const { releaseSettlementHold } = require("../../helpers/refunds");
+const { getCustomerConfig } = require("../../helpers/settings");
 const { recordClaimHistory } = require("../../helpers/voucherClaims");
 const { buildTransactionFilter } = require("../../helpers/transactions");
 
@@ -116,12 +117,44 @@ exports.releaseTransactionHold = async (actor, transactionId, payload = {}) => {
     isOpen: true,
     isDeleted: false,
   })
-    .select("_id status")
+    .select("_id status bankDetailsRequestedAt")
     .lean();
 
-  if (openRefunds.length) {
+  /**
+   * ⚠️ The one open state this endpoint may override — and only once it has gone
+   * stale.
+   *
+   * `AWAITING_BANK_DETAILS` waits on the **customer**, and some never answer:
+   * the number changed, the app was deleted, ₹200 was not worth the trouble.
+   * Every other open state resolves on its own eventually; this one can sit for
+   * ever, and `settlementHold` sits with it — keeping the vendor's money out of
+   * every settlement, indefinitely, as the price of somebody else's silence.
+   *
+   * Releasing it does **not** cancel the refund. The money is still owed, the
+   * request stays open, and if the customer ever does supply an account,
+   * `claimRefundAdjustments` takes the clawback out of a later cycle — by then
+   * the payment carries a `settlementId`, which is exactly the condition that
+   * function tests. Nothing is written off; the vendor stops being frozen.
+   *
+   * The wait is `refund.bankDetailsStaleDays`, and it is checked here rather
+   * than trusted from the caller: an endpoint that let an admin type the number
+   * would let one typed as `0`.
+   */
+  const config = await getCustomerConfig();
+  const staleDays = Number(config.refund?.bankDetailsStaleDays) || 30;
+  const staleBefore = Date.now() - staleDays * 24 * 60 * 60 * 1000;
+
+  const overridableStall =
+    openRefunds.length === 1 &&
+    openRefunds[0].status === REFUND_REQUEST_STATUS.AWAITING_BANK_DETAILS &&
+    openRefunds[0].bankDetailsRequestedAt &&
+    new Date(openRefunds[0].bankDetailsRequestedAt).getTime() <= staleBefore;
+
+  if (openRefunds.length && !overridableStall) {
     const worst = openRefunds[0];
     const isFailed = worst?.status === REFUND_REQUEST_STATUS.FAILED;
+    const isWaitingOnCustomer =
+      worst?.status === REFUND_REQUEST_STATUS.AWAITING_BANK_DETAILS;
 
     throwError(
       409,
@@ -129,7 +162,12 @@ exports.releaseTransactionHold = async (actor, transactionId, payload = {}) => {
         ? "A refund on this payment failed and the customer has still not been " +
             "paid back. Settle the refund first — releasing the hold now would " +
             "pay the vendor for a sale the customer is owed a refund on."
-        : `This payment has ${openRefunds.length} refund request(s) still open — ` +
+        : isWaitingOnCustomer
+          ? `This refund is waiting on the customer's bank details, asked for on ` +
+            `${new Date(worst.bankDetailsRequestedAt).toDateString()}. ` +
+            `The hold can only be released after ${staleDays} days of no reply — ` +
+            `until then the refund may still complete on its own.`
+          : `This payment has ${openRefunds.length} refund request(s) still open — ` +
             `${REFUND_CUSTOMER_LABEL[worst?.status] || worst?.status}. ` +
             `Decide the refund and the hold comes off by itself.`,
     );
@@ -143,6 +181,15 @@ exports.releaseTransactionHold = async (actor, transactionId, payload = {}) => {
      * a decision about who bears the loss, and a person is making it here.
      */
     allowDisputed: true,
+    /**
+     * The helper counts open refunds itself and refuses on any — which is right
+     * everywhere except here, where the whole decision **is** that this one
+     * stalled. Naming it rather than loosening the helper keeps the guard intact
+     * for every other caller: a second open refund would still block, and the
+     * partial unique index on `(transactionId, isOpen)` means there cannot be
+     * one anyway.
+     */
+    ...(overridableStall ? { exceptRequestId: openRefunds[0]._id } : {}),
   });
 
   if (!result.released) {

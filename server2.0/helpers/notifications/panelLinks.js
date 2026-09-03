@@ -34,6 +34,17 @@ const PANEL_PATHS = Object.freeze({
   // have not.
   SETTLEMENTS: "settlements",
   settlement: (settlementId) => `settlements/${settlementId}`,
+  /**
+   * Where a vendor sees a chargeback on one of their sales, and can add what only
+   * they have — the kitchen ticket, a camera timestamp, what the staff remember.
+   *
+   * ⚠️ Before this existed the vendor was told nothing at all: the money simply
+   * stopped appearing in a settlement, and later a line on a statement deducted
+   * it. Same warning as the admin paths — a missing key here links to the word
+   * "undefined" and nobody finds out until somebody taps one.
+   */
+  DISPUTES: "disputes",
+  dispute: (disputeId) => `disputes/${disputeId}`,
   SUPPORT: "support",
 });
 
@@ -55,6 +66,15 @@ const ADMIN_PATHS = Object.freeze({
   // the word "undefined" and nobody finds out until an admin taps one.
   SETTLEMENTS: "settlements",
   settlement: (settlementId) => `settlements/${settlementId}`,
+  /**
+   * The dispute worklist, served by `GET /transactions/disputes`.
+   *
+   * Keyed on the **transaction**, because there is no `Dispute` model yet — a
+   * dispute lives as denormalised fields on the payment it belongs to (S3-1).
+   * Same warning as above: a missing key here links to the word "undefined".
+   */
+  DISPUTES: "disputes",
+  dispute: (transactionId) => `disputes/${transactionId}`,
 });
 
 /**
@@ -101,6 +121,13 @@ const CUSTOMER_PATHS = Object.freeze({
   order: (claimId) => `orders/${claimId}`,
   transaction: (transactionId) => `transactions/${transactionId}`,
   voucher: (voucherId) => `vouchers/${voucherId}`,
+  /**
+   * Where a customer adds a bank account when a refund cannot go back the way it
+   * came. ⚠️ An app route, never a web form: the one notice that asks for bank
+   * details must not also hand out a link that could collect them.
+   */
+  REFUNDS: "refunds",
+  refund: (requestId) => `refunds/${requestId}`,
   SUPPORT: "support",
 });
 

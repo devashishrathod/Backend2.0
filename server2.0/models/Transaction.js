@@ -74,6 +74,11 @@ const voucherTransactionSchema = new mongoose.Schema(
     // already collected and already shown to the vendor.
     commissionPercent: { type: Number, default: 0 },
     commissionAmount: { type: Number, default: 0 },
+    // GST on that commission, and what the settlement actually deducts —
+    // commission plus tax only when the tax sits on top. Both frozen here for
+    // the same reason as the rate. See `models/voucherPricingSchema.js`.
+    commissionTax: { type: Number, default: 0 },
+    commissionDeduction: { type: Number, default: 0 },
   },
   { _id: false },
 );
@@ -346,6 +351,15 @@ const transactionSchema = new mongoose.Schema(
      * month's arithmetic would look internally consistent while the vendor was
      * charged again and again for one lost dispute.
      */
+    /**
+     * ⚠️ Superseded by `Dispute.recoverySettlementId`, and kept only so an old
+     * row can still be read.
+     *
+     * The recovery lock lived here — one per payment — while the ledger keyed on
+     * the dispute. A payment carrying two lost disputes therefore booked two
+     * losses and recovered one, and the second was silently forgiven. Nothing
+     * writes these any more; see `models/Dispute.js`.
+     */
     chargebackSettlementId: { ...settlementField },
     chargebackRecoveredAt: { type: Date },
     disputeAmount: { type: Number },
@@ -354,6 +368,15 @@ const transactionSchema = new mongoose.Schema(
     disputedAt: { type: Date },
     // The date by which evidence must be submitted to Razorpay.
     disputeRespondBy: { type: Date },
+    /**
+     * How many deadline warnings have gone out for this dispute.
+     *
+     * The claim is this counter, updated in the same conditional write that
+     * decides who sends — so two instances sweeping at once cannot both alert,
+     * and a re-run of the job cannot repeat a stage. Monotonic: it only ever
+     * goes up, and a dispute that resolves simply stops matching.
+     */
+    disputeAlertsSent: { type: Number, default: 0 },
     disputeResolvedAt: { type: Date },
     isRefunded: { type: Boolean, default: false },
     isRefundRequested: { type: Boolean, default: false },

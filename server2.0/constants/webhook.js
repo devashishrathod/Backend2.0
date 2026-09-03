@@ -46,6 +46,20 @@ const DISPUTE_STATUS = Object.freeze({
   CLOSED: "CLOSED",
 });
 
+/**
+ * The statuses where a response is still worth something.
+ *
+ * ⚠️ `CLOSED` is **not** here. Razorpay closes a dispute the customer withdrew
+ * as well as one we simply never answered, and chasing a deadline on something
+ * already decided trains people to ignore the alert that matters. `WON` and
+ * `LOST` are decided by definition.
+ */
+const DISPUTE_ACTIONABLE_STATUSES = Object.freeze([
+  DISPUTE_STATUS.OPEN,
+  DISPUTE_STATUS.UNDER_REVIEW,
+  DISPUTE_STATUS.ACTION_REQUIRED,
+]);
+
 // event -> the status it puts the transaction into.
 const DISPUTE_EVENT_STATUS = Object.freeze({
   "payment.dispute.created": DISPUTE_STATUS.OPEN,
@@ -210,5 +224,6 @@ module.exports = {
   WEBHOOK_DEFAULTS,
   WEBHOOK_RETENTION,
   DISPUTE_STATUS,
+  DISPUTE_ACTIONABLE_STATUSES,
   DISPUTE_EVENT_STATUS,
 };

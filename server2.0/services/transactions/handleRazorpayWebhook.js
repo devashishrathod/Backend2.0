@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 const Transaction = require("../../models/Transaction");
 const RefundRequest = require("../../models/RefundRequest");
 const WebhookEvent = require("../../models/WebhookEvent");
+const Dispute = require("../../models/Dispute");
+const VoucherClaim = require("../../models/VoucherClaim");
 const {
   RAZORPAY_WEBHOOK_EVENTS,
   WEBHOOK_HANDLED_EVENTS,
@@ -35,8 +37,14 @@ const {
   postChargebackReversal,
 } = require("../../helpers/ledger");
 const { taintSettlement } = require("../../helpers/settlements");
+const { recordDispute, summariseDisputes } = require("../../helpers/disputes");
 const { getRazorpayAccount } = require("../../configs/razorpay");
-const { notifyAdmins } = require("../../helpers/notifications");
+const {
+  notifyAdmins,
+  sendQuietly,
+  notifyVendorDisputeRaised,
+  notifyVendorDisputeResolved,
+} = require("../../helpers/notifications");
 const { formatMoney } = require("../../helpers/subscribeds");
 const {
   RAZORPAY_ACCOUNTS,
@@ -439,40 +447,55 @@ const processWebhookEvent = async ({
       DISPUTE_STATUS.CLOSED,
     ].includes(disputeStatus);
 
+    /**
+     * ⚠️ The dispute gets its **own row**, and the transaction gets a summary.
+     *
+     * These fields used to be `$set` straight onto the transaction, which works
+     * for exactly one dispute per payment — and Razorpay does not promise one. A
+     * chargeback escalating to pre-arbitration and then arbitration arrives as
+     * separate disputes with separate ids, amounts and **deadlines**, and each
+     * one silently replaced the last. A response deadline that disappears is an
+     * automatic loss with nothing to show for it.
+     *
+     * `recordDispute` also settles out-of-order delivery, which the ledger's own
+     * notes warn about: a late `lost` after a `won` must not win.
+     */
+    await recordDispute({
+      transaction,
+      dispute,
+      status: disputeStatus,
+      // Razorpay stamps the event in unix seconds. Its time, not ours — ours is
+      // when the delivery happened to arrive, which is the thing being reordered.
+      eventAt: body?.created_at ? new Date(body.created_at * 1000) : new Date(),
+    });
+
+    const summary = await summariseDisputes(transaction._id);
+
     await Transaction.updateOne(
       { _id: transaction._id },
       {
         $set: {
-          isDisputed: isOpen,
+          ...summary,
           /**
            * ⚠️ Ineligibility is **monotonic**, and it is `settlementHold` that
            * carries it — never `isDisputed`.
            *
            * `isDisputed` tracks whether a dispute is *live*, so it correctly
-           * goes back to `false` on `won`, `lost` and `closed`. Settlement must
-           * not key on that: a chargeback we **lost** would flip the row back to
-           * fully eligible, and the next payout would hand the vendor money
-           * Trydood no longer has. That is not a race — it is what happens every
-           * single time.
+           * goes back to `false` once every dispute on the payment is resolved.
+           * Settlement must not key on that: a chargeback we **lost** would flip
+           * the row back to fully eligible, and the next payout would hand the
+           * vendor money Trydood no longer has. That is not a race — it is what
+           * happens every single time.
            *
            * So every dispute event, resolved or not, puts the hold on. A webhook
            * never takes it off: releasing it is an explicit admin action, taken
            * once somebody has decided who bears the loss.
+           *
+           * Written **after** the summary spread, so it cannot be overwritten by
+           * it.
            */
           settlementHold: true,
           settlementHoldReason: `Chargeback ${disputeStatus} (${dispute.id})`,
-          disputeStatus,
-          disputeId: dispute.id,
-          disputeAmount: amount || undefined,
-          disputeReason: dispute.reason_code || dispute.reason,
-          disputePhase: dispute.phase,
-          ...(disputeStatus === DISPUTE_STATUS.OPEN
-            ? { disputedAt: new Date() }
-            : {}),
-          ...(dispute.respond_by
-            ? { disputeRespondBy: new Date(dispute.respond_by * 1000) }
-            : {}),
-          ...(isOpen ? {} : { disputeResolvedAt: new Date() }),
         },
       },
     );
@@ -581,6 +604,80 @@ const processWebhookEvent = async ({
             "Submit evidence from the Razorpay dashboard before the deadline.",
         },
       });
+    }
+
+    /**
+     * ⚠️ And the vendor, who until now was told **nothing at all**.
+     *
+     * A dispute landed, the payment quietly stopped appearing in any settlement,
+     * and weeks later a statement carried "Less: chargebacks recovered" with no
+     * sale attached to it. From the outlet's side that is money taken without
+     * explanation — however correct the arithmetic was.
+     *
+     * Sent from the stored row rather than the webhook payload, because
+     * `recordDispute` may have **refused** this event as stale (an out-of-order
+     * `lost` after a `won`). Telling a vendor they lost a dispute we actually won
+     * would be worse than telling them nothing.
+     */
+    const stored = await Dispute.findOne({ disputeId: dispute.id }).lean();
+
+    if (stored) {
+      // The code the counter recognises. `invoiceId` is on the payment, but a
+      // claim code is what an outlet can actually look up.
+      const claim = transaction.voucher?.claimId
+        ? await VoucherClaim.findById(transaction.voucher.claimId)
+            .select("claimCode")
+            .lean()
+        : null;
+
+      const isResolvedNow = [
+        DISPUTE_STATUS.WON,
+        DISPUTE_STATUS.LOST,
+        DISPUTE_STATUS.CLOSED,
+      ].includes(stored.status);
+
+      if (!isResolvedNow && !stored.vendorNotifiedAt) {
+        await sendQuietly(
+          () =>
+            notifyVendorDisputeRaised({
+              dispute: stored,
+              transaction,
+              claimCode: claim?.claimCode,
+            }),
+          "vendor dispute raised",
+        );
+        /**
+         * Stamped so a silent outlet reads as *silent* rather than as *never
+         * asked* — two very different things when a dispute is lost and somebody
+         * asks why nobody at the outlet helped.
+         */
+        await Dispute.updateOne(
+          { _id: stored._id },
+          { $set: { vendorNotifiedAt: new Date() } },
+        );
+      }
+
+      if (
+        stored.status === DISPUTE_STATUS.WON ||
+        stored.status === DISPUTE_STATUS.LOST
+      ) {
+        await sendQuietly(
+          () =>
+            notifyVendorDisputeResolved({
+              dispute: stored,
+              transaction,
+              claimCode: claim?.claimCode,
+              won: stored.status === DISPUTE_STATUS.WON,
+              /**
+               * Only a payment the vendor was actually paid for can be clawed
+               * back. Without it the loss is entirely ours, and telling them a
+               * deduction is coming would be untrue.
+               */
+              recoverable: Boolean(transaction.settlementId),
+            }),
+          "vendor dispute resolved",
+        );
+      }
     }
 
     return finish(
