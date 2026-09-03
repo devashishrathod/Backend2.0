@@ -358,10 +358,22 @@ const refundAllowance = async (customerId, config) => {
  * given; `referredCount` is what the collection actually holds. The two
  * disagreeing is itself worth seeing.
  */
+const EMPTY_REFERRALS = {
+  referralCode: null,
+  appliedReferralCode: null,
+  referredBy: null,
+  referralCountOnAccount: 0,
+  referredCount: 0,
+  referred: [],
+};
+
 const referralGraph = async (account, limit) => {
-  if (!account) {
-    return { referralCode: null, referredBy: null, referredCount: 0, referred: [] };
-  }
+  // A customer with no account at all — the residue of a half-finished signup —
+  // still gets every key. Returning a shorter object here would make the two
+  // fields that went missing the only ones on the whole response a reader has to
+  // null-check, and only for the rarest customer, which is exactly the shape of
+  // bug nobody hits until production.
+  if (!account) return { ...EMPTY_REFERRALS };
 
   const [referredBy, referred, referredCount] = await Promise.all([
     account.appliedReferralCode
@@ -451,13 +463,15 @@ exports.getAdminCustomerDetail = async (key, query = {}) => {
   const userId = customer.userId || null;
 
   // The account has to be in hand before the referral graph runs — that one
-  // reads the codes off it — so it is fetched first and everything else goes in
-  // parallel behind it.
-  const account = userId
-    ? await User.findById(userId).select(ACCOUNT_FIELDS).lean()
-    : null;
+  // reads the codes off it — so it is fetched ahead of the main batch. The
+  // settings read has no such dependency, so it goes alongside rather than after:
+  // two round trips before the batch, not three.
+  const [account, customerConfig] = await Promise.all([
+    userId ? User.findById(userId).select(ACCOUNT_FIELDS).lean() : null,
+    getCustomerConfig(),
+  ]);
 
-  const refundConfig = (await getCustomerConfig()).refund || {};
+  const refundConfig = customerConfig.refund || {};
 
   const [
     stats,
