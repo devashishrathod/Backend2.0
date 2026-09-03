@@ -13,7 +13,10 @@ const Setting = require("../../models/Setting");
 const Brand = require("../../models/Brand");
 const Bank = require("../../models/Bank");
 const { buildSettlements, computeTotals } = require("../../services/settlements");
-const { SETTLEMENT_STATUS } = require("../../constants/settlement");
+const {
+  SETTLEMENT_STATUS,
+  SETTLEMENT_PRE_PAYOUT_STATUSES,
+} = require("../../constants/settlement");
 const {
   TRANSACTION_PURPOSE,
   RAZORPAY_ACCOUNTS,
@@ -328,6 +331,123 @@ describe("nothing to pay is an outcome, not a failure", () => {
     const s = await Settlement.findOne({ brandId: BRAND }).lean();
     const rows = await SettlementHistory.find({ settlementId: s._id }).lean();
     expect(rows[0].reason).toMatch(/below the ₹5000 minimum/i);
+  });
+});
+
+/**
+ * ⚠️ `settlement.requiresAdminApproval` — until now read by **nothing**.
+ *
+ * It defaults to `true`, is settable from the admin panel, and its own comment in
+ * `constants/customer.js` says *"turning this off auto-approves"*. No code
+ * anywhere consulted it, so an admin who switched it off to stop payouts queuing
+ * behind a person got no auto-approval **and no error**: every settlement carried
+ * on waiting for a click, and the switch that was meant to fix that did nothing.
+ * The seventh field in this flow wired at both ends and connected in the middle
+ * to nothing.
+ */
+describe("admin approval, when it is switched off", () => {
+  it("still waits for a person by default", async () => {
+    await Transaction.create(payment());
+
+    await buildSettlements();
+
+    const s = await Settlement.findOne({ brandId: BRAND }).lean();
+    expect(s.status).toBe(SETTLEMENT_STATUS.PENDING_APPROVAL);
+    expect(s.approvedAt).toBeFalsy();
+  });
+
+  it("approves the settlement itself once the setting is off", async () => {
+    await setSetting("requiresAdminApproval", false);
+    await Transaction.create(payment());
+
+    await buildSettlements();
+
+    const s = await Settlement.findOne({ brandId: BRAND }).lean();
+    expect(s.status).toBe(SETTLEMENT_STATUS.APPROVED);
+  });
+
+  /**
+   * ⚠️ `approvedAt` but never `approvedBy`.
+   *
+   * `approvedAt` is what the statement and every *"how long has this been
+   * sitting?"* query read, so leaving it unset would make an auto-approved
+   * settlement look stuck for ever. `approvedBy` naming a user would be a lie in
+   * the one record somebody reaches for when they ask who authorised a payout.
+   */
+  it("stamps when, and refuses to name a who", async () => {
+    await setSetting("requiresAdminApproval", false);
+    await Transaction.create(payment());
+
+    await buildSettlements();
+
+    const s = await Settlement.findOne({ brandId: BRAND }).lean();
+    expect(s.approvedAt).toBeInstanceOf(Date);
+    expect(s.approvedBy).toBeFalsy();
+  });
+
+  /** The audit trail has to say a machine did this, not a person. */
+  it("says on the history row that nobody reviewed it", async () => {
+    await setSetting("requiresAdminApproval", false);
+    await Transaction.create(payment());
+
+    await buildSettlements();
+
+    const s = await Settlement.findOne({ brandId: BRAND }).lean();
+    const rows = await SettlementHistory.find({ settlementId: s._id }).lean();
+    const approval = rows.find((r) => r.toStatus === SETTLEMENT_STATUS.APPROVED);
+
+    expect(approval).toBeDefined();
+    expect(approval.reason).toMatch(/auto-approved/i);
+    expect(approval.reason).toMatch(/no person reviewed/i);
+  });
+
+  /**
+   * ⚠️ Approving is not paying, and the setting must not become a way to skip
+   * the check that matters. `paySettlement` re-reads `needsRevalidation` at the
+   * moment money leaves — its own note says approval checking the flag *"is not
+   * enough"*, because hours pass in that window.
+   */
+  it("leaves the settlement where the overdue sweep can still see it", async () => {
+    await setSetting("requiresAdminApproval", false);
+    await Transaction.create(payment());
+
+    await buildSettlements();
+
+    const s = await Settlement.findOne({ brandId: BRAND }).lean();
+    expect(SETTLEMENT_PRE_PAYOUT_STATUSES).toContain(s.status);
+  });
+
+  /** Nothing to pay is still nothing to pay — the setting does not force a payout. */
+  it("does not approve a cycle that pays nothing", async () => {
+    await setSetting("requiresAdminApproval", false);
+    await setSetting("minPayoutAmount", 5000);
+    await Transaction.create(payment());
+
+    await buildSettlements();
+
+    const s = await Settlement.findOne({ brandId: BRAND }).lean();
+    expect(s.status).toBe(SETTLEMENT_STATUS.CARRIED_FORWARD);
+  });
+
+  /**
+   * ⚠️ An **unset** value must mean on.
+   *
+   * A settings document written before this field existed has no
+   * `requiresAdminApproval` at all. Read as `Boolean(undefined)` it would
+   * auto-approve every payout on the platform, silently, on the next deploy.
+   */
+  it("treats a settings document that predates the field as approval-required", async () => {
+    await Setting.findOneAndUpdate(
+      {},
+      { $unset: { "customer.settlement.requiresAdminApproval": "" } },
+      { upsert: true },
+    );
+    await Transaction.create(payment());
+
+    await buildSettlements();
+
+    const s = await Settlement.findOne({ brandId: BRAND }).lean();
+    expect(s.status).toBe(SETTLEMENT_STATUS.PENDING_APPROVAL);
   });
 });
 

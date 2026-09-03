@@ -195,6 +195,16 @@ exports.startPayout = async (actor, settlementId, payload = {}) => {
       bankSnapshot: settlement.bankSnapshot,
     });
   } catch (error) {
+    /**
+     * ⚠️ `payout_settlement_inflight_unique` is what makes that sentence true.
+     *
+     * The `legNumber` index alone did not: `legNumber` comes from **counting**
+     * the existing legs, so two concurrent starts took 1 and 2 and both inserts
+     * passed. Only one then won the status transition, and the loser's leg was
+     * left `INITIATED` and orphaned — which `sweepStalePayouts` reports as money
+     * that may already have moved, and an admin confirming it pays the vendor
+     * twice.
+     */
     if (error?.code === DUPLICATE_KEY) {
       throwError(409, "A payout for this settlement is already in flight.");
     }

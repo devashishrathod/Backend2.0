@@ -127,10 +127,39 @@ exports.settlementProjection = (role) => {
     vendorPromoCost: 1,
     commissionAmount: 1,
     commissionTax: 1,
+    /**
+     * The total that actually came off — commission plus its GST when that tax
+     * sits on top. Shown, not hidden: `netPayable` is built from this, and a
+     * vendor who can see `grossCollected` but not what was deducted from it has
+     * a figure they cannot check. The first settlement where ₹1,000 of sales
+     * pays out ₹882 is a support ticket with no answer in the statement.
+     */
+    commissionDeduction: 1,
     refundAdjustment: 1,
     chargebackAdjustment: 1,
     reserveHeld: 1,
+    /**
+     * ⚠️ The rate, and the record it was chosen from — **to the vendor too**.
+     *
+     * Once the rate is picked per brand, a bare `reserveHeld` is a figure they
+     * cannot check: the same ₹1,000 of sales holds ₹50 from one outlet and ₹150
+     * from another, and nothing on the page says why. That reads as arbitrary,
+     * and arbitrary is what a vendor escalates.
+     *
+     * `reserveBasis` is their **own** data — *"4 chargebacks in 260 sales over
+     * 180 days"* — checkable against their own books and, unlike the number
+     * alone, something they can actually act on. The same argument
+     * `commissionDeduction` above makes.
+     */
+    reservePercent: 1,
+    reserveBasis: 1,
     reserveReleased: 1,
+    /**
+     * When the money actually left. The settlement used to carry only
+     * `approvedAt`, so a vendor could see that somebody said yes but not when
+     * they were paid — and that is the question they ask.
+     */
+    paidAt: 1,
     netPayable: 1,
     transactionCount: 1,
 
@@ -215,7 +244,47 @@ exports.presentSettlement = (settlement, role) => {
       !settlement.needsRevalidation,
     canPay: role === ROLES.ADMIN && settlement.status === SETTLEMENT_STATUS.APPROVED,
     canRetry: role === ROLES.ADMIN && settlement.status === SETTLEMENT_STATUS.FAILED,
+    /**
+     * Why this brand's reserve rate is what it is, in a sentence.
+     *
+     * ⚠️ The same reason `statusLabel` exists: an enum is our word for it. A
+     * vendor reading `RISK_CHARGEBACKS` learns nothing and asks; a vendor reading
+     * *"4 chargebacks across 260 payments in the last 180 days"* can check it
+     * against their own records and knows what would change it.
+     *
+     * `null` when nothing is held, so a panel has one thing to test rather than
+     * a sentence explaining that zero was withheld.
+     */
+    reserveLabel: describeReserve(settlement),
   };
+};
+
+/** ⚠️ Never mentions the threshold itself — the rate is ours to set, not theirs to game. */
+const describeReserve = (settlement) => {
+  if (!settlement.reserveHeld) return null;
+
+  const basis = settlement.reserveBasis || {};
+  const percent = settlement.reservePercent;
+  const held = `${percent}% of this period's payout is held back`;
+
+  switch (basis.reason) {
+    case "RISK_CHARGEBACKS":
+      return (
+        `${held} — ${basis.disputeCount} chargeback(s) across ${basis.paymentCount} ` +
+        `payment(s) in the last ${basis.lookbackDays} days. It is released after the ` +
+        `hold period and paid out in a later settlement.`
+      );
+    case "NEW_VENDOR":
+      return (
+        `${held} while your account is new. It is released after the hold period ` +
+        `and paid out in a later settlement.`
+      );
+    default:
+      return (
+        `${held} as standard cover against chargebacks. It is released after the ` +
+        `hold period and paid out in a later settlement.`
+      );
+  }
 };
 
 exports.VENDOR_STATUS_LABEL = VENDOR_STATUS_LABEL;

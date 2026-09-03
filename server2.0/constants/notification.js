@@ -92,6 +92,29 @@ const NOTIFICATION_TYPES = Object.freeze({
   SETTLEMENT_FAILED: "SETTLEMENT_FAILED",
   SETTLEMENT_ON_HOLD: "SETTLEMENT_ON_HOLD",
   /**
+   * ⚠️ The one `CARRIED_FORWARD` that is news.
+   *
+   * Two very different things wear that status. *"Below the ₹500 minimum, it
+   * rolls into next time"* is routine and rightly silent. *"Your deductions came
+   * to more than your sales, so nothing is being paid and the balance follows
+   * you into the next cycle"* is not — and it was silent too.
+   *
+   * From the outlet's side that is indistinguishable from a payout that simply
+   * failed to happen: they traded, they expected money, none arrived, and no
+   * message explained it. The first anyone heard was a support call, usually
+   * weeks later and usually about a chargeback whose deadline had passed.
+   */
+  SETTLEMENT_CARRIED_FORWARD: "SETTLEMENT_CARRIED_FORWARD",
+  /**
+   * Admin only. A brand's deductions that no cycle can reach.
+   *
+   * A negative `netPayable` carries forward, and carrying forward releases every
+   * claim it held — right while the brand still trades, an endless silent loop
+   * the day they stop. Nothing errors and no report shows it, so this is the
+   * only thing that ever says the money is not coming back.
+   */
+  VENDOR_DEBT_AGED: "VENDOR_DEBT_AGED",
+  /**
    * Admin only. A payout that left and was never confirmed — `MANUAL_BANK` has
    * no callback, so a NEFT started at 4pm and forgotten leaves the settlement
    * `PROCESSING` for ever and the vendor reading "on its way to your bank"
@@ -105,6 +128,23 @@ const NOTIFICATION_TYPES = Object.freeze({
    * one of the two is wrong about money that has physically moved.
    */
   SETTLEMENT_LEDGER_DRIFT: "SETTLEMENT_LEDGER_DRIFT",
+  /**
+   * Admin only, CRITICAL. A blanket unique index was found shadowing a partial
+   * one and removed.
+   *
+   * ⚠️ The alert is not really about the index — that is already fixed by the
+   * time this is sent. It is about **what put it there**. Nothing in this build
+   * creates one, so a shadow index appearing means another process wrote to this
+   * database, and the timestamp on this notice is the only usable lead for
+   * finding it: the old writer restarted inside the sweep window that caught it.
+   *
+   * CRITICAL because of what the index does while it is there. A blanket unique
+   * on a nullable path rejects the **second** row with no value, and every
+   * voucher claim is created before its invoice exists — so in production it is
+   * every second claim failing, with a duplicate-key error naming a field the
+   * customer never touched.
+   */
+  SHADOW_INDEX_REAPED: "SHADOW_INDEX_REAPED",
   // To the vendor and the outlet, not the customer.
   VOUCHER_CLAIM_RECEIVED: "VOUCHER_CLAIM_RECEIVED",
   // Phase 2: a paid claim that was never scanned inside its window.
@@ -113,6 +153,41 @@ const NOTIFICATION_TYPES = Object.freeze({
   WEBHOOK_FAILED: "WEBHOOK_FAILED",
   // A chargeback. There is a response deadline; missing it forfeits the money.
   PAYMENT_DISPUTED: "PAYMENT_DISPUTED",
+  /**
+   * That deadline, getting close — or already gone.
+   *
+   * `PAYMENT_DISPUTED` fires once, when the dispute opens, and by the time the
+   * deadline matters it has long scrolled away. This is the one that arrives
+   * while there is still something to do about it.
+   */
+  DISPUTE_DEADLINE: "DISPUTE_DEADLINE",
+  /**
+   * To the **vendor**: a customer's bank has pulled a payment back on one of
+   * their sales.
+   *
+   * ⚠️ Before this they were told nothing. The money simply never appeared in a
+   * settlement, and weeks later a statement carried a deduction with no sale
+   * attached to it — which reads as money taken without explanation, however
+   * correct the arithmetic was.
+   */
+  DISPUTE_RAISED_VENDOR: "DISPUTE_RAISED_VENDOR",
+  /** And how it ended — won, so the hold lifts; or lost, so it is deducted. */
+  DISPUTE_RESOLVED_VENDOR: "DISPUTE_RESOLVED_VENDOR",
+  /**
+   * The refund could not go back the way it came, and we need an account to
+   * send it to. The only refund notice that asks the customer to **do**
+   * something — so it is also the only one where silence means the money stays
+   * with us.
+   */
+  REFUND_BANK_DETAILS_REQUESTED: "REFUND_BANK_DETAILS_REQUESTED",
+  /**
+   * To an **admin**: a customer was asked for an account and never answered.
+   *
+   * Not about the customer's money — that stays theirs and the refund stays
+   * open. It is about the vendor's: the settlement hold behind it has been
+   * frozen for weeks, and one silent customer should not cost a vendor for ever.
+   */
+  REFUND_BANK_DETAILS_STALE: "REFUND_BANK_DETAILS_STALE",
   // A paying brand's plan lapsed — revenue lost, worth a follow-up.
   BRAND_SUBSCRIPTION_LAPSED: "BRAND_SUBSCRIPTION_LAPSED",
   // A promo code went past its cap because a payment quoted before the code ran

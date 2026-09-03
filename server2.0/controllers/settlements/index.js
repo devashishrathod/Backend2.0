@@ -15,6 +15,8 @@ const {
   retry,
   reverse,
 } = require("./admin");
+const { statementByToken } = require("./statement");
+const { vendorDebt, vendorDebtWriteOff } = require("./vendorDebt");
 
 module.exports = {
   listSettlements,
@@ -30,4 +32,12 @@ module.exports = {
   fail,
   retry,
   reverse,
+  // Public, token-addressed, no JWT — see the controller.
+  statementByToken,
+  /**
+   * ⚠️ Debt a settlement cycle can never reach — every cycle claims it, nets
+   * negative, carries forward and releases it again.
+   */
+  vendorDebt,
+  vendorDebtWriteOff,
 };

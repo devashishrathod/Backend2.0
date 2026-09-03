@@ -1,3 +1,4 @@
+const crypto = require("node:crypto");
 const Settlement = require("../../models/Settlement");
 const { throwError } = require("../../utils");
 const {
@@ -84,6 +85,33 @@ exports.transitionSettlement = async ({
    * `isOpen` is set here as well as by the pre-save hook, because this is an
    * update rather than a document save — the hook does not run.
    */
+  /**
+   * The statement link is minted the moment a settlement becomes `PAID`.
+   *
+   * ⚠️ Here, and not in `confirmPayout`, because `PAID` is reached from **two**
+   * places — the normal final leg, and the self-heal for a confirmation that
+   * crashed after its leg was already paid. Minting at one of them would leave
+   * the other with a settlement nobody can download a statement for, and that
+   * gap would only surface as a vendor asking where their paperwork is.
+   *
+   * `$setOnInsert` is not available on an update, so the guard is the `||` — a
+   * settlement that already has a token keeps it, so a re-run cannot invalidate
+   * a link already sitting in somebody's inbox.
+   */
+  const becomingPaid = to === SETTLEMENT_STATUS.PAID;
+  const mintStatementToken = becomingPaid && !settlement.statementToken;
+
+  /**
+   * ⚠️ Stamped here for the same reason the token is: `PAID` is reached from two
+   * places, and the reserve's hold clock runs from this field. A settlement that
+   * became paid through the self-heal path with no `paidAt` would have a reserve
+   * that never matures — held for ever, silently.
+   *
+   * `||` so a re-entry cannot move the date on a settlement that was already
+   * paid, which would quietly restart every reserve behind it.
+   */
+  const stampPaidAt = becomingPaid && !settlement.paidAt;
+
   const updated = await Settlement.findOneAndUpdate(
     { _id: settlement._id, status: from },
     {
@@ -91,6 +119,10 @@ exports.transitionSettlement = async ({
         ...set,
         status: to,
         isOpen: SETTLEMENT_OPEN_STATUSES.includes(to),
+        ...(mintStatementToken
+          ? { statementToken: crypto.randomBytes(32).toString("hex") }
+          : {}),
+        ...(stampPaidAt ? { paidAt: new Date() } : {}),
       },
     },
     { returnDocument: "after" },

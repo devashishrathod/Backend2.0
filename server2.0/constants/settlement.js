@@ -80,6 +80,23 @@ const SETTLEMENT_STATUS = Object.freeze({
 const ALLOWED_SETTLEMENT_TRANSITIONS = Object.freeze({
   [SETTLEMENT_STATUS.DRAFT]: Object.freeze([
     SETTLEMENT_STATUS.PENDING_APPROVAL,
+    /**
+     * ⚠️ Straight to `APPROVED` when `settlement.requiresAdminApproval` is off.
+     *
+     * That setting exists, defaults to `true`, is settable from the admin panel,
+     * and its own comment in `constants/customer.js` says *"turning this off
+     * auto-approves"* — while **no code read it**. An admin who switched it off
+     * to stop payouts queuing behind a person got no auto-approval and no error:
+     * every settlement carried on waiting, and the switch that was supposed to
+     * fix it did nothing at all.
+     *
+     * Approving is not paying. `PATCH /settlements/admin/:id/pay` is still a
+     * deliberate human action, and `paySettlement` re-checks `needsRevalidation`
+     * at that moment — its own note says approval checking the flag *"is not
+     * enough"*, because hours pass in that window. So skipping the review step
+     * removes a queue, not the guard.
+     */
+    SETTLEMENT_STATUS.APPROVED,
     // Reached straight from the build when the period nets to nothing — there is
     // no decision for an admin to make about paying zero.
     SETTLEMENT_STATUS.CARRIED_FORWARD,

@@ -21,6 +21,9 @@ const money = (amount) =>
     { minimumFractionDigits: 2, maximumFractionDigits: 2 },
   )}`;
 
+/** Notice bodies quote money, so the arithmetic in them rounds like the ledger. */
+const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
+
 const onDate = (date) =>
   date
     ? new Date(date).toLocaleString("en-IN", {
@@ -310,6 +313,152 @@ exports.notifyAdminSettlementLedgerDrift = async ({ settlement, legTotal, ledger
       ],
       buttonText: "Open settlement",
       buttonUrl: adminUrl(ADMIN_PATHS.settlement(settlement._id)),
+    },
+  });
+};
+
+/**
+ * To the **vendor**: this cycle paid nothing, and here is why.
+ *
+ * ### ⚠️ The one `CARRIED_FORWARD` worth sending
+ *
+ * Two very different outcomes wear that status, and only one of them is news:
+ *
+ *  - **Below the minimum.** Routine, rolls into the next cycle, silent — sending
+ *    it would train them to ignore the message that matters.
+ *  - **Deductions outran the takings.** They traded, they expected money, none
+ *    came, and until this existed *nothing said so*. From their side that is
+ *    indistinguishable from a payout that quietly failed, and the first anybody
+ *    heard was a support call — usually weeks later, usually about a chargeback
+ *    whose deadline had already gone.
+ *
+ * So the caller sends this only for the second, and the body names the actual
+ * cause rather than the status. "Carried forward" is our word for it; "a refund
+ * and a chargeback came to more than this period's sales" is theirs.
+ *
+ * ⚠️ It says the balance **follows them into the next cycle**, because that is
+ * true and because the alternative reading — that they now owe us a payment — is
+ * the one people jump to. Nothing here asks them for money.
+ */
+exports.notifyVendorSettlementCarriedForward = async ({
+  settlement,
+  refundAdjustment = 0,
+  chargebackAdjustment = 0,
+}) => {
+  const deductions = round2(refundAdjustment + chargebackAdjustment);
+  const shortfall = round2(Math.abs(Number(settlement.netPayable) || 0));
+
+  const parts = [];
+  if (chargebackAdjustment > 0) {
+    parts.push(`${money(chargebackAdjustment)} in chargebacks`);
+  }
+  if (refundAdjustment > 0) parts.push(`${money(refundAdjustment)} in refunds`);
+
+  return notify({
+    brandId: settlement.brandId,
+    audience: NOTIFICATION_AUDIENCE.VENDOR,
+    /**
+     * WARNING, not INFO. Nothing is broken, but a payout they were expecting is
+     * not coming and the reason usually predates this cycle — that is worth
+     * surfacing above the fold rather than filing beside a receipt.
+     */
+    severity: NOTIFICATION_SEVERITY.WARNING,
+    type: NOTIFICATION_TYPES.SETTLEMENT_CARRIED_FORWARD,
+    title: `No payout for ${forPeriod(settlement)}`,
+    /**
+     * ⚠️ Two different endings, because ₹0.00 and −₹450 are different news.
+     *
+     * A cycle that nets to **exactly** zero is settled: the sales covered the
+     * deductions and nothing is left over. Telling that vendor "the remaining
+     * ₹0.00 carries into your next settlement" is a sentence that means nothing
+     * and reads like a system with a bug in it.
+     */
+    body:
+      `${parts.length ? parts.join(" and ") : `${money(deductions)} in deductions`} ` +
+      (shortfall > 0
+        ? `came to more than this period's sales, so there is nothing to pay out. ` +
+          `The remaining ${money(shortfall)} carries into your next settlement and ` +
+          `comes off future sales — there is nothing to pay us and nothing you need to do.`
+        : `came to exactly this period's sales, so there is nothing left to pay out. ` +
+          `Nothing carries forward and there is nothing you need to do.`),
+    meta: {
+      settlementId: settlement._id,
+      settlementNumber: settlement.settlementNumber,
+      netPayable: settlement.netPayable,
+      refundAdjustment,
+      chargebackAdjustment,
+    },
+    deepLink: deepLink(PANEL_PATHS.settlement(settlement._id)),
+    dedupeKey: `SETTLEMENT_CARRIED_FORWARD:${settlement._id}`,
+    mail: {
+      lines: [
+        ["Settlement", settlement.settlementNumber || "-"],
+        ["Period", forPeriod(settlement)],
+        ["Sales this period", money(settlement.grossCollected)],
+        ["Refunds deducted", money(refundAdjustment)],
+        ["Chargebacks deducted", money(chargebackAdjustment)],
+        ["Carried into next settlement", money(shortfall)],
+      ],
+      buttonText: "View statement",
+      buttonUrl: vendorUrl(PANEL_PATHS.settlement(settlement._id)),
+    },
+  });
+};
+
+/**
+ * To the **admin**: a brand's deductions that no cycle can reach.
+ *
+ * ⚠️ This is the alert for a failure whose whole signature is *nothing
+ * happening*. A negative `netPayable` carries forward, and carrying forward
+ * releases every claim it held — correct while the brand still trades, because
+ * new sales net it off. The day they stop trading the same rows are claimed and
+ * released every cycle, for ever: nothing errors, nothing is logged, and the
+ * money sits on our books as a receivable from somebody who is not coming back.
+ *
+ * Keyed on the brand and the day, so a brand in this state produces one message
+ * a day rather than one per sweep — and stops producing them the moment the debt
+ * is collected or written off.
+ */
+exports.notifyAdminVendorDebtAged = async ({
+  brandId,
+  brandName,
+  outstanding,
+  ageDays,
+  counts = {},
+  writeOffDays,
+}) => {
+  const what = [
+    counts.disputes ? `${counts.disputes} chargeback(s)` : null,
+    counts.refunds ? `${counts.refunds} refund clawback(s)` : null,
+  ]
+    .filter(Boolean)
+    .join(" and ");
+
+  return notify({
+    brandId,
+    audience: NOTIFICATION_AUDIENCE.ADMIN,
+    severity: NOTIFICATION_SEVERITY.WARNING,
+    type: NOTIFICATION_TYPES.VENDOR_DEBT_AGED,
+    title: `${money(outstanding)} unrecovered from ${brandName || brandId}`,
+    body:
+      `${what || "Deductions"} totalling ${money(outstanding)} have gone unclaimed for ` +
+      `${ageDays} days — past the ${writeOffDays}-day mark. Every cycle claims them, ` +
+      `nets negative, carries forward and releases them again, so this will not ` +
+      `resolve on its own unless the brand starts trading again. Collect it, or write it off.`,
+    meta: { brandId, outstanding, ageDays, ...counts },
+    deepLink: deepLink(ADMIN_PATHS.SETTLEMENTS),
+    // One a day per brand — the state is static, so anything tighter is noise.
+    dedupeKey: `VENDOR_DEBT_AGED:${brandId}:${new Date().toISOString().slice(0, 10)}`,
+    mail: {
+      lines: [
+        ["Brand", brandName || String(brandId)],
+        ["Outstanding", money(outstanding)],
+        ["Oldest item", `${ageDays} days`],
+        ["Chargebacks", String(counts.disputes || 0)],
+        ["Refund clawbacks", String(counts.refunds || 0)],
+      ],
+      buttonText: "Open settlements",
+      buttonUrl: adminUrl(ADMIN_PATHS.SETTLEMENTS),
     },
   });
 };

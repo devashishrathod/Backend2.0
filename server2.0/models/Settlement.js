@@ -3,6 +3,7 @@ const {
   brandField,
   transactionField,
   userField,
+  settlementField,
 } = require("./validObjectId");
 const {
   SETTLEMENT_STATUS,
@@ -71,7 +72,20 @@ const settlementSchema = new mongoose.Schema(
     grossCollected: { type: Number, default: 0 },
     vendorPromoCost: { type: Number, default: 0 },
     commissionAmount: { type: Number, default: 0 },
+    /**
+     * GST on the commission, summed from the frozen per-claim values.
+     *
+     * ⚠️ `computeTotals` used to write a hardcoded `0` here while the field was
+     * already on the model and already shown to the vendor — a number that could
+     * only ever be wrong once a rate was set. It is derived now.
+     */
     commissionTax: { type: Number, default: 0 },
+    /**
+     * What the vendor was actually deducted: `commissionAmount` plus
+     * `commissionTax` only when that tax sits on top rather than inside.
+     * `netPayable` is built from this, not from `commissionAmount`.
+     */
+    commissionDeduction: { type: Number, default: 0 },
     /**
      * Refunds and chargebacks from **earlier** cycles, claimed the same way the
      * transactions are.
@@ -84,7 +98,69 @@ const settlementSchema = new mongoose.Schema(
     refundAdjustment: { type: Number, default: 0 },
     chargebackAdjustment: { type: Number, default: 0 },
     reserveHeld: { type: Number, default: 0 },
+    /**
+     * The rate actually applied, and why.
+     *
+     * ### ⚠️ Frozen here, never recomputed
+     *
+     * `reserveHeld` was stored while the **rate** was not, which was fine only
+     * while every brand paid the same one. Once the rate is chosen per brand
+     * from a trailing chargeback window, that window has moved by the time
+     * anybody reads the statement — so *"why was 15% withheld from me in
+     * March?"* would be answered by recomputing today's number, which is a
+     * different number, and the arithmetic on the page would not reproduce.
+     *
+     * The same discipline `computeTotals` already follows: a settlement's
+     * figures must add up to the rows it claims to describe, and a live query is
+     * how that quietly stops being true.
+     *
+     * `reserveBasis` carries the reasoning rather than just the result, because
+     * *"you had 4 chargebacks in 260 sales over 180 days"* is an answer and
+     * *"15%"* is not.
+     */
+    reservePercent: { type: Number, default: 0, min: 0, max: 100 },
+    reserveBasis: {
+      /** `RESERVE_BASIS` — see `helpers/settlements/reserveRisk.js`. */
+      reason: { type: String, trim: true },
+      disputeCount: { type: Number, default: 0 },
+      paymentCount: { type: Number, default: 0 },
+      disputeRatePercent: { type: Number, default: 0 },
+      lookbackDays: { type: Number, default: 0 },
+    },
+    /**
+     * Matured reserves from **earlier** settlements, added back into this one.
+     *
+     * ⚠️ This was written as a hardcoded `0` by `computeTotals` while
+     * `reserveHeld` was fully wired — the third field in this system to have that
+     * shape, after `chargebackAdjustment` and `commissionTax`, and the same
+     * consequence: with the reserve switched on, money went in and **never came
+     * out**. Invisible today only because `reserve.isEnabled` is `false`.
+     */
     reserveReleased: { type: Number, default: 0 },
+    /**
+     * Which later settlement claimed **this** settlement's reserve.
+     *
+     * The claim lock, the same discipline `chargebackSettlementId` uses on a
+     * transaction. Without it, a live "matured reserves for this brand" query
+     * would hand the same reserve back in **every** cycle — for ever — and each
+     * month's arithmetic would look internally consistent.
+     */
+    reserveReleaseSettlementId: { ...settlementField },
+    reserveReleasedAt: { type: Date },
+
+    /**
+     * When the payout was actually confirmed.
+     *
+     * ⚠️ The settlement carried `approvedAt` and nothing else — so it recorded
+     * when somebody said yes, but not when the vendor was paid. `paidAt` lived
+     * only on the `PayoutLeg`, which means "when did this vendor get their
+     * money" needed a join, and a `distinct` over it was not practical at all.
+     *
+     * The reserve's hold clock runs from here: the hold exists to cover
+     * chargebacks that arrive **after** the money left, so it has to start when
+     * it left — not when the period closed, and not when an admin approved it.
+     */
+    paidAt: { type: Date },
     netPayable: { type: Number, default: 0 },
     transactionCount: { type: Number, default: 0 },
 

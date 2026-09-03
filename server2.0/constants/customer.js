@@ -175,11 +175,48 @@ const SETTLEMENT_DEFAULTS = Object.freeze({
   // Off for everyone; turned on per-vendor once the risk signals exist.
   reserve: Object.freeze({
     isEnabled: false,
+    /** The base rate. Every brand with nothing against them pays this. */
     percent: 5,
     holdDays: 30,
+    /**
+     * ⚠️ How many chargebacks in the window before we look at all.
+     *
+     * A **trigger**, not the whole test. On its own a count punishes size: a
+     * brand doing 10,000 sales with 2 chargebacks is safer than one doing 40
+     * with 2, and holding more from the first is holding more from the better
+     * merchant. `riskDisputeRatePercent` is the other half.
+     */
     riskChargebackCount: 2,
+    /** How far back the count and the rate are measured. */
+    riskLookbackDays: 180,
+    /**
+     * ⚠️ The floor under the rate.
+     *
+     * One chargeback out of three sales is 33% and means nothing — the sample is
+     * too small to carry an opinion. Below this many payments the brand keeps
+     * the base rate, however the arithmetic looks. Without it, a single unlucky
+     * week freezes a new outlet's money on their first month.
+     */
+    riskMinPayments: 20,
+    /** Chargebacks ÷ payments, as a percentage, above which a brand is risky. */
+    riskDisputeRatePercent: 1,
+    /** What a risky brand holds instead of `percent`. */
+    riskPercent: 15,
+    /**
+     * ⚠️ The ceiling, and it is a business decision rather than an arithmetic
+     * one. Without it a bad month could hold back nearly everything and cut a
+     * vendor off from their own cash flow — which is how a recoverable problem
+     * becomes a closed outlet.
+     */
+    maxPercent: 25,
   }),
-  // A brand's first few days, when there is no history to judge risk by.
+  /**
+   * A brand's first few days, when there is no history to judge risk by.
+   *
+   * ⚠️ Unproven means **more** held, not less — the same reading acquirers take
+   * of a new merchant. A brand whose first payment is newer than this holds
+   * `reserve.riskPercent`. `0` (today) switches it off entirely.
+   */
   newVendorReserveDays: 0,
   // How long a settlement may sit un-received before it is treated as a
   // problem worth waking someone for.
@@ -233,6 +270,32 @@ const REFUND_DEFAULTS = Object.freeze({
   authorizedAlertMinutes: 30,
 
   /**
+   * When a `MANUAL_BANK` refund is waiting on the customer for bank details.
+   *
+   * Hours after the ask at which they are reminded. ⚠️ Days apart, not hours:
+   * the first message went out with the refund failure and this is a nudge, not
+   * a chase. Someone who has already been told their refund failed and is then
+   * pinged hourly for their account number reads it as a scam, and the money
+   * they are owed becomes the thing they least want to engage with.
+   */
+  bankDetailsReminderHours: [24, 96],
+
+  /**
+   * After this, a silent customer becomes an admin's problem.
+   *
+   * ⚠️ Not a deadline for the customer — their money stays theirs, and the
+   * refund stays open. It is a deadline for **the vendor's**: a hold nobody
+   * releases keeps their money out of every future settlement for ever, and one
+   * customer who never answers should not cost a vendor indefinitely.
+   *
+   * At that point an admin can release the hold with a written reason. The
+   * refund is still owed, and `claimRefundAdjustments` recovers it from a later
+   * cycle if the customer ever does answer — so nothing is written off, only
+   * un-frozen.
+   */
+  bankDetailsStaleDays: 30,
+
+  /**
    * ---------- abuse limits ----------
    *
    * ⚠️ These count **refused** requests, never approved ones.
@@ -274,6 +337,21 @@ const CHARGEBACK_DEFAULTS = Object.freeze({
   // After this an unresolved chargeback is written off by an admin rather than
   // held open forever.
   writeOffDays: 90,
+  /**
+   * Hours before `disputeRespondBy` at which an admin is warned — widest first.
+   *
+   * ⚠️ A dispute deadline that passes is an **automatic loss**. The bank does
+   * not chase us, Razorpay does not chase us, and the money simply goes. The
+   * field was already being filled from the webhook and nothing was reading it,
+   * so the only way to see a deadline was for somebody to open the worklist and
+   * check the dates by eye — one holiday or one busy week and it was gone, with
+   * no error and no alert anywhere.
+   *
+   * Two stages rather than one: a single warning that lands during a weekend is
+   * the same as no warning, and the escalation to CRITICAL is what distinguishes
+   * "look at this soon" from "today".
+   */
+  deadlineAlertHours: [72, 24],
 });
 
 /**
@@ -306,6 +384,16 @@ const REFUND_METHODS = Object.freeze({
   MANUAL_BANK: "MANUAL_BANK",
 });
 
+/**
+ * The OTP purpose for attaching a bank account to a customer.
+ *
+ * ⚠️ Its own purpose, never `"auth"`. `verifyOtp` scopes and consumes a code by
+ * `(target, purpose)`, so sharing the login purpose would let a code sent for
+ * signing in be spent on redirecting a refund — and the customer would see a
+ * perfectly ordinary login OTP arrive just before their money went elsewhere.
+ */
+const BANK_ATTACH_OTP_PURPOSE = "customer-bank-attach";
+
 const VENDOR_TIMEOUT_ACTIONS = Object.freeze({
   ESCALATE: "ESCALATE",
   AUTO_APPROVE: "AUTO_APPROVE",
@@ -325,5 +413,6 @@ module.exports = {
   SETTLEMENT_CYCLE_TYPES,
   PAYOUT_PROVIDERS,
   REFUND_METHODS,
+  BANK_ATTACH_OTP_PURPOSE,
   VENDOR_TIMEOUT_ACTIONS,
 };

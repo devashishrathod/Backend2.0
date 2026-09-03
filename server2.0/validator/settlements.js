@@ -54,6 +54,31 @@ exports.validateListSettlements = {
 
 exports.validateSettlementDetail = { params: settlementIdParam };
 
+/**
+ * The public statement link.
+ *
+ * ⚠️ The token **is** the credential here — there is no JWT behind it — so its
+ * shape is checked before it reaches a query. `crypto.randomBytes(32).toString("hex")`
+ * is exactly 64 hex characters, and anything else is not a token this system ever
+ * issued: refusing it up front keeps malformed input out of the lookup entirely.
+ *
+ * The error deliberately says nothing useful. A holder of a bad token learning
+ * that it was *nearly* right is how guessing gets cheaper.
+ */
+exports.validateStatementByToken = {
+  params: Joi.object({
+    token: Joi.string()
+      .trim()
+      .pattern(/^[a-f0-9]{64}$/i)
+      .required()
+      .messages({
+        "any.required": "Statement not found.",
+        "string.empty": "Statement not found.",
+        "string.pattern.base": "Statement not found.",
+      }),
+  }),
+};
+
 /** The statement lines. Paged separately — a busy brand's day is hundreds. */
 exports.validateSettlementTransactions = {
   params: settlementIdParam,
@@ -232,6 +257,52 @@ exports.validateReversePayout = {
       "any.required": "Please say why this payout is being reversed.",
       "string.empty": "Please say why this payout is being reversed.",
       "string.min": "Please give a little more detail.",
+    }),
+  }),
+};
+
+/**
+ * The brand whose outstanding balance is being read or written off.
+ *
+ * The debt belongs to a **brand**, not a settlement: it is precisely the money
+ * no settlement was able to carry, so keying either endpoint on a settlement id
+ * would ask for the one record that by definition does not hold it.
+ */
+const brandIdParam = Joi.object({
+  brandId: objectId().required().messages({
+    "any.required": "brandId is required.",
+    "any.invalid": "Invalid brandId.",
+  }),
+});
+
+/** Read-only, admin-only. Takes nothing but the brand. */
+exports.validateVendorDebt = { params: brandIdParam };
+
+/**
+ * Writing off what a brand owes.
+ *
+ * `reason` is required and it is not paperwork. This posts `MANUAL_ADJUSTMENT`
+ * rows into a ledger that is never edited — one crediting the vendor's balance,
+ * one charging the platform — and an adjustment nobody explained cannot be told
+ * apart from a mistake months later. `recordLedgerEntry` refuses one without a
+ * reason anyway; asking here means the caller finds out before anything moved.
+ */
+exports.validateWriteOffVendorDebt = {
+  params: brandIdParam,
+  body: Joi.object({
+    reason: Joi.string().trim().min(3).max(500).required().messages({
+      "any.required": "Please say why this debt is being written off.",
+      "string.empty": "Please say why this debt is being written off.",
+      "string.min": "Please give a little more detail.",
+    }),
+    /**
+     * *"Write off everything older than 90 days"* is the real request far more
+     * often than *"write off everything"* — a brand still trading may carry one
+     * ancient chargeback beside a refund from last week that the next cycle
+     * collects on its own. Omitted means everything outstanding.
+     */
+    olderThanDays: Joi.number().integer().min(1).max(3650).optional().messages({
+      "number.min": "olderThanDays must be at least 1.",
     }),
   }),
 };

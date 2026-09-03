@@ -15,12 +15,16 @@ const {
   notifyAdminSettlementStuck,
   notifyAdminSettlementLate,
   notifyAdminSettlementLedgerDrift,
+  notifyAdminVendorDebtAged,
 } = require("../../helpers/notifications");
 const {
   transitionSettlement,
   countClaimedRows,
   releaseSettlementClaims,
+  computeVendorDebt,
+  brandsWithAgedDebt,
 } = require("../../helpers/settlements");
+const Brand = require("../../models/Brand");
 
 const HOUR_MS = 60 * 60 * 1000;
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -365,16 +369,39 @@ exports.sweepStrandedClaims = async ({ staleHours = 1 } = {}) => {
 
   for (const settlement of terminal) {
     const held = await countClaimedRows(settlement._id);
-    if (!held.transactions && !held.refunds) continue;
+
+    /**
+     * ⚠️ **Every** lock, not just payments and refunds.
+     *
+     * This checked two of them. There are four: a chargeback claim on `Dispute`
+     * and a matured-reserve claim on `Settlement` are locks in exactly the same
+     * sense, and a dead settlement holding only those was skipped by the
+     * `continue` and never released — the loss stayed marked as recovered and the
+     * reserve stayed marked as returned, both permanently, and this sweep said
+     * there was nothing to find.
+     *
+     * Summed rather than listed one by one, so a fifth lock added later is
+     * caught by whoever adds it to `countClaimedRows` rather than needing to be
+     * remembered here as well.
+     */
+    const totalHeld = Object.values(held).reduce(
+      (sum, count) => sum + (Number(count) || 0),
+      0,
+    );
+    if (!totalHeld) continue;
 
     const result = await releaseSettlementClaims(settlement._id);
-    released += result.transactions + result.refunds;
+    released += Object.values(result).reduce(
+      (sum, count) => sum + (Number(count) || 0),
+      0,
+    );
     settlements += 1;
 
     console.warn(
       `[sweepStrandedClaims] ${settlement.settlementNumber || settlement._id} is ` +
-        `${settlement.status} but was still holding ${held.transactions} payment(s) ` +
-        `and ${held.refunds} refund(s) — released.`,
+        `${settlement.status} but was still holding ${held.transactions} payment(s), ` +
+        `${held.refunds} refund(s), ${held.chargebacks} chargeback claim(s) and ` +
+        `${held.reserves} reserve claim(s) — released.`,
     );
   }
 
@@ -466,4 +493,103 @@ exports.sweepAbandonedDrafts = async ({ staleHours = 3 } = {}) => {
   }
 
   return { checked: drafts.length, abandoned };
+};
+
+/**
+ * Find the debt no settlement cycle can reach.
+ *
+ * ### ⚠️ A failure whose entire signature is *nothing happening*
+ *
+ * A brand whose deductions outrun their takings builds a settlement with a
+ * negative `netPayable`. That goes `CARRIED_FORWARD`, and carrying forward **is**
+ * releasing every claim it held — deliberately, so the debt and the takings both
+ * flow into the next cycle. While they still trade, new sales net it off and the
+ * loop ends by itself.
+ *
+ * The day they stop trading it never does. The same rows are claimed and released
+ * every cycle, for ever. No exception is raised, no status is wrong, no figure is
+ * inconsistent — the money simply sits on our books as a receivable from somebody
+ * who is not coming back. This sweep is the only thing that ever says so, which
+ * puts it in the same family as `sweepStalePayouts` and `alertLateSettlements`:
+ * jobs whose whole purpose is to look for an absence.
+ *
+ * ### It alerts and never acts
+ *
+ * Writing a debt off is an accounting decision with a person's name on it. Doing
+ * it automatically at 90 days would forgive a brand that is merely between
+ * seasons, and the ledger would carry a `MANUAL_ADJUSTMENT` nobody chose. So this
+ * reports, and `writeOffVendorDebt` is the deliberate act — the same split
+ * `sweepStalePayouts` makes, and for the same reason.
+ */
+exports.alertVendorDebt = async () => {
+  const config = await getCustomerConfig();
+  /**
+   * ⚠️ `chargeback.writeOffDays` — until now read by nothing at all.
+   *
+   * It sat in `constants/customer.js` and in the `Setting` schema, configurable
+   * from the admin panel, with no code anywhere consulting it: the fourth field
+   * in this flow wired at both ends and connected in the middle to nothing.
+   */
+  const writeOffDays =
+    Number(config.chargeback?.writeOffDays) > 0
+      ? Number(config.chargeback.writeOffDays)
+      : 90;
+
+  const brandIds = await brandsWithAgedDebt({ olderThanDays: writeOffDays });
+  if (!brandIds.length) return { checked: 0, alerted: 0, outstanding: 0 };
+
+  const brands = await Brand.find({ _id: { $in: brandIds } })
+    .select("brandName")
+    .lean();
+  const nameOf = new Map(brands.map((b) => [String(b._id), b.brandName]));
+
+  let alerted = 0;
+  let outstanding = 0;
+
+  for (const brandId of brandIds) {
+    /**
+     * ⚠️ Valued per brand, after the shortlist — not inside it.
+     *
+     * `brandsWithAgedDebt` deliberately does not price the debt, because that
+     * costs a ledger aggregation per brand and almost every brand has none.
+     */
+    const debt = await computeVendorDebt({ brandId, includeRows: false });
+
+    /**
+     * The shortlist asks *"is there an old unclaimed row?"*; this asks *"is any
+     * money actually owed?"* They differ in the cases that matter: a row on a
+     * payment the vendor was never paid for is not a debt, and a lost dispute
+     * fully reversed by a later `won` books nothing. Alerting on either would
+     * send an admin to write off a balance of zero.
+     */
+    if (!debt.outstanding) continue;
+
+    /**
+     * ⚠️ A **thunk**, not the promise.
+     *
+     * `sendQuietly` calls what it is given inside its own try/catch. Handing it
+     * an already-invoked promise looks identical and is not: the notice still
+     * goes out, but it was created *outside* the guard — so a delivery failure
+     * becomes an unhandled rejection instead of a logged line, and in Node 24
+     * that takes the whole job runner down. The one protection this wrapper
+     * exists to provide is exactly the one that goes missing.
+     */
+    await sendQuietly(
+      () =>
+        notifyAdminVendorDebtAged({
+          brandId,
+          brandName: nameOf.get(String(brandId)),
+          outstanding: debt.outstanding,
+          ageDays: debt.ageDays,
+          counts: debt.counts,
+          writeOffDays,
+        }),
+      "admin vendor debt aged",
+    );
+
+    alerted += 1;
+    outstanding = round2(outstanding + debt.outstanding);
+  }
+
+  return { checked: brandIds.length, alerted, outstanding };
 };

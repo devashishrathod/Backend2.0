@@ -20,6 +20,9 @@ const {
   fail,
   retry,
   reverse,
+  statementByToken,
+  vendorDebt,
+  vendorDebtWriteOff,
 } = require("../controllers/settlements");
 const {
   validateListSettlements,
@@ -35,6 +38,9 @@ const {
   validateFailPayout,
   validateRetryPayout,
   validateReversePayout,
+  validateStatementByToken,
+  validateVendorDebt,
+  validateWriteOffVendorDebt,
 } = require("../validator/settlements");
 
 /**
@@ -52,6 +58,21 @@ const {
  * because a settlement is our record of what we owe them, not a document they
  * fill in.
  */
+/**
+ * The public payout statement. **No JWT** — see the controller.
+ *
+ * ⚠️ Declared first, above every `:settlementId` route, for the reason the
+ * transactions router declares its invoice link first: a literal second segment
+ * must be matched before a parameter can swallow it. `/statement/:token` and
+ * `/:settlementId/transactions` differ today only because `transactions` is a
+ * literal, and that is too thin a margin to rely on the next route not closing.
+ */
+router.get(
+  "/statement/:token",
+  validateSchema(validateStatementByToken),
+  statementByToken,
+);
+
 router.patch(
   "/admin/:settlementId/approve",
   isAdmin,
@@ -149,6 +170,49 @@ router.patch(
   isAdmin,
   validateSchema(validateReversePayout),
   reverse,
+);
+
+/**
+ * ---------------- what a brand owes us ----------------
+ *
+ * ### ⚠️ Keyed on the brand, not on a settlement
+ *
+ * This is exactly the money no settlement was able to carry, so a settlement id
+ * is the one key that by definition does not hold it. A brand whose deductions
+ * outrun their takings builds a settlement with a negative `netPayable`; that
+ * goes `CARRIED_FORWARD`, and carrying forward **is** releasing every claim it
+ * held. While they still trade, new sales net it off. The day they stop, the
+ * same rows are claimed and released every cycle for ever — nothing errors,
+ * nothing is logged, and no report shows it.
+ *
+ * ⚠️ Declared **above** `/:settlementId`, with the rest of the literal-first
+ * segments, for the reason given at the top of this file.
+ *
+ * Admin only, both of them. A vendor sees the consequence — the cycle that paid
+ * them nothing, and why — through `SETTLEMENT_CARRIED_FORWARD` and their own
+ * statement. What they must not see is a screen headed "outstanding debt" with a
+ * figure on it: it reads as an invoice, and there is nothing for them to pay.
+ */
+router.get(
+  "/admin/debt/:brandId",
+  isAdmin,
+  validateSchema(validateVendorDebt),
+  vendorDebt,
+);
+
+/**
+ * Stop chasing it, and say so in the books.
+ *
+ * Writes a matched pair of `MANUAL_ADJUSTMENT`s per row — crediting the vendor's
+ * balance so no future cycle sees a debt, and debiting `PLATFORM_COST` because
+ * we absorbed it. Requires a written reason: the ledger is never edited, and an
+ * unexplained adjustment cannot be told apart from a mistake months later.
+ */
+router.patch(
+  "/admin/debt/:brandId/write-off",
+  isAdmin,
+  validateSchema(validateWriteOffVendorDebt),
+  vendorDebtWriteOff,
 );
 
 /**
