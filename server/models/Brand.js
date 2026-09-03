@@ -219,4 +219,9 @@ const brandSchema = new mongoose.Schema(
   { timestamps: true, versionKey: false },
 );
 
+// Power the `stats.brands` counts on the category and sub-category listings.
+// Without them every count is a full collection scan of the brands.
+brandSchema.index({ categoryId: 1, isDeleted: 1 });
+brandSchema.index({ subCategoryId: 1, isDeleted: 1 });
+
 module.exports = mongoose.model("Brand", brandSchema);

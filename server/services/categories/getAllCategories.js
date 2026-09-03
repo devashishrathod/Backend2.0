@@ -1,5 +1,6 @@
 const Category = require("../../models/Category");
 const { pagination } = require("../../utils");
+const { attachStats, buildCategoryStats } = require("../../helpers/taxonomy");
 
 exports.getAllCategories = async (query) => {
   let {
@@ -48,5 +49,10 @@ exports.getAllCategories = async (query) => {
   const sortStage = {};
   sortStage[sortBy] = sortOrder === "asc" ? 1 : -1;
   pipeline.push({ $sort: sortStage });
-  return await pagination(Category, pipeline, page, limit);
+  const result = await pagination(Category, pipeline, page, limit);
+  // Counted after the page is cut, so the referencing collections are queried
+  // for the ten rows being returned rather than for every category that matched
+  // the filter.
+  result.data = await attachStats(result.data, buildCategoryStats);
+  return result;
 };
