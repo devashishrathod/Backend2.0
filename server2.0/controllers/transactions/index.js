@@ -11,11 +11,20 @@ const {
   webhookEventGet,
 } = require("./webhookEvents");
 const { webhookReplay } = require("./webhookReplay");
-const { disputeList } = require("./disputes");
+const {
+  disputeList,
+  disputeDetail,
+  // The outlet adds what only they have; the admin gets the whole case.
+  disputeAddEvidence,
+  disputeEvidencePack,
+} = require("./disputes");
 
 const { paymentHealth } = require("./paymentHealth");
 
+const { releaseHold } = require("./releaseHold");
+
 module.exports = {
+  releaseHold,
   paymentHealth,
   subscribePreview,
   subscribeCreateOrder,
@@ -27,5 +36,8 @@ module.exports = {
   webhookEventGet,
   webhookReplay,
   disputeList,
+  disputeDetail,
+  disputeAddEvidence,
+  disputeEvidencePack,
   invoiceByToken: require("./invoiceByToken").invoiceByToken,
 };

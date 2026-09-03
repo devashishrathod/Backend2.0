@@ -265,6 +265,60 @@ exports.releasePromoCode = async ({ transactionId, reason }) => {
 };
 
 /**
+ * Give a **consumed** promo back, because the claim it paid for was refunded.
+ *
+ * Different from `releasePromoCode`, and deliberately a separate function:
+ * that one only touches `RESERVED` rows — a checkout being unwound before it
+ * ever completed. By the time a refund happens the usage is `CONSUMED`, so the
+ * same call would find nothing and silently do nothing.
+ *
+ * ### Only on a full refund, and only when the setting says so
+ *
+ * `refund.releasePromoOnRefund` is `false` by default, and that default is the
+ * right one for a promo budget: a customer who claims, refunds, claims again on
+ * the same code has spent our campaign money twice for one sale. Switching it on
+ * is a decision about being generous, not about correctness — which is why it is
+ * a setting rather than behaviour.
+ *
+ * A **partial** refund never releases it. The customer kept part of what the
+ * promo discounted, so the code was genuinely used.
+ *
+ * Never throws. A promo that stayed consumed is a smaller problem than a refund
+ * that rolled back because of it.
+ */
+exports.releaseConsumedPromoOnRefund = async ({ transactionId, reason }) => {
+  if (!transactionId) return null;
+  try {
+    const usage = await PromoCodeUsage.findOneAndUpdate(
+      { transactionId, status: PROMO_USAGE_STATUS.CONSUMED },
+      {
+        $set: {
+          status: PROMO_USAGE_STATUS.RELEASED,
+          releasedAt: new Date(),
+          releaseReason: reason,
+        },
+      },
+      { returnDocument: "after" },
+    );
+    if (!usage) return null;
+
+    // The guard matters: without `usedCount: { $gt: 0 }` a double release would
+    // drive the counter negative and hand out a single-use code twice.
+    await PromoCode.updateOne(
+      { _id: usage.promoCodeId, usedCount: { $gt: 0 } },
+      { $inc: { usedCount: -1 } },
+    );
+    return usage;
+  } catch (error) {
+    console.error(
+      `[releaseConsumedPromoOnRefund] failed for transaction ${transactionId}:`,
+      error?.message,
+    );
+    return null;
+  }
+};
+
+/**
  * Reclaim reservations from checkouts that were never completed.
  *
  * Without this a single-use code stays locked forever the first time someone

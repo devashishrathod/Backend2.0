@@ -72,7 +72,16 @@ const ledgerEntrySchema = new mongoose.Schema(
     // Phase S1 / S3. Declared now so the shape does not change under a
     // collection that is append-only.
     refundRequestId: { type: mongoose.Schema.Types.ObjectId },
-    disputeId: { type: mongoose.Schema.Types.ObjectId },
+    /**
+     * ⚠️ Razorpay's own dispute id (`disp_…`), so a **string**.
+     *
+     * Declared as an `ObjectId`, which it can never be: `Transaction.disputeId`
+     * is the string Razorpay sends, and `recordLedgerEntry` already accepts and
+     * writes this field — so the first real chargeback entry would have died on
+     * a cast error. Unusable as declared, and quietly so, because nothing posted
+     * one yet.
+     */
+    disputeId: { type: String, trim: true },
     payoutLegId: { type: mongoose.Schema.Types.ObjectId },
 
     /**
@@ -139,6 +148,39 @@ ledgerEntrySchema.index({ voucherClaimId: 1 });
  * of times. `$type: "objectId"` keeps entries with no transaction out of the
  * index entirely, so two settlement payouts do not collide on a shared null.
  */
+/**
+ * One row per entry type per refund.
+ *
+ * `$type: "objectId"` rather than `sparse: true` — sparse still indexes an
+ * explicit `null`, so every non-refund row in the collection would collide on a
+ * rule that was never meant to apply to it. That is the same bug the legacy
+ * `invoiceId_1` index caused, and it actually fired in 1B.
+ */
+/**
+ * One row per entry type per payout leg.
+ *
+ * `$type: "objectId"` rather than `sparse: true` — sparse still indexes an
+ * explicit `null`, so every non-payout row in the collection would collide with
+ * the next on a rule that was never meant to apply to it.
+ */
+ledgerEntrySchema.index(
+  { payoutLegId: 1, entryType: 1 },
+  {
+    name: LEDGER_INDEXES.ONCE_PER_PAYOUT_LEG,
+    unique: true,
+    partialFilterExpression: { payoutLegId: { $type: "objectId" } },
+  },
+);
+
+ledgerEntrySchema.index(
+  { refundRequestId: 1, entryType: 1 },
+  {
+    name: LEDGER_INDEXES.ONCE_PER_REFUND,
+    unique: true,
+    partialFilterExpression: { refundRequestId: { $type: "objectId" } },
+  },
+);
+
 ledgerEntrySchema.index(
   { entryType: 1, transactionId: 1 },
   {
@@ -149,6 +191,64 @@ ledgerEntrySchema.index(
     },
     name: LEDGER_INDEXES.ONCE_PER_TRANSACTION,
   },
+);
+
+/**
+ * One row per entry type per **dispute**.
+ *
+ * ⚠️ Neither of the other two indexes covers a chargeback. `ONCE_PER_TRANSACTION`
+ * is for capture-time rows and a payment can be disputed after it was already
+ * refunded; `ONCE_PER_REFUND` keys on a refund that does not exist here.
+ *
+ * Razorpay redelivers dispute webhooks, and its dispute events are **not
+ * monotonic** — a `lost` can arrive after a `won`. Without this index a
+ * redelivered `payment.dispute.lost` claws the vendor back twice for one
+ * chargeback.
+ */
+ledgerEntrySchema.index(
+  { disputeId: 1, entryType: 1 },
+  {
+    name: LEDGER_INDEXES.ONCE_PER_DISPUTE,
+    unique: true,
+    // `$type` rather than `sparse`: a sparse index still indexes an explicit
+    // `null`, which every non-dispute row carries.
+    partialFilterExpression: { disputeId: { $type: "string" } },
+  },
+);
+
+/**
+ * One reversal per entry.
+ *
+ * ⚠️ `reverseLedgerEntry` sets `isReversal: true`, which is what lets it write a
+ * second row of the same type against the same transaction — and that is
+ * precisely what takes it out of `ONCE_PER_TRANSACTION`. It passes no
+ * `refundRequestId`, no `payoutLegId` and no `disputeId`, so **none** of the
+ * other three indexes covered it either: calling it twice for one entry wrote
+ * two opposite rows and undid the same money twice over.
+ *
+ * `reversalOf` is the natural key — an entry has exactly one correction — and
+ * it costs nothing to say so.
+ */
+ledgerEntrySchema.index(
+  { reversalOf: 1 },
+  {
+    name: LEDGER_INDEXES.ONCE_PER_REVERSAL,
+    unique: true,
+    partialFilterExpression: { reversalOf: { $type: "objectId" } },
+  },
+);
+
+/**
+ * The platform dashboard's own query shape.
+ *
+ * `getPlatformTotals` matches `account: { $in: [...] }` with an `occurredAt`
+ * range and no brand. The plain `{ account: 1 }` index can serve the `$in` and
+ * then has to walk every row in those accounts to apply the date range — which
+ * is every platform row ever written, growing for ever, on a dashboard load.
+ */
+ledgerEntrySchema.index(
+  { account: 1, occurredAt: -1 },
+  { name: LEDGER_INDEXES.PLATFORM_TOTALS },
 );
 
 module.exports = mongoose.model("LedgerEntry", ledgerEntrySchema);

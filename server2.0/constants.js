@@ -233,8 +233,22 @@ module.exports = {
     "airtelmoney",
   ]),
 
+  /**
+   * How much of a payment has gone back, as a state on the payment itself.
+   *
+   * ⚠️ `PARTIAL` is not decoration. Without it a ₹300 refund on an ₹810 payment
+   * is written `COMPLETED`, and from then on the row reads as fully refunded —
+   * settlement skips it, the customer's page says refunded, and the ₹510 still
+   * owed to the vendor is invisible. Anything reading this must branch on
+   * `PARTIAL` explicitly rather than treating "not COMPLETED" as "not refunded".
+   *
+   * Distinct from `REFUND_REQUEST_STATUS` in `constants/refund.js`, which is the
+   * state of a **request** (who has approved it, has it been executed). One
+   * payment can carry several requests; this field is their sum.
+   */
   REFUND_STATUS: Object.freeze({
     PENDING: "PENDING",
+    PARTIAL: "PARTIAL",
     COMPLETED: "COMPLETED",
     FAILED: "FAILED",
     null: null,

@@ -12,6 +12,25 @@ const {
   reconcileClaimPayments,
   alertStuckAuthorizations,
 } = require("../services/voucherClaims");
+const {
+  escalateStaleRefunds,
+  reconcileRefunds,
+  remindVendorsAboutRefunds,
+  remindCustomersAboutBankDetails,
+} = require("../services/refunds");
+const {
+  buildSettlements,
+  sweepStalePayouts,
+  sweepStrandedClaims,
+  alertLateSettlements,
+  reconcileSettlementLedger,
+  sweepAbandonedDrafts,
+  alertVendorDebt,
+} = require("../services/settlements");
+const {
+  disputeDeadlines,
+  reapShadowIndexesJob,
+} = require("../services/transactions");
 const { getSubscriptionConfig } = require("../helpers/settings");
 const {
   acquireJobLock,
@@ -124,6 +143,182 @@ const registry = [
     name: "alertStuckAuthorizations",
     run: alertStuckAuthorizations,
     intervalMinutes: () => 30,
+  },
+
+  // ---------------- refunds ----------------
+  {
+    /**
+     * A silent outlet cannot hold a customer's money. After
+     * `refund.vendorApprovalHours` the request stops being theirs.
+     */
+    name: "escalateStaleRefunds",
+    run: escalateStaleRefunds,
+    intervalMinutes: () => 15,
+  },
+  {
+    /**
+     * Refunds that left for Razorpay and never came back.
+     *
+     * A lost `refund.processed` leaves the customer with their money, the claim
+     * still redeemed, the once-per-user slot still held and no ledger row. This
+     * asks Razorpay rather than waiting — and **reads only**: issuing a refund
+     * is `executeRefund`'s job, and a reconcile that could pay would be a
+     * second, unguarded path to money leaving.
+     */
+    name: "reconcileRefunds",
+    run: reconcileRefunds,
+    intervalMinutes: () => 30,
+  },
+  {
+    // Two nudges before the window closes, so a timeout is never a surprise.
+    name: "remindVendorsAboutRefunds",
+    run: remindVendorsAboutRefunds,
+    intervalMinutes: () => 60,
+  },
+  {
+    /**
+     * ⚠️ `AWAITING_BANK_DETAILS` was the one open refund state with nothing
+     * watching it.
+     *
+     * Two nudges to the customer, then the row is handed to an admin — because
+     * the cost of a silent customer falls on the **vendor**: `settlementHold`
+     * keeps that payment out of every settlement until somebody acts, and
+     * nothing was ever going to.
+     */
+    name: "remindCustomersAboutBankDetails",
+    run: remindCustomersAboutBankDetails,
+    intervalMinutes: () => 60,
+  },
+
+  // ---------------- settlements ----------------
+  //
+  // Every other money path here fails loudly. A settlement fails by *not
+  // happening* — no build, an unconfirmed NEFT, a payout that booked no ledger
+  // row — and an absence has to be looked for. That is what these four do.
+  {
+    /**
+     * Build yesterday's payouts.
+     *
+     * Hourly rather than nightly on purpose: `buildSettlements` is idempotent on
+     * `idempotencyKey`, so a second run in the same period builds nothing. What
+     * the short interval buys is that a night the process was down heals itself
+     * on the next tick instead of skipping a brand's day until somebody notices.
+     */
+    name: "buildSettlements",
+    run: buildSettlements,
+    intervalMinutes: () => 60,
+  },
+  {
+    /**
+     * A NEFT that was started and never confirmed. Alerts; never acts — the
+     * money may genuinely have left, and MANUAL_BANK has no recall.
+     */
+    name: "sweepStalePayouts",
+    run: sweepStalePayouts,
+    intervalMinutes: () => 30,
+  },
+  {
+    // Money owed past the window we promised, so the first to know is not the
+    // vendor waiting for it.
+    name: "alertLateSettlements",
+    run: alertLateSettlements,
+    intervalMinutes: () => 60,
+  },
+  {
+    /**
+     * Do the books and the bank transfers agree? Read-only — a ledger row is
+     * never updated and never deleted, and a sweep that could post its own
+     * entries would be a second, unguarded path to the books changing.
+     */
+    name: "reconcileSettlementLedger",
+    run: reconcileSettlementLedger,
+    intervalMinutes: () => 180,
+  },
+  {
+    /**
+     * Rows still claimed by a settlement that is finished with them — the
+     * `beforeRelease` throw that leaves a terminal settlement holding money
+     * nobody can reach. Releasing is safe: these are the statuses that are
+     * defined as releasing.
+     */
+    name: "sweepStrandedClaims",
+    run: sweepStrandedClaims,
+    intervalMinutes: () => 60,
+  },
+  {
+    /**
+     * An empty `DRAFT` left by a build that died between writing the shell and
+     * claiming its rows. Its key still occupies the period, so the next build
+     * skips that brand's day — for ever, silently.
+     */
+    name: "sweepAbandonedDrafts",
+    run: sweepAbandonedDrafts,
+    intervalMinutes: () => 60,
+  },
+  {
+    /**
+     * ⚠️ A debt no cycle can reach.
+     *
+     * A negative `netPayable` carries forward, and carrying forward releases
+     * every claim it held — right while the brand still trades, because new
+     * sales net it off. The day they stop, the same rows are claimed and
+     * released every cycle for ever: nothing errors, nothing is logged, and the
+     * money sits on our books as a receivable from somebody who is not coming
+     * back.
+     *
+     * Daily, because the state is static — a brand in this position is in it
+     * tomorrow too, and anything tighter is noise on a decision nobody makes at
+     * 3am. It alerts and never acts: writing a debt off has a person's name on
+     * it. See `writeOffVendorDebt`.
+     */
+    name: "alertVendorDebt",
+    run: alertVendorDebt,
+    intervalMinutes: () => 24 * 60,
+  },
+  {
+    /**
+     * ⚠️ A blanket unique index an older build of this service keeps recreating.
+     *
+     * `invoiceId_1` rejects the **second** transaction with no invoice yet, and
+     * every voucher claim is created before its invoice exists — so while it is
+     * there, roughly every second claim fails with a duplicate-key error naming
+     * a field the customer never touched. Nothing else reports that as a fault:
+     * to every other layer it looks like a validation error.
+     *
+     * Nothing in this build creates it. Commit `59fd080` declared
+     * `invoiceId: { unique: true }`; `3494bb8` replaced it with a named partial.
+     * It came back twice anyway, because an older build is still running against
+     * the same cluster and Mongoose's `autoIndex` rebuilds it on every restart —
+     * and those builds connected with no options, so `MONGO_AUTO_INDEX=false`
+     * cannot reach them.
+     *
+     * Hourly, because boot alone leaves a shadow created after a deploy sitting
+     * until the next one. And a reap means the other writer restarted inside the
+     * last hour — which is the only usable lead for finding it, so each one
+     * alerts rather than being quietly cleaned up.
+     */
+    name: "reapShadowIndexes",
+    run: reapShadowIndexesJob,
+    intervalMinutes: () => 60,
+  },
+  {
+    /**
+     * ⚠️ The only money deadline nothing else watches.
+     *
+     * `disputeRespondBy` was written by the webhook and read by nobody. A dispute
+     * deadline that passes is an **automatic loss** — the bank does not ask
+     * twice, Razorpay does not chase, and no error is raised, because from the
+     * system's point of view nothing happened.
+     *
+     * Hourly, not daily: the last warning fires 24h out, and a daily sweep can
+     * land that one anywhere in the final day — including after it.
+     *
+     * Alerts only. Filing evidence needs a person with the Razorpay dashboard,
+     * and there is exactly one response per dispute.
+     */
+    name: "disputeDeadlines",
+    run: disputeDeadlines,
+    intervalMinutes: () => 60,
   },
 ];
 

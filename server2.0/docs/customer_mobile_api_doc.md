@@ -2571,6 +2571,150 @@ Isliye galat character wale code par jawab **`422` "mistyped character"** hai, `
 
 ---
 
+# Refund APIs 🆕
+
+Grahak maange → **outlet tay kare** → Trydood paisa nikaale.
+
+> **Trydood normal raaste par doosra gate nahi hai.** Outlet approve kare, hum bas
+> paisa chhod dete hain. Outlet ki *"na"* palatna alag raasta hai — likhit wajah ke
+> saath, aur alag se gina jaata hai.
+
+## 17i. POST /refunds — refund maango
+
+**Access:** 🔒 **CUSTOMER only** (`isCustomer`)
+
+### Body
+| Field | Zaroori | Notes |
+|---|:-:|---|
+| `claimId` | ✅ | |
+| `amount` | — | **Na do to poora.** Jo figure server ko pehle se pata hai use dobara type karana hi use galat type karane ka tareeka hai |
+| `reason` | ✅ | `NOT_HONOURED · OUTLET_CLOSED · WRONG_AMOUNT · SERVICE_ISSUE · DUPLICATE_PAYMENT · CHANGED_MIND · OTHER` |
+| `reasonNote` | — | `OTHER` ke saath **zaroori** |
+
+### Window
+
+`refund.windowHours` (default **24**) — **payment se**, claim banne se nahi. Ek ghante
+chhoda hua checkout phir pay ho to uski window grahak ke paisa dene se *pehle* shuru ho
+jaati, jo galat hai.
+
+### Kitni baar maang sakte hain
+
+| Setting | Default | Kya |
+|---|---|---|
+| `maxOpenRequests` | 1 | Ek saath kitni khuli (sab claims milakar) |
+| `maxRejectedPerWindow` | 3 | Rolling window me kitni **thukrai / wapas li** |
+| `requestWindowDays` | 30 | Window |
+
+⚠️ **Approve hui refunds kabhi nahi gintin.** Jiski 5 refunds approve hui, uske saath 5
+baar sach me bura hua — uski chhathi rokna theek usi ko saza dena hai jiske liye ye
+vyavastha bani hai.
+
+Limit chhoo jaaye to `422`, aur jawab **support par bhejta hai, raasta band nahi karta**:
+*"We are not able to take this refund request automatically. Please write to support and
+we will look at it ourselves."* Koi aarop nahi — *"aapka account flagged hai"* par grahak
+kuch kar hi nahi sakta.
+
+### Do tap, ek request
+
+`(transactionId, isOpen)` par unique index faisla karta hai. Haarne wale ko **wahi**
+request milti hai `reused: true` ke saath — grahak ki taraf se nateeja ek hi hai, usne
+ek baar maanga.
+
+### Errors
+| Status | Kab |
+|---|---|
+| `403` | Kisi aur ki claim |
+| `422` | Window beet gayi · claim `cancelled`/`refunded` · rakam paid se zyada · `OTHER` bina note · allowance khatam |
+| `404` | Claim maujood nahi |
+
+---
+
+## 17j. PATCH /refunds/:requestId/withdraw — wapas le lo
+
+**Access:** 🔒 **CUSTOMER only**
+
+`REQUESTED`, `VENDOR_APPROVED` ya `VENDOR_TIMEOUT` tak. Uske baad **nahi** — `PROCESSING`
+ka matlab paisa Razorpay ke paas hai aur wapas lene ko kuch hai hi nahi. Aisi cancellation
+maan lene se behtar hai keh dena jo hogi hi nahi.
+
+⚠️ Wapas lena bhi allowance me **ginta hai**: raise → outlet dekhe → withdraw → phir raise,
+ye outlet ko vyast rakhne ka tareeka hai bina kabhi rejection kamaye. Ek baar wapas lena
+kuch nahi; paanch baar wahi pattern hai.
+
+---
+
+## 17k. GET /refunds — meri refunds
+
+**Access:** 🔒 koi bhi logged-in role (`verifyJwtToken`) — **ek endpoint, teen shapes**
+
+| Field | Customer | Outlet | Admin |
+|---|:-:|:-:|:-:|
+| `split.totalRefund` | ✅ | — | ✅ |
+| `split.vendorClawback` | — | ✅ | ✅ |
+| `split.platformPromoReversal` · `gatewayFeeAbsorbed` | — | — | ✅ |
+| `utr` | ✅ | — | ✅ |
+| `vendorNote` · `adminNote` | ❌ | apna / ❌ | ✅ |
+
+**`vendorNote` aapko kabhi nahi milta.** Wo staff ne staff ke liye likha hai —
+*"customer collected the order in full"* wo vaakya nahi jo usi grahak ko dikhaya jaaye
+jiske baare me hai. Aapko `statusLabel` milta hai.
+
+### `statusLabel` — jo aap dekhte hain
+
+| Andar | Aapko |
+|---|---|
+| `REQUESTED` | Refund requested |
+| `VENDOR_APPROVED` | Approved by the outlet |
+| `VENDOR_REJECTED` | Declined by the outlet |
+| **`VENDOR_TIMEOUT`** | **Under review by Trydood** |
+| `PROCESSING` | On its way to your account |
+| `COMPLETED` | Refunded |
+| `FAILED` | Refund failed — we are on it |
+
+⚠️ `VENDOR_TIMEOUT` kabhi apne naam se nahi aata — na body me, na `meta` me. Aapko ye
+batana ki outlet ne anasuna kiya ek jhagda shuru karta hai jise phir platform ko suljhana
+padta hai, aur wo aisi jaankari nahi jis par aap kuch kar sakein.
+
+`canWithdraw` response me **bataya** jaata hai — app ko status se andaza nahi lagana chahiye.
+
+Khaali list **`200` + `data: []`**, `404` nahi.
+
+---
+
+## 17l. GET /refunds/:requestId — ek refund
+
+**Access:** 🔒 koi bhi logged-in role
+
+**Response:** `refund` · `claim` · **`timeline`** · `viewer`
+
+Timeline **claim ki** hai, refund ki alag nahi — refund claim ke saath hui ek cheez hai,
+aur claim ki kahani wahi jagah hai jahan grahak, outlet aur admin teeno jaate hain.
+
+### `utr` — wo ek field jo support maangta hai
+
+Razorpay ka bank reference. Paisa na pahunche to aap yahi apne bank ko quote karte hain.
+`refund.processed` aane par bharta hai.
+
+---
+
+## Refund ke notifications
+
+| Kab | Kya milta hai |
+|---|---|
+| Request dari | *"We have your refund request"* |
+| Outlet ne approve kiya | *"Your refund is approved"* — aur **kam approve hua to dono rakamein naam lekar** |
+| Outlet ne mana kiya | *"About your refund request"* + support ka raasta |
+| Paisa pahuncha | *"Refund issued"* — **UTR ke saath** |
+
+Kam approve hone par dono figure saaf likhe jaate hain: jo grahak ₹810 maange aur
+chup-chaap ₹400 paaye wo doosri request aur ek support ticket kholta hai.
+
+`PROCESSING` par koi notification nahi — asli transition hai par uspar kisi ke karne ko
+kuch nahi, aur jis notification par koi kaam nahi kar sakta wo logon ko unhein
+nazarandaaz karna sikha deti hai jo mayne rakhti hain.
+
+---
+
 # Brand Profile APIs
 
 ## 18. GET /brands/customer/get/:brandId

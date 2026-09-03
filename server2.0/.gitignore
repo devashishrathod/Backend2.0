@@ -40,7 +40,11 @@ build/Release
 # Dependency directories
 node_modules/
 jspm_packages/
-/package-lock.json
+
+# package-lock.json is deliberately COMMITTED. Without it `npm ci` cannot run,
+# and every deploy re-resolves the `^` ranges in package.json — so the versions
+# in production are not necessarily the ones the money suite was green against.
+firebaseServiceAccountKey.json
 
 # Snowpack dependency directory (https://snowpack.dev/)
 web_modules/

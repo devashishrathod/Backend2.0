@@ -4,6 +4,8 @@ const {
   validateSchema,
   isAdmin,
   isVendorOrAdmin,
+  isVendorOrSubVendor,
+  verifyJwtToken,
 } = require("../middlewares");
 
 const {
@@ -15,6 +17,9 @@ const {
   validateGetWebhookEvent,
   validateReplayWebhookEvent,
   validateGetDisputes,
+  validateAddDisputeEvidence,
+  validateDisputeEvidencePack,
+  validateReleaseHold,
 } = require("../validator/transactions");
 const {
   subscribePreview,
@@ -28,6 +33,9 @@ const {
   webhookEventGet,
   webhookReplay,
   disputeList,
+  disputeAddEvidence,
+  disputeEvidencePack,
+  releaseHold,
   paymentHealth,
 } = require("../controllers/transactions");
 
@@ -126,13 +134,76 @@ router.post(
   webhookReplay,
 );
 
-// Chargebacks, soonest response deadline first. Missing the deadline forfeits
-// the money automatically, so this is a worklist rather than a report.
+/**
+ * ---------------- chargebacks — ⚠️ the canonical home is `routes/disputes.js`
+ *
+ * A dispute began as ten denormalised fields on `Transaction`, which is why
+ * these live here. It is its own collection now, with its own model, jobs,
+ * notifications and worklist, and `/disputes` is where it belongs.
+ *
+ * ⚠️ These three stay because the Postman collections and anything already
+ * integrated point at them — a 404 is a worse answer than a duplicate line in a
+ * route table. They mount the **same controllers**, so there is exactly one
+ * implementation and nothing can drift, and
+ * `__tests__/money/disputeVisibility.test.js` asserts that.
+ *
+ * ⚠️ **Add nothing new here.** New dispute routes go on `/disputes` only —
+ * `GET /disputes/:disputeId` already does. Growing both mounts is how a surface
+ * kept for compatibility turns into a second surface to maintain.
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * Chargebacks, soonest response deadline first. Missing the deadline forfeits
+ * the money automatically, so this is a worklist rather than a report.
+ *
+ * ⚠️ Token-gated, not `isAdmin`. A vendor sees their **own brand's** disputes —
+ * scoped inside the service, in the filter — because until they could, a
+ * chargeback showed up as money that silently stopped arriving and later a
+ * deduction with no sale attached to it. Their shape carries none of our queue:
+ * no deadline, no alert count, no recovery state. See `docs/dispute_flow.md` §4.
+ */
 router.get(
+  /**
+   * ⚠️ `verifyJwtToken` explicitly. This router has **no** blanket
+   * `router.use(verifyJwtToken)` — every route carries its own gate, and the
+   * public invoice link at the top is why. Dropping `isAdmin` without putting
+   * this in its place would have made the whole chargeback worklist readable by
+   * anyone with the URL.
+   */
   "/disputes",
-  isAdmin,
+  verifyJwtToken,
   validateSchema(validateGetDisputes),
   disputeList,
+);
+
+/**
+ * What only the outlet has — a bill or KOT number, a camera timestamp, what the
+ * staff remember.
+ *
+ * ⚠️ A bonus, never a dependency: `buildEvidencePack` stands on our own records,
+ * and filing never waits on the vendor because a dispute gets **one** response
+ * and the deadline is the bank's.
+ */
+router.post(
+  "/disputes/:disputeId/evidence",
+  isVendorOrSubVendor,
+  validateSchema(validateAddDisputeEvidence),
+  disputeAddEvidence,
+);
+
+/**
+ * Everything we can prove, with the argument already written out — for the admin
+ * filing it in the Razorpay dashboard.
+ *
+ * ⚠️ Admin only: it carries the customer's masked contact, the whole claim
+ * timeline and the case we intend to make.
+ */
+router.get(
+  "/disputes/:disputeId/evidence-pack",
+  isAdmin,
+  validateSchema(validateDisputeEvidencePack),
+  disputeEvidencePack,
 );
 
 /**
@@ -146,5 +217,31 @@ router.get(
  * ask for a less complete answer.
  */
 router.get("/admin/health", isAdmin, paymentHealth);
+
+/**
+ * Let a held payment back into the settlement run.
+ *
+ * ### ⚠️ Why this endpoint exists
+ *
+ * `settlementHold` is monotonic by design: five paths set it and, until this,
+ * exactly one cleared it — and that one is reachable only from a refund being
+ * rejected. Everything else that holds money had **no way out at all**: a
+ * chargeback (including one we *won*), a refund that reached `FAILED`, a refund
+ * issued from the Razorpay dashboard, a completed refund.
+ *
+ * The dispute webhook says as much in its own comment — *"releasing it is an
+ * explicit admin action, taken once somebody has decided who bears the loss"* —
+ * and that action was never built. A vendor whose chargeback we won had that
+ * money frozen out of every future settlement, permanently, silently.
+ *
+ * It refuses while a refund is still open: the customer is owed an answer first,
+ * and deciding the refund releases the hold on its own.
+ */
+router.patch(
+  "/admin/:transactionId/release-hold",
+  isAdmin,
+  validateSchema(validateReleaseHold),
+  releaseHold,
+);
 
 module.exports = router;

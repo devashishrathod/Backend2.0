@@ -12,6 +12,52 @@ Node.js · CommonJS · Express 5 · Mongoose 9 (MongoDB) · Joi 18 · JWT · bcr
 
 > No TypeScript. No ESM. `require()` / `module.exports` everywhere.
 
+> ### ⚠️ Node 24.19.0 or newer, on Windows especially
+>
+> c-ares 1.34.6 shipped a Windows regression that makes `dns.getServers()` report
+> `127.0.0.1`, where nothing listens. Node has two DNS paths — `dns.lookup` (the
+> OS resolver) and `dns.resolve*` (c-ares) — and **only `mongodb+srv://` uses the
+> second one**. So the machine looks perfectly healthy, browsers and `npm
+> install` and `ping` all work, and Mongo alone fails in about 2ms with
+> `querySrv ECONNREFUSED`.
+>
+> That points at everything except the cause: the cluster looks down, the
+> password looks wrong, Atlas looks like it is blocking the IP. It cost hours,
+> twice, and the workaround that came out of it — a `dns.setServers()` retry
+> inside `database/mongoDb.js` — then hid the cause on every boot.
+>
+> [nodejs/node#62347](https://github.com/nodejs/node/issues/62347) is the bug;
+> the fix was cherry-picked into Node **24.19.0**. Affected releases include
+> v20.20.2, v22.22.2 and v24.14.1, so **downgrading does not help** — only going
+> forward does.
+>
+> ```bash
+> node -p "process.versions.ares"   # 1.34.6 is the bad one
+> nvm install 24.20.0 && nvm use 24.20.0
+> node scripts/checkDnsForSrv.js    # prints both DNS paths side by side
+> ```
+>
+> `mongoDb.js` no longer retries. It detects this exact state — an SRV
+> `ECONNREFUSED` while c-ares reports only loopback — and names the version
+> instead, because one upgrade fixes the machine permanently and a retry fixed
+> one connection at a time.
+
+> ### The server refuses to start without a database
+>
+> `mongoDb()` used to be fired and forgotten from `index.js`, and it swallowed
+> every failure — so an unreachable cluster or a wrong `MONGO_URL` still produced
+> a listening port and a `✅ Server running` line.
+>
+> Nothing after that said anything was wrong. Mongoose buffers each query for
+> `bufferTimeoutMS` and then rejects it, so a customer waited ten seconds for a
+> spinner and got a 500, on every request — the app was not down, it was slow and
+> then broken. Meanwhile the port answered, so every uptime check and health
+> probe reported the service as fine and **no alert ever fired**.
+>
+> Boot now retries three times, then `process.exit(1)`. A total outage becomes a
+> failed deploy, which is loud. It also means `assertMoneyIndexes` and
+> `startJobs` can assume a live connection, which they always did anyway.
+
 ---
 
 ## Commands
@@ -43,6 +89,65 @@ to connect, and `clearCollections` refuses to run, unless the live connection's
 database name ends in `_test`. Never bypass it, and never point a test at
 `mongoose.connect(process.env.MONGO_URL)` directly.
 
+> ### ⚠️ One run at a time — the suite takes a lock
+>
+> `maxWorkers: 1` stops two workers colliding **inside** one run. It does nothing
+> about two runs. Every file shares one database, so a second `jest` started while
+> the first is going has its own `beforeEach` clearing collections the first is
+> mid-way through.
+>
+> That does **not** fail cleanly. It is a scatter of unrelated tests failing on
+> assertions that are individually correct, which then pass when re-run alone —
+> so it reads as flakiness and sends you looking in the wrong place. It cost two
+> separate debugging detours before the cause was obvious.
+>
+> `globalSetup` now takes a lock and a second run is refused by name. If a run is
+> killed the lock self-heals after 90 minutes, or:
+>
+> ⚠️ That TTL has been raised twice. It began at 15 minutes against a comment
+> claiming the suite took about four, so the lock was quietly lapsing mid-run —
+> protecting nothing at the one moment it was needed. Raised to 45 when a run
+> measured 17.7 minutes; raised to **90** now, because a full run is **32.6
+> minutes** across 55 suites.
+>
+> ⚠️ Set it against the **slowest** run, not the average. Two runs of the same
+> suite on this machine measured 24.8 and 32.6 minutes — an eight minute spread,
+> on a value that only has to be exceeded once to reproduce the bug. A too-long
+> TTL costs a wait and a `--clear`; a too-short one has cost a debugging session
+> twice. Keep it at roughly 3× the slowest run you have seen.
+>
+> ```bash
+> node scripts/testRunLock.js           # who holds it
+> node scripts/testRunLock.js --clear   # take it back
+> ```
+>
+> Setup and teardown are loaded in **separate module registries**, so they share
+> only `__tests__/money/setup/runLock.js` — hanging the id off `globalSetup`'s
+> export read back as `undefined`, and the release then filtered on
+> `{_id: undefined}`, matched nothing, and reported success.
+
+> ### ⚠️ Every test file gets its own mongoose — so every file must disconnect
+>
+> Separate module registries are not only a `globalSetup` quirk. Jest gives every
+> test **file** its own registry, and its own `global`, so `require("mongoose")`
+> in the next file returns a *different* mongoose with a *different* connection.
+>
+> `disconnectTestDb` was once a no-op on the theory that one connection could
+> serve the whole run. It cannot: nothing is shared, so skipping the disconnect
+> leaked a connection per suite — thirty-odd of them, each with its own pool and
+> topology monitor — until the cluster started refusing. Measured on the full
+> suite: **15 suites / 294 tests failed as a no-op, 2 / 4 when it disconnects for
+> real.**
+>
+> That failure does not read as a connection problem. It reads as unrelated
+> suites failing on correct assertions and passing when re-run alone — the same
+> shape as the two-concurrent-runs bug above, which is exactly why the wrong fix
+> looked like the right one. The tell is the message: `Refusing to clear
+> collections on "undefined"` means the connection is gone, not the test wrong.
+>
+> `TEST_DB_KEEP_CONNECTION=1` holds it open when debugging something that needs
+> the socket to survive teardown.
+
 > ⚠️ `NODE_ENV=production` is set in some shells here, which makes npm set
 > `omit=dev` and skip devDependencies entirely — `npm install` reports success
 > and jest never lands. Install dev tooling with
@@ -67,6 +172,59 @@ node scripts/migrateCustomerClaimFoundation.js --apply  # change it
 > in the current schema, including any added by hand or by another branch, and it
 > names none of them on the way out. Drop by name, and only after verifying the
 > replacement index exists — see `scripts/migrateCustomerClaimFoundation.js`.
+
+> ### 🔴 `invoiceId_1` — the index that kept coming back
+>
+> Commit `59fd080` declared `invoiceId: { type: String, unique: true }` on
+> `Transaction`. A path-level `unique: true` makes Mongoose create an index named
+> exactly `invoiceId_1` — **not sparse, not partial**. Mongo indexes a missing
+> field as `null`, so a blanket unique on a nullable path rejects the **second**
+> document that has no value yet. Every voucher claim is created before its
+> invoice exists, so in production that is **roughly every second claim
+> rejected**, with a duplicate-key error naming a field the customer never
+> touched. Nothing else reports it as a fault: to every other layer it looks like
+> a validation error.
+>
+> `3494bb8` replaced it with the named partial index the schema carries today, so
+> **nothing in this build creates it**. It came back on the cluster twice anyway.
+>
+> The cause is an **older build of this same service** still running against the
+> same database: its schema still has `unique: true` on that path, and Mongoose's
+> `autoIndex` rebuilds it on every one of *its* restarts. ⚠️ `MONGO_AUTO_INDEX=false`
+> cannot stop it — those builds connected with no options at all, long before
+> that switch existed. The legacy `server/` folder creates `razorpayOrderId_1`
+> the same way.
+>
+> **What the code does now.** `reapShadowIndexes` runs at boot and hourly. It
+> finds shadows by **shape, not by a list**: any unique index with no partial
+> filter and no sparse flag, sitting on exactly the same key as a partial unique
+> index in the same collection. That covers all 28 partial-unique indexes in this
+> database, and a field added next year the day its index is declared.
+>
+> Two conditions, not confidence, make dropping safe:
+>
+> - it only ever drops an index that is **already superseded** — that shape is
+>   never correct, the partial one exists to replace it;
+> - if the partial replacement is **absent**, nothing is dropped, because removing
+>   the blanket one would leave no uniqueness at all.
+>
+> ⚠️ This reverses an earlier decision in `assertMoneyIndexes` — *"nothing is
+> changed automatically"*. Sound reasoning, wrong outcome: with nothing removing
+> what the old build recreates, the old build wins by default.
+>
+> **What the code cannot do** is make the writer go away. A reap means it
+> restarted inside that hour, so every reap sends a CRITICAL admin notice with the
+> timestamp — the one usable lead, since `$currentOp` is not permitted on Atlas
+> shared tiers.
+>
+> ```bash
+> node scripts/findIndexWriters.js   # shadows, connection count, and the fix
+> ```
+>
+> The fix that ends it is operational, not code: narrow **Atlas → Network Access**
+> to the addresses this deployment actually uses (Elastic IP on EC2), give the old
+> deployment's DB user `readOnly` or delete it, and suspend the old service. An
+> account that cannot write cannot create an index.
 
 Server boots from `index.js`, mounts everything under `/trydood/v1`, and connects to Mongo via `database/mongoDb.js`.
 
@@ -192,6 +350,50 @@ Gates: `verifyJwtToken` (any) · `isAdmin` · `isVendor` · `isCustomer` · `val
 - Secrets only from `process.env`; never log or return them
 - Soft delete only — domain data is never physically removed
 - Let Joi own all input validation; `stripUnknown` is already enabled
+- **Never `Math.random()` for anything a stranger benefits from guessing.** Use
+  `crypto.randomInt` / `crypto.randomBytes`. OTPs were generated with
+  `Math.random()`: V8's generator is not seeded from any entropy an attacker
+  cannot reach, and its state is recoverable from a run of outputs — which they
+  can collect just by asking for codes to their own number.
+
+### One-time codes
+
+Every OTP path goes through `services/otps/sendOtp.js`, and the throttle lives
+**there** rather than on the routes — login by WhatsApp and email,
+forgot-password, sub-brand signup, and the bank-account attach a refund is paid
+into. A route added next month is covered without anyone remembering, and
+forgetting a rate-limit middleware produces **no error at all**, just an
+unprotected endpoint.
+
+> ⚠️ Before this there was no limit anywhere. Anyone could post a stranger's
+> number to a public login route as fast as they liked, and every request became
+> a WhatsApp message or an SMS **we pay for**, landing on a phone belonging to
+> someone who never asked for it.
+
+| | |
+|---|---|
+| Keyed on | the **target** (number/email) + purpose — never the IP |
+| Defaults | 60s between codes, 5 an hour — `constants/otp.js` |
+| Admin config | `Setting.security.otp`, which wins. Its own top-level block because vendors *and* customers use the same machinery |
+| Storage | `models/OtpThrottle.js` — a **rolling** window of send times |
+
+⚠️ **Not the IP.** Indian mobile networks put thousands of real customers behind
+one CGNAT address, so an IP limit locks out a block of people while barely
+inconveniencing an attacker with a phone. A number is a person.
+
+⚠️ **Not fields on `Otp`.** That document carries a 5-minute TTL, so a counter on
+it would be deleted twelve times inside a one-hour window and cap nothing.
+
+⚠️ **The claim is the write.** `claimOtpSend` prunes the window and appends in a
+single aggregation-pipeline update, and the caller learns the verdict by asking
+whether its own timestamp survived — read-then-write would let two taps send two
+messages, and double the limit the day a second instance starts. Mongoose 9 needs
+`{ updatePipeline: true }` on that call.
+
+⚠️ **A failed send gives the slot back**, pulled **by value**. Keeping it would
+let a provider outage lock a customer out for an hour over a problem entirely on
+our side; releasing by a time range would hand back slots claimed by other
+callers in the same second.
 
 ---
 
@@ -238,6 +440,186 @@ before the `COMPLETE` stage marker.
 payment leaves exactly the window a race needs: two checkouts open, neither
 holding anything, both allowed through.
 
+### A refund holds the money before anyone decides about it
+
+`Transaction.settlementHold` goes on the moment a refund is requested. That one
+line removes the whole "we already paid the vendor, now claw it back" problem —
+the golden rule (`settlementDelayHours >= windowHours + vendorApprovalHours +
+adminBufferHours`) then guarantees a refund can never chase money already paid.
+
+The mirror is just as dangerous: **a hold nobody releases keeps a vendor's money
+out of every future settlement, for ever, and silently** — the eligibility
+predicate simply stops matching, with no error and no log. So
+`releaseSettlementHold()` is called from every terminal state where no money
+moves, and never from `FAILED`.
+
+A **full** refund keeps the hold: that money was never the vendor's. A
+**partial** one releases it, because the rest of the sale still is theirs — see
+below.
+
+Everything else that sets a hold (a chargeback, a dashboard refund, a completed
+partial) is released only by `PATCH /transactions/admin/:transactionId/release-hold`,
+which requires a written reason and refuses while a refund is still open or a
+chargeback is unresolved. Before that endpoint existed there was **no** way out
+of those states at all.
+
+### A partial refund is netted in the arithmetic, never by exclusion
+
+⚠️ Eligibility excludes `isRefunded: true` — a **fully** refunded payment. It
+used to exclude `amountRefunded: { $lte: 0 }`, which caught partial refunds too,
+and that field only ever goes up: a payment with ₹300 of ₹810 back was removed
+from every future cycle, for ever. `claimRefundAdjustments` then deducted its
+clawback from a *later* cycle anyway, so the vendor lost the sale **and** paid
+the clawback — about ₹1,100 wrong on an ₹800 sale, silently.
+
+The netting belongs in the totals. The payment is claimed at full value and its
+refund is claimed beside it, so `computeTotals` subtracts exactly the clawback.
+Two rules make that safe:
+
+- `claimRefundAdjustments` claims a refund only when its payment carries a
+  `settlementId` — i.e. it was, or is being, paid out. A refund on a payment
+  nobody will ever pay must not be clawed back from other sales.
+- The two claims run **in order**, transactions first. They used to be a
+  `Promise.all`, and the refund claim reads the id the transaction claim writes.
+
+Full flow: [`docs/refund_flow.md`](./docs/refund_flow.md).
+
+### A settlement fails by *not happening*
+
+Every other money path here fails loudly. A settlement has three failure modes
+that all look like nothing at all: the nightly build never ran, a `MANUAL_BANK`
+NEFT was started and never confirmed, or a payout booked no ledger row. None of
+them raise, so each has a sweep whose whole job is to look for the absence —
+`buildSettlements`, `sweepStalePayouts`, `reconcileSettlementLedger` and
+`sweepAbandonedDrafts`, all registered in `jobs/index.js`.
+
+`sweepStalePayouts` **alerts and never acts**, deliberately: an unconfirmed NEFT
+may genuinely have left, and auto-failing it would release the rows and pay the
+vendor twice.
+
+### `requiresAdminApproval: false` actually auto-approves now
+
+The setting defaults to `true`, is settable from the admin panel, and its own
+comment said *"turning this off auto-approves"* — while **no code read it**. An
+admin who switched it off got no auto-approval and no error: every settlement
+kept waiting for a click.
+
+`buildSettlements` reads it now and goes straight to `APPROVED`.
+
+⚠️ `settings.requiresAdminApproval === false`, not `Boolean(...)`. A settings
+document written before the field existed has no value at all, and truthiness
+would auto-approve every payout on the platform on the next deploy.
+
+⚠️ Approving is not paying. `PATCH /settlements/admin/:id/pay` is still a
+deliberate human action, and `paySettlement` re-checks `needsRevalidation` there —
+its own note says approval checking the flag *"is not enough"*, because hours pass
+in that window. So this removes a queue, not a guard. `APPROVED` is in
+`SETTLEMENT_PRE_PAYOUT_STATUSES`, so `alertLateSettlements` still watches it.
+
+⚠️ `approvedAt` is stamped, `approvedBy` is not. Leaving `approvedAt` unset would
+make an auto-approved settlement look stuck for ever; naming a user in
+`approvedBy` would be a lie in the record people open to ask who authorised a
+payout. The history row says *"no person reviewed this settlement"*.
+
+### The reserve rate is per brand, and frozen onto the settlement
+
+`reserve.percent` was one flat number, and `riskChargebackCount` sat in the
+constants, in the `Setting` schema and in `getCustomerConfig` — configurable from
+the admin panel — while **no code read it**. The same shape
+`chargebackAdjustment: 0`, `commissionTax: 0`, `reserveReleased: 0` and
+`chargeback.writeOffDays` all had.
+
+`buildReserveRiskMap` decides it now, once for the whole run:
+
+- **Count and rate, both.** A count alone punishes size — 2 chargebacks in 10,000
+  sales is a better merchant than 2 in 40, and holding more from the first is
+  backwards. `riskChargebackCount` triggers a look; `riskDisputeRatePercent`
+  decides.
+- **A volume floor.** 1 of 3 sales is 33% and means nothing. Under
+  `riskMinPayments` the brand keeps the base rate — and says so
+  (`TOO_FEW_PAYMENTS`) rather than reading as clean.
+- **A ceiling.** `maxPercent` binds the base rate too. Without it a bad month
+  holds nearly the whole payout, which is how a recoverable problem becomes a
+  closed outlet.
+- **Won disputes do not count.** A dispute we won is proof the sale was good.
+
+⚠️ Two aggregations for the **whole run**, not two per brand — the map is built
+before the loop and passed into `buildForBrand`, the same way `settings` is.
+
+⚠️ `Settlement.reservePercent` and `reserveBasis` freeze the rate **and the
+working**. The rate comes from a trailing window, so recomputing it when somebody
+opens the statement gives a different number and the page stops adding up. The
+vendor sees both, plus a sentence (`reserveLabel`) — a bare `reserveHeld` is a
+figure they cannot check, and the same ₹1,000 of sales holding ₹50 from one
+outlet and ₹150 from another reads as arbitrary.
+
+### A vendor debt can outlive every cycle that could collect it
+
+`netPayable <= 0` sends a settlement to `CARRIED_FORWARD`, and carrying forward
+**is** releasing every claim it held — so the debt and the takings both flow into
+the next cycle. While the brand trades, new sales net it off. The day they stop,
+the same rows are claimed and released for ever: nothing errors, nothing is
+logged, and the money sits on our books as a receivable from somebody who is not
+coming back.
+
+`alertVendorDebt` (daily, reading `chargeback.writeOffDays`) reports it and never
+acts — writing a debt off is an accounting decision with a person's name on it,
+and doing it at 90 days automatically would forgive a brand that is merely
+between seasons. `writeOffVendorDebt` is the deliberate act.
+
+⚠️ It writes a **pair** of `MANUAL_ADJUSTMENT`s per row — `VENDOR_PAYABLE` credit
+so no future cycle sees a debt, `PLATFORM_COST` debit because we absorbed it. The
+reference goes on the **vendor row only**: `ONCE_PER_REFUND` and
+`ONCE_PER_DISPUTE` are unique on `{reference, entryType}`, so putting it on both
+makes the second a duplicate-key no-op — the debt clears, the cost never appears,
+and the books are short by exactly what was forgiven.
+
+⚠️ `writtenOffAt` is in **both** claim filters. Without it the write-off is
+cosmetic: the next build re-claims the row and the loss is counted twice.
+
+⚠️ The vendor identity grows a third term — `moneyInvariants.test.js` asserts it:
+
+```
+still owed  +  paid  +  written off  ===  share of sale  −  share of refunds
+```
+
+### A chargeback is recovered from the next cycle
+
+⚠️ `CHARGEBACK` / `CHARGEBACK_REVERSAL` sat in the ledger's rules table with
+nothing writing either, and `chargebackAdjustment` was hardcoded `0` — so a
+payment that was settled, paid out, and then pulled back by the bank left no
+trace and the platform silently ate it.
+
+A **lost** dispute books `CHARGEBACK` against `VENDOR_PAYABLE` for the vendor's
+share only — never the whole disputed amount, which includes our fee and our
+half of the promo — and is recovered from the brand's next settlement.
+`Transaction.chargebackSettlementId` is the claim lock, the same discipline the
+refunds use: without it, one lost dispute is deducted every cycle for ever and
+each month's arithmetic looks self-consistent.
+
+`ledger_type_dispute_unique` keys on the dispute rather than the transaction,
+because Razorpay redelivers dispute webhooks **and sends them out of order** — a
+late `lost` can follow a `won`.
+
+### The ledger has to add up, not just have the right rows
+
+Every ledger test checked row shape; none summed the accounts, and three defects
+lived in exactly that gap. After a capture and a full refund, `VENDOR_PAYABLE`,
+`PLATFORM_REVENUE` and `TAX_PAYABLE` must all return to **zero** —
+`__tests__/money/ledgerBalance.test.js` asserts balances rather than rows, and
+`moneyInvariants.test.js` asserts the vendor identity across every ending a
+payment can have:
+
+```
+what the vendor has been paid  +  what they are still owed
+    ===  their share of the sale  −  their share of anything refunded
+```
+
+⚠️ `PLATFORM_COST` deliberately does **not** return to zero: Razorpay keeps its
+MDR whether or not the sale is refunded.
+
+Full flow: [`docs/settlement_flow.md`](./docs/settlement_flow.md).
+
 ### An idempotency key is inserted before the external call, never after
 
 Two concurrent taps both pass a read-then-write check. Inserting the key is what
@@ -245,6 +627,95 @@ makes the second one lose — the unique index decides, not the timing. And the
 gateway is called **last**, because it is the only step with no undo.
 
 ---
+
+## Production
+
+Render today, EC2 next. One instance now, more later — so nothing may keep state
+in the process that a second copy would contradict.
+
+### Environment
+
+| Variable | Default | What it decides |
+|---|---|---|
+| `MONGO_MAX_POOL_SIZE` | `20` | Sockets **per process**. See the arithmetic below. |
+| `MONGO_MIN_POOL_SIZE` | `2` | Warm sockets, so the first request after a quiet spell does not pay a TLS handshake. |
+| `MONGO_SERVER_SELECTION_TIMEOUT_MS` | `10000` | How long a request waits for a reachable node before failing. |
+| `MONGO_AUTO_INDEX` | on | `false` only after `ensureIndexes` has run. See below. |
+| `TRUST_PROXY` | `1` | Proxy hops in front. `1` for Render and for an ALB; `0` for a bare EC2 box. |
+| `RATE_LIMIT_MAX` | `3000` | Requests per IP per 15 minutes. |
+| `LOG_FORMAT` | `combined` in prod | Any morgan format. |
+| `ENABLE_JOBS` | on | `false` stops every sweep on that instance. |
+
+### The connection pool is the first thing that breaks
+
+    total connections  =  pool size  ×  workers per instance  ×  instances
+
+Mongoose opens **100** per process by default and a Flex cluster allows 500 for
+the whole account. One process today is fine; 4 pm2 workers on 3 instances is
+1200, and past the ceiling Atlas refuses new connections — every request fails
+at once, and it looks like the database went down. At 20 the same growth lands
+at 240.
+
+⚠️ The **tests** had this tuned (`maxPoolSize: 5`, with a comment explaining the
+ceiling) while production connected with no options at all. If you tune one,
+look at the other.
+
+### `MONGO_AUTO_INDEX=false` needs a deploy step
+
+Mongoose checks every schema's indexes when each model is first used: measured
+at 6.3s for five models with every index **already present**, so ~65s of
+background round trips across 53 models, competing with the traffic that arrives
+right after a deploy. It also swallows `IndexOptionsConflict`, so a mismatched
+index simply never appears.
+
+Turning it off is right. Turning it off without creating the indexes another way
+is not — the money paths depend on partial unique indexes for **correctness**:
+`holdsUsageSlot`, `isOncePerTransaction`, the idempotency keys and
+`ledger_type_dispute_unique` are what stop two rows that must never coexist from
+both inserting, and nothing errors when one is missing.
+
+```bash
+node scripts/ensureIndexes.js           # what is missing
+node scripts/ensureIndexes.js --apply   # create it, then set MONGO_AUTO_INDEX=false
+```
+
+It reports extra indexes and never drops them — see the `syncIndexes` warning
+above.
+
+### A process manager is not optional
+
+Boot retries Mongo three times and then `process.exit(1)`. Render restarts a
+crashed process by itself; a bare `node index` under `nohup` does not, so a
+two-minute Atlas blip at deploy time would leave the server down for good. Use
+systemd with `Restart=on-failure` (or pm2). Each boot attempt takes up to ~90s,
+so systemd's default `StartLimitBurst` will not trip, but set it deliberately.
+
+### Rate limiting counts per process, and an IP is not a person
+
+⚠️ Indian mobile networks put thousands of real customers behind one CGNAT
+address. The limit is 3000 per 15 minutes precisely because a tight one does not
+stop an attacker with a phone — it locks out a whole block of paying users, who
+see a 429 and no explanation. Per-account limits on OTP, login and refund
+requests are the real protection and do not exist yet.
+
+⚠️ The counter lives in the process. A second instance keeps its own tally and
+the effective limit doubles. When this moves behind a load balancer, move the
+store to Redis rather than halving the number.
+
+⚠️ Both Razorpay webhook paths are exempt in `index.js`. A 429 to a webhook is
+retried for a while and then dropped, and the only symptom is money that stops
+moving — no error anywhere. If you add a third webhook, add it to
+`WEBHOOK_PATHS`.
+
+### Moving off Render
+
+- Atlas **Network Access** allows Render's addresses, not EC2's. Take an
+  **Elastic IP** so it does not change on restart. Since boot now refuses to
+  start without a database, a forgotten entry fails the deploy instead of
+  serving broken requests.
+- `getIP` (`GET /my-ip`) reports the outbound address to put on that list.
+- `tempFileDir: "/tmp/"` in `index.js` is fine on Linux; make sure the unit has
+  a writable `/tmp` and something clears it.
 
 ## Never
 
@@ -271,6 +742,30 @@ gateway is called **last**, because it is the only step with no undo.
   `$exists`, comparisons and `$type`. "In one of these statuses" has to become a
   denormalised boolean — `VoucherClaim.holdsUsageSlot`,
   `LedgerEntry.isOncePerTransaction` — and the index keys on that.
+- Comparing an optional field to `null` in an **aggregation expression** without
+  `$ifNull`. A query *filter* treats an absent field and an explicit `null`
+  alike; an expression does not, and nothing warns:
+
+  ```js
+  { $ne: ["$a.b", null] }                    // true when b is ABSENT
+  { $ne: [{ $ifNull: ["$a.b", null] }, null] }   // false, which is what you meant
+  ```
+
+  Fields that are simply never written until something happens — `settlementId`,
+  `respondBy`, `validTill` — are absent, not null. This shipped twice: the
+  dispute worklist reported `vendorWasPaid: true` for every payment that had
+  **never been settled** (the exact field an admin uses to decide whether there
+  is anything to claw back), and the promo list showed every code with no end
+  date as `isExpired`. `$lt` has the same trap in the other direction — missing
+  sorts *below* every date, so `{$lt: [missing, now]}` is `true`.
+- Handing `sendQuietly` an already-invoked promise instead of a thunk. It calls
+  what it is given **inside** its own try/catch, so `sendQuietly(notify(...))`
+  looks identical, still sends, and quietly drops the one protection the wrapper
+  exists for: the promise was created outside the guard, so a delivery failure
+  becomes an unhandled rejection rather than a logged line — and in Node 24 that
+  takes the job runner down. It is `sendQuietly(() => notify(...), "context")`.
+  A mocked `notify` records the call either way, so a test does **not** catch
+  this; assert `console.error` was not called.
 - Scheduling background work with a bare `setInterval` outside `jobs/index.js`. The
   runner is an in-process timer, so on a multi-instance deploy anything it schedules
   runs once per instance. Add the job to the registry in `jobs/index.js` and it gets

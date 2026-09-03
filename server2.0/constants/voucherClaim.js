@@ -66,8 +66,30 @@ const CLAIM_HISTORY_ACTION = Object.freeze({
   EXPIRED: "EXPIRED",
   CANCELLED: "CANCELLED",
   REFUND_REQUESTED: "REFUND_REQUESTED",
+  /**
+   * The refund's own transitions live here rather than in a separate history
+   * collection, because a refund is something that happened **to a claim** —
+   * and the claim's timeline is exactly where a customer, a vendor and an admin
+   * all go to ask "what happened to this?".
+   *
+   * A second collection would mean a join to answer that, and two timelines to
+   * keep in the same order.
+   */
+  REFUND_APPROVED: "REFUND_APPROVED",
+  REFUND_REJECTED: "REFUND_REJECTED",
+  REFUND_ESCALATED: "REFUND_ESCALATED",
+  REFUND_CANCELLED: "REFUND_CANCELLED",
+  REFUND_FAILED: "REFUND_FAILED",
   REFUNDED: "REFUNDED",
   PROMO_RELEASED: "PROMO_RELEASED",
+  /**
+   * An admin let a held payment back into the settlement run.
+   *
+   * ⚠️ Admin-only in the timeline. It names a chargeback outcome or a failed
+   * refund and records who decided the vendor keeps the money — a decision
+   * about a dispute the customer may still believe they won.
+   */
+  SETTLEMENT_HOLD_RELEASED: "SETTLEMENT_HOLD_RELEASED",
 });
 
 /** Who did it. A job has no user behind it, so SYSTEM is a real answer. */
@@ -130,8 +152,17 @@ const CLAIM_TIMELINE_LABEL = Object.freeze({
   [CLAIM_HISTORY_ACTION.EXPIRED]: "Voucher expired",
   [CLAIM_HISTORY_ACTION.CANCELLED]: "Claim cancelled",
   [CLAIM_HISTORY_ACTION.REFUND_REQUESTED]: "Refund requested",
+  [CLAIM_HISTORY_ACTION.REFUND_APPROVED]: "Refund approved",
+  [CLAIM_HISTORY_ACTION.REFUND_REJECTED]: "Refund declined",
+  // Deliberately not "the outlet did not respond". Telling a customer the
+  // outlet ignored them starts a fight the platform then has to referee, and
+  // it is not something they can act on.
+  [CLAIM_HISTORY_ACTION.REFUND_ESCALATED]: "Refund under review by Trydood",
+  [CLAIM_HISTORY_ACTION.REFUND_CANCELLED]: "Refund request withdrawn",
+  [CLAIM_HISTORY_ACTION.REFUND_FAILED]: "Refund failed",
   [CLAIM_HISTORY_ACTION.REFUNDED]: "Refunded",
   [CLAIM_HISTORY_ACTION.PROMO_RELEASED]: "Promo reservation released",
+  [CLAIM_HISTORY_ACTION.SETTLEMENT_HOLD_RELEASED]: "Payment released for settlement",
 });
 
 /**
@@ -141,12 +172,18 @@ const CLAIM_TIMELINE_LABEL = Object.freeze({
  * against a campaign. It explains nothing to the customer and nothing to the
  * brand, and it names an internal cost split.
  *
+ * `SETTLEMENT_HOLD_RELEASED` is the same kind of thing from the other side: it
+ * records an admin deciding who bears the loss on a chargeback or a failed
+ * refund. The customer may still believe that dispute went their way, and the
+ * vendor has no part in the decision — so neither of them reads the row.
+ *
  * Everything else is shown to all three audiences. A claim that failed shows
  * `status: FAILED` on the document either way, so hiding the row that explains
  * it would leave the reader with a state and no story.
  */
 const CLAIM_TIMELINE_INTERNAL_ACTIONS = Object.freeze([
   CLAIM_HISTORY_ACTION.PROMO_RELEASED,
+  CLAIM_HISTORY_ACTION.SETTLEMENT_HOLD_RELEASED,
 ]);
 
 module.exports = {

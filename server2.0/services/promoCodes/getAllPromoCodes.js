@@ -127,8 +127,22 @@ exports.getAllPromoCodes = async (query = {}) => {
           null,
         ],
       },
+      /**
+       * ⚠️ `$ifNull`, because **missing is not null** in an aggregation
+       * expression — unlike in a query filter, where the two are alike.
+       *
+       * `validTill` is optional: a promo code meant to run indefinitely simply
+       * has no end date, so the field is *absent* rather than null. The guard
+       * `{$ne: ["$validTill", null]}` was therefore `true` for exactly those
+       * codes, and `{$lt: [missing, now]}` is also `true` (missing sorts below
+       * every date in BSON order) — so **every perpetual promo code listed as
+       * expired**, while a code with an explicit `null` listed correctly.
+       */
       isExpired: {
-        $and: [{ $ne: ["$validTill", null] }, { $lt: ["$validTill", now] }],
+        $and: [
+          { $ne: [{ $ifNull: ["$validTill", null] }, null] },
+          { $lt: ["$validTill", now] },
+        ],
       },
     },
   });

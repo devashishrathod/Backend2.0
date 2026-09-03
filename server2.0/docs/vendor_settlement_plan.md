@@ -1,6 +1,35 @@
 # Vendor Settlement, Refunds & Chargebacks — Implementation Plan
 
-> **Status:** approval ke baad phase-by-phase implement hoga
+> ## ⏳ Aadha ban chuka hai — aur ye doc "kya banana tha" hai, "kya hai" nahi
+>
+> | Phase | Haalat |
+> |---|---|
+> | **S1 — Refunds** | ✅ `SOURCE` ka poora lifecycle. ❌ `MANUAL_BANK` (§6.1, §6.5) nahi bana |
+> | **S2 — Settlement** | ✅ build · claim · approve · payout · reversal · sweeps. ❌ statement PDF, per-brand config |
+> | **S3 — Chargebacks** | ⏳ **sirf recovery bana** (§7.5). Dispute model, evidence pack, reserve, receivables — kuch nahi |
+>
+> **Ye doc jaan-boojh kar waise ka waisa rakha gaya hai.** Isme har faisle ka *kyun* hai —
+> golden rule, hold ka design, promo split, chargeback strategy — aur wo kahin aur nahi
+> likha. Par is doc me likhi baat aur aaj ke code me farak ho, to **code sahi hai**.
+>
+> | Kya jaanna hai | Kahan padho |
+> |---|---|
+> | Kaunsa module bana, kya nahi, kis file me | [`implementation_phases.md`](./implementation_phases.md) |
+> | Refund aaj kaise chalta hai | [`refund_flow.md`](./refund_flow.md) |
+> | Settlement aaj kaise chalta hai | [`settlement_flow.md`](./settlement_flow.md) |
+>
+> ⚠️ **Chaar jagah is doc ka likha aaj galat ya adhoora hai:**
+> 1. **§7.5 chargeback recovery ka strategy likha tha, par code me `chargebackAdjustment`
+>    hardcoded `0` tha** aur ledger types koi likhta hi nahi tha — platform chup-chaap
+>    nuksaan utha raha tha. Money audit me bana. `settlement_flow.md` §2.5a dekho.
+> 2. **Partial refund** ka netting is doc me arithmetic me tha, par code use **filter se**
+>    bahar kar deta tha — ek ₹800 ki sale par vendor ko lagbhag ₹1,100 ka farak. Ab
+>    arithmetic me hi kata hai.
+> 3. **`BrandSettlementConfig`** is doc me maana gaya hai; wo model **bana hi nahi**.
+>    Config saare brands ke liye ek hi hai (`Setting.customer.settlement`).
+> 4. **~40 endpoints implied the par ek bhi path likha nahi tha.** Ab teeno jagah likhe
+>    hain: `settlement_flow.md` §7, `refund_flow.md` §1.5, aur `endpoints_category.md`.
+>
 > **Sibling doc:** [customer_voucher_claim_plan.md](./customer_voucher_claim_plan.md) — paisa andar aane wala hissa
 > **Scope:** money ledger → settlement cycle → vendor payout → refunds → chargebacks
 
@@ -164,6 +193,23 @@ MDR model karte hi ek baat saaf ho jaati hai jo pehle chhupi hui thi. Method ke 
 ---
 
 ## 3. Settlement
+
+> ### ✅ Ban gaya — Phase S2 (2 Sep 2026)
+>
+> **Jo bana hai wo kaise chalta hai → [`settlement_flow.md`](./settlement_flow.md).**
+> Yeh section design ka *kyun* rakhta hai; wo document *kya hota hai* batata hai.
+>
+> `models/Settlement.js` · `models/SettlementHistory.js` · `models/PayoutLeg.js` ·
+> `constants/settlement.js` · `constants/payout.js` · `helpers/settlements/*` ·
+> `helpers/dates/istDate.js` · `services/settlements/*` · 12 endpoints · 5 jobs.
+> Tests: `settlementFoundation` · `settlementClaims` · `buildSettlements` ·
+> `approveSettlement` · `paySettlement` · `payoutLedger` · `settlementListings` ·
+> `settlementJobs`.
+>
+> **Abhi nahi bana:** statement PDF (`statementUrl` / `statementToken` model me
+> hain, generator nahi) · reserve release job (`reserveHeld` bookta hai,
+> `holdDays` ke baad chhodne wala kuchh nahi — reserve default me off hai) ·
+> RazorpayX / Route adapter.
 
 ### 3.1 Model
 
@@ -420,6 +466,48 @@ Settlement PENDING_APPROVAL
 
 ## 5. Refund
 
+> ### ✅ Ban gaya — Phase S1 (1 Sep 2026), `SOURCE` refunds ke liye
+>
+> **Jo bana hai wo kaise chalta hai → [`refund_flow.md`](./refund_flow.md).** Yeh
+> section design ka *kyun* rakhta hai; wo document *kya hota hai* batata hai.
+>
+> `models/RefundRequest.js` · `constants/refund.js` · `helpers/refunds/*` ·
+> `services/refunds/*` · 9 endpoints · 3 jobs · 3 webhook handlers.
+> Tests: `refundRequest` · `refundSplit` · `refundAllowance` · `requestRefund` ·
+> `decideRefund` · `executeRefund` · `refundCompletion` · `refundJobs` ·
+> `refundListings` · `refundNotices`.
+>
+> **Plan se do jagah hataa gaya, dono jaan-boojhkar:**
+>
+> 1. **`PayoutLeg` nahi bana.** §3.2 me wo `MANUAL_BANK` aur settlement dono ke liye
+>    socha gaya tha. `SOURCE` refund me leg jaisa kuch hai hi nahi — Razorpay ka
+>    `refund.id` + `acquirer_data.arn` hi poora record hai, aur wo `RefundRequest` par
+>    hi rakha gaya. `PayoutLeg` tab banega jab `MANUAL_BANK` ya settlement aayegi,
+>    yaani jab uski zaroorat sach me hogi.
+> 2. **`MANUAL_BANK` aur `CustomerBankAccount` nahi bane** (§6.5). Wo sirf
+>    `refund.failed` par chahiye — 90%+ refunds `SOURCE` se nikal jaate hain — aur
+>    unhe banane ka matlab `models/Bank.js` wali landmine ke paas jaana hai:
+>    account-number uniqueness Mongo index nahi, teen jagah collection-wide query hai
+>    (`createBank.js:62`, `verifyBankAndFetchDetails.js:24`, `verifyVendor.js:228`),
+>    aur banks collection me ek customer row vendor ka KYC score gira sakti hai.
+>    Tab tak failed refund admin worklist me `FAILED` par khula baithta hai, hold laga
+>    rehta hai, aur admin ko CRITICAL notification jaati hai.
+>
+> **Jo audit findings §6.4 me the, teeno theek ho gaye:**
+> `$set → $max` cumulative (`payment.amount_refunded` se) · `REFUND_STATUS.PARTIAL`
+> juda · `Transaction.refundId` → `latestRefundRequestId` (wo `Refund` model ko ref
+> karta tha jo kabhi bana hi nahi) · `refund.created` / `refund.failed` ko handler mile
+> (pehle enum me the par kisi branch me nahi, to failed refund chup-chaap `IGNORED`
+> hokar girta tha).
+>
+> **Do aur cheezein jo plan me nahi thi aur banate waqt zaroori nikli:**
+> - `ledger_type_refund_unique` — `REFUND` rows kisi unique index se surakshit nahi thi.
+>   `ONCE_PER_TRANSACTION` unhe cover kar hi nahi sakta: ek payment do baar refund ho
+>   sakta hai aur dono ki rows ek hi `transactionId` par hain. Iske bina dobara bheja
+>   gaya `refund.processed` vendor ko **do baar** claw back kar deta.
+> - Abuse limits (`maxOpenRequests`, `maxRejectedPerWindow`, `requestWindowDays`) —
+>   ginti **thukrai** requests ki, approve hui ki kabhi nahi.
+
 ### 5.1 States
 
 ```
@@ -629,7 +717,7 @@ Isse bhi bura: account-number uniqueness Mongo index nahi hai, wo ek **applicati
 // koi cross-collection accountNumber uniqueness NAHI — do customer ek joint account share kar sakte hain
 ```
 
-Verification ke liye alag service — `services/cgpeyAPIs/verifyCustomerBankAccount.js` — apna cache (`{customerId, accountNumber}`), aur **koi cross-brand duplicate check nahi**. `verifyBankAndFetchDetails` aur `createBank` ko haath mat lagao, wo onboarding ke liye load-bearing hain.
+Verification ke liye alag service. ⚠️ **Bani `services/customerBankAccounts/addBankAccount.js` me**, alag `cgpeyAPIs` file ke bajaye — wahi `verifyBankAndFetchDetails` reuse karta hai. Apna cache (`{customerId, accountNumber}`), aur **koi cross-brand duplicate check nahi**. `verifyBankAndFetchDetails` aur `createBank` ko haath mat lagao, wo onboarding ke liye load-bearing hain.
 
 Account attach hone se pehle `verificationStatus: SUCCESS` + `recommendedAction: PROCEED` zaroori. `isNameMatch` / `matchingScore` snapshot me jaayein taaki admin ko approval screen par name-match verdict dikhe.
 

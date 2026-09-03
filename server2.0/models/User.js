@@ -151,4 +151,28 @@ userSchema.pre("save", async function () {
   this.password = await bcrypt.hash(this.password, 10);
 });
 
+/**
+ * The referral graph, read backwards.
+ *
+ * `referralCode` is already indexed by its `unique: true`, so "who owns this
+ * code" is cheap. The opposite direction — "who came in on my code" — had no
+ * index at all, and the admin customer detail screen asks exactly that. It is
+ * the one view that catches a person farming their own referral bonus: a run of
+ * accounts all carrying one code, created minutes apart, where no single account
+ * looks wrong on its own.
+ *
+ * ⚠️ Partial, and **not** unique. Most users never applied anybody's code, and a
+ * plain index would store an entry for every one of those nulls to answer a
+ * query that never asks about them. `$type: "string"` keeps it to the rows that
+ * actually carry a value. Unique would be wrong outright — a code is meant to be
+ * used by many people.
+ */
+userSchema.index(
+  { appliedReferralCode: 1 },
+  {
+    name: "user_appliedReferralCode",
+    partialFilterExpression: { appliedReferralCode: { $type: "string" } },
+  },
+);
+
 module.exports = mongoose.model("User", userSchema);

@@ -1,5 +1,9 @@
+const mongoose = require("mongoose");
 const Transaction = require("../../models/Transaction");
+const RefundRequest = require("../../models/RefundRequest");
 const WebhookEvent = require("../../models/WebhookEvent");
+const Dispute = require("../../models/Dispute");
+const VoucherClaim = require("../../models/VoucherClaim");
 const {
   RAZORPAY_WEBHOOK_EVENTS,
   WEBHOOK_HANDLED_EVENTS,
@@ -17,13 +21,30 @@ const {
   SUBSCRIPTION_SOURCE,
 } = require("../../constants/subscription");
 const { REFUND_STATUS } = require("../../constants");
+const { REFUND_REQUEST_STATUS } = require("../../constants/refund");
 const { throwError } = require("../../utils");
 const {
   verifyRazorpayWebhook,
   recordRejectedWebhook,
 } = require("../../helpers/transactions");
 const { releasePromoCode } = require("../../helpers/promoCodes");
-const { notifyAdmins } = require("../../helpers/notifications");
+const { applyRefundCompletion } = require("../../helpers/refunds");
+const { recordFundsReceived } = require("../../helpers/transactions");
+const LedgerEntry = require("../../models/LedgerEntry");
+const { LEDGER_ENTRY_TYPE } = require("../../constants/ledger");
+const {
+  postChargebackLoss,
+  postChargebackReversal,
+} = require("../../helpers/ledger");
+const { taintSettlement } = require("../../helpers/settlements");
+const { recordDispute, summariseDisputes } = require("../../helpers/disputes");
+const { getRazorpayAccount } = require("../../configs/razorpay");
+const {
+  notifyAdmins,
+  sendQuietly,
+  notifyVendorDisputeRaised,
+  notifyVendorDisputeResolved,
+} = require("../../helpers/notifications");
 const { formatMoney } = require("../../helpers/subscribeds");
 const {
   RAZORPAY_ACCOUNTS,
@@ -202,6 +223,12 @@ const processWebhookEvent = async ({
   event,
   ids,
   account,
+  /**
+   * The raw payload. Needed only by the settlement branch: `extract()` pulls
+   * the payment, order, refund and dispute entities, and deliberately not the
+   * settlement one — a settlement event is about a *batch*, not one payment.
+   */
+  body,
   isReplay = false,
 }) => {
   const finish = async (status, outcome, extra = {}) => {
@@ -238,6 +265,18 @@ const processWebhookEvent = async ({
       WEBHOOK_STATUS.IGNORED,
       `Event "${event}" is not one this platform acts on.`,
     );
+  }
+
+  /**
+   * ⚠️ Handled **before** the transaction lookup, and deliberately.
+   *
+   * A settlement event is not about one payment — it is Razorpay telling us that
+   * a **batch** of them has reached our bank. `findTransaction` would find
+   * nothing and the event would be dismissed as "nothing of ours", which is
+   * exactly the event a vendor payout is waiting on.
+   */
+  if (event === RAZORPAY_WEBHOOK_EVENTS.SETTLEMENT_PROCESSED) {
+    return handleGatewaySettlement({ body, account, finish });
   }
 
   const transaction = await findTransaction({ ...ids, account });
@@ -383,28 +422,18 @@ const processWebhookEvent = async ({
     );
   }
 
-  // ---------------- refunded ----------------
-  if (event === RAZORPAY_WEBHOOK_EVENTS.REFUND_PROCESSED) {
-    const refunded = (ids.refund?.amount ?? 0) / 100;
-    const fullyRefunded = refunded >= (transaction.paidAmount ?? 0);
-    await Transaction.updateOne(
-      { _id: transaction._id },
-      {
-        $set: {
-          amountRefunded: refunded,
-          refundStatus: REFUND_STATUS.COMPLETED,
-          isRefunded: fullyRefunded,
-          paidRefundAt: new Date(),
-        },
-      },
-    );
-    // The subscription is deliberately left alone. Revoking access on a refund
-    // is a business decision with vendor-facing consequences, so it goes through
-    // PUT /subscribeds/admin/cancel rather than happening silently here.
-    return finish(
-      WEBHOOK_STATUS.PROCESSED,
-      `Refund of ${formatMoney(refunded)} recorded${fullyRefunded ? " (full)" : " (partial)"}. Subscription left active — cancel it explicitly if intended.`,
-    );
+  // ---------------- refunds ----------------
+  //
+  // All three events are handled. `refund.created` and `refund.failed` used to
+  // be in the enum but in no branch at all, so a failed refund fell through
+  // silently — the customer's money never arrived, the request still said
+  // PROCESSING, and nothing anywhere said so.
+  if (
+    event === RAZORPAY_WEBHOOK_EVENTS.REFUND_CREATED ||
+    event === RAZORPAY_WEBHOOK_EVENTS.REFUND_PROCESSED ||
+    event === RAZORPAY_WEBHOOK_EVENTS.REFUND_FAILED
+  ) {
+    return handleRefundEvent({ event, ids, transaction, finish });
   }
 
   // ---------------- dispute ----------------
@@ -418,41 +447,143 @@ const processWebhookEvent = async ({
       DISPUTE_STATUS.CLOSED,
     ].includes(disputeStatus);
 
+    /**
+     * ⚠️ The dispute gets its **own row**, and the transaction gets a summary.
+     *
+     * These fields used to be `$set` straight onto the transaction, which works
+     * for exactly one dispute per payment — and Razorpay does not promise one. A
+     * chargeback escalating to pre-arbitration and then arbitration arrives as
+     * separate disputes with separate ids, amounts and **deadlines**, and each
+     * one silently replaced the last. A response deadline that disappears is an
+     * automatic loss with nothing to show for it.
+     *
+     * `recordDispute` also settles out-of-order delivery, which the ledger's own
+     * notes warn about: a late `lost` after a `won` must not win.
+     */
+    await recordDispute({
+      transaction,
+      dispute,
+      status: disputeStatus,
+      // Razorpay stamps the event in unix seconds. Its time, not ours — ours is
+      // when the delivery happened to arrive, which is the thing being reordered.
+      eventAt: body?.created_at ? new Date(body.created_at * 1000) : new Date(),
+    });
+
+    const summary = await summariseDisputes(transaction._id);
+
     await Transaction.updateOne(
       { _id: transaction._id },
       {
         $set: {
-          isDisputed: isOpen,
-          disputeStatus,
-          disputeId: dispute.id,
-          disputeAmount: amount || undefined,
-          disputeReason: dispute.reason_code || dispute.reason,
-          disputePhase: dispute.phase,
-          ...(disputeStatus === DISPUTE_STATUS.OPEN
-            ? { disputedAt: new Date() }
-            : {}),
-          ...(dispute.respond_by
-            ? { disputeRespondBy: new Date(dispute.respond_by * 1000) }
-            : {}),
-          ...(isOpen ? {} : { disputeResolvedAt: new Date() }),
+          ...summary,
+          /**
+           * ⚠️ Ineligibility is **monotonic**, and it is `settlementHold` that
+           * carries it — never `isDisputed`.
+           *
+           * `isDisputed` tracks whether a dispute is *live*, so it correctly
+           * goes back to `false` once every dispute on the payment is resolved.
+           * Settlement must not key on that: a chargeback we **lost** would flip
+           * the row back to fully eligible, and the next payout would hand the
+           * vendor money Trydood no longer has. That is not a race — it is what
+           * happens every single time.
+           *
+           * So every dispute event, resolved or not, puts the hold on. A webhook
+           * never takes it off: releasing it is an explicit admin action, taken
+           * once somebody has decided who bears the loss.
+           *
+           * Written **after** the summary spread, so it cannot be overwritten by
+           * it.
+           */
+          settlementHold: true,
+          settlementHoldReason: `Chargeback ${disputeStatus} (${dispute.id})`,
         },
       },
     );
 
+    /**
+     * ⚠️ The hold above only stops a **future** claim.
+     *
+     * If this payment is already inside a settlement, setting `settlementHold`
+     * changes nothing about it — eligibility was evaluated at build time and the
+     * totals describe what was captured then. So the settlement itself is
+     * flagged, and approval refuses to go through while the flag is set.
+     */
+    const tainted = await taintSettlement({
+      transaction,
+      reason: `Chargeback ${disputeStatus}`,
+    });
+
+    /**
+     * ⚠️ And the ledger, which never heard about a chargeback at all.
+     *
+     * `CHARGEBACK` / `CHARGEBACK_REVERSAL` were in the rules table from the
+     * start and nothing ever wrote one. A payment settled, paid out, then pulled
+     * back by the bank left no trace anywhere — the platform absorbed the loss
+     * silently and the books still showed a healthy sale.
+     *
+     * Booked on the **resolution**, not on `created`: while the bank is still
+     * deciding, nothing has moved. `ledger_type_dispute_unique` keeps it to one
+     * row per dispute, which matters because Razorpay redelivers these and sends
+     * them out of order.
+     */
+    if (disputeStatus === DISPUTE_STATUS.LOST) {
+      await postChargebackLoss({
+        transaction,
+        disputeId: dispute.id,
+        amount: amount || undefined,
+      });
+    } else if (disputeStatus === DISPUTE_STATUS.WON) {
+      /**
+       * Only reverses a loss that was actually booked. A `won` arriving with no
+       * prior `lost` finds nothing to credit and writes nothing — rather than
+       * handing the vendor money nobody ever took.
+       */
+      const booked = await LedgerEntry.findOne({
+        entryType: LEDGER_ENTRY_TYPE.CHARGEBACK,
+        disputeId: dispute.id,
+        isDeleted: false,
+      })
+        .select("amount")
+        .lean();
+
+      if (booked?.amount > 0) {
+        await postChargebackReversal({
+          transaction,
+          disputeId: dispute.id,
+          amount: booked.amount,
+        });
+      }
+    }
+
     // A dispute has a response deadline and missing it forfeits the money, so
     // this has to reach a human rather than sit in the webhook log.
-    if (isOpen) {
+    if (isOpen || tainted.tainted) {
       const respondBy = dispute.respond_by
         ? new Date(dispute.respond_by * 1000).toLocaleDateString("en-IN")
         : "unknown";
       await notifyAdmins({
         type: NOTIFICATION_TYPES.PAYMENT_DISPUTED,
         severity: NOTIFICATION_SEVERITY.CRITICAL,
-        title: `Chargeback ${disputeStatus.toLowerCase().replace("_", " ")} — ${formatMoney(amount)}`,
-        body: `A dispute was raised on transaction ${transaction.invoiceId || transaction._id}. Evidence must be submitted to Razorpay by ${respondBy}, or the dispute is lost automatically.`,
+        title: tainted.tainted
+          ? `Chargeback on settlement ${tainted.settlement.settlementNumber || tainted.settlement._id} — ${formatMoney(amount)}`
+          : `Chargeback ${disputeStatus.toLowerCase().replace("_", " ")} — ${formatMoney(amount)}`,
+        /**
+         * ⚠️ Names the settlement when there is one.
+         *
+         * The old alert named only the transaction, so the admin about to
+         * approve a settlement had no way to connect the two — and approved it.
+         * The settlement number is the thing they are looking at.
+         */
+        body: tainted.tainted
+          ? `A dispute landed on a payment already inside settlement ${tainted.settlement.settlementNumber || tainted.settlement._id}. ` +
+            `That settlement is now on hold for revalidation — rebuild it before approving. ` +
+            `Evidence must be submitted to Razorpay by ${respondBy}.`
+          : `A dispute was raised on transaction ${transaction.invoiceId || transaction._id}. Evidence must be submitted to Razorpay by ${respondBy}, or the dispute is lost automatically.`,
         meta: {
           transactionId: transaction._id,
           brandId: transaction.brandId,
+          settlementId: tainted.settlement?._id,
+          settlementNumber: tainted.settlement?.settlementNumber,
           disputeId: dispute.id,
           disputeStatus,
           amount,
@@ -475,6 +606,80 @@ const processWebhookEvent = async ({
       });
     }
 
+    /**
+     * ⚠️ And the vendor, who until now was told **nothing at all**.
+     *
+     * A dispute landed, the payment quietly stopped appearing in any settlement,
+     * and weeks later a statement carried "Less: chargebacks recovered" with no
+     * sale attached to it. From the outlet's side that is money taken without
+     * explanation — however correct the arithmetic was.
+     *
+     * Sent from the stored row rather than the webhook payload, because
+     * `recordDispute` may have **refused** this event as stale (an out-of-order
+     * `lost` after a `won`). Telling a vendor they lost a dispute we actually won
+     * would be worse than telling them nothing.
+     */
+    const stored = await Dispute.findOne({ disputeId: dispute.id }).lean();
+
+    if (stored) {
+      // The code the counter recognises. `invoiceId` is on the payment, but a
+      // claim code is what an outlet can actually look up.
+      const claim = transaction.voucher?.claimId
+        ? await VoucherClaim.findById(transaction.voucher.claimId)
+            .select("claimCode")
+            .lean()
+        : null;
+
+      const isResolvedNow = [
+        DISPUTE_STATUS.WON,
+        DISPUTE_STATUS.LOST,
+        DISPUTE_STATUS.CLOSED,
+      ].includes(stored.status);
+
+      if (!isResolvedNow && !stored.vendorNotifiedAt) {
+        await sendQuietly(
+          () =>
+            notifyVendorDisputeRaised({
+              dispute: stored,
+              transaction,
+              claimCode: claim?.claimCode,
+            }),
+          "vendor dispute raised",
+        );
+        /**
+         * Stamped so a silent outlet reads as *silent* rather than as *never
+         * asked* — two very different things when a dispute is lost and somebody
+         * asks why nobody at the outlet helped.
+         */
+        await Dispute.updateOne(
+          { _id: stored._id },
+          { $set: { vendorNotifiedAt: new Date() } },
+        );
+      }
+
+      if (
+        stored.status === DISPUTE_STATUS.WON ||
+        stored.status === DISPUTE_STATUS.LOST
+      ) {
+        await sendQuietly(
+          () =>
+            notifyVendorDisputeResolved({
+              dispute: stored,
+              transaction,
+              claimCode: claim?.claimCode,
+              won: stored.status === DISPUTE_STATUS.WON,
+              /**
+               * Only a payment the vendor was actually paid for can be clawed
+               * back. Without it the loss is entirely ours, and telling them a
+               * deduction is coming would be untrue.
+               */
+              recoverable: Boolean(transaction.settlementId),
+            }),
+          "vendor dispute resolved",
+        );
+      }
+    }
+
     return finish(
       WEBHOOK_STATUS.PROCESSED,
       `Dispute ${disputeStatus} recorded for ${formatMoney(amount)}${isOpen ? " — admins notified" : ""}.`,
@@ -482,6 +687,353 @@ const processWebhookEvent = async ({
   }
 
   return finish(WEBHOOK_STATUS.IGNORED, `Unhandled event "${event}".`);
+};
+
+/**
+ * ⚠️ These three live at module scope, and that is load-bearing.
+ *
+ * They were once declared **inside** `processWebhookEvent` — a missing `};`
+ * left that function spanning 585 lines and swallowing its own siblings. The
+ * cost was not cosmetic: `handleGatewaySettlement` is called at the top of
+ * that function and declared 160 lines below the call, so every
+ * `settlement.processed` delivery threw
+ *
+ *     ReferenceError: Cannot access 'handleGatewaySettlement' before initialization
+ *
+ * from the temporal dead zone. The caller catches and records a FAILED
+ * webhook, then answers Razorpay 200 — so it never retried and nothing
+ * surfaced it. `recordFundsReceived` never ran, `fundsReceivedAt` stayed null
+ * on every payment, and `buildEligibilityFilter` requires it to be set: no
+ * settlement was ever built and no vendor was ever paid.
+ *
+ * `handleRefundEvent` was nested too and worked only by the luck of being
+ * declared above its call site.
+ */
+
+/**
+ * Razorpay has moved a batch of payments into our bank.
+ *
+ * ### Why a vendor payout waits for this
+ *
+ * `verifiedAt` says the customer paid. It does **not** say the money is ours to
+ * pay out — Razorpay holds it for its own cycle and then settles the batch. In
+ * between, the money exists on a dashboard and nowhere else. A T+3 rule computed
+ * from `verifiedAt` is a *guess* that the gateway will have settled by then, and
+ * the times it is wrong are the worst ones: an account under review, a batch held
+ * over a bank holiday, a payment flagged for KYC.
+ *
+ * ### The payload does not carry the payments
+ *
+ * `settlement.processed` gives the settlement entity — id, amount, fees — and no
+ * list of what is in it. That has to be fetched. Doing it here rather than in a
+ * job keeps the common case one round trip; when the fetch fails the event is
+ * recorded as `FAILED` so the webhook worklist and a replay can pick it up,
+ * rather than the money silently never becoming eligible.
+ */
+const handleGatewaySettlement = async ({ body, account, finish }) => {
+  const settlement = body?.payload?.settlement?.entity || null;
+  if (!settlement?.id) {
+    return finish(WEBHOOK_STATUS.IGNORED, "Settlement event carried no entity.");
+  }
+
+  const settledAt = settlement.created_at
+    ? new Date(settlement.created_at * 1000)
+    : new Date();
+
+  let paymentIds = [];
+  try {
+    const { instance } = getRazorpayAccount(account);
+    /**
+     * The payments in this batch. `count` is capped at 100 per page by Razorpay,
+     * so this pages until it runs out — a busy day settles more than 100.
+     */
+    let skip = 0;
+    for (;;) {
+      const page = await instance.payments.all({
+        settlement_id: settlement.id,
+        count: 100,
+        skip,
+      });
+      const items = page?.items || [];
+      paymentIds.push(...items.map((p) => p.id).filter(Boolean));
+      if (items.length < 100) break;
+      skip += items.length;
+    }
+  } catch (error) {
+    /**
+     * Recorded as a failure rather than swallowed. Without the payment list
+     * nothing becomes eligible, and a silently-ignored event would mean a
+     * vendor's payout never arrives with nothing anywhere saying why.
+     */
+    return finish(
+      WEBHOOK_STATUS.FAILED,
+      `Could not list payments for settlement ${settlement.id}: ${
+        error?.error?.description || error?.message || "unknown error"
+      }`,
+    );
+  }
+
+  const result = await recordFundsReceived({
+    settlementId: settlement.id,
+    settledAt,
+    paymentIds,
+  });
+
+  return finish(
+    WEBHOOK_STATUS.PROCESSED,
+    `Settlement ${settlement.id}: ${paymentIds.length} payment(s) in the batch, ` +
+      `${result.updated} of ours marked as received.`,
+  );
+};
+
+/**
+ * Every refund event Razorpay sends, in one place.
+ *
+ * ### Matching the request
+ *
+ * By `razorpayRefundId` first — the executor stored it — and by the note we
+ * stamped on the refund second, which covers a refund created before we managed
+ * to save the id. If neither matches, the refund was issued from the Razorpay
+ * dashboard by hand: the payment is still updated so the money is recorded, but
+ * no request is invented for it.
+ */
+const handleRefundEvent = async ({ event, ids, transaction, finish }) => {
+  const refund = ids.refund || {};
+  const thisRefund = (refund.amount ?? 0) / 100;
+
+  /**
+   * The **cumulative** figure, straight from the payment entity.
+   *
+   * ⚠️ The old branch wrote `$set: { amountRefunded: thisRefundsAmount }`. Two
+   * partial refunds and the second overwrote the first — ₹300 then ₹200
+   * reported ₹200, and the ₹310 still owed to the vendor was invisible.
+   * `payment.amount_refunded` is the running total Razorpay itself holds, which
+   * survives redelivery, out-of-order delivery and dashboard refunds alike.
+   */
+  const gatewayTotalRefunded =
+    ids.payment?.amount_refunded !== undefined
+      ? ids.payment.amount_refunded / 100
+      : undefined;
+
+  const request = await findRefundRequest(refund, transaction);
+
+  if (event === RAZORPAY_WEBHOOK_EVENTS.REFUND_CREATED) {
+    // Nothing has moved yet — Razorpay has only accepted it. Recorded so a
+    // refund created in the dashboard is visible to us before it settles.
+    if (request) {
+      await RefundRequest.updateOne(
+        { _id: request._id, status: { $ne: REFUND_REQUEST_STATUS.COMPLETED } },
+        {
+          $set: {
+            status: REFUND_REQUEST_STATUS.PROCESSING,
+            razorpayRefundId: refund.id,
+            isOpen: true,
+          },
+        },
+      );
+    }
+    return finish(
+      WEBHOOK_STATUS.PROCESSED,
+      `Refund of ${formatMoney(thisRefund)} accepted by Razorpay${
+        request ? "" : " (no matching request — raised outside Trydood)"
+      }.`,
+    );
+  }
+
+  if (event === RAZORPAY_WEBHOOK_EVENTS.REFUND_FAILED) {
+    if (request) {
+      /**
+       * ⚠️ Conditional on the money not having landed yet.
+       *
+       * This was an unguarded `updateOne` on `_id` alone, and Razorpay's refund
+       * events are neither ordered nor delivered once. A late or redelivered
+       * `refund.failed` arriving after `refund.processed` walked a **COMPLETED**
+       * refund back to `FAILED` and set `isOpen: true` — so a refund the
+       * customer had already received reappeared on the admin worklist as one
+       * that still had to be paid. The obvious next click sends it twice.
+       *
+       * `COMPLETED` is authoritative: it is only ever written by
+       * `applyRefundCompletion`, which is driven by the gateway's own
+       * confirmation. A failure notice cannot outrank it.
+       */
+      const marked = await RefundRequest.findOneAndUpdate(
+        {
+          _id: request._id,
+          status: {
+            $in: [
+              REFUND_REQUEST_STATUS.PROCESSING,
+              REFUND_REQUEST_STATUS.ADMIN_APPROVED,
+              REFUND_REQUEST_STATUS.ADMIN_OVERRIDE,
+              // Already failed: a redelivery refreshes the reason, harmlessly.
+              REFUND_REQUEST_STATUS.FAILED,
+            ],
+          },
+        },
+        {
+          $set: {
+            status: REFUND_REQUEST_STATUS.FAILED,
+            failedAt: new Date(),
+            failureReason:
+              refund.error_description ||
+              refund.status_reason ||
+              "Razorpay could not complete the refund",
+            // Still open, and the hold stays on: the money has not gone back.
+            isOpen: true,
+          },
+        },
+        { returnDocument: "after" },
+      ).lean();
+
+      if (!marked) {
+        return finish(
+          WEBHOOK_STATUS.IGNORED,
+          `A refund.failed arrived for a request that is already ${request.status} — ` +
+            `ignored rather than re-opening a refund whose money has landed.`,
+        );
+      }
+    }
+    /**
+     * ⚠️ This event had no branch at all before. A failed refund fell through
+     * as `IGNORED`: the customer's money never arrived, the request still said
+     * PROCESSING, and nothing anywhere said otherwise until somebody asked.
+     */
+    return finish(
+      WEBHOOK_STATUS.PROCESSED,
+      `Refund of ${formatMoney(thisRefund)} FAILED at Razorpay. The money has not gone back — an admin has to retry it.`,
+    );
+  }
+
+  // ---------------- processed ----------------
+  if (request) {
+    const result = await applyRefundCompletion({
+      refundRequest: request,
+      gatewayTotalRefunded,
+      utr: refund?.acquirer_data?.arn,
+    });
+
+    if (!result.applied) {
+      return finish(
+        WEBHOOK_STATUS.PROCESSED,
+        "Refund already recorded; nothing to do (redelivery).",
+      );
+    }
+
+    return finish(
+      WEBHOOK_STATUS.PROCESSED,
+      `Refund of ${formatMoney(thisRefund)} completed${
+        result.isFullyRefunded ? " (full)" : " (partial)"
+      }. ${result.ledger.posted} ledger row(s) posted.`,
+    );
+  }
+
+  /**
+   * No request behind it — somebody refunded from the Razorpay dashboard.
+   *
+   * The payment is still brought up to date, because the money genuinely moved
+   * and a settlement must not pay a vendor for it. What is deliberately **not**
+   * done is inventing a `RefundRequest`: a record with no customer behind it
+   * would make every refund report wrong about who asked for what.
+   */
+  const cumulative =
+    gatewayTotalRefunded !== undefined
+      ? gatewayTotalRefunded
+      : (transaction.amountRefunded || 0) + thisRefund;
+  const fullyRefunded = cumulative >= (transaction.paidAmount ?? 0) - 0.005;
+
+  const fullyRefundedAt = (transaction.paidAmount ?? 0) - 0.005;
+
+  /**
+   * ⚠️ One pipeline, so the flags cannot disagree with the amount.
+   *
+   * `$max` beside a plain `$set` is not atomic in meaning: `$max` refuses to
+   * walk the total backwards while the `$set` next to it happily rewrites
+   * `isRefunded` from whatever *this* delivery carried. An out-of-order or
+   * duplicated refund event then marks a fully refunded payment `PARTIAL` — and
+   * since settlement eligibility keys on `isRefunded`, that puts it straight
+   * back into a payout run. Same shape as the bug fixed in
+   * `applyRefundCompletion`; this path had its own copy.
+   */
+  await Transaction.updateOne(
+    { _id: transaction._id },
+    [
+      {
+        $set: {
+          amountRefunded: {
+            $max: [{ $ifNull: ["$amountRefunded", 0] }, cumulative],
+          },
+        },
+      },
+      {
+        $set: {
+          refundStatus: {
+            $cond: [
+              { $gte: ["$amountRefunded", fullyRefundedAt] },
+              REFUND_STATUS.COMPLETED,
+              REFUND_STATUS.PARTIAL,
+            ],
+          },
+          isRefunded: { $gte: ["$amountRefunded", fullyRefundedAt] },
+          paidRefundAt: "$$NOW",
+          // Every refund landing puts a hold on, not just one we filed. This is
+          // what covers a dashboard refund and Razorpay's own auto-refund.
+          settlementHold: true,
+          settlementHoldReason: "Refunded outside Trydood",
+        },
+      },
+    ],
+    { updatePipeline: true },
+  );
+
+  /**
+   * ⚠️ And the settlement, because the hold above does nothing on its own.
+   *
+   * `settlementHold` only filters payments **before** they are claimed. A refund
+   * raised in the Razorpay dashboard against a payment already sitting in a
+   * built settlement would set the hold, change nothing, and let the payout go
+   * out for money that has already gone back to the customer.
+   */
+  await taintSettlement({
+    transaction,
+    reason: "Refunded outside Trydood",
+  });
+
+  // A subscription is deliberately left alone. Revoking access on a refund is a
+  // business decision with vendor-facing consequences, so it goes through
+  // PUT /subscribeds/admin/cancel rather than happening silently here.
+  return finish(
+    WEBHOOK_STATUS.PROCESSED,
+    `Refund of ${formatMoney(thisRefund)} recorded${
+      fullyRefunded ? " (full)" : " (partial)"
+    } with no matching request — raised outside Trydood.`,
+  );
+};
+
+/**
+ * Find the request a Razorpay refund belongs to.
+ *
+ * The stored id first; the note we stamped second, which is what covers a
+ * refund created before the executor managed to save the id.
+ */
+const findRefundRequest = async (refund, transaction) => {
+  if (refund?.id) {
+    const byId = await RefundRequest.findOne({
+      razorpayRefundId: refund.id,
+      isDeleted: false,
+    }).lean();
+    if (byId) return byId;
+  }
+
+  const noteId = refund?.notes?.refundRequestId;
+  if (noteId && mongoose.isValidObjectId(noteId)) {
+    const byNote = await RefundRequest.findOne({
+      _id: noteId,
+      transactionId: transaction._id,
+      isDeleted: false,
+    }).lean();
+    if (byNote) return byNote;
+  }
+
+  return null;
 };
 
 /**
@@ -606,7 +1158,7 @@ exports.handleRazorpayWebhook = async ({
   }
 
   try {
-    return await processWebhookEvent({ record, event, ids, account });
+    return await processWebhookEvent({ record, event, ids, account, body });
   } catch (error) {
     // Recorded and acknowledged: a non-2xx would have Razorpay retry forever,
     // and the stored payload makes this replayable.

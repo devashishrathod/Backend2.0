@@ -101,6 +101,20 @@ exports.updateSetting = async (userId, payload = {}) => {
     assertSettlementTimingRule(setting.customer);
   }
 
+  /**
+   * ⚠️ Merged, not assigned.
+   *
+   * `Object.assign` on the parent would drop every sibling a PATCH did not
+   * mention — the same bug that once reset `settlement.reserve.holdDays` from 45
+   * to 30 because the request only carried `percent`. Someone raising
+   * `maxPerHour` alone must not silently lose a cooldown an admin had tuned.
+   */
+  if (payload.security?.otp) {
+    if (!setting.security) setting.security = {};
+    if (!setting.security.otp) setting.security.otp = {};
+    Object.assign(setting.security.otp, payload.security.otp);
+  }
+
   if (typeof payload.isActive === "boolean") {
     setting.isActive = payload.isActive;
   }

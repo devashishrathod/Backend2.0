@@ -9,6 +9,9 @@ const {
   reservePromoCode,
   commitPromoCode,
   releasePromoCode,
+  // The refund twin: `releasePromoCode` only touches RESERVED rows, and by the
+  // time a refund happens the usage is CONSUMED.
+  releaseConsumedPromoOnRefund,
   releaseStalePromoReservations,
 } = require("./promoReservation");
 
@@ -26,5 +29,8 @@ module.exports = {
   reservePromoCode,
   commitPromoCode,
   releasePromoCode,
+  // The refund twin: `releasePromoCode` only touches RESERVED rows, and by the
+  // time a refund happens the usage is CONSUMED.
+  releaseConsumedPromoOnRefund,
   releaseStalePromoReservations,
 };
