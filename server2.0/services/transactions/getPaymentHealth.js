@@ -21,7 +21,23 @@ const {
   buildTransactionFilter,
   assertMoneyIndexes,
 } = require("../../helpers/transactions");
-const { getJobsHealth } = require("../../jobs");
+/**
+ * ⚠️ Required **inside** the handler, not here, because this closes a cycle.
+ *
+ * `jobs/index.js` imports the job functions it schedules, and some of those live
+ * under `services/transactions` — so `jobs → services/transactions →
+ * getPaymentHealth → jobs` is a loop. Node resolves a loop by handing back a
+ * **partially built** exports object: whichever module is mid-load contributes
+ * nothing, and a destructure at the top of the file captures `undefined` for
+ * good. Nothing throws at load; the first call does, or worse, a job is
+ * registered with `run: undefined` and simply never runs.
+ *
+ * That is the shape of the bug that once left `handleGatewaySettlement`
+ * unreachable and stopped every settlement in the system, silently. A lazy
+ * require costs one cache lookup per call and cannot go wrong: by the time a
+ * request is being served, both modules are fully loaded.
+ */
+const jobsHealth = () => require("../../jobs").getJobsHealth();
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -72,7 +88,7 @@ exports.getPaymentHealth = async () => {
     overdueSettlements,
     strandedDrafts,
   ] = await Promise.all([
-    getJobsHealth(),
+    jobsHealth(),
 
     // Reports, never drops. See helpers/transactions/assertMoneyIndexes.js.
     assertMoneyIndexes(),

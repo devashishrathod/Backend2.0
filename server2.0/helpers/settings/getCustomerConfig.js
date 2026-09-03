@@ -126,9 +126,28 @@ exports.getCustomerConfig = async () => {
         isEnabled: reserve.isEnabled ?? SETTLEMENT_DEFAULTS.reserve.isEnabled,
         percent: reserve.percent ?? SETTLEMENT_DEFAULTS.reserve.percent,
         holdDays: reserve.holdDays ?? SETTLEMENT_DEFAULTS.reserve.holdDays,
+        /**
+         * ⚠️ Every one of these was read by **nothing** until
+         * `buildReserveRiskMap` existed — `riskChargebackCount` sat in the
+         * constants, in the schema and in this very function, configurable from
+         * the admin panel, deciding absolutely nothing. The same shape
+         * `chargebackAdjustment: 0` and `reserveReleased: 0` had.
+         */
         riskChargebackCount:
           reserve.riskChargebackCount ??
           SETTLEMENT_DEFAULTS.reserve.riskChargebackCount,
+        riskLookbackDays:
+          reserve.riskLookbackDays ??
+          SETTLEMENT_DEFAULTS.reserve.riskLookbackDays,
+        riskMinPayments:
+          reserve.riskMinPayments ?? SETTLEMENT_DEFAULTS.reserve.riskMinPayments,
+        riskDisputeRatePercent:
+          reserve.riskDisputeRatePercent ??
+          SETTLEMENT_DEFAULTS.reserve.riskDisputeRatePercent,
+        riskPercent:
+          reserve.riskPercent ?? SETTLEMENT_DEFAULTS.reserve.riskPercent,
+        maxPercent:
+          reserve.maxPercent ?? SETTLEMENT_DEFAULTS.reserve.maxPercent,
       },
       newVendorReserveDays:
         settlement.newVendorReserveDays ??
@@ -160,10 +179,32 @@ exports.getCustomerConfig = async () => {
         refund.maxRejectedPerWindow ?? REFUND_DEFAULTS.maxRejectedPerWindow,
       requestWindowDays:
         refund.requestWindowDays ?? REFUND_DEFAULTS.requestWindowDays,
+      /**
+       * ⚠️ Length-checked, not `??` — the same trap as `deadlineAlertHours`
+       * below. Mongoose hands back an unset array of numbers as `[]`, so `??`
+       * would give the reminder job an empty mark list and it would nudge nobody
+       * while looking perfectly healthy.
+       */
+      bankDetailsReminderHours: refund.bankDetailsReminderHours?.length
+        ? refund.bankDetailsReminderHours
+        : REFUND_DEFAULTS.bankDetailsReminderHours,
+      bankDetailsStaleDays:
+        refund.bankDetailsStaleDays ?? REFUND_DEFAULTS.bankDetailsStaleDays,
     },
 
     chargeback: {
       writeOffDays: chargeback.writeOffDays ?? CHARGEBACK_DEFAULTS.writeOffDays,
+      /**
+       * ⚠️ Length-checked, not just `??`.
+       *
+       * Mongoose gives an unset array of numbers `[]`, not `undefined`, so `??`
+       * would hand `disputeDeadlines` an empty threshold list — and the job
+       * would then warn about nothing until the deadline had already passed.
+       * A falsy-length check is the only one that catches it.
+       */
+      deadlineAlertHours: chargeback.deadlineAlertHours?.length
+        ? chargeback.deadlineAlertHours
+        : CHARGEBACK_DEFAULTS.deadlineAlertHours,
     },
 
     // Not admin-configurable. Here so a customer-facing string never has to

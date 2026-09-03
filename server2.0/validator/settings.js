@@ -216,10 +216,59 @@ const refundSettingSchema = Joi.object({
   allowPartial: Joi.boolean().optional(),
   releasePromoOnRefund: Joi.boolean().optional(),
   authorizedAlertMinutes: Joi.number().integer().min(1).max(1440).optional(),
+
+  /**
+   * ⚠️ These three were on the model and in `getCustomerConfig` but **not here**,
+   * and `stripUnknown` is on — so an admin setting them got a `200` and nothing
+   * changed. `refund_flow.md` §2.3 documents them as admin config, which was
+   * true of everything except the one step that would have let anyone set them.
+   *
+   * The allowance rules: how many refunds a customer may have open at once, how
+   * many rejections before they are pointed at support, and the window those are
+   * counted over.
+   */
+  maxOpenRequests: Joi.number().integer().min(1).max(50).optional(),
+  maxRejectedPerWindow: Joi.number().integer().min(1).max(100).optional(),
+  requestWindowDays: Joi.number().integer().min(1).max(365).optional(),
+
+  /**
+   * `MANUAL_BANK`: when a customer is nudged for their account details, and
+   * after how long a silent one becomes an admin's problem.
+   *
+   * ⚠️ `bankDetailsReminderHours` is sorted ascending by the job rather than
+   * trusted in order — saved as `[96, 24]` the stages would otherwise fire
+   * backwards. `min(1)` on the array, because an empty one is not "no reminders",
+   * it is a job that quietly nudges nobody.
+   */
+  bankDetailsReminderHours: Joi.array()
+    .items(Joi.number().integer().min(1).max(720))
+    .min(1)
+    .max(5)
+    .optional()
+    .messages({
+      "array.min": "At least one reminder, or nobody is ever chased.",
+    }),
+  bankDetailsStaleDays: Joi.number().integer().min(1).max(365).optional(),
 });
 
 const chargebackSettingSchema = Joi.object({
   writeOffDays: Joi.number().integer().min(1).max(365).optional(),
+  /**
+   * Hours before a dispute deadline at which an admin is warned. Widest first,
+   * though `disputeDeadlines` sorts them itself.
+   *
+   * ⚠️ `min(1)` on the array for the same reason as above: a dispute deadline
+   * that passes is an **automatic loss**, and an empty list means no warning at
+   * all — with nothing to show that anything is switched off.
+   */
+  deadlineAlertHours: Joi.array()
+    .items(Joi.number().integer().min(1).max(720))
+    .min(1)
+    .max(5)
+    .optional()
+    .messages({
+      "array.min": "At least one warning, or a deadline can pass unseen.",
+    }),
 });
 
 const customerSettingSchema = Joi.object({
@@ -234,6 +283,28 @@ const customerSettingSchema = Joi.object({
   chargeback: chargebackSettingSchema.optional(),
 });
 
+/**
+ * One-time codes. Neither audience's — vendors, sub-vendors and customers all
+ * log in through the same machinery.
+ *
+ * ⚠️ `maxPerHour` has a floor of 1. Zero would lock **everybody** out of logging
+ * in, from a settings screen, and the way back in is also a login.
+ *
+ * ⚠️ `resendCooldownSeconds` allows 0 on purpose — "no wait" is a real choice,
+ * and `getSecurityConfig` reads it with `??` so it survives rather than being
+ * quietly restored to the default.
+ */
+const otpSettingSchema = Joi.object({
+  resendCooldownSeconds: Joi.number().integer().min(0).max(3600).optional(),
+  maxPerHour: Joi.number().integer().min(1).max(100).optional().messages({
+    "number.min": "At least one code an hour, or nobody can sign in.",
+  }),
+});
+
+const securitySettingSchema = Joi.object({
+  otp: otpSettingSchema.optional(),
+});
+
 exports.validateUpdateSetting = {
   body: Joi.object({
     vendor: Joi.object({
@@ -242,6 +313,7 @@ exports.validateUpdateSetting = {
       subscription: subscriptionSettingSchema.optional(),
     }).optional(),
     customer: customerSettingSchema.optional(),
+    security: securitySettingSchema.optional(),
     isActive: Joi.boolean().optional(),
   })
     .min(1)
