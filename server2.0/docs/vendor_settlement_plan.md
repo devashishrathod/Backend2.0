@@ -165,6 +165,23 @@ MDR model karte hi ek baat saaf ho jaati hai jo pehle chhupi hui thi. Method ke 
 
 ## 3. Settlement
 
+> ### ✅ Ban gaya — Phase S2 (2 Sep 2026)
+>
+> **Jo bana hai wo kaise chalta hai → [`settlement_flow.md`](./settlement_flow.md).**
+> Yeh section design ka *kyun* rakhta hai; wo document *kya hota hai* batata hai.
+>
+> `models/Settlement.js` · `models/SettlementHistory.js` · `models/PayoutLeg.js` ·
+> `constants/settlement.js` · `constants/payout.js` · `helpers/settlements/*` ·
+> `helpers/dates/istDate.js` · `services/settlements/*` · 12 endpoints · 5 jobs.
+> Tests: `settlementFoundation` · `settlementClaims` · `buildSettlements` ·
+> `approveSettlement` · `paySettlement` · `payoutLedger` · `settlementListings` ·
+> `settlementJobs`.
+>
+> **Abhi nahi bana:** statement PDF (`statementUrl` / `statementToken` model me
+> hain, generator nahi) · reserve release job (`reserveHeld` bookta hai,
+> `holdDays` ke baad chhodne wala kuchh nahi — reserve default me off hai) ·
+> RazorpayX / Route adapter.
+
 ### 3.1 Model
 
 ```js
@@ -421,6 +438,9 @@ Settlement PENDING_APPROVAL
 ## 5. Refund
 
 > ### ✅ Ban gaya — Phase S1 (1 Sep 2026), `SOURCE` refunds ke liye
+>
+> **Jo bana hai wo kaise chalta hai → [`refund_flow.md`](./refund_flow.md).** Yeh
+> section design ka *kyun* rakhta hai; wo document *kya hota hai* batata hai.
 >
 > `models/RefundRequest.js` · `constants/refund.js` · `helpers/refunds/*` ·
 > `services/refunds/*` · 9 endpoints · 3 jobs · 3 webhook handlers.

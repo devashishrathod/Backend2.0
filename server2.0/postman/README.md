@@ -7,7 +7,7 @@ jhooth nahi bol sakti.
 | Collection | Endpoints | Status |
 |---|---:|---|
 | `trydood-customer.postman_collection.json` | 48 | ⚠️ 105 requests · **132 captured examples** — 17 naye (Voucher Claims + Refunds) **abhi capture nahi hue** |
-| `trydood-vendor.postman_collection.json` | 89 | ⚠️ 112 requests · **105 captured examples** — 13 naye (Voucher Claims + Refunds) **abhi capture nahi hue** |
+| `trydood-vendor.postman_collection.json` | 92 | ⚠️ 116 requests · **105 captured examples** — 17 naye (Voucher Claims + Refunds + Settlements) **abhi capture nahi hue** |
 | `trydood-admin.postman_collection.json` | 114 | ⬜ Phase 3 |
 | `trydood-security-changes.postman_collection.json` | – | ⏳ Teeno panel collections ready hone par retire hogi |
 

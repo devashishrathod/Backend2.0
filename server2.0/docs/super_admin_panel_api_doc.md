@@ -6659,6 +6659,285 @@ Teeno ki sehat `GET /transactions/admin/health` par dikhti hai.
 
 ---
 
+# Settlements — vendor ka paisa
+
+**Poora flow → [`settlement_flow.md`](./settlement_flow.md).**
+
+> ### Ye raasta **na hoke** fail hota hai
+>
+> Baaki har money path shor karke fail hota hai: capture na ho to throw, refund na
+> jaaye to worklist par `FAILED`. Settlement ke teen failure aise hain jo **kuchh na
+> hone jaise dikhte hain** —
+>
+> | Kya bigda | Kaisa dikhta hai |
+> |---|---|
+> | build kabhi chali hi nahi | koi settlement nahi; kaagaz par kisi ka kuchh bakaya nahi |
+> | NEFT shuru hui, confirm nahi hui | hamesha `PROCESSING`; vendor padhta hai *"on its way"* |
+> | payout ne koi ledger row nahi likhi | kitaab kehti hai paisa abhi hamare paas hai, jo ja chuka |
+>
+> Teeno me kuchh raise nahi hota. Isi liye har ek ke peechhe ek sweep hai jiska kaam
+> hi **ghair-maujoodgi dhoondhna** hai.
+
+---
+
+## GET /settlements — poori list
+
+Admin ko har brand ki settlements dikhti hain. Vendor wale se **alag projection** —
+poora `bankSnapshot`, `needsRevalidation`, `taintedTransactionIds`, `failureNote`,
+`approvedBy`, `idempotencyKey`, `attemptCount`.
+
+| Param | Notes |
+|---|---|
+| `needsAttention=true` | **Worklist** — flagged / `FAILED` / `ON_HOLD`, aur **sabse purani upar** |
+| `open=true` | Jo abhi chal rahe hain |
+| `status` · `brandId` · `settlementNumber` · `from` / `to` | |
+
+`canApprove` / `canPay` / `canRetry` response me **bataye** jaate hain. Panel ko status
+se andaza nahi lagana chahiye — naya state judte hi wo andaza galat ho jaayega.
+
+---
+
+## PATCH /settlements/admin/:settlementId/approve
+
+Body: `note` (optional). Aur kuchh nahi — rakam build ke waqt compute ho chuki hai, aur
+body me rakam lena matlab admin ko wo aankda badalne dena jispar ledger raazi hai.
+
+### Shart update ke **filter** me hai
+
+```js
+Settlement.findOneAndUpdate(
+  { _id, status: PENDING_APPROVAL, needsRevalidation: { $ne: true } },
+  { $set: { status: APPROVED, approvedBy, approvedAt } },
+)
+```
+
+`if (settlement.needsRevalidation) throw` **kaafi nahi** hota: read aur write ke beech
+webhook aa sakta hai. Shart filter me ho to Mongo faisla karta hai, timing nahi.
+
+### `needsRevalidation` kahan se aata hai
+
+02:00 par build hui, 14:00 par payout hoga. Beech me `dispute.created` ya refund aaya
+to? Row claim ho chuki hai — `settlementHold` sirf **claim se pehle** ka filter hai aur
+ab bekaar hai. Isliye webhook settlement ko flag karta hai
+(`needsRevalidation` + `taintedTransactionIds`), aur **approval hi authority hai**.
+
+### Mana karne par naam milte hain
+
+`refuseAndHold` sirf "approve nahi ho sakta" nahi kehta — **kaunse invoice** kharaab
+hue, wo ginta hai:
+
+> *"3 claimed payments are no longer eligible: TD/VCH/26-27/000412,
+> TD/VCH/26-27/000455, TD/VCH/26-27/000501"*
+
+Ye sirf aapke liye hai. Vendor ko ye naam kabhi nahi jaate.
+
+---
+
+## PATCH /settlements/admin/:settlementId/rebuild
+
+Sirf `ON_HOLD` par. **Sirf tainted rows** chhoote hain; saaf rows claim me hi rehti
+hain — warna agli build unhe rebuild ke beech me utha leti aur wahi rows do settlement
+me aa jaate.
+
+Rebuild ke baad kuchh na bache (ya `minPayoutAmount` se kam bache) to
+`CARRIED_FORWARD` — rows agle cycle me chale jaate hain, kyunki eligibility me
+`periodStart` ka koi floor hai hi nahi.
+
+---
+
+## PATCH /settlements/admin/:settlementId/hold · /cancel
+
+`hold` — review ke liye rok dena. `reason` zaroori (staff ke liye). Vendor ko sirf
+*"on hold — being checked"* jaata hai, **bina tafseel ke**.
+
+`cancel` — poori settlement radd, har row agle cycle me. `reason` zaroori: kuchh khota
+nahi, par vendor ka paisa is click se cycle badalta hai.
+
+---
+
+## PATCH /settlements/admin/:settlementId/pay — NEFT shuru
+
+Body me **kuchh nahi**. Rakam `netPayable` hai, payee frozen `bankSnapshot`.
+
+### Bank dobara compare hota hai
+
+```
+frozen bankSnapshot  vs  live Bank record
+        │
+   badal gaya?  →  ON_HOLD + aapko dono account bataye jaate hain
+```
+
+⚠️ **NEFT ka recall nahi hota.** Isi liye ye "warning" nahi, **rok** hai.
+
+### Leg pehle, status baad me
+
+```
+PayoutLeg.create({ legNumber: n, status: INITIATED })   ← unique index race jeetta hai
+        ↓
+transitionSettlement(→ PROCESSING)
+```
+
+Beech me crash: `APPROVED` settlement + `INITIATED` leg — dikhta hai, sweep sambhaal
+leti hai. Ulta kram `PROCESSING` bina kisi leg ke chhodta, jo padhne me *"paisa nikal
+gaya par kahin nahi mila"* jaisa hai.
+
+Double-click ka faisla `(payoutType, settlementId, legNumber)` unique index karta hai —
+count nahi, jise do click ek hi value padh lete.
+
+---
+
+## PATCH /settlements/admin/:settlementId/confirm — UTR
+
+| Field | Zaroori | Notes |
+|---|:-:|---|
+| `utr` | ✅ | Bank reference |
+| `mode` | — | `IMPS · NEFT · RTGS · UPI`, default `NEFT` |
+| `reference` | — | Na do to `utr` |
+| `paidAt` | — | Na do to abhi |
+
+`MANUAL_BANK` ka koi callback nahi — **aadmi hi callback hai**. UTR isi liye zaroori
+hai: teen din baad jab vendor kehta hai "paisa nahi aaya", wahi ek cheez bank statement
+par dhoondhi ja sakti hai.
+
+`paidAt` isi liye liya jaata hai ki shukrawaar ki NEFT aksar somwaar type hoti hai, aur
+ledger entry **jab paisa gaya** us tareekh ki honi chahiye — jab click hui us ki nahi.
+
+### Settlement `PAID` tabhi jab legs jud jaayein
+
+Badi rakam do NEFT me jaana aam hai. Pehli leg par hi `PAID` kar dena matlab settlement
+har worklist se gayab aur aadha paisa abhi baaki — vendor ke paas apna bank statement
+ginne ke alawa kuchh nahi bachta. Response me `paidSoFar`, `remaining`, `settled`
+milte hain.
+
+Par **ledger pehli hi leg par likhta hai**, kyunki wo paisa sach me nikal chuka hai.
+Doosri leg ka intezaar karke dono likhna matlab kitaab ye kahti rahe ki wo paisa abhi
+hamare paas hai.
+
+---
+
+## PATCH /settlements/admin/:settlementId/fail · /retry
+
+`fail` — `note` zaroori (bank ne kya kaha). Bounce hui leg **rakhi jaati hai, mitayi
+nahi**: retry nayi leg banati hai agle number ke saath, to record me dono koshishen
+bachti hain — apne UTR aur apne payee ke saath. Pehli ko edit kar dena us baat ko mita
+deta ki paisa kabhi us account me bheja gaya tha, jo jaanch me theek wahi cheez chahiye
+hoti hai.
+
+⚠️ `FAILED` rows ko **nahi chhodta**. Bounce aam baat hai aur sahi kaam hai account
+theek karke **wahi** settlement dobara bhejna — usi number aur usi statement ke saath.
+
+`retry` — nayi leg, aur **taaza `bankSnapshot`**. Bounce ki aam wajah galat account hi
+hoti hai, aur usi galat account me dobara bhejna wo ek cheez hai jo pakka kaam nahi
+karegi.
+
+---
+
+## PATCH /settlements/admin/:settlementId/reverse
+
+`reason` zaroori. Bank ne `PAID` hone ke baad wapas kheencha.
+
+**Ledger pehle, rows baad me.** Beech me crash: reversal likha hai, rows abhi bhi
+claimed — **zyada** dikha raha hai, dikhta hai, theek ho sakta hai. Ulta kram: rows
+chhoot gaye bina reversal ke — padhne me *"paisa kabhi gaya hi nahi"*, aur wo rows
+**dobara settle** ho jaate.
+
+`isReversal: true` in entries ko once-per-parent index se bahar rakhta hai — warna
+safety mechanism hi correction mechanism ko rok deta.
+
+---
+
+## Jobs
+
+| Job | Har | Kya |
+|---|---|---|
+| `buildSettlements` | 60m | Kal ka cycle. `isEnabled: false` par **wajah ke saath** skip |
+| `sweepStalePayouts` | 30m | 6h+ se bina UTR ki leg — **sirf batata hai** |
+| `alertLateSettlements` | 60m | `notReceivedAlertHours` se purana bakaya, ek hi alert |
+| `reconcileSettlementLedger` | 180m | legs vs ledger — **sirf padhta hai** |
+| `sweepAbandonedDrafts` | 60m | Khaali `DRAFT` jiska key period ghere baitha hai |
+
+### `buildSettlements` ghante me, raat me nahi
+
+`buildSettlements` `idempotencyKey` par idempotent hai — usi period me doosra run kuchh
+nahi banata. Chhota interval isliye hai ki **jis raat process band tha wo raat agle tick
+par apne aap bhar jaaye**, na ki kisi ke dekhne tak us brand ka din chhoota rahe.
+
+### ⚠️ `sweepStalePayouts` batata hai, karta nahi
+
+Ye jaan-boojh kar kuchh **badalta nahi**. Ho sakta hai paisa sach me nikal chuka ho.
+Apne aap `FAILED` kar dena matlab ek kaamyaab transfer ke upar *"bank ne mana kiya"*
+likh dena, rows agle cycle me chhod dena, aur vendor ko **dobara** paisa de dena.
+
+Kaun sa hua ye sirf wo aadmi jaanta hai jo banking screen dekh sakta hai. Isliye job us
+aadmi ko bulaati hai, andaaza nahi lagati.
+
+### `reconcileSettlementLedger` sirf padhta hai
+
+Ledger row kabhi update ya delete nahi hoti — sudhaar **nayi row** hoti hai
+`reversalOf` ke saath. Aisa sweep jo apni entries likh sake, kitaab badalne ka doosra
+bina-pahre wala raasta ban jaata.
+
+Dono taraf ka fark matter karta hai: **leg hai par entry nahi** matlab kitaab kehti hai
+paisa abhi hamare paas hai jo ja chuka; **entry hai par leg nahi** matlab kitaab kehti
+hai humne bheja jo nikla hi nahi. Pehla liability kam dikhata hai, doosra zyada, aur
+dono tab tak swasth system jaise padhte hain jab tak koi bank statement se milaan na
+kare.
+
+### `sweepAbandonedDrafts`
+
+Build shell **pehle** likhti hai aur rows **baad me** claim karti hai. Beech me crash ek
+khaali `DRAFT` chhodta hai jiska `idempotencyKey` us period ko ghere baitha hai — agli
+build us brand ka din **skip** kar degi, hamesha ke liye, bina kisi error ke.
+
+Sweep use `CANCELLED` karke key `STL:VOID:<id>` kar deti hai. ⚠️ **Sirf khaali draft** —
+jo draft rows pakde hue hai wo aadhi-bani build hai, aur uska key void karna un rows ko
+aise settlement se bandha chhod dega jo kabhi pay nahi hogi.
+
+---
+
+## Health — `GET /transactions/admin/health`
+
+| Signal | Level | Matlab |
+|---|:-:|---|
+| `unconfirmedPayouts` | 🔴 **CRITICAL** | 24h+ se bina UTR ki leg — paisa hil chuka, system ko pata nahi |
+| `overdueSettlements` | 🟠 ATTENTION | 7 din+ se bakaya — alert ja chuka aur ignore hua |
+| `strandedDrafts` | 🟠 ATTENTION | 6h+ purani khaali `DRAFT` — sweep chal nahi rahi |
+
+---
+
+## Settlement settings (`/settings` → `customer.settlement`)
+
+| Key | Default | Kya karta hai |
+|---|---|---|
+| `isEnabled` | `true` | Band karne par build skip |
+| `delayDays` | 3 | T+N floor |
+| `payoutBufferHours` | 6 | Paisa hamare bank me aane ke baad extra buffer |
+| `cycleType` | `DAILY` | Period ki lambai |
+| `requiresAdminApproval` | `true` | Band karne par auto-approve |
+| `minPayoutAmount` | 100 | Isse kam → `CARRIED_FORWARD` |
+| `payoutProvider` | `MANUAL_BANK` | RazorpayX aane par sirf yeh badlega |
+| `commissionPercent` | 0 | Dhaancha hai, rate abhi zero |
+| `reserve.*` | off | Risky vendor ka hissa rokna |
+| `notReceivedAlertHours` | 96 | Iske baad aapko alert |
+| `gatewayFeeBearer` | `PLATFORM` | MDR kaun uthata hai |
+
+> ⚠️ `delayDays` refund ke golden rule se bandha hai —
+> `delayDays * 24 >= windowHours + vendorApprovalHours + adminBufferHours`.
+> `assertSettlementTimingRule` ise **save par 422** karta hai, comment me salah nahi:
+> ek galat setting mahine baad jaakar hisaab bigaadti hai.
+
+---
+
+## Abhi nahi bana
+
+- **Statement PDF** — `statementUrl` / `statementToken` model me hain, generator nahi.
+  Vendor abhi `GET /settlements/:id/transactions` se lines padh sakta hai.
+- **RazorpayX / Route** — `payoutProvider` aur `PayoutLeg` isi ke liye bane hain.
+- **Reserve release** — `reserveHeld` bookta hai, `holdDays` ke baad chhodne wali job
+  nahi. Reserve default me off hai.
+
+---
+
 # Appendix A — Not For Admin Panel
 
 Admin ke paas platform ka sabse zyada access hai, par **33 endpoints** aise hain jo admin panel me nahi aane chahiye.

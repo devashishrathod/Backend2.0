@@ -12765,7 +12765,326 @@
       ]
     },
     {
-      "name": "20 — Access control (vendor token refuse hona chahiye)",
+      "name": "20 — Settlements",
+      "description": "**Aapka record, aapka form nahi.**\n\nSettlement par vendor ke liye koi write endpoint nahi hai — na approve, na dispute,\nna edit. Ye hamara record hai ki hum aapko kya de rahe hain. Ikhtilaf support se\nhota hai, kyunki uske peechhe aksar koi disputed payment hota hai jispar faisla\nabhi hua hi nahi.\n\nPoora flow → `docs/settlement_flow.md`.",
+      "item": [
+        {
+          "name": "Mere payouts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test(\"hamara margin aur poora bank account nahi bheja jaata\", function () {",
+                  "  const rows = pm.response.json().data;",
+                  "  const list = Array.isArray(rows) ? rows : [rows.settlement || rows];",
+                  "  list.forEach(function (row) {",
+                  "    if (!row) return;",
+                  "    pm.expect(row, \"needsRevalidation\").to.not.have.property(\"needsRevalidation\");",
+                  "    pm.expect(row, \"taintedTransactionIds\").to.not.have.property(\"taintedTransactionIds\");",
+                  "    pm.expect(row, \"failureNote\").to.not.have.property(\"failureNote\");",
+                  "    pm.expect(row, \"approvedBy\").to.not.have.property(\"approvedBy\");",
+                  "    pm.expect(row, \"idempotencyKey\").to.not.have.property(\"idempotencyKey\");",
+                  "    if (row.bankSnapshot) {",
+                  "      pm.expect(row.bankSnapshot, \"ifscCode\").to.not.have.property(\"ifscCode\");",
+                  "      pm.expect(row.bankSnapshot, \"accountHolderName\").to.not.have.property(\"accountHolderName\");",
+                  "      pm.expect(row.bankSnapshot, \"maskedAccountNumber\").to.not.have.property(\"maskedAccountNumber\");",
+                  "    }",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test(\"vendor ko enum nahi, plain language milti hai\", function () {",
+                  "  const rows = pm.response.json().data;",
+                  "  rows.forEach(function (row) {",
+                  "    pm.expect(row.statusLabel, \"statusLabel\").to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(row.statusLabel, \"raw enum leaked\").to.not.eql(row.status);",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test(\"vendor ko koi action offer nahi hota\", function () {",
+                  "  pm.response.json().data.forEach(function (row) {",
+                  "    pm.expect(row.canApprove, \"canApprove\").to.eql(false);",
+                  "    pm.expect(row.canPay, \"canPay\").to.eql(false);",
+                  "    pm.expect(row.canRetry, \"canRetry\").to.eql(false);",
+                  "  });",
+                  "});",
+                  "",
+                  "const first = pm.response.json().data[0];",
+                  "if (first) pm.collectionVariables.set(\"settlement_id\", first._id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/settlements?page=1&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "settlements"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "PAID",
+                  "disabled": true
+                },
+                {
+                  "key": "open",
+                  "value": "true",
+                  "disabled": true
+                },
+                {
+                  "key": "from",
+                  "value": "2026-08-01",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "2026-08-31",
+                  "disabled": true
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** 🔒 `verifyJwtToken` — `VENDOR` aur `SUB_VENDOR` dono\n\n`SUB_VENDOR` ko is baar **poora brand** dikhta hai, apna outlet nahi: settlement\npoore brand ke ek din ka hai, aur outlet se kaat kar dikhane ka matlab ek aisa\nfigure jo unke dekhe kisi bhi cheez se match nahi karta.\n\n**Khaali list `404` nahi deti.** Pehle hafte wale brand ke paas koi settlement nahi\nhoti — wo bilkul sahi jawab hai, aur use \"kuchh gadbad hai\" jaisa dikhana galat.\n\nSort `periodEnd` desc: ye list *\"pichhle hafte ka paisa aaya?\"* ka jawab dene ke\nliye padhi jaati hai.\n\n| Aapko | Aapko nahi |\n|---|---|\n| `netPayable` · `grossCollected` · `commissionAmount` | `needsRevalidation` |\n| `bankSnapshot.accountLast4Digits` · `bankName` | `taintedTransactionIds` |\n| `failureReason` (category) | `failureNote` (staff note) |\n| `statusLabel` | `approvedBy` · `idempotencyKey` |\n\n⚠️ Doosre brand ka `brandId` bhejne par **khaali page** milta hai, apne rows nahi.\nScope aur filter kaate jaate hain, upar-neeche rakhe nahi — filter ka \"chal gaya\"\ndikhna wahi tareeka hai jisse koi aisi report bana leta hai jo kabhi lagi hi nahi thi."
+          },
+          "response": []
+        },
+        {
+          "name": "Ek payout, legs ke saath",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test(\"hamara margin aur poora bank account nahi bheja jaata\", function () {",
+                  "  const rows = pm.response.json().data;",
+                  "  const list = Array.isArray(rows) ? rows : [rows.settlement || rows];",
+                  "  list.forEach(function (row) {",
+                  "    if (!row) return;",
+                  "    pm.expect(row, \"needsRevalidation\").to.not.have.property(\"needsRevalidation\");",
+                  "    pm.expect(row, \"taintedTransactionIds\").to.not.have.property(\"taintedTransactionIds\");",
+                  "    pm.expect(row, \"failureNote\").to.not.have.property(\"failureNote\");",
+                  "    pm.expect(row, \"approvedBy\").to.not.have.property(\"approvedBy\");",
+                  "    pm.expect(row, \"idempotencyKey\").to.not.have.property(\"idempotencyKey\");",
+                  "    if (row.bankSnapshot) {",
+                  "      pm.expect(row.bankSnapshot, \"ifscCode\").to.not.have.property(\"ifscCode\");",
+                  "      pm.expect(row.bankSnapshot, \"accountHolderName\").to.not.have.property(\"accountHolderName\");",
+                  "      pm.expect(row.bankSnapshot, \"maskedAccountNumber\").to.not.have.property(\"maskedAccountNumber\");",
+                  "    }",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test(\"legs UTR ke saath aati hain\", function () {",
+                  "  const legs = pm.response.json().data.legs;",
+                  "  pm.expect(legs, \"legs\").to.be.an(\"array\");",
+                  "  legs.forEach(function (leg) {",
+                  "    pm.expect(leg, \"legNumber\").to.have.property(\"legNumber\");",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test(\"staff ka note timeline me nahi hai\", function () {",
+                  "  pm.response.json().data.timeline.forEach(function (row) {",
+                  "    pm.expect(row, \"reason\").to.not.have.property(\"reason\");",
+                  "    pm.expect(row, \"performedBy\").to.not.have.property(\"performedBy\");",
+                  "    pm.expect(row, \"snapshot\").to.not.have.property(\"snapshot\");",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/settlements/{{settlement_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "settlements",
+                "{{settlement_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** 🔒 `verifyJwtToken` — apne brand ka\n\n`settlement` · **`legs`** · `timeline` · `viewer`.\n\n### `legs` — yahan UTR milta hai\n\nEk payout do NEFT me bhi ja sakta hai (badi rakam), aur bounce ke baad retry\n**nayi leg** banata hai — purani mitayi nahi jaati, taaki record me dono\nkoshishen bachein. Har leg apna `utr`, `mode`, `paidAt` aur `amount` rakhti hai.\n\n**UTR wahi ek cheez hai** jo aap teen din baad apne bank statement par dhoondh\nsakte hain jab paisa nahi dikhta. Isi liye ek `payoutUtr` field kaafi nahi thi.\n\nTimeline me `reason` / `performedBy` / `snapshot` **sirf admin ko** jaate hain:\nwo notes staff ne staff ke liye likhe hain aur aksar kisi aise dispute ka naam\nlete hain jispar faisla hua hi nahi."
+          },
+          "response": []
+        },
+        {
+          "name": "Statement lines — is payout me kya-kya tha",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test(\"hamara margin statement par nahi hai\", function () {",
+                  "  pm.response.json().data.forEach(function (row) {",
+                  "    pm.expect(row, \"gatewayFee\").to.not.have.property(\"gatewayFee\");",
+                  "    pm.expect(row, \"netReceived\").to.not.have.property(\"netReceived\");",
+                  "    if (row.voucher) {",
+                  "      pm.expect(row.voucher, \"platformPromoCost\").to.not.have.property(\"platformPromoCost\");",
+                  "    }",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/settlements/{{settlement_id}}/transactions?page=1&limit=50",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "settlements",
+                "{{settlement_id}}",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** 🔒 `verifyJwtToken` — apne brand ka\n\nAlag se paged, kyunki vyast brand ka ek cycle sau-sau rows ka hota hai aur detail\ncall zyadatar sirf *\"kitna, aur kab\"* ke liye padha jaata hai.\n\n⚠️ `voucher.platformPromoCost`, `gatewayFee` aur `netReceived` aapko **nahi** milte —\nwo hamara margin hai, aur wo **usi sub-document par** baitha hai jispar aapka\n`vendorPayable` hai. Isi liye ye faisla ek jagah hota hai.\n\n`fundsReceivedAt` **`verifiedAt` se alag** hai: pehla matlab Razorpay ne hamare bank\nme paisa bheja, doosra matlab grahak ne pay kiya. T+N **pehli** se ginta hai — warna\nhum wo paisa baant rahe hote jo abhi aaya hi nahi."
+          },
+          "response": []
+        },
+        {
+          "name": "Doosre brand ki settlement — 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "});",
+                  "",
+                  "pm.test(\"failure envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(false);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/settlements/{{other_brand_settlement_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "settlements",
+                "{{other_brand_settlement_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Detail par `403`, listing par **khaali page** — aur wo farq jaan-boojh kar hai.\n\nListing ek sawaal hai (*\"in sharton par kya hai?\"*) aur uska sahi jawab \"kuchh nahi\"\nho sakta hai. Detail ek naam liya hua record hai, aur uska sahi jawab \"aap ise nahi\ndekh sakte\" hai."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "21 — Access control (vendor token refuse hona chahiye)",
       "description": "**Negative tests** — har request ka pass hona matlab gate kaam kar raha hai.\nSab vendor ke apne token se chalti hain.\n\n| Status | Kab |\n|---|---|\n| `401` | Token hai hi nahi, ya expire |\n| `403` | Token malformed, ya role allowed nahi |\n| `422` | Role validator se reject (password flow) |\n\n### ⚠️ Kuch customer endpoints ab **public** hain\n\nGuest browsing aane ke baad `/brands/customer/*`, `/showcase/get-brand-showcase/*`\naur voucher browse endpoints pe koi gate nahi hai — vendor token pe wo `200` denge,\n`403` nahi. Isliye wo yahan negative tests me nahi hain.\n\nReachable hona use karne ka karan nahi hai: wo customer app ka data model hain, vendor\npanel ka nahi. [Appendix A](../docs/vendor_panel_api_doc.md#appendix-a--not-for-vendor-panel) dekhein.",
       "item": [
         {

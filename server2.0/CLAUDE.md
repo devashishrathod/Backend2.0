@@ -68,6 +68,28 @@ database name ends in `_test`. Never bypass it, and never point a test at
 > export read back as `undefined`, and the release then filtered on
 > `{_id: undefined}`, matched nothing, and reported success.
 
+> ### ⚠️ Every test file gets its own mongoose — so every file must disconnect
+>
+> Separate module registries are not only a `globalSetup` quirk. Jest gives every
+> test **file** its own registry, and its own `global`, so `require("mongoose")`
+> in the next file returns a *different* mongoose with a *different* connection.
+>
+> `disconnectTestDb` was once a no-op on the theory that one connection could
+> serve the whole run. It cannot: nothing is shared, so skipping the disconnect
+> leaked a connection per suite — thirty-odd of them, each with its own pool and
+> topology monitor — until the cluster started refusing. Measured on the full
+> suite: **15 suites / 294 tests failed as a no-op, 2 / 4 when it disconnects for
+> real.**
+>
+> That failure does not read as a connection problem. It reads as unrelated
+> suites failing on correct assertions and passing when re-run alone — the same
+> shape as the two-concurrent-runs bug above, which is exactly why the wrong fix
+> looked like the right one. The tell is the message: `Refusing to clear
+> collections on "undefined"` means the connection is gone, not the test wrong.
+>
+> `TEST_DB_KEEP_CONNECTION=1` holds it open when debugging something that needs
+> the socket to survive teardown.
+
 > ⚠️ `NODE_ENV=production` is set in some shells here, which makes npm set
 > `omit=dev` and skip devDependencies entirely — `npm install` reports success
 > and jest never lands. Install dev tooling with
@@ -262,6 +284,100 @@ before the `COMPLETE` stage marker.
 `VoucherClaim.holdsUsageSlot` is set the moment the claim exists. Waiting for
 payment leaves exactly the window a race needs: two checkouts open, neither
 holding anything, both allowed through.
+
+### A refund holds the money before anyone decides about it
+
+`Transaction.settlementHold` goes on the moment a refund is requested. That one
+line removes the whole "we already paid the vendor, now claw it back" problem —
+the golden rule (`settlementDelayHours >= windowHours + vendorApprovalHours +
+adminBufferHours`) then guarantees a refund can never chase money already paid.
+
+The mirror is just as dangerous: **a hold nobody releases keeps a vendor's money
+out of every future settlement, for ever, and silently** — the eligibility
+predicate simply stops matching, with no error and no log. So
+`releaseSettlementHold()` is called from every terminal state where no money
+moves, and never from `FAILED`.
+
+A **full** refund keeps the hold: that money was never the vendor's. A
+**partial** one releases it, because the rest of the sale still is theirs — see
+below.
+
+Everything else that sets a hold (a chargeback, a dashboard refund, a completed
+partial) is released only by `PATCH /transactions/admin/:transactionId/release-hold`,
+which requires a written reason and refuses while a refund is still open or a
+chargeback is unresolved. Before that endpoint existed there was **no** way out
+of those states at all.
+
+### A partial refund is netted in the arithmetic, never by exclusion
+
+⚠️ Eligibility excludes `isRefunded: true` — a **fully** refunded payment. It
+used to exclude `amountRefunded: { $lte: 0 }`, which caught partial refunds too,
+and that field only ever goes up: a payment with ₹300 of ₹810 back was removed
+from every future cycle, for ever. `claimRefundAdjustments` then deducted its
+clawback from a *later* cycle anyway, so the vendor lost the sale **and** paid
+the clawback — about ₹1,100 wrong on an ₹800 sale, silently.
+
+The netting belongs in the totals. The payment is claimed at full value and its
+refund is claimed beside it, so `computeTotals` subtracts exactly the clawback.
+Two rules make that safe:
+
+- `claimRefundAdjustments` claims a refund only when its payment carries a
+  `settlementId` — i.e. it was, or is being, paid out. A refund on a payment
+  nobody will ever pay must not be clawed back from other sales.
+- The two claims run **in order**, transactions first. They used to be a
+  `Promise.all`, and the refund claim reads the id the transaction claim writes.
+
+Full flow: [`docs/refund_flow.md`](./docs/refund_flow.md).
+
+### A settlement fails by *not happening*
+
+Every other money path here fails loudly. A settlement has three failure modes
+that all look like nothing at all: the nightly build never ran, a `MANUAL_BANK`
+NEFT was started and never confirmed, or a payout booked no ledger row. None of
+them raise, so each has a sweep whose whole job is to look for the absence —
+`buildSettlements`, `sweepStalePayouts`, `reconcileSettlementLedger` and
+`sweepAbandonedDrafts`, all registered in `jobs/index.js`.
+
+`sweepStalePayouts` **alerts and never acts**, deliberately: an unconfirmed NEFT
+may genuinely have left, and auto-failing it would release the rows and pay the
+vendor twice.
+
+### A chargeback is recovered from the next cycle
+
+⚠️ `CHARGEBACK` / `CHARGEBACK_REVERSAL` sat in the ledger's rules table with
+nothing writing either, and `chargebackAdjustment` was hardcoded `0` — so a
+payment that was settled, paid out, and then pulled back by the bank left no
+trace and the platform silently ate it.
+
+A **lost** dispute books `CHARGEBACK` against `VENDOR_PAYABLE` for the vendor's
+share only — never the whole disputed amount, which includes our fee and our
+half of the promo — and is recovered from the brand's next settlement.
+`Transaction.chargebackSettlementId` is the claim lock, the same discipline the
+refunds use: without it, one lost dispute is deducted every cycle for ever and
+each month's arithmetic looks self-consistent.
+
+`ledger_type_dispute_unique` keys on the dispute rather than the transaction,
+because Razorpay redelivers dispute webhooks **and sends them out of order** — a
+late `lost` can follow a `won`.
+
+### The ledger has to add up, not just have the right rows
+
+Every ledger test checked row shape; none summed the accounts, and three defects
+lived in exactly that gap. After a capture and a full refund, `VENDOR_PAYABLE`,
+`PLATFORM_REVENUE` and `TAX_PAYABLE` must all return to **zero** —
+`__tests__/money/ledgerBalance.test.js` asserts balances rather than rows, and
+`moneyInvariants.test.js` asserts the vendor identity across every ending a
+payment can have:
+
+```
+what the vendor has been paid  +  what they are still owed
+    ===  their share of the sale  −  their share of anything refunded
+```
+
+⚠️ `PLATFORM_COST` deliberately does **not** return to zero: Razorpay keeps its
+MDR whether or not the sale is refunded.
+
+Full flow: [`docs/settlement_flow.md`](./docs/settlement_flow.md).
 
 ### An idempotency key is inserted before the external call, never after
 

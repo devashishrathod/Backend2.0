@@ -581,7 +581,8 @@ Customer ka voucher claim — paisa andar. **Likhne wale** do endpoint `isCustom
 
 ## 22b. Refunds 🆕 — `/refunds` (9)
 
-Grahak maange → **vendor tay kare** → admin nikaale. Admin normal raaste par doosra gate **nahi** hai; wo sirf paisa chhodta hai.
+Grahak maange → **vendor tay kare** → admin nikaale.
+**Poora flow → [`refund_flow.md`](./refund_flow.md).** Admin normal raaste par doosra gate **nahi** hai; wo sirf paisa chhodta hai.
 
 > ### Golden rule — settings validator me enforce hai
 >
@@ -621,6 +622,60 @@ Grahak maange → **vendor tay kare** → admin nikaale. Admin normal raaste par
 **Webhooks:** `refund.created` · `refund.processed` · `refund.failed` — teeno ab handle hote hain. ⚠️ Pehle sirf `refund.processed` tha; baaki do enum me the par kisi branch me nahi, to **failed refund chup-chaap `IGNORED` hokar gir jaata** — grahak ka paisa kabhi nahi pahuncha, request abhi bhi `PROCESSING` kehti thi, aur koi kuch nahi batata tha.
 
 **Jobs (3):** `escalateStaleRefunds` (15m) · `reconcileRefunds` (30m, **sirf padhta hai** — refund jaari karna `executeRefund` ka kaam hai aur uske apne double-payment guards hain) · `remindVendorsAboutRefunds` (60m)
+
+---
+
+## 22c. Settlements 🆕 — `/settlements` (12)
+
+Din band ho → kabza ho → admin manzoori de → NEFT jaaye → UTR record ho.
+**Poora flow → [`settlement_flow.md`](./settlement_flow.md).** Vendor ke liye yahan
+**koi write nahi** hai: settlement hamara record hai ki hum unhe kya de rahe hain,
+koi form nahi jo wo bharein. Ikhtilaf support se hota hai.
+
+> ### Kabza hi lock hai
+>
+> `Transaction.settlementId: null` wahi ek cheez hai jo do cycles ko ek hi payment
+> baantne se rokti hai. Shell **pehle** banti hai, rows **baad me** claim hoti hain —
+> ulta karne par rows aise settlement se bandh jaate jo bani hi nahi, aur wo phir
+> kabhi kisi cycle me nahi aate, **bina kisi error ke**.
+
+> ### ⚠️ `settlementHold` sirf claim se **pehle** ka filter hai
+>
+> Ek baar `settlementId` lag gaya, hold lagane se is settlement par koi asar nahi —
+> eligibility claim ke waqt tay ho chuki. 02:00 ki build aur 14:00 ke payout ke
+> beech ghanton ki khidki hai, aur wahi waqt hai jab `dispute.created` ya refund
+> aata hai. Isliye webhook settlement ko **flag** karta hai (`needsRevalidation` +
+> `taintedTransactionIds`), aur **approval hi authority hai**: shart update ke
+> filter me hai, `if` me nahi.
+
+> ### ⚠️ NEFT ka recall nahi hota
+>
+> Isi ek line se teen design faisle nikalte hain: (1) payout se pehle live bank
+> aur frozen `bankSnapshot` compare hote hain aur farq par settlement `ON_HOLD`
+> jaata hai — warning nahi, **rok**; (2) `sweepStalePayouts` sirf **batata** hai,
+> apne aap `FAILED` nahi karta, warna kaamyaab transfer ke upar "bank ne mana
+> kiya" likh kar vendor ko dobara paisa chala jaata; (3) bounce hui leg **mitayi
+> nahi jaati** — retry nayi leg banati hai, taaki record me dono koshishen bachein,
+> apne UTR aur apne payee ke saath.
+
+| # | Method | Endpoint | Access | Cat | Notes |
+|---|---|---|---|---|---|
+| 134a 🆕 | GET | `/settlements` | Intended: sab · Enforced: **token se scope** | 🔵 | Ek endpoint, do shapes. Scope aur filter **kaate** jaate hain, upar-neeche rakhe nahi — vendor kisi aur ka `brandId` bheje to khaali page, apne rows nahi. `?needsAttention=true` admin worklist hai (flagged / `FAILED` / `ON_HOLD`) aur **sabse purani upar**; baaki listing `periodEnd` desc, kyunki wo *"pichhle hafte ka paisa aaya?"* ka jawab hai. Khaali list **404 nahi** — pehle hafte wale brand ko "kuchh gadbad hai" nahi dikhna chahiye. `SUB_VENDOR` ko poora brand dikhta hai, apna outlet nahi: settlement poore brand ke din ka hai |
+| 134b 🆕 | GET | `/settlements/:settlementId` | Intended: sab · Enforced: **brand + admin** | 🔵 | Settlement + **legs (UTR ke saath)** + timeline. Poora row padhkar, jaanchkar, phir `pickByProjection` — whitelist hai, to model me kal koi field jude to wo tab tak chhupi rehti hai jab tak koi use naam na de. `reason` / `performedBy` / `snapshot` timeline me **sirf admin ko**: *"3 claimed payments are no longer eligible"* aise dispute ka naam leta hai jispar faisla hua hi nahi |
+| 134c 🆕 | GET | `/settlements/:settlementId/transactions` | Intended: sab · Enforced: **brand + admin** | 🔵 | Statement lines, alag se paged — vyast brand ka cycle sau-sau rows ka hota hai aur detail call zyadatar *"kitna, aur kab"* ke liye padha jaata hai. ⚠️ `voucher.platformPromoCost`, `gatewayFee`, `netReceived` vendor ko **nahi** — hamara margin usi sub-document par baitha hai jispar unka `vendorPayable` hai |
+| 134d 🆕 | PATCH | `/settlements/admin/:settlementId/approve` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | `needsRevalidation: {$ne: true}` **update ke filter me**, `if` me nahi — read aur write ke beech webhook aa sakta hai. Mana karne par `refuseAndHold` **kaunse invoice** kharaab hue wo naam se ginta hai; wo naam vendor ko kabhi nahi jaate |
+| 134e 🆕 | PATCH | `/settlements/admin/:settlementId/rebuild` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Sirf `ON_HOLD` par. **Sirf tainted rows** chhoote hain — saaf rows claim me hi rehti hain, warna agli build unhe rebuild ke beech me utha leti aur wahi rows do settlement me aa jaate. Rebuild ke baad kuchh na bache to `CARRIED_FORWARD` |
+| 134f 🆕 | PATCH | `/settlements/admin/:settlementId/hold` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Vendor ko *"on hold — being checked"* jaata hai, **bina tafseel ke**: `reason` aksar kisi disputed payment ka naam leta hai, aur wo batana do din ki der ko ek aise chargeback par behes bana deta hai jispar abhi faisla hua hi nahi |
+| 134g 🆕 | PATCH | `/settlements/admin/:settlementId/cancel` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | `reason` **zaroori** — har row agle cycle me chali jaati hai, kuchh khota nahi par vendor ka paisa is click se cycle badalta hai |
+| 134h 🆕 | PATCH | `/settlements/admin/:settlementId/pay` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Body me **kuchh nahi** — rakam `netPayable` hai aur payee frozen `bankSnapshot`; body me rakam lena matlab aisi rakam jo ledger se mel na khaye. Live bank vs frozen compare **pehle**; farq par `ON_HOLD`. Leg **pehle** banti hai, status **baad me**: beech me crash `APPROVED` + `INITIATED` leg chhodta hai (dikhta hai), ulta kram `PROCESSING` bina leg ke (padhne me "paisa gaya par kahin nahi mila"). Double-click ka faisla `(payoutType, settlementId, legNumber)` unique index karta hai, count nahi |
+| 134i 🆕 | PATCH | `/settlements/admin/:settlementId/confirm` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | `utr` **zaroori** — `MANUAL_BANK` ka koi callback nahi, aadmi hi callback hai, aur teen din baad *"paisa nahi aaya"* par wahi ek cheez bank statement me dhoondhi ja sakti hai. Leg conditional claim se badalti hai (do admin, ek jeet). `paidAt` liya jaata hai kyunki shukrawaar ki NEFT somwaar type hoti hai aur ledger entry **jab paisa gaya** us tareekh ki honi chahiye. Settlement `PAID` **tabhi** jab legs jud jaayein — split NEFT aam hai, aur pehli leg par hi `PAID` karna settlement ko har worklist se hata deta jabki aadha paisa baaki hai |
+| 134j 🆕 | PATCH | `/settlements/admin/:settlementId/fail` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Leg **rakhi** jaati hai, badli nahi. `FAILED` rows ko **nahi chhodta** — bounce aam hai aur sahi kaam hai account theek karke wahi settlement dobara bhejna, usi number aur statement ke saath. Vendor ko `failureReason` (category) jaata hai, `failureNote` (staff note) kabhi nahi |
+| 134k 🆕 | PATCH | `/settlements/admin/:settlementId/retry` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Nayi leg, agla number, aur **taaza `bankSnapshot`** — bounce ki aam wajah galat account hi hoti hai, aur usi galat account me dobara bhejna wo ek cheez hai jo pakka kaam nahi karegi |
+| 134l 🆕 | PATCH | `/settlements/admin/:settlementId/reverse` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | **Ledger pehle, rows baad me.** Beech me crash: reversal likha, rows abhi claimed — zyada dikha raha hai, dikhta hai, theek ho sakta hai. Ulta kram: rows chhoot gaye bina reversal ke — padhne me "paisa kabhi gaya hi nahi" aur wo rows **dobara settle** ho jaate. `isReversal: true` inhe once-per-parent index se bahar rakhta hai, warna safety mechanism hi correction mechanism ko rok deta |
+
+**Jobs (5):** `buildSettlements` (60m — ghante me, raat me nahi: `idempotencyKey` par idempotent hai, to jis raat process band tha wo agle tick par apne aap bhar jaata hai) · `sweepStalePayouts` (30m, **sirf batata hai**) · `alertLateSettlements` (60m, counter usi update me badhta hai jo row claim karta hai — ek hi alert) · `reconcileSettlementLedger` (180m, **sirf padhta hai**: ledger row kabhi update ya delete nahi hoti, sudhaar nayi row hoti hai) · `sweepAbandonedDrafts` (60m — khaali `DRAFT` ka key us period ko ghere baitha hota hai aur agli build us brand ka din **skip** kar deti hai, hamesha ke liye)
+
+**Health signals:** `unconfirmedPayouts` (**CRITICAL** — paisa hil chuka, system ko pata nahi) · `overdueSettlements` · `strandedDrafts`
 
 ---
 
