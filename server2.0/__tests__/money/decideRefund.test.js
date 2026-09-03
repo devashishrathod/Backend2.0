@@ -27,6 +27,7 @@ const {
   REFUND_REQUEST_STATUS,
   REFUND_REASON,
 } = require("../../constants/refund");
+const { DISPUTE_STATUS } = require("../../constants/webhook");
 const { ROLES, PAYMENT_STATUS } = require("../../constants");
 
 const oid = () => new mongoose.Types.ObjectId();
@@ -302,12 +303,35 @@ describe("two people cannot decide the same refund", () => {
     expect(lost[0].reason.message).toMatch(/already been decided/i);
   });
 
-  it("refuses a second decision on an already-decided request", async () => {
+  /**
+   * The message has to name the state it actually reached — that is the whole
+   * point of it, and it is what tells the loser whether to argue, wait, or do
+   * nothing.
+   *
+   * ⚠️ It used to report `request.status` read **before** the conditional claim,
+   * which is by definition a status that was still decidable. Whoever lost the
+   * race was told *"already been decided (requested)"*, which says nothing.
+   * `alreadyDecided` re-reads the row now, so the status here is the one it
+   * genuinely moved to.
+   */
+  it("refuses a second decision, naming the state it reached", async () => {
     await approveRefundAsVendor(vendor(), request._id);
 
     await expect(
       rejectRefundAsVendor(vendor(), request._id, { note: "Changed my mind." }),
-    ).rejects.toThrow(/already been decided \(vendor approved\)/i);
+    ).rejects.toThrow(/already been decided.*vendor approved/i);
+  });
+
+  /**
+   * ⚠️ And never the stale one. `requested` is the status the loser held when
+   * they read the row; seeing it here would mean the re-read had regressed.
+   */
+  it("never reports the status the loser started from", async () => {
+    await approveRefundAsVendor(vendor(), request._id);
+
+    await expect(
+      rejectRefundAsVendor(vendor(), request._id, { note: "Changed my mind." }),
+    ).rejects.toThrow(/^(?!.*\brequested\b).*$/i);
   });
 
   /**
@@ -433,5 +457,107 @@ describe("the hold is not released on someone else's behalf", () => {
     });
 
     expect(result.released).toBe(true);
+  });
+
+  /**
+   * ⚠️ "Resolved" is not the same as "settled in our favour", and the guard used
+   * to treat them as one thing.
+   *
+   * A chargeback we **lost** is resolved — `disputeResolvedAt` is set and
+   * `isDisputed` goes back to false — so the old check passed and refund logic
+   * lifted the hold. The bank has already taken that money back, so settling it
+   * pays the vendor out of money we no longer hold. Reachable through the
+   * ordinary path: reject a refund on a payment that lost a chargeback.
+   */
+  it("keeps the hold on a chargeback we LOST", async () => {
+    await Transaction.updateOne(
+      { _id: txn._id },
+      {
+        $set: {
+          isDisputed: false,
+          disputeResolvedAt: new Date(),
+          disputeStatus: DISPUTE_STATUS.LOST,
+        },
+      },
+    );
+
+    const result = await releaseSettlementHold({
+      transactionId: txn._id,
+      exceptRequestId: request._id,
+      reason: "test",
+    });
+
+    expect(result).toEqual({ released: false, blockedBy: "DISPUTE" });
+    expect(await holdOn()).toBe(true);
+  });
+
+  /** `CLOSED` is Razorpay's ambiguous terminal state — a person decides. */
+  it("keeps the hold on a chargeback that merely CLOSED", async () => {
+    await Transaction.updateOne(
+      { _id: txn._id },
+      {
+        $set: {
+          isDisputed: false,
+          disputeResolvedAt: new Date(),
+          disputeStatus: DISPUTE_STATUS.CLOSED,
+        },
+      },
+    );
+
+    const result = await releaseSettlementHold({
+      transactionId: txn._id,
+      exceptRequestId: request._id,
+      reason: "test",
+    });
+
+    expect(result.blockedBy).toBe("DISPUTE");
+  });
+
+  /** A chargeback we WON is genuinely no longer a reason to hold. */
+  it("releases on a chargeback we WON", async () => {
+    await Transaction.updateOne(
+      { _id: txn._id },
+      {
+        $set: {
+          isDisputed: false,
+          disputeResolvedAt: new Date(),
+          disputeStatus: DISPUTE_STATUS.WON,
+        },
+      },
+    );
+
+    const result = await releaseSettlementHold({
+      transactionId: txn._id,
+      exceptRequestId: request._id,
+      reason: "test",
+    });
+
+    expect(result.released).toBe(true);
+  });
+
+  /**
+   * The escape hatch, and it is deliberately not reachable from refund logic —
+   * only the admin release endpoint passes `allowDisputed`.
+   */
+  it("lets an explicit admin action override a lost chargeback", async () => {
+    await Transaction.updateOne(
+      { _id: txn._id },
+      {
+        $set: {
+          disputeResolvedAt: new Date(),
+          disputeStatus: DISPUTE_STATUS.LOST,
+        },
+      },
+    );
+
+    const result = await releaseSettlementHold({
+      transactionId: txn._id,
+      exceptRequestId: request._id,
+      reason: "admin decided the vendor bears no loss",
+      allowDisputed: true,
+    });
+
+    expect(result.released).toBe(true);
+    expect(await holdOn()).toBe(false);
   });
 });

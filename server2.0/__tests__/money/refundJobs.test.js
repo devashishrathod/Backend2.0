@@ -558,3 +558,53 @@ describe("the runner knows about them", () => {
     }
   });
 });
+
+describe("the hold an open refund must always have", () => {
+  /**
+   * ⚠️ `requestRefund` sets the hold, but as a second round trip after the
+   * request is created. A process that dies in between leaves an open refund
+   * whose money is still eligible for payout — and settlement then pays the
+   * vendor for a claim that is about to be refunded.
+   *
+   * Repaired rather than merely reported: the window between noticing and fixing
+   * is a settlement run.
+   */
+  it("puts back a hold that never landed", async () => {
+    await Transaction.updateOne(
+      { _id: txn._id },
+      { $set: { settlementHold: false } },
+    );
+    await seedRequest();
+
+    const result = await reconcileRefunds();
+
+    expect(result.holdsRepaired).toBe(1);
+    const after = await Transaction.findById(txn._id).lean();
+    expect(after.settlementHold).toBe(true);
+    expect(after.settlementHoldReason).toMatch(/re-applied by reconcile/i);
+  });
+
+  it("leaves a hold that is already on alone", async () => {
+    await seedRequest();
+
+    const result = await reconcileRefunds();
+    expect(result.holdsRepaired).toBe(0);
+  });
+
+  /**
+   * A closed refund's hold is *supposed* to be off — re-applying it would strand
+   * the vendor's money for a refund that is not happening.
+   */
+  it("never re-applies a hold for a closed refund", async () => {
+    await Transaction.updateOne(
+      { _id: txn._id },
+      { $set: { settlementHold: false } },
+    );
+    await seedRequest({ status: REFUND_REQUEST_STATUS.VENDOR_REJECTED });
+
+    const result = await reconcileRefunds();
+
+    expect(result.holdsRepaired).toBe(0);
+    expect((await Transaction.findById(txn._id).lean()).settlementHold).toBe(false);
+  });
+});

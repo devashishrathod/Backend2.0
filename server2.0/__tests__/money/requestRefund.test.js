@@ -228,6 +228,25 @@ describe("one request per payment, whatever the customer taps", () => {
     expect(second.reused).toBe(true);
     // The original amount stands — a retry is not a new decision.
     expect(second.amount).toBe(810);
+
+    /**
+     * ⚠️ And the customer is told **which** amount won.
+     *
+     * Handing back the open request is right, but a second ask for a *different*
+     * figure used to come back indistinguishable from that ask succeeding —
+     * ₹810 shown to somebody who typed ₹100, with nothing to say their request
+     * went nowhere. They wait for money that was never coming.
+     */
+    expect(second.askedFor).toBe(100);
+  });
+
+  /** A genuine double tap asked for the same thing, so there is nothing to flag. */
+  it("says nothing extra when the retry asked for the same amount", async () => {
+    await ask();
+    const again = await ask();
+
+    expect(again.reused).toBe(true);
+    expect(again.askedFor).toBeUndefined();
   });
 });
 

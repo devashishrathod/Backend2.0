@@ -318,3 +318,179 @@ describe("one delivery settles once", () => {
     expect(await WebhookEvent.countDocuments({ eventId })).toBe(1);
   });
 });
+
+describe("a chargeback we lost must not look eligible again", () => {
+  /**
+   * The CUSTOMER account is deliberately left unconfigured by the suite's
+   * `beforeAll`, so the misroute checks can prove an unconfigured account
+   * refuses a delivery. These tests are about the **dispute branch**, not about
+   * accounts, so the secret is set here and put back afterwards — leaving it set
+   * would quietly weaken those other checks.
+   */
+  beforeAll(() => {
+    process.env[CUSTOMER_SECRETS_ENV] = TEST_SECRET;
+  });
+  afterAll(() => {
+    delete process.env[CUSTOMER_SECRETS_ENV];
+  });
+
+  /**
+   * A `payment.dispute.*` delivery, which carries no payment entity at all —
+   * only the dispute, with `payment_id` inside it.
+   */
+  const disputeDelivery = (status, txn) => {
+    const body = {
+      event: `payment.dispute.${status}`,
+      created_at: 1756500000,
+      payload: {
+        dispute: {
+          entity: {
+            id: `disp_TEST${Date.now()}`,
+            payment_id: txn.razorpayPaymentId,
+            amount: 81000,
+            status,
+            reason_code: "chargeback",
+            phase: "chargeback",
+          },
+        },
+      },
+    };
+    const rawBody = Buffer.from(JSON.stringify(body));
+    return { body, rawBody, signature: sign(rawBody) };
+  };
+
+  const seedCaptured = async () =>
+    Transaction.create({
+      purpose: TRANSACTION_PURPOSE.VOUCHER_CLAIM,
+      gatewayAccount: RAZORPAY_ACCOUNTS.CUSTOMER,
+      customerId: new mongoose.Types.ObjectId(),
+      brandId: new mongoose.Types.ObjectId(),
+      amount: 810,
+      paidAmount: 810,
+      verified: true,
+      status: "captured",
+      razorpayOrderId: `order_D${Date.now()}`,
+      razorpayPaymentId: `pay_D${Date.now()}`,
+      settlementHold: false,
+    });
+
+  /**
+   * ⚠️ The one that was not a race — it happened every single time.
+   *
+   * `isDisputed` is written from `isOpen`, and `isOpen` excludes `WON`, `LOST`
+   * and `CLOSED`. So `payment.dispute.lost` wrote `isDisputed: false`: the
+   * chargeback we had just **lost** made the row look fully eligible, and the
+   * next payout would hand the vendor money Trydood no longer has.
+   */
+  it("holds the money when a dispute is LOST", async () => {
+    const txn = await seedCaptured();
+    const { body, rawBody, signature } = disputeDelivery("lost", txn);
+
+    await handleRazorpayWebhook({
+      body,
+      rawBody,
+      signature,
+      account: RAZORPAY_ACCOUNTS.CUSTOMER,
+    });
+
+    const after = await Transaction.findById(txn._id).lean();
+
+    // Proved first: the delivery was actually processed. `isDisputed` defaults
+    // to `false`, so asserting it alone would hold even if nothing ran at all.
+    expect(after.disputeStatus).toBe("LOST");
+
+    // `isDisputed` correctly says the dispute is no longer live…
+    expect(after.isDisputed).toBe(false);
+    // …and the hold is what actually keeps it out of a settlement.
+    expect(after.settlementHold).toBe(true);
+    expect(after.settlementHoldReason).toMatch(/chargeback/i);
+  });
+
+  it("holds it on every dispute event, open or resolved", async () => {
+    for (const status of ["created", "under_review", "won", "lost", "closed"]) {
+      const txn = await seedCaptured();
+      const { body, rawBody, signature } = disputeDelivery(status, txn);
+
+      await handleRazorpayWebhook({
+        body,
+        rawBody,
+        signature,
+        account: RAZORPAY_ACCOUNTS.CUSTOMER,
+      });
+
+      const after = await Transaction.findById(txn._id).lean();
+      expect({ status, held: after.settlementHold }).toEqual({
+        status,
+        held: true,
+      });
+    }
+  });
+
+  /**
+   * A webhook never takes the hold off. Deciding who bears the loss is a human
+   * call, and `won` arriving after `lost` — Razorpay's dispute events are not
+   * ordered — must not quietly release money to the vendor.
+   */
+  it("does not release the hold when a dispute is won", async () => {
+    const txn = await seedCaptured();
+
+    for (const status of ["lost", "won"]) {
+      const { body, rawBody, signature } = disputeDelivery(status, txn);
+      await handleRazorpayWebhook({
+        body,
+        rawBody,
+        signature,
+        account: RAZORPAY_ACCOUNTS.CUSTOMER,
+      });
+    }
+
+    const after = await Transaction.findById(txn._id).lean();
+    expect(after.settlementHold).toBe(true);
+  });
+});
+
+describe("the handled list is the gate, and it must not drift", () => {
+  const {
+    RAZORPAY_WEBHOOK_EVENTS,
+    WEBHOOK_HANDLED_EVENTS,
+  } = require("../../constants/webhook");
+
+  /**
+   * ⚠️ A branch below this list is **unreachable code** until the event is named
+   * in it, and nothing warns about the mismatch.
+   *
+   * That is exactly what happened to `refund.created` and `refund.failed`: both
+   * had branches written, neither was on the list, so a failed refund fell
+   * through as `IGNORED` — the customer's money never arrived, the request still
+   * said `PROCESSING`, and nothing anywhere said otherwise.
+   *
+   * The enum is the set of events this platform knows about. If one is in it and
+   * not handled, either it should be handled or it should not be in the enum.
+   */
+  it("handles every event the enum names", () => {
+    const unhandled = Object.values(RAZORPAY_WEBHOOK_EVENTS).filter(
+      (event) => !WEBHOOK_HANDLED_EVENTS.includes(event),
+    );
+
+    expect(unhandled).toEqual([]);
+  });
+
+  it("names nothing the enum does not", () => {
+    const known = Object.values(RAZORPAY_WEBHOOK_EVENTS);
+    const strays = WEBHOOK_HANDLED_EVENTS.filter((e) => !known.includes(e));
+
+    // A typo here is silent in the other direction: the event never matches a
+    // real delivery and the branch simply never runs.
+    expect(strays).toEqual([]);
+  });
+
+  it("has a branch for each of the three that were missing", async () => {
+    for (const event of [
+      RAZORPAY_WEBHOOK_EVENTS.REFUND_CREATED,
+      RAZORPAY_WEBHOOK_EVENTS.REFUND_FAILED,
+      RAZORPAY_WEBHOOK_EVENTS.SETTLEMENT_PROCESSED,
+    ]) {
+      expect(WEBHOOK_HANDLED_EVENTS).toContain(event);
+    }
+  });
+});
