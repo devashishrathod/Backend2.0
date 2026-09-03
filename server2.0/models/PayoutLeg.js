@@ -151,6 +151,45 @@ payoutLegSchema.index(
 );
 
 /**
+ * ⚠️ One leg in flight at a time — the guard the `legNumber` indexes above do
+ * **not** provide.
+ *
+ * `legNumber` comes from counting the existing legs, which is a read. Two
+ * concurrent starts each read, one takes 1 and the other takes 2, and both
+ * inserts pass a uniqueness check on the number. Only one then wins the status
+ * transition; the loser's leg is left `INITIATED` and orphaned — and
+ * `sweepStalePayouts` reports that as money that may already have moved, which
+ * an admin can confirm, paying the vendor twice.
+ *
+ * ⚠️ `status` **must** be in the filter as well as the key. Without it the index
+ * would allow only one leg per settlement ever, and a retry after a bounce could
+ * never open a second one — turning a recoverable failure into a permanent one.
+ */
+payoutLegSchema.index(
+  { payoutType: 1, settlementId: 1 },
+  {
+    name: PAYOUT_INDEXES.SETTLEMENT_IN_FLIGHT,
+    unique: true,
+    partialFilterExpression: {
+      settlementId: { $type: "objectId" },
+      status: PAYOUT_LEG_STATUS.INITIATED,
+    },
+  },
+);
+
+payoutLegSchema.index(
+  { payoutType: 1, refundRequestId: 1 },
+  {
+    name: PAYOUT_INDEXES.REFUND_IN_FLIGHT,
+    unique: true,
+    partialFilterExpression: {
+      refundRequestId: { $type: "objectId" },
+      status: PAYOUT_LEG_STATUS.INITIATED,
+    },
+  },
+);
+
+/**
  * A UTR identifies one bank movement and must never appear twice.
  *
  * Not unique on purpose: a single NEFT can legitimately carry a batch in some

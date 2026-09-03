@@ -57,6 +57,24 @@ const PAYOUT_MODE = Object.freeze({
 const PAYOUT_INDEXES = Object.freeze({
   SETTLEMENT_LEG: "payout_settlement_leg_unique",
   REFUND_LEG: "payout_refund_leg_unique",
+  /**
+   * ⚠️ At most **one leg in flight** per settlement, and per refund.
+   *
+   * The `…_LEG` indexes above key on `legNumber`, which only refuses two legs
+   * claiming the *same* number. Two concurrent starts do not: each counts the
+   * existing legs, one sees none and takes 1, the other sees the first and takes
+   * 2 — both inserts pass. Only one then wins the status transition, and the
+   * loser's leg is left `INITIATED` and orphaned.
+   *
+   * That orphan is not harmless. `sweepStalePayouts` reports a leg sitting at
+   * `INITIATED` for six hours as money that may already have moved, and an admin
+   * confirming it pays the vendor **twice**.
+   *
+   * A retry is still allowed: the failed leg is no longer `INITIATED`, so the
+   * next one is free to open.
+   */
+  SETTLEMENT_IN_FLIGHT: "payout_settlement_inflight_unique",
+  REFUND_IN_FLIGHT: "payout_refund_inflight_unique",
 });
 
 module.exports = {

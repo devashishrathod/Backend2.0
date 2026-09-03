@@ -421,7 +421,20 @@ describe("what it will not pay", () => {
     );
   });
 
-  it("refuses a bank transfer, which is not automated", async () => {
+  /**
+   * ⚠️ The gateway must never see a `MANUAL_BANK` refund.
+   *
+   * That instrument is the one already known not to work — it is why the refund
+   * fell back to a bank transfer in the first place. Sending it to Razorpay
+   * anyway would fail, bump `attemptCount`, and put the request back in the
+   * retry queue for the same thing to happen again.
+   *
+   * The message changed when `services/refunds/manualBankRefund.js` was built:
+   * it used to say the bank route "is not automated yet", which is no longer
+   * true. What this test actually guards — `mockRefund` never being called — is
+   * unchanged.
+   */
+  it("refuses a bank transfer and never calls the gateway", async () => {
     await approveRefundAsAdmin(admin(), request._id);
     await RefundRequest.updateOne(
       { _id: request._id },
@@ -429,7 +442,7 @@ describe("what it will not pay", () => {
     );
 
     await expect(executeRefund(admin(), request._id)).rejects.toThrow(
-      /bank account, which is not automated/i,
+      /bank account\. Use the bank payout endpoint/i,
     );
     expect(mockRefund).not.toHaveBeenCalled();
   });

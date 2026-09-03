@@ -29,7 +29,19 @@ const {
   validatePayRefund,
   validateListRefunds,
   validateRefundDetail,
+  validateRequestRefundBankDetails,
+  validateChooseRefundBankAccount,
+  validatePayRefundToBank,
+  validateConfirmRefundBankPayout,
+  validateFailRefundBankPayout,
 } = require("../validator/refunds");
+const {
+  requestRefundBankDetails,
+  chooseRefundBankAccount,
+  payRefundToBankAccount,
+  confirmRefundBankPayout,
+  failRefundBankPayout,
+} = require("../controllers/refunds");
 
 /**
  * The customer asks for their money back.
@@ -51,6 +63,20 @@ router.patch(
   isCustomer,
   validateSchema(validateWithdrawRefund),
   withdrawRefund,
+);
+
+/**
+ * The customer says where a failed refund should go instead.
+ *
+ * `isCustomer`, and the service checks the refund is theirs — the account is
+ * chosen from their own verified list, so nobody can point someone else's refund
+ * anywhere.
+ */
+router.patch(
+  "/:requestId/bank-account",
+  isCustomer,
+  validateSchema(validateChooseRefundBankAccount),
+  chooseRefundBankAccount,
 );
 
 /**
@@ -111,6 +137,46 @@ router.patch(
   isAdmin,
   validateSchema(validatePayRefund),
   payRefund,
+);
+
+/**
+ * ---------------- MANUAL_BANK ----------------
+ *
+ * The fallback for when the original card or UPI cannot take the money back.
+ * `SOURCE` fails every time against a closed instrument, and before this the
+ * admin had no second button: the request sat `FAILED`, the vendor's money
+ * stayed held, and the customer never got theirs.
+ *
+ * ⚠️ Separate from `/pay` on purpose. That one calls a gateway; these open a
+ * `PayoutLeg`, wait for a person to make a NEFT, and are finished by a UTR typed
+ * in by hand. See `services/refunds/manualBankRefund.js`.
+ */
+router.patch(
+  "/admin/:requestId/request-bank-details",
+  isAdmin,
+  validateSchema(validateRequestRefundBankDetails),
+  requestRefundBankDetails,
+);
+
+router.patch(
+  "/admin/:requestId/pay-to-bank",
+  isAdmin,
+  validateSchema(validatePayRefundToBank),
+  payRefundToBankAccount,
+);
+
+router.patch(
+  "/admin/:requestId/confirm-bank-payout",
+  isAdmin,
+  validateSchema(validateConfirmRefundBankPayout),
+  confirmRefundBankPayout,
+);
+
+router.patch(
+  "/admin/:requestId/fail-bank-payout",
+  isAdmin,
+  validateSchema(validateFailRefundBankPayout),
+  failRefundBankPayout,
 );
 
 /**

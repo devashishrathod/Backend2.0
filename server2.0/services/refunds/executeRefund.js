@@ -303,10 +303,23 @@ exports.executeRefund = async (actor, requestId) => {
     throwError(409, `This refund is ${readable(request.status)} and cannot be paid yet.`);
   }
 
+  /**
+   * `MANUAL_BANK` has its own endpoint, and this one refuses rather than
+   * guessing.
+   *
+   * The two are not variations of one payout: `SOURCE` calls a gateway that
+   * either takes the money or does not, while `MANUAL_BANK` opens a `PayoutLeg`,
+   * waits for a person to do a NEFT, and is finished by a UTR typed in by hand.
+   * Routing a bank refund through here would call Razorpay for a payment whose
+   * instrument is already known to be dead — the failure this fallback exists to
+   * get past.
+   *
+   * See `services/refunds/manualBankRefund.js`.
+   */
   if (request.method !== REFUND_METHODS.SOURCE) {
     throwError(
       422,
-      "This refund is set to be paid to a bank account, which is not automated yet.",
+      "This refund is going to a bank account. Use the bank payout endpoint for it.",
     );
   }
 

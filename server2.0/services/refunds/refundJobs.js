@@ -16,10 +16,13 @@ const {
   notifyAdminRefundEscalated,
   notifyVendorRefundReminder,
   notifyCustomerRefundApproved,
+  notifyRefundBankDetailsReminder,
+  notifyAdminBankDetailsStale,
 } = require("../../helpers/notifications");
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
 
 /**
  * A silent outlet cannot hold a customer's money.
@@ -420,4 +423,117 @@ exports.remindVendorsAboutRefunds = async () => {
   }
 
   return { sent };
+};
+
+/**
+ * Nudge a customer who was asked for a bank account and has not answered — and,
+ * eventually, hand the row to an admin.
+ *
+ * ### ⚠️ Why the last stage is not another reminder
+ *
+ * Every other open refund state has a job that resolves it. This one cannot: the
+ * only person who can move it is the customer, and some of them never will —
+ * the number changed, the app was deleted, they decided ₹200 was not worth the
+ * trouble.
+ *
+ * Meanwhile `Transaction.settlementHold` has been on since the day the refund was
+ * raised, which keeps that payment out of **every** future settlement. That is
+ * correct while a refund is live and quietly punitive once it has stalled: the
+ * vendor is paying, for ever, for a customer's silence.
+ *
+ * So after `refund.bankDetailsStaleDays` an admin is told. They can release the
+ * hold with a written reason — which does **not** cancel the refund. The money
+ * is still owed, and if the customer ever does answer,
+ * `claimRefundAdjustments` takes the clawback out of a later cycle, because by
+ * then the payment carries a `settlementId`. Nothing is written off; the vendor
+ * simply stops being frozen.
+ *
+ * ### One stage per sweep
+ *
+ * `bankDetailsRemindersSent` is both the record and the claim, bumped in the same
+ * update that decides who sends — the same discipline `remindVendorsAboutRefunds`
+ * uses above, and for the same reason: an hourly job that re-sent a stage would
+ * put the same message in front of someone 24 times a day.
+ *
+ * @returns {Promise<{ reminded: number, escalated: number }>}
+ */
+exports.remindCustomersAboutBankDetails = async () => {
+  const config = await getCustomerConfig();
+
+  /**
+   * Sorted ascending, not trusted from config: saved as `[96, 24]` the stages
+   * would fire out of order — the four-day nudge on day one, and the one-day
+   * nudge never.
+   */
+  const marks = [...(config.refund?.bankDetailsReminderHours || [])]
+    .map(Number)
+    .filter((h) => Number.isFinite(h) && h > 0)
+    .sort((a, b) => a - b);
+
+  const staleDays = Number(config.refund?.bankDetailsStaleDays) || 30;
+  const now = Date.now();
+
+  const candidates = await RefundRequest.find({
+    status: REFUND_REQUEST_STATUS.AWAITING_BANK_DETAILS,
+    bankDetailsRequestedAt: { $ne: null },
+    // Every stage used up: nothing left to say, and re-reading these for ever
+    // is how a sweep stops draining.
+    bankDetailsRemindersSent: { $lt: marks.length + 1 },
+    isDeleted: false,
+  })
+    .sort({ bankDetailsRequestedAt: 1 })
+    .limit(200)
+    .lean();
+
+  let reminded = 0;
+  let escalated = 0;
+
+  for (const request of candidates) {
+    const waitedMs = now - new Date(request.bankDetailsRequestedAt).getTime();
+    const waitedHours = waitedMs / HOUR_MS;
+
+    const marksPassed = marks.filter((mark) => waitedHours >= mark).length;
+    const isStale = waitedMs >= staleDays * DAY_MS;
+
+    // The stale hand-off is always the last stage, whatever the marks are.
+    const due = isStale ? marks.length + 1 : marksPassed;
+    if (due <= request.bankDetailsRemindersSent) continue;
+
+    const nextStage = request.bankDetailsRemindersSent + 1;
+
+    const claimed = await RefundRequest.findOneAndUpdate(
+      {
+        _id: request._id,
+        bankDetailsRemindersSent: request.bankDetailsRemindersSent,
+        // ⚠️ Re-checked in the filter. Between the read above and this write the
+        // customer may have supplied an account, and nudging them afterwards
+        // reads as a system that is not listening.
+        status: REFUND_REQUEST_STATUS.AWAITING_BANK_DETAILS,
+      },
+      { $set: { bankDetailsRemindersSent: nextStage } },
+      { returnDocument: "after" },
+    ).lean();
+
+    if (!claimed) continue;
+
+    if (nextStage > marks.length) {
+      await sendQuietly(
+        () =>
+          notifyAdminBankDetailsStale({
+            request: claimed,
+            daysWaiting: Math.floor(waitedMs / DAY_MS),
+          }),
+        "refund bank details stale",
+      );
+      escalated += 1;
+    } else {
+      await sendQuietly(
+        () => notifyRefundBankDetailsReminder({ request: claimed, stage: nextStage }),
+        "refund bank details reminder",
+      );
+      reminded += 1;
+    }
+  }
+
+  return { reminded, escalated };
 };

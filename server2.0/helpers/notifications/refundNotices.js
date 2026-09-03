@@ -216,6 +216,142 @@ exports.notifyCustomerRefundApproved = async ({ request }) => {
  * ending that works for the customer who was genuinely wronged and the one who
  * was not.
  */
+/**
+ * To the **customer**: we need a bank account to send the refund to.
+ *
+ * ### Why the wording matters more here than anywhere else in this file
+ *
+ * This is the only refund notice that asks the customer to act, and it asks for
+ * bank details — which is exactly what a scam message asks for. Someone whose
+ * refund has already failed once, now being asked for their account number, has
+ * every reason to be suspicious.
+ *
+ * So it names the claim they made, says plainly that the money is still theirs,
+ * gives the reason their original method did not work, and sends them into the
+ * app rather than to a link that collects anything. The one thing it never does
+ * is ask them to reply with details.
+ */
+exports.notifyRefundBankDetailsRequested = async ({ request }) => {
+  return notify({
+    customerId: request.customerId,
+    audience: NOTIFICATION_AUDIENCE.CUSTOMER,
+    type: NOTIFICATION_TYPES.REFUND_BANK_DETAILS_REQUESTED,
+    // Not a warning: nothing has gone wrong for them, and alarming someone about
+    // their own money is how a real message gets mistaken for a fake one.
+    severity: NOTIFICATION_SEVERITY.INFO,
+    title: "We need your bank account to send your refund",
+    body:
+      `Your refund on ${request.claimCode} could not be sent back to the way you paid — ` +
+      `${request.adminNote || "the original card or UPI is no longer reachable"}. ` +
+      `The money is still yours. Add your bank account in the app and we will transfer it. ` +
+      `We will never ask you for your details over a call or a message.`,
+    meta: {
+      refundRequestId: request._id,
+      claimCode: request.claimCode,
+      amount: request.approvedAmount ?? request.requestedAmount,
+      statusLabel: REFUND_CUSTOMER_LABEL[request.status],
+    },
+    // Into the app, never to a form on a link.
+    deepLink: deepLink(CUSTOMER_PATHS.REFUNDS),
+    dedupeKey: `REFUND_BANK_DETAILS:${request._id}`,
+    mail: {
+      lines: [
+        ["Claim code", request.claimCode || "-"],
+        ["Amount", money(request.approvedAmount ?? request.requestedAmount)],
+        ["What to do", "Open the Trydood app and add your bank account"],
+      ],
+    },
+  });
+};
+
+/**
+ * To the **customer**: a nudge, days after the first ask.
+ *
+ * ⚠️ Days apart, not hours. Someone already told their refund failed, then
+ * pinged repeatedly for their account number, reads it as a scam — and the money
+ * they are owed becomes the thing they least want to engage with. This says the
+ * money is still waiting, and nothing more.
+ */
+exports.notifyRefundBankDetailsReminder = async ({ request, stage }) => {
+  return notify({
+    customerId: request.customerId,
+    audience: NOTIFICATION_AUDIENCE.CUSTOMER,
+    type: NOTIFICATION_TYPES.REFUND_BANK_DETAILS_REQUESTED,
+    severity: NOTIFICATION_SEVERITY.INFO,
+    title: "Your refund is still waiting for you",
+    body:
+      `We still have ${money(request.approvedAmount ?? request.requestedAmount)} to send back ` +
+      `for ${request.claimCode}. Add your bank account in the Trydood app and it will be transferred. ` +
+      `We will never ask you for your details over a call or a message.`,
+    meta: {
+      refundRequestId: request._id,
+      claimCode: request.claimCode,
+      amount: request.approvedAmount ?? request.requestedAmount,
+      reminder: stage,
+    },
+    deepLink: deepLink(CUSTOMER_PATHS.REFUNDS),
+    // Keyed on the stage, so the second nudge is a new message and a retried
+    // sweep is not.
+    dedupeKey: `REFUND_BANK_DETAILS_REMINDER:${request._id}:${stage}`,
+    mail: {
+      lines: [
+        ["Claim code", request.claimCode || "-"],
+        ["Amount", money(request.approvedAmount ?? request.requestedAmount)],
+        ["What to do", "Open the Trydood app and add your bank account"],
+      ],
+    },
+  });
+};
+
+/**
+ * To an **admin**: nobody answered, and a vendor is paying for the silence.
+ *
+ * ⚠️ The customer's money is not in question — it stays theirs and the request
+ * stays open. What has gone wrong is on the other side: `settlementHold` has kept
+ * this payment out of every settlement since the day it failed, and it will keep
+ * doing so for ever unless somebody looks.
+ *
+ * The way out is `PATCH /transactions/admin/:transactionId/release-hold` with a
+ * written reason. That does **not** cancel the refund — if the customer ever does
+ * answer, `claimRefundAdjustments` recovers the clawback from a later cycle.
+ */
+exports.notifyAdminBankDetailsStale = async ({ request, daysWaiting }) => {
+  return notify({
+    // ⚠️ `notify({ audience: ADMIN })`, matching every other admin notice in this
+    // file — `notifyAdmins` is not imported here, and reaching for it would have
+    // thrown on the first real alert and nowhere before.
+    audience: NOTIFICATION_AUDIENCE.ADMIN,
+    type: NOTIFICATION_TYPES.REFUND_BANK_DETAILS_STALE,
+    severity: NOTIFICATION_SEVERITY.WARNING,
+    title: `No bank details after ${daysWaiting} days — ${request.claimCode}`,
+    body:
+      `${money(request.approvedAmount ?? request.requestedAmount)} has been waiting on this ` +
+      `customer's account details since ${onDate(request.bankDetailsRequestedAt)}. ` +
+      `The vendor's settlement hold has been frozen that whole time. The refund stays owed either way — ` +
+      `releasing the hold only stops the vendor paying for the wait.`,
+    meta: {
+      refundRequestId: request._id,
+      transactionId: request.transactionId,
+      claimCode: request.claimCode,
+      amount: request.approvedAmount ?? request.requestedAmount,
+      bankDetailsRequestedAt: request.bankDetailsRequestedAt,
+      daysWaiting,
+    },
+    deepLink: deepLink(ADMIN_PATHS.refund(request._id)),
+    dedupeKey: `REFUND_BANK_DETAILS_STALE:${request._id}`,
+    mail: {
+      lines: [
+        ["Claim code", request.claimCode || "-"],
+        ["Amount", money(request.approvedAmount ?? request.requestedAmount)],
+        ["Asked on", onDate(request.bankDetailsRequestedAt)],
+        ["Waiting", `${daysWaiting} days`],
+      ],
+      buttonText: "Open refund",
+      buttonUrl: adminUrl(ADMIN_PATHS.refund(request._id)),
+    },
+  });
+};
+
 exports.notifyCustomerRefundRejected = async ({ request }) => {
   return notify({
     customerId: request.customerId,

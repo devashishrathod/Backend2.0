@@ -1,6 +1,7 @@
 const Joi = require("joi");
 const objectId = require("./validJoiObjectId");
 const { REFUND_REASON } = require("../constants/refund");
+const { PAYOUT_MODE } = require("../constants/payout");
 
 /**
  * Asking for a refund.
@@ -115,6 +116,81 @@ exports.validateAdminRejectRefund = {
 /** Sending the money. Takes nothing — every figure was frozen at approval. */
 exports.validatePayRefund = {
   params: objectIdParam("requestId"),
+};
+
+// ---------------------------------------------------------------------------
+// MANUAL_BANK — when the money cannot go back the way it came.
+// ---------------------------------------------------------------------------
+
+/**
+ * The admin asks the customer for an account.
+ *
+ * `reason` is required for the same reason a rejection note is: the customer is
+ * about to be asked for bank details out of nowhere, and support needs a
+ * sentence to quote back when they ring to ask whether it is genuine.
+ */
+exports.validateRequestRefundBankDetails = {
+  params: objectIdParam("requestId"),
+  body: Joi.object({
+    reason: Joi.string().trim().min(3).max(500).required().messages({
+      "any.required": "Please say why the original refund could not be sent.",
+      "string.empty": "Please say why the original refund could not be sent.",
+      "string.min": "Please give a little more detail.",
+    }),
+  }),
+};
+
+/** The customer picks one of their own verified accounts. */
+exports.validateChooseRefundBankAccount = {
+  params: objectIdParam("requestId"),
+  body: Joi.object({
+    bankAccountId: objectId().required().messages({
+      "any.required": "Please choose a bank account.",
+      "any.invalid": "That is not a valid bank account.",
+    }),
+  }),
+};
+
+exports.validatePayRefundToBank = {
+  params: objectIdParam("requestId"),
+};
+
+/**
+ * Confirming a hand-made NEFT.
+ *
+ * ⚠️ `utr` is required and not optional-with-a-default: three days later, when
+ * the customer says the money never arrived, it is the only thing that can be
+ * looked up on a bank statement. A blank one turns a five-minute check into a
+ * reconciliation.
+ *
+ * ⚠️ `paidAt` is accepted because a Friday transfer is often typed in on Monday,
+ * and the ledger entry has to carry the date the money actually moved.
+ */
+exports.validateConfirmRefundBankPayout = {
+  params: objectIdParam("requestId"),
+  body: Joi.object({
+    utr: Joi.string().trim().min(4).max(64).required().messages({
+      "any.required": "The bank reference (UTR) is required.",
+      "string.empty": "The bank reference (UTR) is required.",
+      "string.min": "That does not look like a bank reference.",
+    }),
+    mode: Joi.string()
+      .valid(...Object.values(PAYOUT_MODE))
+      .optional(),
+    paidAt: Joi.date().max("now").optional().messages({
+      "date.max": "A transfer cannot have been made in the future.",
+    }),
+  }),
+};
+
+exports.validateFailRefundBankPayout = {
+  params: objectIdParam("requestId"),
+  body: Joi.object({
+    reason: Joi.string().trim().min(3).max(500).required().messages({
+      "any.required": "Please say why the transfer failed.",
+      "string.empty": "Please say why the transfer failed.",
+    }),
+  }),
 };
 
 const { REFUND_REQUEST_STATUS } = require("../constants/refund");

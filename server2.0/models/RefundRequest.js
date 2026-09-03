@@ -59,6 +59,21 @@ const refundSplitSchema = new mongoose.Schema(
     taxRefund: { type: Number, default: 0 },
     /** Same story: the helper returns it, so the schema has to accept it. */
     commissionReversal: { type: Number, default: 0 },
+    /**
+     * The vendor's half of that commission, and the GST on it.
+     *
+     * `commissionReversal` is what **we** give up out of revenue.
+     * `commissionDeductionReversal` is what the **vendor** gets credited back —
+     * a different number whenever GST sits on top of the commission rather than
+     * inside it, because there the vendor was deducted both.
+     *
+     * ⚠️ Same trap as `taxRefund` above: the helper computes these, and without
+     * a schema entry Mongoose would drop them silently, leaving
+     * `postRefundEntries` nothing to post and `VENDOR_PAYABLE` short by the
+     * commission on every refunded sale — invisible until a rate is set.
+     */
+    commissionTaxReversal: { type: Number, default: 0 },
+    commissionDeductionReversal: { type: Number, default: 0 },
 
     // Clawed back from the vendor's next settlement. Never recovered directly —
     // the golden rule guarantees this money has not been paid out yet.
@@ -149,6 +164,43 @@ const refundRequestSchema = new mongoose.Schema(
       default: REFUND_METHODS.SOURCE,
     },
 
+    // ---------- MANUAL_BANK — only when SOURCE cannot deliver ----------
+    /**
+     * When an admin asked the customer for an account, and when they answered.
+     *
+     * Both stored because the gap between them is the only thing that says
+     * whether a stalled refund is waiting on us or on them — and that decides
+     * whether the right action is to chase the customer or to look at our own
+     * queue. Without it, `AWAITING_BANK_DETAILS` for three weeks looks identical
+     * whether we asked yesterday or last month.
+     */
+    bankDetailsRequestedAt: { type: Date },
+    bankDetailsProvidedAt: { type: Date },
+    /**
+     * How many nudges the customer has had about supplying an account, and the
+     * claim that stops two instances sending the same one.
+     *
+     * ⚠️ Its own counter, not `remindersSent`. That one belongs to the vendor's
+     * approval window; sharing it would mean a refund that had already nudged
+     * the outlet twice silently skipped both of the customer's.
+     *
+     * The last stage is not a reminder at all — it hands the row to an admin.
+     */
+    bankDetailsRemindersSent: { type: Number, default: 0 },
+    /**
+     * The account this refund is going to.
+     *
+     * A reference, not a copy: the payee is frozen onto the `PayoutLeg` at the
+     * moment the money is sent, exactly as a settlement freezes
+     * `bankSnapshot`. Copying it here as well would give two records of the same
+     * fact that can disagree, and the one that matters in a dispute is the one
+     * attached to the transfer.
+     */
+    customerBankAccountId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CustomerBankAccount",
+    },
+
     // ---------- the vendor's decision ----------
     vendorDecisionBy: userField,
     vendorDecisionAt: { type: Date },
@@ -209,6 +261,30 @@ const refundRequestSchema = new mongoose.Schema(
      * "which payout did this come out of?" in one query, from either side.
      */
     settlementId: settlementField,
+
+    /**
+     * Written off — this clawback is never coming back, and we have said so.
+     *
+     * ### ⚠️ Why a refund needs this as much as a chargeback does
+     *
+     * The deduction for a completed refund is claimed by the next settlement.
+     * If the brand's deductions outrun their takings, `netPayable` goes negative,
+     * the settlement goes `CARRIED_FORWARD` — and carrying forward **is**
+     * releasing every claim it held. The next cycle re-claims the same rows,
+     * reaches the same negative, and carries forward again.
+     *
+     * While the brand still trades that is exactly right: new sales net it off.
+     * It becomes a trap the day they stop. The debt is unreachable, the loop is
+     * silent, and the money sits on our books as a receivable from somebody who
+     * is not coming back.
+     *
+     * Marked here, this refund leaves the claim filter for good. The matching
+     * `MANUAL_ADJUSTMENT` pair is what keeps the ledger honest about who ate it —
+     * see `services/settlements/writeOffVendorDebt.js`.
+     */
+    writtenOffAt: { type: Date },
+    writtenOffBy: { ...userField },
+    writtenOffReason: { type: String, trim: true, maxlength: 500 },
 
     isDeleted: { type: Boolean, default: false },
   },

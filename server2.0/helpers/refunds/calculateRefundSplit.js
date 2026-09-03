@@ -104,6 +104,20 @@ exports.calculateRefundSplit = ({
   const vendorPromoCost = round2(pricing.vendorPromoCost);
   const platformPromoCost = round2(pricing.platformPromoCost);
   const commissionAmount = round2(pricing.commissionAmount);
+  const commissionTax = round2(pricing.commissionTax);
+  /**
+   * What actually came off the vendor at capture.
+   *
+   * ⚠️ Falls back to `commissionAmount` when the field is absent. A claim frozen
+   * before `commissionDeduction` existed has no value for it, and treating that
+   * as **zero** would credit the vendor nothing on a refund while the capture had
+   * debited them the commission — the phantom balance this whole pair of fields
+   * exists to prevent, just pointing the other way. `commissionAmount` is the
+   * right guess: GST-inclusive is the default, and there the two are equal.
+   */
+  const commissionDeduction = round2(
+    pricing.commissionDeduction ?? pricing.commissionAmount,
+  );
   const taxOnTop = round2(pricing.taxOnTop);
 
   const promoHitTheFee =
@@ -154,6 +168,17 @@ exports.calculateRefundSplit = ({
   const vendorPromoReversal = round2(vendorPromoCost * ratio);
   const commissionReversal = round2(commissionAmount * ratio);
   /**
+   * The vendor's side of the commission, and the tax on it.
+   *
+   * `commissionReversal` is what **we** give up out of revenue — it is what the
+   * customer-side balance below is built on. These two are what the **vendor**
+   * gets back, and they are a different number whenever GST sits on top: the
+   * vendor was deducted commission *plus* tax, so crediting them only the
+   * commission leaves them permanently short by the tax on every refunded sale.
+   */
+  const commissionTaxReversal = round2(commissionTax * ratio);
+  const commissionDeductionReversal = round2(commissionDeduction * ratio);
+  /**
    * Only the share that came off the **net bill**.
    *
    * A promo taken off the convenience fee never touched the vendor's money, and
@@ -199,6 +224,8 @@ exports.calculateRefundSplit = ({
     platformPromoReversal,
     vendorPromoReversal,
     commissionReversal,
+    commissionTaxReversal,
+    commissionDeductionReversal,
     gatewayFeeAbsorbed,
     isFullRefund,
   };

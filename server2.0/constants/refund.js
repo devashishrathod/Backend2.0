@@ -42,6 +42,16 @@ const REFUND_REQUEST_STATUS = Object.freeze({
   ADMIN_REJECTED: "ADMIN_REJECTED",
   ADMIN_OVERRIDE: "ADMIN_OVERRIDE",
   PROCESSING: "PROCESSING",
+  /**
+   * `SOURCE` could not deliver, and we have asked the customer for a bank
+   * account to pay into instead.
+   *
+   * A state of its own rather than a flag on `FAILED`, because it is a genuinely
+   * different situation: `FAILED` is waiting on **us** to retry, this is waiting
+   * on **them** to answer. Collapsing the two would put a request an admin can
+   * do nothing about into the same worklist as one they should be retrying now.
+   */
+  AWAITING_BANK_DETAILS: "AWAITING_BANK_DETAILS",
   COMPLETED: "COMPLETED",
   FAILED: "FAILED",
   CANCELLED: "CANCELLED",
@@ -80,6 +90,19 @@ const REFUND_OPEN_STATUSES = Object.freeze([
   // FAILED is open on purpose: the money still has to go back, and the request
   // is what the admin retries from.
   REFUND_REQUEST_STATUS.FAILED,
+  /**
+   * ⚠️ Open, for every reason `ADMIN_OVERRIDE` above is.
+   *
+   * The customer is owed this money and has simply not sent their account
+   * details yet. Leaving it out would let them file a *second* refund against
+   * the same payment — the `(transactionId, isOpen)` index would stop matching —
+   * and would hide it from every `?open=true` worklist, so the one request that
+   * needs chasing becomes the one nobody can find.
+   *
+   * ⚠️ And it must **not** join `REFUND_HOLD_RELEASING_STATUSES` below: the
+   * vendor's money still has to stay put, because it is still going back.
+   */
+  REFUND_REQUEST_STATUS.AWAITING_BANK_DETAILS,
 ]);
 
 /**
@@ -146,6 +169,16 @@ const REFUND_CUSTOMER_LABEL = Object.freeze({
   [REFUND_REQUEST_STATUS.PROCESSING]: "On its way to your account",
   [REFUND_REQUEST_STATUS.COMPLETED]: "Refunded",
   [REFUND_REQUEST_STATUS.FAILED]: "Refund failed — we are on it",
+  /**
+   * The one label that asks the customer to **do** something, so it says what.
+   *
+   * "Awaiting bank details" describes our queue, not their next step. Someone
+   * whose refund has already failed once needs to be told, in the same sentence,
+   * that the money is still theirs and what will make it arrive — otherwise the
+   * reasonable reading is that it has gone missing.
+   */
+  [REFUND_REQUEST_STATUS.AWAITING_BANK_DETAILS]:
+    "Add your bank account so we can send it",
   [REFUND_REQUEST_STATUS.CANCELLED]: "Withdrawn",
 });
 
