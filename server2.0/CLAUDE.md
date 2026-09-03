@@ -12,6 +12,52 @@ Node.js · CommonJS · Express 5 · Mongoose 9 (MongoDB) · Joi 18 · JWT · bcr
 
 > No TypeScript. No ESM. `require()` / `module.exports` everywhere.
 
+> ### ⚠️ Node 24.19.0 or newer, on Windows especially
+>
+> c-ares 1.34.6 shipped a Windows regression that makes `dns.getServers()` report
+> `127.0.0.1`, where nothing listens. Node has two DNS paths — `dns.lookup` (the
+> OS resolver) and `dns.resolve*` (c-ares) — and **only `mongodb+srv://` uses the
+> second one**. So the machine looks perfectly healthy, browsers and `npm
+> install` and `ping` all work, and Mongo alone fails in about 2ms with
+> `querySrv ECONNREFUSED`.
+>
+> That points at everything except the cause: the cluster looks down, the
+> password looks wrong, Atlas looks like it is blocking the IP. It cost hours,
+> twice, and the workaround that came out of it — a `dns.setServers()` retry
+> inside `database/mongoDb.js` — then hid the cause on every boot.
+>
+> [nodejs/node#62347](https://github.com/nodejs/node/issues/62347) is the bug;
+> the fix was cherry-picked into Node **24.19.0**. Affected releases include
+> v20.20.2, v22.22.2 and v24.14.1, so **downgrading does not help** — only going
+> forward does.
+>
+> ```bash
+> node -p "process.versions.ares"   # 1.34.6 is the bad one
+> nvm install 24.20.0 && nvm use 24.20.0
+> node scripts/checkDnsForSrv.js    # prints both DNS paths side by side
+> ```
+>
+> `mongoDb.js` no longer retries. It detects this exact state — an SRV
+> `ECONNREFUSED` while c-ares reports only loopback — and names the version
+> instead, because one upgrade fixes the machine permanently and a retry fixed
+> one connection at a time.
+
+> ### The server refuses to start without a database
+>
+> `mongoDb()` used to be fired and forgotten from `index.js`, and it swallowed
+> every failure — so an unreachable cluster or a wrong `MONGO_URL` still produced
+> a listening port and a `✅ Server running` line.
+>
+> Nothing after that said anything was wrong. Mongoose buffers each query for
+> `bufferTimeoutMS` and then rejects it, so a customer waited ten seconds for a
+> spinner and got a 500, on every request — the app was not down, it was slow and
+> then broken. Meanwhile the port answered, so every uptime check and health
+> probe reported the service as fine and **no alert ever fired**.
+>
+> Boot now retries three times, then `process.exit(1)`. A total outage becomes a
+> failed deploy, which is loud. It also means `assertMoneyIndexes` and
+> `startJobs` can assume a live connection, which they always did anyway.
+
 ---
 
 ## Commands
@@ -56,7 +102,12 @@ database name ends in `_test`. Never bypass it, and never point a test at
 > separate debugging detours before the cause was obvious.
 >
 > `globalSetup` now takes a lock and a second run is refused by name. If a run is
-> killed the lock self-heals after 15 minutes, or:
+> killed the lock self-heals after 45 minutes, or:
+>
+> ⚠️ That TTL used to be 15 minutes, against a comment claiming the suite took
+> about four. A full run is **17.7 minutes** today, so the lock was quietly
+> lapsing mid-run — protecting nothing at the one moment it was needed. If the
+> suite grows past ~30 minutes, raise `TTL_MS` again rather than letting it lapse.
 >
 > ```bash
 > node scripts/testRunLock.js           # who holds it
@@ -386,6 +437,95 @@ makes the second one lose — the unique index decides, not the timing. And the
 gateway is called **last**, because it is the only step with no undo.
 
 ---
+
+## Production
+
+Render today, EC2 next. One instance now, more later — so nothing may keep state
+in the process that a second copy would contradict.
+
+### Environment
+
+| Variable | Default | What it decides |
+|---|---|---|
+| `MONGO_MAX_POOL_SIZE` | `20` | Sockets **per process**. See the arithmetic below. |
+| `MONGO_MIN_POOL_SIZE` | `2` | Warm sockets, so the first request after a quiet spell does not pay a TLS handshake. |
+| `MONGO_SERVER_SELECTION_TIMEOUT_MS` | `10000` | How long a request waits for a reachable node before failing. |
+| `MONGO_AUTO_INDEX` | on | `false` only after `ensureIndexes` has run. See below. |
+| `TRUST_PROXY` | `1` | Proxy hops in front. `1` for Render and for an ALB; `0` for a bare EC2 box. |
+| `RATE_LIMIT_MAX` | `3000` | Requests per IP per 15 minutes. |
+| `LOG_FORMAT` | `combined` in prod | Any morgan format. |
+| `ENABLE_JOBS` | on | `false` stops every sweep on that instance. |
+
+### The connection pool is the first thing that breaks
+
+    total connections  =  pool size  ×  workers per instance  ×  instances
+
+Mongoose opens **100** per process by default and a Flex cluster allows 500 for
+the whole account. One process today is fine; 4 pm2 workers on 3 instances is
+1200, and past the ceiling Atlas refuses new connections — every request fails
+at once, and it looks like the database went down. At 20 the same growth lands
+at 240.
+
+⚠️ The **tests** had this tuned (`maxPoolSize: 5`, with a comment explaining the
+ceiling) while production connected with no options at all. If you tune one,
+look at the other.
+
+### `MONGO_AUTO_INDEX=false` needs a deploy step
+
+Mongoose checks every schema's indexes when each model is first used: measured
+at 6.3s for five models with every index **already present**, so ~65s of
+background round trips across 53 models, competing with the traffic that arrives
+right after a deploy. It also swallows `IndexOptionsConflict`, so a mismatched
+index simply never appears.
+
+Turning it off is right. Turning it off without creating the indexes another way
+is not — the money paths depend on partial unique indexes for **correctness**:
+`holdsUsageSlot`, `isOncePerTransaction`, the idempotency keys and
+`ledger_type_dispute_unique` are what stop two rows that must never coexist from
+both inserting, and nothing errors when one is missing.
+
+```bash
+node scripts/ensureIndexes.js           # what is missing
+node scripts/ensureIndexes.js --apply   # create it, then set MONGO_AUTO_INDEX=false
+```
+
+It reports extra indexes and never drops them — see the `syncIndexes` warning
+above.
+
+### A process manager is not optional
+
+Boot retries Mongo three times and then `process.exit(1)`. Render restarts a
+crashed process by itself; a bare `node index` under `nohup` does not, so a
+two-minute Atlas blip at deploy time would leave the server down for good. Use
+systemd with `Restart=on-failure` (or pm2). Each boot attempt takes up to ~90s,
+so systemd's default `StartLimitBurst` will not trip, but set it deliberately.
+
+### Rate limiting counts per process, and an IP is not a person
+
+⚠️ Indian mobile networks put thousands of real customers behind one CGNAT
+address. The limit is 3000 per 15 minutes precisely because a tight one does not
+stop an attacker with a phone — it locks out a whole block of paying users, who
+see a 429 and no explanation. Per-account limits on OTP, login and refund
+requests are the real protection and do not exist yet.
+
+⚠️ The counter lives in the process. A second instance keeps its own tally and
+the effective limit doubles. When this moves behind a load balancer, move the
+store to Redis rather than halving the number.
+
+⚠️ Both Razorpay webhook paths are exempt in `index.js`. A 429 to a webhook is
+retried for a while and then dropped, and the only symptom is money that stops
+moving — no error anywhere. If you add a third webhook, add it to
+`WEBHOOK_PATHS`.
+
+### Moving off Render
+
+- Atlas **Network Access** allows Render's addresses, not EC2's. Take an
+  **Elastic IP** so it does not change on restart. Since boot now refuses to
+  start without a database, a forgotten entry fails the deploy instead of
+  serving broken requests.
+- `getIP` (`GET /my-ip`) reports the outbound address to put on that list.
+- `tempFileDir: "/tmp/"` in `index.js` is fine on Linux; make sure the unit has
+  a writable `/tmp` and something clears it.
 
 ## Never
 
