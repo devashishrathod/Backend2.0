@@ -1128,7 +1128,13 @@ GET /categories/getAll?isActive=true&limit=50&sortBy=name&sortOrder=asc
         "description": "restaurants, cafes, and food outlets",
         "image": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/Images/food.jpg",
         "isActive": true,
-        "createdAt": "2026-05-10T08:00:00.000Z"
+        "createdAt": "2026-05-10T08:00:00.000Z",
+        "stats": {
+          "subCategories": { "total": 6, "active": 5 },
+          "brands":        { "total": 48, "active": 41 },
+          "vouchers":      { "total": 130, "active": 96 },
+          "promoCodes":    { "total": 3, "active": 2 }
+        }
       },
       {
         "_id": "68f1a2b3c4d5e6f7a8b9c0e2",
@@ -1136,14 +1142,34 @@ GET /categories/getAll?isActive=true&limit=50&sortBy=name&sortOrder=asc
         "description": "beauty and wellness services",
         "image": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/Images/salon.jpg",
         "isActive": true,
-        "createdAt": "2026-05-10T08:05:00.000Z"
+        "createdAt": "2026-05-10T08:05:00.000Z",
+        "stats": {
+          "subCategories": { "total": 4, "active": 4 },
+          "brands":        { "total": 11, "active": 9 },
+          "vouchers":      { "total": 22, "active": 20 },
+          "promoCodes":    { "total": 0, "active": 0 }
+        }
       }
     ]
   }
 }
 ```
 
-**Projected fields only:** `_id`, `name`, `description`, `image`, `isActive`, `createdAt`. `updatedAt` aur `isDeleted` nahi aate.
+**Projected fields only:** `_id`, `name`, `description`, `image`, `isActive`, `createdAt`, `stats`. `updatedAt` aur `isDeleted` nahi aate.
+
+### `stats` — ye admin panel ke liye hai
+
+Ye endpoint admin panel aur customer app dono use karte hain, aur `stats` dono ko jaata hai. Customer app ke liye ye **optional** hai — ignore kar sakte hain, ya "48 brands" jaisa count chip dikhana ho to `stats.brands.active` use karein.
+
+| Key | Kya |
+|---|---|
+| `subCategories` · `brands` · `vouchers` · `promoCodes` | Is category se juda hua kya-kya exist karta hai |
+| `total` | Jo exist karta hai (deleted nahi) |
+| `active` | Usme se jo `isActive: true` hai — **customer ko yahi dikhana chahiye** |
+
+⚠️ Customer-facing count ke liye `active` lein, `total` nahi. `total` me wo brands/vouchers bhi hain jo abhi off hain, to app "48 brands" dikhayega aur category kholne pe 41 hi milenge.
+
+⚠️ `vouchers` **status nahi dekhta** — draft aur unpublished bhi ginte hain, kyunki wo exist karte hain. Jo customer ko sach me dikhega uska count chahiye to voucher listing ka `total` use karein, ye nahi.
 
 ### Errors
 | Status | Message | Kab |
@@ -1185,12 +1211,18 @@ GET /categories/getAll?isActive=true&limit=50&sortBy=name&sortOrder=asc
     "isActive": true,
     "isDeleted": false,
     "createdAt": "2026-05-10T08:00:00.000Z",
-    "updatedAt": "2026-05-10T08:00:00.000Z"
+    "updatedAt": "2026-05-10T08:00:00.000Z",
+    "stats": {
+      "subCategories": { "total": 6, "active": 5 },
+      "brands":        { "total": 48, "active": 41 },
+      "vouchers":      { "total": 130, "active": 96 },
+      "promoCodes":    { "total": 3, "active": 2 }
+    }
   }
 }
 ```
 
-> `getAll` ke mukable yahan **poora document** aata hai (`isDeleted`, `updatedAt` bhi).
+> `getAll` ke mukable yahan **poora document** aata hai (`isDeleted`, `updatedAt` bhi). `stats` bilkul wahi shape hai — [#9](#9-get-categoriesgetall) me detail hai.
 
 ### Errors
 | Status | Message | Kab |
@@ -1237,7 +1269,11 @@ GET /subCategories/getAll?categoryId=68f1a2b3c4d5e6f7a8b9c0e1&isActive=true&limi
         "isActive": true,
         "isDeleted": false,
         "createdAt": "2026-05-10T09:00:00.000Z",
-        "updatedAt": "2026-05-10T09:00:00.000Z"
+        "updatedAt": "2026-05-10T09:00:00.000Z",
+        "stats": {
+          "brands":   { "total": 12, "active": 10 },
+          "vouchers": { "total": 34, "active": 28 }
+        }
       }
     ]
   }
@@ -1245,6 +1281,8 @@ GET /subCategories/getAll?categoryId=68f1a2b3c4d5e6f7a8b9c0e1&isActive=true&limi
 ```
 
 > Note: yahan `isDeleted` aur `updatedAt` bhi project hote hain (categories `getAll` se different).
+
+`stats` yahan sirf `brands` aur `vouchers` rakhta hai — `PromoCode` sirf `categoryIds` pe scoped hota hai, sub-category ka koi field usme nahi. Baaki matlab [#9](#9-get-categoriesgetall) jaisa hi hai (`active` lein, `total` nahi).
 
 ### Errors
 | Status | Message | Kab |
@@ -1278,10 +1316,15 @@ GET /subCategories/getAll?categoryId=68f1a2b3c4d5e6f7a8b9c0e1&isActive=true&limi
     "isActive": true,
     "isDeleted": false,
     "createdAt": "2026-05-10T09:00:00.000Z",
-    "updatedAt": "2026-05-10T09:00:00.000Z"
+    "updatedAt": "2026-05-10T09:00:00.000Z",
+    "stats": {
+      "brands":   { "total": 12, "active": 10 },
+      "vouchers": { "total": 34, "active": 28 }
+    }
   }
 }
 ```
+> `stats` [#11](#11-get-subcategoriesgetall) waala hi hai.
 
 ### Errors
 | Status | Message |

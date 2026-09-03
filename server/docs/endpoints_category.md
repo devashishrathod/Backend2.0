@@ -121,6 +121,9 @@ Ye ownership enforcement ka proper pattern hai:
 | `GET /vouchers/customer/get-all` | `suggestedOnly` param · `bannerType` · `bannerUrl` · `isSuggested` · `isOutOfRange` |
 | `GET /vouchers/customer/get/:voucherId` | `bannerType` · `bannerUrl` |
 | `POST /vouchers/customer/voucher/preview` | `offerApplied` · `pricing.convenienceFee` · `pricing.promoDiscount` · no-offer fallback (ab error nahi) |
+| `GET /categories/getAll` · `/get/:id` | `stats.subCategories` · `stats.brands` · `stats.vouchers` · `stats.promoCodes`, har ek `{ total, active }` |
+| `GET /subCategories/getAll` · `/get/:id` | `stats.brands` · `stats.vouchers` (`promoCodes` sirf category level pe hai) |
+| `DELETE /categories/delete/:id` · `/subCategories/delete/:id` | Naya `400` — jab tak koi sub-category / brand / voucher use kar raha hai, delete nahi hoga |
 
 Detail → [security_findings.md](./security_findings.md) · [voucher_brand_features_plan.md](./voucher_brand_features_plan.md)
 

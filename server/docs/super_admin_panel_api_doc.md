@@ -3396,14 +3396,43 @@ isActive:    true
         "description": "Restaurants, cafes, and food outlets",
         "image": "https://res.cloudinary.com/…/food.jpg",
         "isActive": true,
-        "createdAt": "2026-05-10T08:00:00.000Z"
+        "createdAt": "2026-05-10T08:00:00.000Z",
+        "stats": {
+          "subCategories": { "total": 6, "active": 5 },
+          "brands":        { "total": 48, "active": 41 },
+          "vouchers":      { "total": 130, "active": 96 },
+          "promoCodes":    { "total": 3, "active": 2 }
+        }
       }
     ]
   }
 }
 ```
 
-**Projected fields only:** `_id`, `name`, `description`, `image`, `isActive`, `createdAt`
+**Projected fields only:** `_id`, `name`, `description`, `image`, `isActive`, `createdAt`, `stats`
+
+### `stats` — kya ginta hai
+
+| Key | Source | Kya count hota hai |
+|---|---|---|
+| `subCategories` | `SubCategory.categoryId` | Is category ki sub-categories |
+| `brands` | `Brand.categoryId` | Is category me registered brands |
+| `vouchers` | `VoucherVersion.categoryId` **current version ka** | Niche note dekhein |
+| `promoCodes` | `PromoCode.categoryIds[]` | Jo customer promo codes is category pe scoped hain |
+
+- `total` = jo **exist** karta hai (`isDeleted: false`), chahe active ho ya na ho.
+- `active` = usi ka wo hissa jiska `isActive: true` hai. Panel "41 / 48 active" dikha sakta hai.
+- **Store nahi hota, har read pe count hota hai** — isliye kuch delete hote hi agli call me number apne aap kam ho jaata hai. Koi counter drift nahi kar sakta.
+- Counts **page ke rows** ke liye nikalte hain, poore filter ke liye nahi — `limit` bada karne se hi kaam badhta hai.
+
+### ⚠️ `vouchers` current version pe ginta hai
+
+Category master `Voucher` par nahi, `VoucherVersion` par hai, aur voucher apni saari purani versions rakhta hai. Isliye count wahi vouchers leta hai jinki **`currentVersionId`** wali version is category me hai:
+
+- versions ginne se ek voucher kai baar ginta,
+- "kabhi bhi is category me thi" ginne se vendor ke category badalne ke baad voucher **dono** categories me ginta rehta — saari categories ka jod actual voucher count se zyada nikalta.
+
+Draft aur unpublished vouchers bhi ginte hain (wo exist karte hain). `active` master `Voucher.isActive` se aata hai.
 
 ### Errors
 | Status | Message |
@@ -3438,11 +3467,17 @@ Admin panel me `isActive` filter **na** lagayein — inactive categories bhi man
     "isActive": true,
     "isDeleted": false,
     "createdAt": "2026-05-10T08:00:00.000Z",
-    "updatedAt": "2026-05-10T08:00:00.000Z"
+    "updatedAt": "2026-05-10T08:00:00.000Z",
+    "stats": {
+      "subCategories": { "total": 6, "active": 5 },
+      "brands":        { "total": 48, "active": 41 },
+      "vouchers":      { "total": 130, "active": 96 },
+      "promoCodes":    { "total": 3, "active": 2 }
+    }
   }
 }
 ```
-> `getAll` ke mukable **poora document**.
+> `getAll` ke mukable **poora document**. `stats` bilkul wahi shape hai — [#62](#62-get-categoriesgetall) me detail hai.
 
 ### Errors
 | Status | Message |
@@ -3510,15 +3545,19 @@ Image replace hone pe purana Cloudinary se delete hota hai.
 |---|---|
 | `404` | `Category not found` |
 | `422` | `Invalid Category Id` |
+| `400` | `Cannot delete this category — 2 sub-categories, 3 brands and 10 vouchers still use it. Move or delete them first.` |
 
 ### ⚠️ Notes
 
 **1. Soft delete hai.**
 
-**2. ⚠️ Cascade nahi hota** — is category ki sub-categories, aur us category se linked brands/vouchers waise hi rehte hain (ab dangling reference ke saath). Delete karne se pehle check karein:
-```http
-GET /subCategories/getAll?categoryId=<id>
-```
+**2. In-use category delete nahi hoti.** Agar koi sub-category, brand ya voucher abhi bhi is category pe hai to `400` aata hai aur message me **exact ginti** hoti hai — admin ko teen listings me ja kar dhoondhna nahi padta. Pehle ye delete chup-chaap ho jata tha aur children dangling `categoryId` ke saath reh jaate the.
+
+Blockers wahi hain jo category ke **andar** hote hain: sub-categories, brands, vouchers. Ginti `stats` waali hi hai (`total`, yani `isDeleted: false` — inactive brand bhi rokega, kyunki wo kal on ho sakta hai).
+
+**Promo codes nahi rokte.** `PromoCode.categoryIds` ownership nahi, sirf scoping filter hai — pichhle season ke ek expired code ki wajah se category delete na ho paana admin ko phasaa dega, aur nuksaan halka hai: deleted id kisi voucher se match nahi karegi, code baaki categories pe scoped reh jayega.
+
+Delete se pehle kya rok raha hai dekhna ho to `GET /categories/get/:id` ka `stats` hi kaafi hai.
 
 **3. `isActive: false` (#64) usually behtar hai** — reference bache rehte hain aur naye brands ko option nahi dikhta.
 
@@ -3616,13 +3655,28 @@ Same as [#62](#62-get-categoriesgetall), plus:
         "isActive": true,
         "isDeleted": false,
         "createdAt": "2026-05-10T09:00:00.000Z",
-        "updatedAt": "2026-05-10T09:00:00.000Z"
+        "updatedAt": "2026-05-10T09:00:00.000Z",
+        "stats": {
+          "brands":   { "total": 12, "active": 10 },
+          "vouchers": { "total": 34, "active": 28 }
+        }
       }
     ]
   }
 }
 ```
 > Categories ke `getAll` se different — yahan `isDeleted` aur `updatedAt` bhi project hote hain.
+
+### `stats` — kya ginta hai
+
+| Key | Source |
+|---|---|
+| `brands` | `Brand.subCategoryId` |
+| `vouchers` | `VoucherVersion.subCategoryId`, **current version ka** — [#62](#62-get-categoriesgetall) waali hi rule |
+
+`total` / `active` ka matlab, aur counts stored kyun nahi hain, [#62](#62-get-categoriesgetall) me hai.
+
+⚠️ **`promoCodes` yahan hai hi nahi.** `PromoCode` sirf `categoryIds` rakhta hai, sub-category ka koi field usme nahi — hamesha-`0` wali key "abhi koi nahi hai" padhi jaati, jabki sach ye hai ki ye link exist hi nahi karta.
 
 ### Errors
 | Status | Message | Kab |
@@ -3646,9 +3700,21 @@ Same as [#62](#62-get-categoriesgetall), plus:
 {
   "success": true,
   "message": "Sub-category fetched",
-  "data": { "_id": "…", "categoryId": "…", "name": "cafe", "image": "…", "isActive": true, "isDeleted": false }
+  "data": {
+    "_id": "…",
+    "categoryId": "…",
+    "name": "cafe",
+    "image": "…",
+    "isActive": true,
+    "isDeleted": false,
+    "stats": {
+      "brands":   { "total": 12, "active": 10 },
+      "vouchers": { "total": 34, "active": 28 }
+    }
+  }
 }
 ```
+> `stats` [#67](#67-get-subcategoriesgetall) waala hi hai.
 
 ### Errors
 | Status | Message |
@@ -3668,7 +3734,7 @@ Same as [#62](#62-get-categoriesgetall), plus:
 | `id` | ObjectId | ✅ |
 
 ### Body — sab optional
-`name` (3–120) · `description` (max 300) · `isActive` · `image` (multipart)
+`name` (3–120) · `description` (max 300) · `categoryId` (ObjectId) · `isActive` · `image` (multipart)
 
 ### Success — `200`
 ```json
@@ -3679,11 +3745,12 @@ Same as [#62](#62-get-categoriesgetall), plus:
 | Status | Message |
 |---|---|
 | `404` | `Sub-category not found` |
+| `404` | `Category not found!` — naya `categoryId` exist nahi karta |
 | `400` | *(duplicate name)* |
-| `422` | `Name has minimum 3 characters` |
+| `422` | `Name has minimum 3 characters` / `Invalid categoryId format` |
 
 ### ⚠️ Note
-⚠️ `categoryId` update nahi ho sakta — validator me nahi hai. Sub-category dusri category me move karne ke liye naya banana padega.
+`categoryId` bhejkar sub-category ko **dusri category me move** kiya ja sakta hai — `validateUpdateSubCategory` me ye field hai aur service `subcategory.categoryId` set karti hai. (Is doc me pehle likha tha ki ye possible nahi — wo galat tha.) Yahi wo raasta hai jo `DELETE /categories/delete/:id` ka *"Move or delete them first"* wala `400` sujhaata hai.
 
 ---
 
@@ -3706,9 +3773,14 @@ Same as [#62](#62-get-categoriesgetall), plus:
 |---|---|
 | `404` | `Sub-category not found` |
 | `422` | `Invalid SubCategory Id` |
+| `400` | `Cannot delete this sub-category — 3 brands and 10 vouchers still use it. Move or delete them first.` |
 
 ### ⚠️ Note
-⚠️ **Cascade nahi hota** — jo brands is sub-category pe hain (`brand.subCategoryId`) unka reference dangling ho jaayega. Vouchers ka `subCategoryId` bhi. `isActive: false` safer hai.
+**In-use sub-category delete nahi hoti.** Brands (`Brand.subCategoryId`) ya vouchers (`VoucherVersion.subCategoryId`) abhi bhi ispe hain to `400` aata hai, exact ginti ke saath. Pehle ye delete ho jaata tha aur wo reference dangling reh jaate the.
+
+Ginti `stats.brands.total` / `stats.vouchers.total` hi hai — `isDeleted: false`, yani inactive brand bhi rokega.
+
+Brand ko hataane ke liye uski `subCategoryId` badlein (`PUT /brands/update`), voucher ke liye nayi version me sub-category badlein. `isActive: false` (#69) tab bhi ek valid option hai jab aap sirf naye brands ko ye option nahi dikhana chahte.
 
 ---
 

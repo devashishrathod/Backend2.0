@@ -5382,14 +5382,20 @@ GET /categories/getAll?isActive=true&limit=50&sortBy=name&sortOrder=asc
         "description": "restaurants, cafes, and food outlets",
         "image": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/Images/food.jpg",
         "isActive": true,
-        "createdAt": "2026-05-10T08:00:00.000Z"
+        "createdAt": "2026-05-10T08:00:00.000Z",
+        "stats": {
+          "subCategories": { "total": 6, "active": 5 },
+          "brands":        { "total": 48, "active": 41 },
+          "vouchers":      { "total": 130, "active": 96 },
+          "promoCodes":    { "total": 3, "active": 2 }
+        }
       }
     ]
   }
 }
 ```
 
-**Projected fields only:** `_id`, `name`, `description`, `image`, `isActive`, `createdAt`
+**Projected fields only:** `_id`, `name`, `description`, `image`, `isActive`, `createdAt`, `stats`
 
 ### Errors
 | Status | Message |
@@ -5401,6 +5407,10 @@ GET /categories/getAll?isActive=true&limit=50&sortBy=name&sortOrder=asc
 **1. Default `limit` 10 hai** — onboarding dropdown ke liye badhayein (`limit=50`).
 **2. `isActive=true` bhejein.**
 **3. Names lowercase me aate hain** — display pe capitalize karein.
+
+**4. `stats` vendor panel ke liye nahi hai.** Ye endpoint teeno consumers share karte hain aur counts admin panel ke liye add hue the — onboarding ke category dropdown me inhe ignore karein. `stats.brands` platform-wide ginti hai, vendor ke apne brands ki nahi.
+
+Shape: `subCategories` / `brands` / `vouchers` / `promoCodes`, har ek me `{ total, active }`. Poori detail super admin doc ke `GET /categories/getAll` me hai.
 
 ---
 
@@ -5426,12 +5436,18 @@ GET /categories/getAll?isActive=true&limit=50&sortBy=name&sortOrder=asc
     "isActive": true,
     "isDeleted": false,
     "createdAt": "2026-05-10T08:00:00.000Z",
-    "updatedAt": "2026-05-10T08:00:00.000Z"
+    "updatedAt": "2026-05-10T08:00:00.000Z",
+    "stats": {
+      "subCategories": { "total": 6, "active": 5 },
+      "brands":        { "total": 48, "active": 41 },
+      "vouchers":      { "total": 130, "active": 96 },
+      "promoCodes":    { "total": 3, "active": 2 }
+    }
   }
 }
 ```
 
-> `getAll` ke mukable **poora document** aata hai.
+> `getAll` ke mukable **poora document** aata hai. `stats` wahi hai — [#74](#74-get-categoriesgetall) dekhein.
 
 ### Errors
 | Status | Message |
@@ -5476,12 +5492,17 @@ GET /subCategories/getAll?categoryId=68f1a2b3c4d5e6f7a8b9c0e1&isActive=true&limi
         "isActive": true,
         "isDeleted": false,
         "createdAt": "2026-05-10T09:00:00.000Z",
-        "updatedAt": "2026-05-10T09:00:00.000Z"
+        "updatedAt": "2026-05-10T09:00:00.000Z",
+        "stats": {
+          "brands":   { "total": 12, "active": 10 },
+          "vouchers": { "total": 34, "active": 28 }
+        }
       }
     ]
   }
 }
 ```
+> `stats` yahan sirf `brands` aur `vouchers` rakhta hai — `promoCodes` sirf category level pe hota hai. Vendor panel ke liye ye counts relevant nahi, [#74](#74-get-categoriesgetall) ka note dekhein.
 
 ### Errors
 | Status | Message | Kab |
@@ -5515,7 +5536,11 @@ Onboarding me brand ki category set karne ke liye `PUT /brands/update` (#32) pe 
     "description": "coffee shops and cafes",
     "image": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/Images/cafe.jpg",
     "isActive": true,
-    "isDeleted": false
+    "isDeleted": false,
+    "stats": {
+      "brands":   { "total": 12, "active": 10 },
+      "vouchers": { "total": 34, "active": 28 }
+    }
   }
 }
 ```
