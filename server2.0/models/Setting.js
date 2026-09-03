@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const { SUBSCRIPTION_DEFAULTS } = require("../constants/subscription");
+const { OTP_DEFAULTS } = require("../constants/otp");
 const {
   CONVENIENCE_FEE_DEFAULTS,
   CUSTOMER_TAX_DEFAULTS,
@@ -382,6 +383,38 @@ const settlementReserveSchema = new mongoose.Schema(
       default: SETTLEMENT_DEFAULTS.reserve.riskChargebackCount,
       min: 1,
     },
+    riskLookbackDays: {
+      type: Number,
+      default: SETTLEMENT_DEFAULTS.reserve.riskLookbackDays,
+      min: 1,
+    },
+    /**
+     * ⚠️ `min: 1`. A floor of zero means every brand with one chargeback and
+     * one sale reads as 100% risky on their first day.
+     */
+    riskMinPayments: {
+      type: Number,
+      default: SETTLEMENT_DEFAULTS.reserve.riskMinPayments,
+      min: 1,
+    },
+    riskDisputeRatePercent: {
+      type: Number,
+      default: SETTLEMENT_DEFAULTS.reserve.riskDisputeRatePercent,
+      min: 0,
+      max: 100,
+    },
+    riskPercent: {
+      type: Number,
+      default: SETTLEMENT_DEFAULTS.reserve.riskPercent,
+      min: 0,
+      max: 100,
+    },
+    maxPercent: {
+      type: Number,
+      default: SETTLEMENT_DEFAULTS.reserve.maxPercent,
+      min: 0,
+      max: 100,
+    },
   },
   { _id: false },
 );
@@ -487,6 +520,47 @@ const refundSettingSchema = new mongoose.Schema(
       default: REFUND_DEFAULTS.authorizedAlertMinutes,
       min: 1,
     },
+
+    /**
+     * ---------- abuse limits ----------
+     *
+     * These count **refused** requests, never approved ones — see
+     * `REFUND_DEFAULTS`. A customer with five approved refunds had five bad
+     * experiences, and blocking their sixth punishes the person the process
+     * exists for.
+     */
+    maxOpenRequests: {
+      type: Number,
+      default: REFUND_DEFAULTS.maxOpenRequests,
+      min: 1,
+    },
+    maxRejectedPerWindow: {
+      type: Number,
+      default: REFUND_DEFAULTS.maxRejectedPerWindow,
+      min: 1,
+    },
+    requestWindowDays: {
+      type: Number,
+      default: REFUND_DEFAULTS.requestWindowDays,
+      min: 1,
+    },
+    /**
+     * `MANUAL_BANK`: when the customer is nudged for their account details, and
+     * when a silent one becomes an admin's problem.
+     *
+     * ⚠️ An unset array of numbers arrives as `[]`, not `undefined`, which is why
+     * `getCustomerConfig` falls back on **length**. Clearing this in the panel
+     * would otherwise stop every nudge while the job kept reporting healthy runs.
+     */
+    bankDetailsReminderHours: {
+      type: [Number],
+      default: () => [...REFUND_DEFAULTS.bankDetailsReminderHours],
+    },
+    bankDetailsStaleDays: {
+      type: Number,
+      default: REFUND_DEFAULTS.bankDetailsStaleDays,
+      min: 1,
+    },
   },
   { _id: false },
 );
@@ -497,6 +571,22 @@ const chargebackSettingSchema = new mongoose.Schema(
       type: Number,
       default: CHARGEBACK_DEFAULTS.writeOffDays,
       min: 1,
+    },
+    /**
+     * Hours before `disputeRespondBy` at which an admin is warned.
+     *
+     * ⚠️ `disputeDeadlines` sorts these widest-first itself rather than trusting
+     * the stored order: saved as `[24, 72]` they would otherwise fire the 24h
+     * warning three days early and the 72h one never.
+     *
+     * ⚠️ An unset array of numbers arrives as `[]`, not `undefined` — which is
+     * why `getCustomerConfig` falls back on **length** rather than `??`. Without
+     * that, clearing this in the admin panel would silently stop every warning
+     * until the deadline had already gone.
+     */
+    deadlineAlertHours: {
+      type: [Number],
+      default: () => [...CHARGEBACK_DEFAULTS.deadlineAlertHours],
     },
   },
   { _id: false },
@@ -517,6 +607,37 @@ const customerSettingSchema = new mongoose.Schema(
   { _id: false },
 );
 
+/**
+ * One-time codes.
+ *
+ * ⚠️ Its own top-level block rather than living under `customer`, because
+ * vendors, sub-vendors and customers all log in with the same OTP machinery.
+ * Filing it under one audience would mean the other two were throttled by a
+ * setting nobody would think to look at.
+ */
+const otpSettingSchema = new mongoose.Schema(
+  {
+    resendCooldownSeconds: {
+      type: Number,
+      default: OTP_DEFAULTS.resendCooldownSeconds,
+      min: 0,
+    },
+    maxPerHour: {
+      type: Number,
+      default: OTP_DEFAULTS.maxPerHour,
+      // ⚠️ At least one. A zero here would lock **everybody** out of logging in,
+      // silently, from a settings screen — and the way back in is also a login.
+      min: 1,
+    },
+  },
+  { _id: false },
+);
+
+const securitySettingSchema = new mongoose.Schema(
+  { otp: { type: otpSettingSchema, default: () => ({}) } },
+  { _id: false },
+);
+
 const settingSchema = new mongoose.Schema(
   {
     vendor: {
@@ -525,6 +646,10 @@ const settingSchema = new mongoose.Schema(
     },
     customer: {
       type: customerSettingSchema,
+      default: () => ({}),
+    },
+    security: {
+      type: securitySettingSchema,
       default: () => ({}),
     },
     isActive: { type: Boolean, default: true },

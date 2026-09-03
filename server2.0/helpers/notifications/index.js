@@ -29,7 +29,22 @@ const {
   notifyBrandCustomerVisibilityChanged,
 } = require("./brandStatusNotices");
 
+const refundNotices = require("./refundNotices");
+const settlementNotices = require("./settlementNotices");
+const indexNotices = require("./indexNotices");
+const disputeNotices = require("./disputeNotices");
+
+const { sendQuietly } = require("./sendQuietly");
+
 module.exports = {
+  sendQuietly,
+  // Refund notices, one per state somebody can act on.
+  ...refundNotices,
+  // Settlement notices, on the same rule — three to the vendor, three to the
+  // admin, and nothing for a state nobody can act on.
+  ...settlementNotices,
+  ...indexNotices,
+  ...disputeNotices,
   notify,
   notifyAdmins,
   notifyAudience,

@@ -186,28 +186,57 @@ describe("posting the same money twice is impossible", () => {
     expect(await LedgerEntry.countDocuments({})).toBe(1);
   });
 
+  /**
+   * ⚠️ This used to demonstrate the point with a `LEDGER_ENTRY_TYPE.REFUND` row,
+   * passing `account` and `direction` by hand — which was the one way that type
+   * could ever have been written, and exactly the misuse it invited. There is no
+   * `REFUND` type now; see the note where it used to sit in `constants/ledger.js`.
+   *
+   * A chargeback is the honest example, and a better one: it repeats for a real
+   * reason. A payment disputed, then escalated to pre-arbitration, carries two
+   * disputes with two ids — so `ONCE_PER_TRANSACTION` must not stop the second,
+   * while `ONCE_PER_DISPUTE` still stops a redelivery of either.
+   */
   it("still allows types that legitimately repeat", async () => {
     const transactionId = oid();
     const brandId = oid();
-    // A transaction can be partially refunded more than once.
+
     await recordLedgerEntry({
-      entryType: LEDGER_ENTRY_TYPE.REFUND,
+      entryType: LEDGER_ENTRY_TYPE.CHARGEBACK,
       amount: 100,
-      account: LEDGER_ACCOUNT.VENDOR_PAYABLE,
-      direction: LEDGER_DIRECTION.DEBIT,
       brandId,
       transactionId,
+      disputeId: "disp_first",
     });
     await recordLedgerEntry({
-      entryType: LEDGER_ENTRY_TYPE.REFUND,
+      entryType: LEDGER_ENTRY_TYPE.CHARGEBACK,
       amount: 50,
-      account: LEDGER_ACCOUNT.VENDOR_PAYABLE,
-      direction: LEDGER_DIRECTION.DEBIT,
       brandId,
       transactionId,
+      disputeId: "disp_escalated",
     });
 
     expect(await LedgerEntry.countDocuments({ transactionId })).toBe(2);
+  });
+
+  /** And the same dispute arriving twice is still refused. */
+  it("refuses a redelivery of the same dispute", async () => {
+    const transactionId = oid();
+    const brandId = oid();
+    const args = {
+      entryType: LEDGER_ENTRY_TYPE.CHARGEBACK,
+      amount: 100,
+      brandId,
+      transactionId,
+      disputeId: "disp_same",
+    };
+
+    const first = await recordLedgerEntry(args);
+    const second = await recordLedgerEntry(args);
+
+    expect(first.duplicate).toBe(false);
+    expect(second.duplicate).toBe(true);
+    expect(await LedgerEntry.countDocuments({ transactionId })).toBe(1);
   });
 });
 

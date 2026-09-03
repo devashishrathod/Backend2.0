@@ -14866,7 +14866,374 @@
       ]
     },
     {
-      "name": "12 — Access control (customer token refuse hona chahiye)",
+      "name": "12 — Refunds",
+      "description": "Paisa wapas maangna, aur uska kya hua.\n\nGrahak maange → **outlet tay kare** → Trydood nikaale. Trydood normal raaste par\ndoosra gate nahi hai.",
+      "item": [
+        {
+          "name": "Refund maango ⭐",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "// ── capture into the environment ──",
+                  "if (pm.response.code < 300) {",
+                  "  try { const d = pm.response.json().data; if (d._id) pm.environment.set(\"refund_request_id\", String(d._id)); } catch (e) {}",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"claimId\": \"{{claim_id}}\",\n  \"amount\": 810,\n  \"reason\": \"NOT_HONOURED\",\n  \"reasonNote\": \"The outlet was shut when I got there.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/refunds",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "refunds"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** 🔒 `isCustomer` — ownership **customer** par check hoti hai, user par nahi,\nto ek login saajha karte do log ek doosre ki claim refund nahi kar sakte.\n\n**Kram hi design hai:**\n\n```\neligibility → allowance → window → split freeze → request banao → hold lagao\n```\n\n- **Request pehle, hold baad me** — request hi record hai aur hold usse nikalta hai.\n- Do tap ka faisla `(transactionId, isOpen)` wala **unique index** karta hai, uske\n  upar wala read-then-write check nahi (dono use paas kar jaate hain). Haarne wale ko\n  **wahi** request milti hai `reused: true` ke saath — grahak ki taraf se nateeja ek\n  hi hai, usne ek baar maanga.\n- **Split yahin freeze hota hai.** Mangalwar ko approve aur Guruwar ko paid hone wala\n  refund theek wahi paisa hilaye jitna sabne Mangalwar ko maana tha.\n\n| Field | Zaroori | Notes |\n|---|:-:|---|\n| `claimId` | ✅ | |\n| `amount` | — | **Na do to poora.** Jo figure server ko pehle se pata hai use dobara type karana hi use galat type karane ka tareeka hai |\n| `reason` | ✅ | `NOT_HONOURED · OUTLET_CLOSED · WRONG_AMOUNT · SERVICE_ISSUE · DUPLICATE_PAYMENT · CHANGED_MIND · OTHER` |\n| `reasonNote` | — | `OTHER` ke saath **zaroori** |\n\n### Window\n\n`refund.windowHours` (24) — **`paidAt` se**, claim banne se nahi. Ek ghante chhoda hua\ncheckout phir pay ho to uski window grahak ke paisa dene se *pehle* shuru ho jaati.\n\n### ⚠️ `settlementHold`\n\nRequest bante hi lag jaata hai. **Wahi ek line poori \"pehle vendor ko pay kar diya, ab\nwapas lo\" wali samasya khatam karti hai** — golden rule\n(`72h >= 24 + 24 + 12`) ke chalte refund kabhi us paise ko chhoo hi nahi sakta jo ja chuka ho."
+          },
+          "response": []
+        },
+        {
+          "name": "Refund wapas le lo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/refunds/{{refund_request_id}}/withdraw",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "refunds",
+                "{{refund_request_id}}",
+                "withdraw"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** 🔒 `isCustomer` + ownership\n\n`REQUESTED`, `VENDOR_APPROVED` ya `VENDOR_TIMEOUT` tak. Uske baad **nahi** —\n`PROCESSING` ka matlab paisa Razorpay ke paas hai aur wapas lene ko kuch hai hi nahi.\nAisi cancellation maan lene se behtar hai keh dena jo hogi hi nahi (`409`).\n\n`settlementHold` hattta hai.\n\n⚠️ Wapas lena allowance me **ginta hai**: raise → outlet dekhe → withdraw → phir raise,\nye outlet ko vyast rakhne ka tareeka hai bina kabhi rejection kamaye."
+          },
+          "response": []
+        },
+        {
+          "name": "Meri refunds ⭐",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/refunds?page=1&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "refunds"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "open",
+                  "value": "true",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "COMPLETED",
+                  "disabled": true
+                },
+                {
+                  "key": "claimCode",
+                  "value": "{{claim_code}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** 🔒 `verifyJwtToken` — **ek endpoint, teen shapes**\n\n| Field | Customer | Vendor / Outlet | Admin |\n|---|:-:|:-:|:-:|\n| `split.totalRefund` | ✅ | — | ✅ |\n| `split.vendorClawback` · `vendorPromoReversal` | — | ✅ | ✅ |\n| `split.platformPromoReversal` · `gatewayFeeAbsorbed` | — | — | ✅ |\n| `utr` | ✅ | — | ✅ |\n| `vendorNote` | ❌ | apna | ✅ |\n| `adminNote` · `overrideReason` | ❌ | ❌ | ✅ |\n| `customerId` | ✅ (apna) | ❌ | ✅ |\n\n> ⚠️ `split` me hamara promo hissa aur wo MDR jo hum khaate hain **usi**\n> sub-document par hain jis par `vendorClawback` hai — jo vendor ko sach me\n> chahiye. Isiliye ye faisla `refundProjection()` me ek jagah hota hai, har call\n> site par yaad nahi rakha jaata.\n\n### `statusLabel` — jo grahak dekhta hai\n\n| Andar | Grahak ko |\n|---|---|\n| `VENDOR_REJECTED` | Declined by the outlet |\n| **`VENDOR_TIMEOUT`** | **Under review by Trydood** |\n| `PROCESSING` | On its way to your account |\n| `FAILED` | Refund failed — we are on it |\n\n⚠️ `VENDOR_TIMEOUT` kabhi apne naam se nahi aata — na body me, **na `meta` me**.\nGrahak ko ye batana ki outlet ne anasuna kiya ek jhagda shuru karta hai jise phir\nplatform ko suljhana padta hai, aur wo aisi jaankari nahi jis par wo kuch kar sake.\n\n`vendorNote` bhi kabhi nahi — wo staff ne staff ke liye likha hai.\n\n`canWithdraw` response me **bataya** jaata hai; app ko status se andaza nahi lagana\nchahiye — jo panel status se nikalega wo naye state judte hi galat hoga.\n\nKhaali list **`200` + `data: []`**, `404` nahi."
+          },
+          "response": []
+        },
+        {
+          "name": "Ek refund — timeline ke saath",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/refunds/{{refund_request_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "refunds",
+                "{{refund_request_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** 🔒 `verifyJwtToken`\n\n**Response:** `refund` · `claim` · **`timeline`** · `viewer`\n\nTimeline **claim ki** hai, refund ki alag nahi — refund claim ke saath hui ek cheez\nhai, aur claim ki kahani wahi jagah hai jahan grahak, outlet aur admin teeno jaate\nhain. Alag timeline ka matlab hota join, aur do orderings ko ek saath rakhna.\n\n### `utr` — wo ek field jo support maangta hai\n\nRazorpay ka bank reference (`acquirer_data.arn`). Paisa na pahunche to grahak yahi\napne bank ko quote karta hai. `refund.processed` aane par bharta hai."
+          },
+          "response": []
+        },
+        {
+          "name": "Dusre ki claim par refund — 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "});",
+                  "",
+                  "pm.test(\"failure envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(false);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "// Ownership customer par hai, user par nahi."
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"claimId\": \"{{other_customer_claim_id}}\",\n  \"reason\": \"NOT_HONOURED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/refunds",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "refunds"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Ownership **customer** par check hoti hai, `userId` par nahi — ek login saajha karte do customer me se ek doosre ki claim refund nahi kar sakta."
+          },
+          "response": []
+        },
+        {
+          "name": "OTHER bina note — 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 422\", function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test(\"failure envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(false);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "// Closed list ke bahar ka reason free text maangta hai."
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"claimId\": \"{{claim_id}}\",\n  \"reason\": \"OTHER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/refunds",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "refunds"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "`reason` closed list hai kyunki wahi ek field hai jis par report group ho sakti hai —\n*\"is brand ki 40% refunds NOT_HONOURED hain\"* ek vendor conversation hai; hazaar alag\nvaakya nahi. `OTHER` free text uthata hai, aur uske bina 422."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "13 — Access control (customer token refuse hona chahiye)",
       "description": "Ye folder **negative tests** ka hai — har request ka pass hona matlab gate kaam kar\nraha hai. Sab customer ke apne token se chalti hain, koi extra setup nahi chahiye.\n\nPehle in me se zyadatar `200` deti thi: 149 me se 35 endpoints bilkul ungated the.\n\n| Status | Kab |\n|---|---|\n| `401` | Token hai hi nahi, ya expire ho gaya |\n| `403` | Token malformed hai, ya role allowed nahi |",
       "item": [
         {

@@ -10,9 +10,20 @@
 
 **Framework:** Express.js (CommonJS) · **DB:** MongoDB (Mongoose)
 **Route mounting:** `routes/index.js` auto-mounts har file ko uske filename se → `routes/subBrands.js` = `/trydood/v1/subBrands` (camelCase preserved)
-**Scanned:** 2026-08-26 · **Total endpoints:** 149 (+3 utility/non-versioned)
+**Scanned:** 2026-09-03 · **Total endpoints:** 202 (+3 utility/non-versioned)
 
-> Count Express router introspection se nikala gaya hai (har mounted router ka `stack`), route files hand-count karke nahi — is liye ye drift nahi karega.
+> Count Express router introspection se nikala gaya hai (har mounted router ka `stack`),
+> route files hand-count karke nahi.
+>
+> ⚠️ **Par ye phir bhi drift karta hai, aur kiya bhi.** Pehle yahan likha tha *"is liye
+> ye drift nahi karega"* — introspection ek **baar** chalaya gaya tha aur uska nateeja
+> yahan chipka diya gaya tha. Ek hafte me ginti 149 se 202 ho gayi aur ye line wahi
+> padi rahi, apne aap par bharosa dilati hui. Kisi bhi doc me likhi hui sankhya sirf us
+> din sach hoti hai jis din wo nikali gayi ho:
+>
+> ```bash
+> node -e "const fs=require('fs');let t=0;for(const f of fs.readdirSync('routes')){if(f==='index.js'||!f.endsWith('.js'))continue;const r=require('./routes/'+f),R=r.router||r;if(typeof R==='function'&&R.stack)t+=R.stack.filter(l=>l.route).length}console.log(t)"
+> ```
 
 ---
 
@@ -35,7 +46,8 @@ Pichhla scan 2026-08-21 ko hua tha (108 endpoints). Uske baad **35 naye endpoint
 |---|---:|---|
 | `/auth` | +3 | `set-password` (signed-in), `forgot-password` + `reset-password` (public 2-step) |
 | `/brands` | +4 | `onboarding/acknowledge-approval` (vendor) · `admin/verifications` (list) · `admin/verifications/:brandId/review` · `verifications/history` (shared audit trail) |
-| `/transactions` | +8 | `subscribe/preview` · `invoice/regenerate` · `webhook/razorpay` + `webhook/razorpay/customer` (public HMAC, ek per Razorpay account) · `webhook/events` + `/:eventId` + `replay/:eventId` · `disputes` |
+| `/transactions` | +8 | `subscribe/preview` · `invoice/regenerate` · `webhook/razorpay` + `webhook/razorpay/customer` (public HMAC, ek per Razorpay account) · `webhook/events` + `/:eventId` + `replay/:eventId` · `disputes*` (⚠️ ab canonical ghar `/disputes` hai — ye compatibility ke liye rehte hain) |
+| `/disputes` 🆕 | 4 | `` (worklist) · `/:disputeId` · `/:disputeId/evidence` · `/:disputeId/evidence-pack`. Dispute pehle `Transaction` par das fields tha; ab apna collection, apne jobs, apni notifications — yani apna domain |
 
 ### 🔒 Security improvements (badi baat)
 
@@ -546,7 +558,11 @@ Razorpay subscription payments + webhook operations.
 | 128 🆕 | GET | `/transactions/webhook/events` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Webhook delivery log. Pehle deliveries store hoti thi par DB ke bahar invisible thi — ek FAILED event (paisa captured, plan live nahi) chup-chaap pada reh sakta tha |
 | 129 🆕 | GET | `/transactions/webhook/events/:eventId` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | |
 | 130 🆕 | POST | `/transactions/webhook/replay/:eventId` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Stored payload dobara process. **Idempotent** — settlement transaction ko conditionally claim karta hai, to already-settled ka replay double-activate nahi karta |
-| 131 🆕 | GET | `/transactions/disputes` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Chargebacks, sabse pehle deadline wala upar. Deadline miss = paisa automatically forfeit, isliye ye report nahi **worklist** hai |
+| 131 🆕 | GET | `/disputes` | Intended: Vendor + Admin · Enforced: **TOKEN** | 🟣 | Chargebacks, sabse pehle deadline wala upar. Deadline miss = paisa automatically forfeit, isliye ye report nahi **worklist** hai. **Ek endpoint, do shape**: vendor ko sirf apne brand ke, aur scoping **filter me** — projection me chhupa kar nahi. ⚠️ Vendor ko `respondBy`/`daysToRespond`/`isOverdue`/`alertsSent`/`recoverySettlementId`/`vendorWasPaid` **kabhi nahi**: deadline nibhana hamara kaam hai aur evidence hum file karte hain, to jis countdown par outlet kuch kar hi nahi sakta wo warning nahi — sirf ghabrahat aur ek support call hai. ⚠️ CUSTOMER ko 403: chargeback unke bank aur hamare beech hai. ⚠️ `verifyJwtToken` **saaf-saaf** likha hai — is router par blanket gate nahi hai, to `isAdmin` hatate waqt uski jagah kuch na rakhna poori worklist URL jaanne wale ke liye khol deta |
+| 131a 🆕 | GET | `/disputes/:disputeId` | Intended: Vendor + Admin · Enforced: **TOKEN** | 🟣 | Ek dispute, wahi do shape. ⚠️ Projection **list se shared hai**, apni likhi hui nahi — alag likhna wahi tarika hai jisse list jo field chhupati hai wo detail par aa jaata hai, mahino baad, bina kuch fail hue. Razorpay ka `disp_…` **ya** hamara `_id` — dono chalte hain, kyunki pehla dashboard par dikhta hai aur doosra panel ke paas hota hai. Doosre brand ka dispute **404**, missing jaisa hi: *"hai par tumhara nahi"* kehna id asli hone ki tasdeeq hai |
+| 131b 🆕 | POST | `/disputes/:disputeId/evidence` | Intended: Vendor + SubVendor · Enforced: **VENDOR+SUB** | 🟠 | Jo sirf outlet ke paas hai — KOT/bill number, camera ka waqt, staff ko kya yaad hai. ⚠️ **Bonus hai, sahaara nahi**: pack hamare apne record par khada hota hai, aur filing outlet ke jawab ka intezaar nahi karti — dispute ka jawab **ek hi baar** jaata hai aur deadline bank ki hai. Faisla ho chuka ho to **409**, aur refusal batata hai ki kis taraf gaya taaki wo soch me na pade ki message bounce kyun hua |
+| 131c 🆕 | GET | `/disputes/:disputeId/evidence-pack` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Sab kuch jo hum sabit kar sakte hain — payment + **signature verified** (khud sabooot: callback hamare account ke secret se signed tha), outlet, claim code, timeline, aur **`narrative`** jo Razorpay dashboard me seedha paste ho jaata hai. Argument pehle se likha hua isliye ki dispute **ek baar** file hota hai aur jeet-haar aksar isi par hoti hai ki case theek se likhne ka waqt tha ya nahi. ⚠️ Admin-only: grahak ka **masked** contact, poori claim timeline aur wo daleel jo hum dene wale hain — kuch bhi outlet ka padhne ka nahi. ⚠️ Razorpay se baat nahi karta aur kuch submit nahi karta |
+| 131d | GET | `/transactions/disputes` · `POST /transactions/disputes/:id/evidence` · `GET /transactions/disputes/:id/evidence-pack` | wahi gates | ⚪ | **Purane raaste, wahi controllers.** Dispute pehle `Transaction` par das denormalised fields tha, isliye yahan tha. Ab apna collection aur apna domain hai. Ye teen rehte hain kyunki Postman aur pehle se juda koi bhi integration inhi par hai — 404 dene se bura kuch nahi. ⚠️ **Yahan naya kuch mat jodo**: `disputeVisibility.test.js` dono mounts ko identical rakhta hai aur naye route ko purane mount par aane se rokta hai |
 | 131h 🆕 | GET | `/transactions/admin/health` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | **Liveness probe nahi** — server ka jawab dena hi wo sabit karta hai. Ye wo sawaal hai jo admin ko subah nau baje hota hai: *raat me kuch atka to nahi, aur abhi kuch chup-chaap paisa to nahi kho raha?* Teen hisse: `jobs` (safety net ruk gaya) · `stuck` (paisa aisi haalat me jise kuch nikalega nahi) · `indexes`. **`CRITICAL` sirf us cheez ke liye jo ghadi ke saath paisa khoti hai** — bina capture hui authorization ~5 din me khud refund ho jaati hai, dispute deadline chookne par paisa apne aap chala jaata hai, koi nirnay liye bina. Baaki `ATTENTION`: asli hai par insaan ka intezaar karte hue bigadta nahi. Dono ko ek rang dena logon ko laal nazarandaaz karna sikha deta hai. Har ginti **query hai, cached counter nahi** — ruk gaya cached number *"shunya samasyaein"* padha jaata hai jabki samasya badh rahi hoti hai. 8 me se koi job kabhi na chala ho to bhi `ATTENTION`: `startJobs` boot par har job ek baar chalata hai, to `NEVER_RUN` bachna matlab runner chala hi nahi — aur tab upar ke saare safety net maujood hi nahi. Hamesha `200`, khabar buri ho tab bhi: jo health endpoint anhealthy hone par 500 de wo bata hi nahi sakta **kya** anhealthy hai |
 
 ---
@@ -576,6 +592,109 @@ Customer ka voucher claim — paisa andar. **Likhne wale** do endpoint `isCustom
 | 131e 🆕 | GET | `/voucher-claims/payments/:transactionId` | Intended: sab · Enforced: **`assertTransactionAccess`** | 🔵 | **Push notification ka deep link yahin utarta hai.** `payment` · `claim` · `brand` · `outlet` · `viewer`. Claim saath aata hai kyunki akela payment sirf raqam aur timestamp hai. `invoiceDownloadUrl` deta hai, **token nahi** — token PDF ka bina-auth bearer credential hai. ⚠️ `purpose` scope ke bina ye **subscription** payment khol deta — dusre Razorpay account ka row, voucher-claim ki projection se. Id ka unique hona iska jawab nahi hai |
 | 131f 🆕 | GET | `/voucher-claims/:claimId` | Intended: sab · Enforced: **`assertClaimAccess`** | 🔵 | Claim + **timeline**. ⚠️ Timeline **banayi** jaati hai, chhaani nahi: `VoucherClaimHistory.snapshot` `Mixed` hai aur `CLAIM_CREATED` par **poora pricing block** rakhta hai (`platformPromoCost` samet), `reason` staff ka free-text note hai. Kaccha row bhejna vendor ko hamara margin pichhle darwaze se de deta — us projection ko paar karke jo use rokti hai. Non-admin ko sirf `label` · `at` · `fromStatus` → `toStatus` · `by` (role, aadmi nahi). `PROMO_RELEASED` sirf admin ko |
 | 131g 🆕 | GET | `/voucher-claims/code/:claimCode` | Intended: sab · Enforced: **`assertClaimAccess`** | 🔵 | Counter wala surface — code hi wo cheez hai jo asli duniya me hai: chhapa, bolkar padha, type kiya. ⚠️ **Code lookup narrow karta hai, authorise nahi karta** — kisi aur ki screen se padha code kuch nahi kholta. Route file me `/code/:claimCode` **`/:claimId` se upar** likha hai, warna parameter use nigal leta (`claimId = "code"` → sahi code par 422). Alphabet `0/O`, `1/I/L`, `5/S`, `2/Z`, `8/B` chhodta hai, isliye galat character par `422` *"mistyped"* — `404` lagta hai claim hai hi nahi |
+
+---
+
+## 22b. Refunds 🆕 — `/refunds` (9)
+
+Grahak maange → **vendor tay kare** → admin nikaale.
+**Poora flow → [`refund_flow.md`](./refund_flow.md).** Admin normal raaste par doosra gate **nahi** hai; wo sirf paisa chhodta hai.
+
+> ### Golden rule — settings validator me enforce hai
+>
+> ```
+> settlementDelayHours >= refundWindowHours + vendorApprovalHours + adminBufferHours
+>          72h         >=        24h        +        24h         +       12h
+> ```
+>
+> Jab tak ye sach hai, **koi refund kabhi aise paise ko chhoo hi nahi sakta jo vendor ko ja chuka ho.** Na recovery, na negative balance, na vendor ko kuch samjhana. Refund us cycle ka payable kam karta hai, bas.
+
+> ### ⚠️ `settlementHold` lagta bhi hai, **hatta bhi** hai
+>
+> Refund `REQUESTED` hote hi hold lag jaata hai — wahi ek line poori "pehle pay kar diya, ab wapas lo" wali samasya khatam karti hai. Ulta utna hi khatarnak hai: **jo hold koi nahi hataata, wo vendor ka paisa har aane wali settlement se hamesha ke liye bahar kar deta hai — chup-chaap**, kyunki eligibility predicate bas match karna band kar deta hai. Koi error nahi, koi log nahi.
+>
+> Isliye `releaseSettlementHold()` teeno terminal states se bulaya jaata hai jahan paisa hilta hi nahi — `VENDOR_REJECTED`, `ADMIN_REJECTED`, `CANCELLED`. `FAILED` aur `COMPLETED` se **nahi**: pehle me paisa abhi bhi wapas jaana hai, doosre me wo vendor ka tha hi nahi. Aur wo kisi aur ki taraf se release **nahi** karta — chargeback ka hold sirf explicit admin action se hatta hai, webhook se kabhi nahi.
+
+> ### Abuse limits — admin config se
+>
+> `refund.maxOpenRequests` (1) · `refund.maxRejectedPerWindow` (3) · `refund.requestWindowDays` (30)
+>
+> ⚠️ Ginti **thukrai** requests ki hoti hai, approve hui ki **kabhi nahi**. Galat ka sanket ye nahi ki kitna paisa wapas gaya — wo hai *"vendor ne dekhkar kaha ki ye jayaz nahi thi"*. Jis grahak ki 5 refunds approve hui, uske saath 5 baar sach me bura hua; uski chhathi rokna theek usi ko saza dena hai jiske liye ye poori vyavastha bani hai. Aur raw count rakhne par **sabse kharab brand ka grahak sabse pehle block** hota — jo sabse zyada haqdaar hai. `CANCELLED` bhi ginta hai: raise → vendor dekhe → withdraw → phir raise, ye vendor ko vyast rakhne ka tareeka hai bina kabhi rejection kamaye.
+>
+> Limit chhoone par jawab **support par bhejta hai, raasta band nahi karta** — admin uski taraf se refund khol sakta hai.
+
+| # | Method | Endpoint | Access | Cat | Notes |
+|---|---|---|---|---|---|
+| 133a 🆕 | POST | `/refunds` | Intended: Customer · Enforced: **CUSTOMER + ownership** | 🔵 | **Kram hi design hai:** eligibility → allowance → window → split freeze → **request banao** → hold lagao. Request pehle, hold baad me: request hi record hai aur hold usse nikalta hai. Do tap ka faisla `(transactionId, isOpen)` wala unique index karta hai, uske upar wala read-then-write check nahi (dono use paas kar jaate hain) — haarne wale ko wahi request milti hai `reused: true` ke saath. Window **`paidAt` se** napi jaati hai, `createdAt` se nahi. `amount` optional — na do to poora |
+| 133b 🆕 | PATCH | `/refunds/:requestId/withdraw` | Intended: Customer · Enforced: **CUSTOMER + ownership** | 🔵 | `PROCESSING` ke baad nahi — paisa Razorpay ke paas hai, wapas lene ko kuch hai hi nahi. Hold hattta hai |
+| 133c 🆕 | PATCH | `/refunds/:requestId/approve` | Intended: Vendor / Outlet · Enforced: **brand + outlet** | 🟢 | **Rakam ghat sakti hai, badh nahi** — *"aadha order theek tha"* asli jawab hai; badhana approval nahi, naya faisla hai, aur ek extra shunya das guna pay out kar deta. Split wahin dobara freeze hota hai. `status` update filter me hai (conditional claim): owner aur outlet manager ek hi request dekh sakte hain, warna dono clicks lagte aur grahak ka jawab is par nirbhar karta ki kaun dheema tha |
+| 133d 🆕 | PATCH | `/refunds/:requestId/reject` | Intended: Vendor / Outlet · Enforced: **brand + outlet** | 🟢 | `note` **zaroori** — jab grahak inkaar ko chunauti de, admin ke paas sameeksha karne ko yahi ek cheez hoti hai. `settlementHold` yahin hattta hai |
+| 133e 🆕 | PATCH | `/refunds/admin/:requestId/approve` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Normal raaste par doosra gate nahi. Vendor ki *"na"* ya chuppi palatne par `overrideReason` **zaroori** aur `isOverride: true` — alag se gina jaata hai: badhti override dar ka matlab admin udaar nahi, matlab upar kahin gadbad hai |
+| 133f 🆕 | PATCH | `/refunds/admin/:requestId/reject` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Hold hattta hai |
+| 133g 🆕 | PATCH | `/refunds/admin/:requestId/pay` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | ⚠️ **`attemptCount` gateway call se PEHLE badhta hai.** Agar process us beech mare jab Razorpay ne refund maan liya par id sahej na paye — row `PROCESSING` kehti hai, `attemptCount: 1`, koi `razorpayRefundId` nahi — aur agli koshish `payments.fetchMultipleRefund()` se **poochti hai**, doosra refund bhejti nahi. Baad me badhate to counter shunya rehta aur retry grahak ko paisa **do baar** bhej deta. Match hamare stamp kiye `notes.refundRequestId` par, rakam par nahi. Lookup khud fail ho to **503**, row `PROCESSING` chhod deta — galat hone ka surakshit tareeka |
+| 133h 🆕 | GET | `/refunds` | Intended: sab · Enforced: **token se scope** | 🔵 | Ek endpoint, teen shapes. `?open=true` worklist hai — **sabse purani upar**, kyunki wahi timeout ke sabse kareeb hai aur usi grahak ne sabse lamba intezaar kiya. ⚠️ `split` me `platformPromoReversal` aur `gatewayFeeAbsorbed` (hamara margin) **usi sub-document par** hain jis par `vendorClawback` hai — isiliye faisla ek jagah hota hai. `canDecide` / `canWithdraw` response me **bataye** jaate hain: jo panel status se nikalega wo naye state judte hi galat hoga |
+| 133i 🆕 | GET | `/refunds/:requestId` | Intended: sab · Enforced: **`assertRefundAccess`** | 🔵 | Refund + claim + **claim ki timeline** (alag refund timeline nahi — refund claim ke saath hui cheez hai, aur claim ki kahani wahi jagah hai jahan teeno jaate hain). Poora row padhkar, jaanchkar, phir `pickByProjection` se chhanta hai: ownership `customerId`/`brandId` me hai aur vendor projection unhi ko chhupati hai |
+
+**Webhooks:** `refund.created` · `refund.processed` · `refund.failed` — teeno ab handle hote hain. ⚠️ Pehle sirf `refund.processed` tha; baaki do enum me the par kisi branch me nahi, to **failed refund chup-chaap `IGNORED` hokar gir jaata** — grahak ka paisa kabhi nahi pahuncha, request abhi bhi `PROCESSING` kehti thi, aur koi kuch nahi batata tha.
+
+**Jobs (3):** `escalateStaleRefunds` (15m) · `reconcileRefunds` (30m, **sirf padhta hai** — refund jaari karna `executeRefund` ka kaam hai aur uske apne double-payment guards hain) · `remindVendorsAboutRefunds` (60m)
+
+---
+
+## 22c. Settlements 🆕 — `/settlements` (12)
+
+Din band ho → kabza ho → admin manzoori de → NEFT jaaye → UTR record ho.
+**Poora flow → [`settlement_flow.md`](./settlement_flow.md).** Vendor ke liye yahan
+**koi write nahi** hai: settlement hamara record hai ki hum unhe kya de rahe hain,
+koi form nahi jo wo bharein. Ikhtilaf support se hota hai.
+
+> ### Kabza hi lock hai
+>
+> `Transaction.settlementId: null` wahi ek cheez hai jo do cycles ko ek hi payment
+> baantne se rokti hai. Shell **pehle** banti hai, rows **baad me** claim hoti hain —
+> ulta karne par rows aise settlement se bandh jaate jo bani hi nahi, aur wo phir
+> kabhi kisi cycle me nahi aate, **bina kisi error ke**.
+
+> ### ⚠️ `settlementHold` sirf claim se **pehle** ka filter hai
+>
+> Ek baar `settlementId` lag gaya, hold lagane se is settlement par koi asar nahi —
+> eligibility claim ke waqt tay ho chuki. 02:00 ki build aur 14:00 ke payout ke
+> beech ghanton ki khidki hai, aur wahi waqt hai jab `dispute.created` ya refund
+> aata hai. Isliye webhook settlement ko **flag** karta hai (`needsRevalidation` +
+> `taintedTransactionIds`), aur **approval hi authority hai**: shart update ke
+> filter me hai, `if` me nahi.
+
+> ### ⚠️ NEFT ka recall nahi hota
+>
+> Isi ek line se teen design faisle nikalte hain: (1) payout se pehle live bank
+> aur frozen `bankSnapshot` compare hote hain aur farq par settlement `ON_HOLD`
+> jaata hai — warning nahi, **rok**; (2) `sweepStalePayouts` sirf **batata** hai,
+> apne aap `FAILED` nahi karta, warna kaamyaab transfer ke upar "bank ne mana
+> kiya" likh kar vendor ko dobara paisa chala jaata; (3) bounce hui leg **mitayi
+> nahi jaati** — retry nayi leg banati hai, taaki record me dono koshishen bachein,
+> apne UTR aur apne payee ke saath.
+
+| # | Method | Endpoint | Access | Cat | Notes |
+|---|---|---|---|---|---|
+| 134a 🆕 | GET | `/settlements` | Intended: sab · Enforced: **token se scope** | 🔵 | Ek endpoint, do shapes. Scope aur filter **kaate** jaate hain, upar-neeche rakhe nahi — vendor kisi aur ka `brandId` bheje to khaali page, apne rows nahi. `?needsAttention=true` admin worklist hai (flagged / `FAILED` / `ON_HOLD`) aur **sabse purani upar**; baaki listing `periodEnd` desc, kyunki wo *"pichhle hafte ka paisa aaya?"* ka jawab hai. Khaali list **404 nahi** — pehle hafte wale brand ko "kuchh gadbad hai" nahi dikhna chahiye. `SUB_VENDOR` ko poora brand dikhta hai, apna outlet nahi: settlement poore brand ke din ka hai |
+| 134b 🆕 | GET | `/settlements/:settlementId` | Intended: sab · Enforced: **brand + admin** | 🔵 | Settlement + **legs (UTR ke saath)** + timeline. Poora row padhkar, jaanchkar, phir `pickByProjection` — whitelist hai, to model me kal koi field jude to wo tab tak chhupi rehti hai jab tak koi use naam na de. `reason` / `performedBy` / `snapshot` timeline me **sirf admin ko**: *"3 claimed payments are no longer eligible"* aise dispute ka naam leta hai jispar faisla hua hi nahi |
+| 134c 🆕 | GET | `/settlements/:settlementId/transactions` | Intended: sab · Enforced: **brand + admin** | 🔵 | Statement lines, alag se paged — vyast brand ka cycle sau-sau rows ka hota hai aur detail call zyadatar *"kitna, aur kab"* ke liye padha jaata hai. ⚠️ `voucher.platformPromoCost`, `gatewayFee`, `netReceived` vendor ko **nahi** — hamara margin usi sub-document par baitha hai jispar unka `vendorPayable` hai |
+| 134d 🆕 | PATCH | `/settlements/admin/:settlementId/approve` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | `needsRevalidation: {$ne: true}` **update ke filter me**, `if` me nahi — read aur write ke beech webhook aa sakta hai. Mana karne par `refuseAndHold` **kaunse invoice** kharaab hue wo naam se ginta hai; wo naam vendor ko kabhi nahi jaate |
+| 134e 🆕 | PATCH | `/settlements/admin/:settlementId/rebuild` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Sirf `ON_HOLD` par. **Sirf tainted rows** chhoote hain — saaf rows claim me hi rehti hain, warna agli build unhe rebuild ke beech me utha leti aur wahi rows do settlement me aa jaate. Rebuild ke baad kuchh na bache to `CARRIED_FORWARD` |
+| 134f 🆕 | PATCH | `/settlements/admin/:settlementId/hold` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Vendor ko *"on hold — being checked"* jaata hai, **bina tafseel ke**: `reason` aksar kisi disputed payment ka naam leta hai, aur wo batana do din ki der ko ek aise chargeback par behes bana deta hai jispar abhi faisla hua hi nahi |
+| 134g 🆕 | PATCH | `/settlements/admin/:settlementId/cancel` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | `reason` **zaroori** — har row agle cycle me chali jaati hai, kuchh khota nahi par vendor ka paisa is click se cycle badalta hai |
+| 134h 🆕 | PATCH | `/settlements/admin/:settlementId/pay` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Body me **kuchh nahi** — rakam `netPayable` hai aur payee frozen `bankSnapshot`; body me rakam lena matlab aisi rakam jo ledger se mel na khaye. Live bank vs frozen compare **pehle**; farq par `ON_HOLD`. Leg **pehle** banti hai, status **baad me**: beech me crash `APPROVED` + `INITIATED` leg chhodta hai (dikhta hai), ulta kram `PROCESSING` bina leg ke (padhne me "paisa gaya par kahin nahi mila"). Double-click ka faisla `(payoutType, settlementId, legNumber)` unique index karta hai, count nahi |
+| 134i 🆕 | PATCH | `/settlements/admin/:settlementId/confirm` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | `utr` **zaroori** — `MANUAL_BANK` ka koi callback nahi, aadmi hi callback hai, aur teen din baad *"paisa nahi aaya"* par wahi ek cheez bank statement me dhoondhi ja sakti hai. Leg conditional claim se badalti hai (do admin, ek jeet). `paidAt` liya jaata hai kyunki shukrawaar ki NEFT somwaar type hoti hai aur ledger entry **jab paisa gaya** us tareekh ki honi chahiye. Settlement `PAID` **tabhi** jab legs jud jaayein — split NEFT aam hai, aur pehli leg par hi `PAID` karna settlement ko har worklist se hata deta jabki aadha paisa baaki hai |
+| 134j 🆕 | PATCH | `/settlements/admin/:settlementId/fail` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Leg **rakhi** jaati hai, badli nahi. `FAILED` rows ko **nahi chhodta** — bounce aam hai aur sahi kaam hai account theek karke wahi settlement dobara bhejna, usi number aur statement ke saath. Vendor ko `failureReason` (category) jaata hai, `failureNote` (staff note) kabhi nahi |
+| 134k 🆕 | PATCH | `/settlements/admin/:settlementId/retry` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Nayi leg, agla number, aur **taaza `bankSnapshot`** — bounce ki aam wajah galat account hi hoti hai, aur usi galat account me dobara bhejna wo ek cheez hai jo pakka kaam nahi karegi |
+| — | — | *(no endpoint)* `settlement.requiresAdminApproval: false` | Admin config | ⚪ | Manzoori band ho to build **seedha `APPROVED`** par jaata hai — pehle ye setting dono taraf wired thi aur koi padhta hi nahi tha, to `false` karne ka koi asar nahi hota tha, bina error ke. ⚠️ Manzoori dena paisa dena nahi: `pay` ab bhi aadmi ka kaam hai aur `paySettlement` `needsRevalidation` **usi waqt** dobara padhta hai. ⚠️ `!== false`, `Boolean()` nahi — purane settings document me field hai hi nahi, aur truthiness padhne par agle deploy par har payout chup-chaap auto-approve ho jaata. ⚠️ `approvedAt` haan, `approvedBy` kabhi nahi |
+| 134m 🆕 | GET | `/settlements/admin/debt/:brandId` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Jo katauti kisi settlement cycle tak **pahunch hi nahi sakti**. `netPayable <= 0` `CARRIED_FORWARD` bhejta hai, aur carry forward ka matlab hi hai uske sab claims chhod dena — brand chal raha ho to sahi (nayi bikri net kar deti hai), band kar de to **anant loop**: koi error nahi, koi log nahi, kisi report me kuch nahi. ⚠️ **Brand par keyed, settlement par nahi** — ye theek wo paisa hai jo koi settlement utha hi nahi paayi. ⚠️ Ledger balance **nahi** ginta, rows ginta hai: balance debt ko un takings se net kar deta hai jo abhi payout hui hi nahi, yani jo paisa hum unka abhi bhi rakhe hue hain. ⚠️ Sirf un rows par jinka payment vendor ko diya ja chuka — jo mila hi nahi uska chargeback debt hai hi nahi, aur use ginna ek receivable gaḍhna hai. ⚠️ **Admin-only read**, is surface par ekmatra: *"outstanding debt"* wali screen vendor ko invoice jaisi padhegi jabki dena kuch nahi hai — unhe asar `SETTLEMENT_CARRIED_FORWARD` se milta hai |
+| 134n 🆕 | PATCH | `/settlements/admin/debt/:brandId/write-off` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Peechha chhodna, aur kitaab me likhna. `reason` **zaroori**: ledger kabhi edit nahi hota aur bina wajah wala adjustment galti se alag nahi kiya ja sakta. Optional `olderThanDays` — *"90 din se purana sab"* asli maang hai, *"sab"* se kahin zyada. ⚠️ Har row par `MANUAL_ADJUSTMENT` ka **joda**: `VENDOR_PAYABLE` credit (balance zero, aage koi cycle dekhega hi nahi) + `PLATFORM_COST` debit (humne uthaya). Reference **sirf vendor wali row par** — `ONCE_PER_DISPUTE`/`ONCE_PER_REFUND` `{reference, entryType}` par unique hain, to dono par lagane se doosri row duplicate-key par chup-chaap gir jaati aur kitaab theek utni chhoti reh jaati jitna maaf kiya tha. ⚠️ **Ledger pehle, rows baad me**; `writtenOffAt` dono claim filters me, warna write-off sirf dikhawa hai aur nuksaan **do baar** ginha jaata |
+| 134l 🆕 | PATCH | `/settlements/admin/:settlementId/reverse` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | **Ledger pehle, rows baad me.** Beech me crash: reversal likha, rows abhi claimed — zyada dikha raha hai, dikhta hai, theek ho sakta hai. Ulta kram: rows chhoot gaye bina reversal ke — padhne me "paisa kabhi gaya hi nahi" aur wo rows **dobara settle** ho jaate. `isReversal: true` inhe once-per-parent index se bahar rakhta hai, warna safety mechanism hi correction mechanism ko rok deta |
+
+**Jobs (5):** `buildSettlements` (60m — ghante me, raat me nahi: `idempotencyKey` par idempotent hai, to jis raat process band tha wo agle tick par apne aap bhar jaata hai) · `sweepStalePayouts` (30m, **sirf batata hai**) · `alertLateSettlements` (60m, counter usi update me badhta hai jo row claim karta hai — ek hi alert) · `reconcileSettlementLedger` (180m, **sirf padhta hai**: ledger row kabhi update ya delete nahi hoti, sudhaar nayi row hoti hai) · `sweepAbandonedDrafts` (60m — khaali `DRAFT` ka key us period ko ghere baitha hota hai aur agli build us brand ka din **skip** kar deti hai, hamesha ke liye)
+
+**Health signals:** `unconfirmedPayouts` (**CRITICAL** — paisa hil chuka, system ko pata nahi) · `overdueSettlements` · `strandedDrafts`
 
 ---
 

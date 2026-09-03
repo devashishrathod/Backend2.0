@@ -171,6 +171,20 @@ const voucherPricingSchema = new mongoose.Schema(
      */
     commissionPercent: { type: Number, default: 0 },
     commissionAmount: { type: Number, default: 0 },
+    /**
+     * GST on the commission, from the same switches as the fee's `gstAmount`.
+     * Zero twice over today — the rate is 0 and GST is off — and frozen for the
+     * same reason as the rate above.
+     */
+    commissionTax: { type: Number, default: 0 },
+    /**
+     * What the settlement actually deducts: `commissionAmount`, plus
+     * `commissionTax` **only** when that tax sits on top rather than inside.
+     *
+     * Stored rather than re-derived so the settlement, the ledger and the
+     * statement cannot disagree about it once `isGstInclusive` is flipped.
+     */
+    commissionDeduction: { type: Number, default: 0 },
   },
   { _id: false },
 );

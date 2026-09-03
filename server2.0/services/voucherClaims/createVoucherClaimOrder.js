@@ -29,7 +29,7 @@ const { PAYMENT_STATUS } = require("../../constants");
 const { PAYMENT_GATEWAYS } = require("../../constants/subscription");
 const { ROLES } = require("../../constants");
 
-const DUPLICATE_KEY = 11000;
+const { DUPLICATE_KEY } = require("../../constants/mongo");
 const MINUTE_MS = 60 * 1000;
 
 /**
@@ -350,6 +350,8 @@ exports.createVoucherClaimOrder = async (actor, payload, idempotencyKey) => {
         vendorPromoCost: pricing.vendorPromoCost,
         commissionPercent: pricing.commissionPercent,
         commissionAmount: pricing.commissionAmount,
+        commissionTax: pricing.commissionTax,
+        commissionDeduction: pricing.commissionDeduction,
       },
     });
   } catch (error) {

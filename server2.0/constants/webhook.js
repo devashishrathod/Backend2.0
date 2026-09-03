@@ -46,6 +46,20 @@ const DISPUTE_STATUS = Object.freeze({
   CLOSED: "CLOSED",
 });
 
+/**
+ * The statuses where a response is still worth something.
+ *
+ * ⚠️ `CLOSED` is **not** here. Razorpay closes a dispute the customer withdrew
+ * as well as one we simply never answered, and chasing a deadline on something
+ * already decided trains people to ignore the alert that matters. `WON` and
+ * `LOST` are decided by definition.
+ */
+const DISPUTE_ACTIONABLE_STATUSES = Object.freeze([
+  DISPUTE_STATUS.OPEN,
+  DISPUTE_STATUS.UNDER_REVIEW,
+  DISPUTE_STATUS.ACTION_REQUIRED,
+]);
+
 // event -> the status it puts the transaction into.
 const DISPUTE_EVENT_STATUS = Object.freeze({
   "payment.dispute.created": DISPUTE_STATUS.OPEN,
@@ -79,6 +93,26 @@ const WEBHOOK_HANDLED_EVENTS = Object.freeze([
   RAZORPAY_WEBHOOK_EVENTS.PAYMENT_AUTHORIZED,
   RAZORPAY_WEBHOOK_EVENTS.PAYMENT_FAILED,
   RAZORPAY_WEBHOOK_EVENTS.REFUND_PROCESSED,
+  /**
+   * ⚠️ All three refund events, not just the happy one.
+   *
+   * `refund.created` and `refund.failed` had branches written for them and were
+   * **not on this list** — so they never reached those branches at all. A failed
+   * refund fell through as `IGNORED`: the customer's money never arrived, the
+   * request still said `PROCESSING`, and nothing anywhere said otherwise.
+   *
+   * This list is the gate. A branch below it is unreachable code until the event
+   * is named here, and nothing warns about the mismatch.
+   */
+  RAZORPAY_WEBHOOK_EVENTS.REFUND_CREATED,
+  RAZORPAY_WEBHOOK_EVENTS.REFUND_FAILED,
+  /**
+   * Razorpay telling us a batch of payments has reached **our** bank. It is what
+   * fills `fundsReceivedAt`, and vendor settlement eligibility keys on that
+   * rather than on `verifiedAt` — paying a vendor from money the gateway has not
+   * settled yet is how a platform funds its own float without deciding to.
+   */
+  RAZORPAY_WEBHOOK_EVENTS.SETTLEMENT_PROCESSED,
   RAZORPAY_WEBHOOK_EVENTS.DISPUTE_CREATED,
   RAZORPAY_WEBHOOK_EVENTS.DISPUTE_UNDER_REVIEW,
   RAZORPAY_WEBHOOK_EVENTS.DISPUTE_ACTION_REQUIRED,
@@ -190,5 +224,6 @@ module.exports = {
   WEBHOOK_DEFAULTS,
   WEBHOOK_RETENTION,
   DISPUTE_STATUS,
+  DISPUTE_ACTIONABLE_STATUSES,
   DISPUTE_EVENT_STATUS,
 };

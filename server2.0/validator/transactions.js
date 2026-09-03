@@ -151,3 +151,76 @@ exports.validateGetDisputes = {
     sortOrder: Joi.string().valid("asc", "desc").optional(),
   }),
 };
+
+/**
+ * The id in both dispute routes.
+ *
+ * ⚠️ **Not** `objectId()`. A dispute is addressable by either the gateway's own
+ * id (`disp_Nx…`, which is what an admin reads off the Razorpay dashboard and
+ * what every alert and webhook carries) or our `_id`. Requiring 24 hex would
+ * reject the id people actually have in front of them, with a message about a
+ * format they have never seen. The service resolves either.
+ */
+const disputeIdParam = Joi.string().trim().min(6).max(64).required().messages({
+  "any.required": "disputeId is required.",
+  "string.empty": "disputeId is required.",
+  "string.min": "That does not look like a dispute id.",
+  "string.max": "That does not look like a dispute id.",
+});
+
+/**
+ * What the outlet remembers — a bill or KOT number, a camera timestamp, who
+ * served the table.
+ *
+ * A **bonus, never a dependency**: the evidence pack stands on our own records,
+ * so filing never waits on this. `min(3)` only keeps an accidental empty submit
+ * from replacing a real note with nothing; `max(2000)` is what a person types,
+ * and anything longer is a paste that nobody at the bank will read.
+ */
+exports.validateAddDisputeEvidence = {
+  params: Joi.object({ disputeId: disputeIdParam }),
+  body: Joi.object({
+    note: Joi.string().trim().min(3).max(2000).required().messages({
+      "any.required":
+        "Please describe what you remember, or the bill / KOT number.",
+      "string.empty":
+        "Please describe what you remember, or the bill / KOT number.",
+      "string.min": "Please give a little more detail.",
+      "string.max": "Please keep this under 2000 characters.",
+    }),
+  }),
+};
+
+/** Everything we can prove about a disputed payment. Admin only — see the route. */
+exports.validateDisputeEvidencePack = {
+  params: Joi.object({ disputeId: disputeIdParam }),
+};
+
+/** One dispute, in the same two shapes the list uses. */
+exports.validateDisputeDetail = {
+  params: Joi.object({ disputeId: disputeIdParam }),
+};
+
+/**
+ * Letting a held payment back into the settlement run.
+ *
+ * `reason` is **required**, and it is not paperwork. This is the one action that
+ * puts money back into a payout after a chargeback or a failed refund took it
+ * out, and "who decided the vendor keeps this, and why" is the first question
+ * anybody asks when it is queried months later.
+ */
+exports.validateReleaseHold = {
+  params: Joi.object({
+    transactionId: objectId().required().messages({
+      "any.required": "transactionId is required.",
+      "any.invalid": "Invalid transactionId.",
+    }),
+  }),
+  body: Joi.object({
+    reason: Joi.string().trim().min(3).max(500).required().messages({
+      "any.required": "Please say why this hold is being released.",
+      "string.empty": "Please say why this hold is being released.",
+      "string.min": "Please give a little more detail.",
+    }),
+  }),
+};

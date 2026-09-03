@@ -11,7 +11,7 @@ const {
   voucherClaimField,
   billField,
   settlementField,
-  refundField,
+  refundRequestField,
   subscribedField,
 } = require("./validObjectId");
 const { pricingSchema } = require("./pricingSchema");
@@ -74,6 +74,11 @@ const voucherTransactionSchema = new mongoose.Schema(
     // already collected and already shown to the vendor.
     commissionPercent: { type: Number, default: 0 },
     commissionAmount: { type: Number, default: 0 },
+    // GST on that commission, and what the settlement actually deducts —
+    // commission plus tax only when the tax sits on top. Both frozen here for
+    // the same reason as the rate. See `models/voucherPricingSchema.js`.
+    commissionTax: { type: Number, default: 0 },
+    commissionDeduction: { type: Number, default: 0 },
   },
   { _id: false },
 );
@@ -108,7 +113,16 @@ const transactionSchema = new mongoose.Schema(
     billId: billField,
     createdBy: userField,
     settlementId: settlementField,
-    refundId: refundField,
+    /**
+     * A convenience pointer to the **most recent** request, not the whole story.
+     *
+     * Named for what it is. The old name — `refundId`, one ObjectId — read as
+     * *"the refund"*, so a second partial refund silently orphaned the first and
+     * every reader believed the one id it found was complete. The real answer is
+     * always `RefundRequest.find({ transactionId })`; `amountRefunded` is the
+     * cumulative figure.
+     */
+    latestRefundRequestId: refundRequestField,
 
     // Only populated on purpose: VOUCHER_CLAIM.
     voucher: { type: voucherTransactionSchema, default: undefined },
@@ -270,6 +284,17 @@ const transactionSchema = new mongoose.Schema(
     // writes `isDisputed: false` and a lost chargeback must not become payable.
     settlementHold: { type: Boolean, default: false, index: true },
     settlementHoldReason: { type: String, trim: true, maxlength: 300 },
+    /**
+     * When the hold came off, and why.
+     *
+     * Kept after the release rather than cleared with it. A hold that went on
+     * and came off is the most common thing an admin has to explain — *"why was
+     * this payout late?"* — and a field that is only ever `null` when correct
+     * answers nothing. `reconcileLedger` also reads it to tell a hold that was
+     * released from one that was never applied.
+     */
+    settlementHoldReleasedAt: { type: Date },
+    settlementHoldReleaseReason: { type: String, trim: true, maxlength: 300 },
     // Razorpay's own settlement of this payment INTO our bank. Observed, never
     // inferred from a calendar offset: Razorpay settles in T+2 *working* days,
     // and suspends settlement entirely when an account is under review.
@@ -285,6 +310,24 @@ const transactionSchema = new mongoose.Schema(
       enum: Object.values(SETTLEMENT_STAGE),
       index: true,
     },
+    /**
+     * How many times `resumeIncompleteSettlements` has tried and failed, and
+     * when it may try again.
+     *
+     * ⚠️ Without these the sweep took the first 50 stranded rows in natural
+     * order with no sort. One row that always throws — corrupt pricing, a
+     * deleted voucher — holds its slot on every single run, and once fifty such
+     * rows accumulate the job spends every tick failing on the same fifty while
+     * newly stranded payments are never reached. This is the repair path for a
+     * customer who was charged and got nothing, so starving it is the worst
+     * failure this job has.
+     *
+     * An exponential back-off lets a poisoned row drift to the back of the queue
+     * without ever being dropped: it is still retried, just not ahead of a
+     * payment that has never been tried at all.
+     */
+    settlementResumeAttempts: { type: Number, default: 0 },
+    settlementResumeAt: { type: Date },
     // Recorded but deliberately NOT settled: an authorized payment is not a
     // captured one. If it stays authorized it is auto-refunded by Razorpay in
     // about five days, which the customer experiences as a silent failure.
@@ -299,12 +342,41 @@ const transactionSchema = new mongoose.Schema(
       enum: Object.values(DISPUTE_STATUS),
     },
     disputeId: { type: String },
+    /**
+     * Which settlement has already recovered this chargeback from the vendor.
+     *
+     * ⚠️ The same lock the refund side uses, and for the same reason. A
+     * `chargebackAdjustment` computed live from "this brand's lost disputes"
+     * would deduct the **same** chargeback in every cycle, for ever, and each
+     * month's arithmetic would look internally consistent while the vendor was
+     * charged again and again for one lost dispute.
+     */
+    /**
+     * ⚠️ Superseded by `Dispute.recoverySettlementId`, and kept only so an old
+     * row can still be read.
+     *
+     * The recovery lock lived here — one per payment — while the ledger keyed on
+     * the dispute. A payment carrying two lost disputes therefore booked two
+     * losses and recovered one, and the second was silently forgiven. Nothing
+     * writes these any more; see `models/Dispute.js`.
+     */
+    chargebackSettlementId: { ...settlementField },
+    chargebackRecoveredAt: { type: Date },
     disputeAmount: { type: Number },
     disputeReason: { type: String },
     disputePhase: { type: String },
     disputedAt: { type: Date },
     // The date by which evidence must be submitted to Razorpay.
     disputeRespondBy: { type: Date },
+    /**
+     * How many deadline warnings have gone out for this dispute.
+     *
+     * The claim is this counter, updated in the same conditional write that
+     * decides who sends — so two instances sweeping at once cannot both alert,
+     * and a re-run of the job cannot repeat a stage. Monotonic: it only ever
+     * goes up, and a dispute that resolves simply stops matching.
+     */
+    disputeAlertsSent: { type: Number, default: 0 },
     disputeResolvedAt: { type: Date },
     isRefunded: { type: Boolean, default: false },
     isRefundRequested: { type: Boolean, default: false },
@@ -440,7 +512,51 @@ transactionSchema.index({ purpose: 1, status: 1, createdAt: -1 });
 // for one account's payment to settle against the other account's order.
 transactionSchema.index({ razorpayOrderId: 1, gatewayAccount: 1 });
 
-// buildSettlements' eligibility scan.
+/**
+ * Finding a settlement's own rows — the detail screen and `releaseSettlementClaims`.
+ *
+ * ⚠️ Sparse, so it indexes only rows that **have** a settlement. That is right
+ * for looking one up and useless for the eligibility scan below, which asks the
+ * opposite question.
+ */
 transactionSchema.index({ settlementId: 1 }, { sparse: true });
+
+/**
+ * `buildSettlements`' eligibility scan, which runs **hourly, per brand**.
+ *
+ * ⚠️ The sparse index above cannot serve it, and that is not a tuning nicety —
+ * it is structural. Eligibility asks for `settlementId: null`, and a sparse
+ * index omits exactly those documents. So the query it was labelled as serving
+ * could never use it, and the planner fell back to scanning every voucher
+ * payment ever captured — once for `brandsWithEligibleMoney`'s `distinct`, then
+ * again for each brand's claim.
+ *
+ * Not sparse, deliberately: a plain index stores nulls, which is the whole point.
+ *
+ * Key order follows the predicate's shape — the two equalities that eliminate
+ * the most rows first, then the brand, then the range:
+ *
+ * ```
+ * settlementHold: false        equality, and false for almost everything
+ * settlementId:   null         equality, and the sparse index's blind spot
+ * brandId:        <brand>      equality per brand; the leading prefix also lets
+ *                              `distinct("brandId")` walk the index instead of
+ *                              the collection
+ * fundsReceivedAt: { $lte }    range, so it goes last
+ * ```
+ *
+ * `isRefunded` and `verifiedAt` are left out on purpose: `$ne` cannot use an
+ * index for selection, and adding a second range key after the first buys
+ * nothing. Both are cheap filters once the scan is already narrow.
+ */
+transactionSchema.index(
+  { settlementHold: 1, settlementId: 1, brandId: 1, fundsReceivedAt: 1 },
+  {
+    name: "settlement_eligibility",
+    // Equality only — `partialFilterExpression` rejects `$in`, and this is the
+    // one clause that keeps subscription payments out of a voucher-money index.
+    partialFilterExpression: { purpose: TRANSACTION_PURPOSE.VOUCHER_CLAIM },
+  },
+);
 
 module.exports = mongoose.model("Transaction", transactionSchema);

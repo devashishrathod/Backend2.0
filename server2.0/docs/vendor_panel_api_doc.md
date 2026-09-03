@@ -5,7 +5,7 @@
 **Base URL (Staging):** `https://backend2-0-4v4i.onrender.com/trydood/v1`
 **Framework:** Express.js (Node.js, CommonJS)
 **Database:** MongoDB (Mongoose ODM)
-**Scope:** Vendor / brand panel ke **78 endpoints**
+**Scope:** Vendor / brand panel ke **81 endpoints**
 **Last verified:** 2026-08-27 against current code · Source: `server2.0` scan (149 total endpoints, categorization → [endpoints_category.md](./endpoints_category.md))
 
 > ✅ **v1.2.0 se ye doc live API ke against verify ho chuka hai** — sirf code padhkar nahi likha gaya. Saare 78 endpoints ek chalte hue server pe seeded fixtures ke saath run kiye gaye: **101 requests, 234 assertions, sab pass.** Collection: [`postman/trydood-vendor.postman_collection.json`](../postman/trydood-vendor.postman_collection.json)
@@ -5809,6 +5809,126 @@ code par `422` *"mistyped character"* — `404` lagta hai claim maujood hi nahi.
 
 ---
 
+# Refund APIs 🆕
+
+**Aap tay karte hain, Trydood sirf nikaalta hai.** Normal raaste par Trydood doosra gate
+nahi hai — aap approve karein, paisa chala jaata hai.
+
+## ⚠️ Aapke paas ek window hai
+
+`refund.vendorApprovalHours` (default **24**), aur wo `vendorRespondBy` par row me likhi
+hoti hai. Beet gayi to request **aapki rehti hi nahi** — Trydood ke paas chali jaati hai,
+aur aap uspar kuch nahi kar sakte (`409` *"already gone to Trydood for review"*). Do
+reminder pehle aate hain, taaki timeout kabhi achanak na ho.
+
+Ek chup outlet grahak ka paisa nahi rok sakta — par window ke andar faisla aapka hi hai.
+
+## 87. GET /refunds — mere brand ki refunds
+
+**Access:** 🔒 `verifyJwtToken` — `VENDOR` aur `SUB_VENDOR` dono
+
+`SUB_VENDOR` token isi URL par **sirf apne outlet** ki rows paata hai.
+
+| Param | Notes |
+|---|---|
+| `open=true` | **Worklist** — sabse purani upar, kyunki wahi timeout ke sabse kareeb hai aur usi grahak ne sabse lamba intezaar kiya |
+| `status` | `REQUESTED · VENDOR_APPROVED · VENDOR_REJECTED · VENDOR_TIMEOUT · ADMIN_APPROVED · ADMIN_REJECTED · ADMIN_OVERRIDE · PROCESSING · COMPLETED · FAILED · CANCELLED` |
+| `claimCode` · `outletId` · `from` / `to` | Narrow karne ke liye |
+
+### Aapko kya dikhta hai
+
+| Field | Aapko | Kyun |
+|---|:-:|---|
+| `reasonNote` | ✅ | Grahak ne kya kaha — aapke faisle ka poora aadhaar |
+| `split.vendorClawback` | ✅ | Aapse kitna katega |
+| `split.vendorPromoReversal` | ✅ | Promo me aapka hissa, wapas |
+| `split.platformPromoReversal` · `gatewayFeeAbsorbed` | ❌ | Hamara margin — commercial disclosure |
+| `vendorNote` | ✅ (apna) | |
+| `adminNote` · `overrideReason` | ❌ | Staff-to-staff, aur override aapke khilaf liya faisla naam leta hai |
+| `customerId` | ❌ | Privacy |
+
+⚠️ `split` me hamara promo hissa aur MDR **usi sub-document par** hain jis par
+`vendorClawback` hai, jo aapko sach me chahiye. Isiliye ye faisla `refundProjection()` me
+**ek jagah** hota hai.
+
+`canDecide` response me **bataya** jaata hai — panel ko status se andaza nahi lagana chahiye.
+
+---
+
+## 88. PATCH /refunds/:requestId/approve — haan
+
+**Access:** 🔒 `verifyJwtToken` — `VENDOR` / `SUB_VENDOR` (apne outlet ka)
+
+| Field | Zaroori | Notes |
+|---|:-:|---|
+| `approvedAmount` | — | Na do to poora |
+| `note` | — | |
+
+### ⚠️ Rakam **ghat** sakti hai, **badh nahi**
+
+*"Aadha order theek tha, starter nahi"* asli jawab hai, aur rakam kam karna use dene ka
+tareeka hai. Badhana grahak ne jo maanga uski approval nahi — wo naya faisla hai, aur is
+step par ek extra shunya **das guna** pay out kar deta us aadmi ko jisne maanga hi nahi.
+`422` milega.
+
+Split wahin **dobara freeze** hota hai — jo paisa asal me hilega wahi block me likha hona
+chahiye.
+
+Hold **laga rehta hai**: paisa abhi bhi wapas jaana hai.
+
+> **Do log ek hi request nahi tay kar sakte.** `status` update filter ka hissa hai. Owner
+> aur outlet manager ek hi request dekh sakte hain; iske bina dono clicks lagte aur doosra
+> pehle ko chup-chaap mita deta — yaani grahak ka jawab is par nirbhar karta ki kaun dheema
+> tha. Haarne wale ko `409` milta hai jo **batata hai kya hua**, sirf ye nahi ki nakaam raha.
+
+---
+
+## 89. PATCH /refunds/:requestId/reject — na
+
+**Access:** 🔒 `verifyJwtToken` — `VENDOR` / `SUB_VENDOR`
+
+`note` **zaroori** (min 3 chars). Jab grahak inkaar ko chunauti de, admin ke paas sameeksha
+karne ko yahi ek cheez hoti hai — akela *"rejected"* har appeal ko phone call bana deta hai.
+
+⚠️ Aapka note **grahak ko kabhi nahi dikhta**. Wo staff ke liye hai.
+
+### `settlementHold` yahin hattta hai
+
+Refund maangte hi aapke us claim ka paisa har settlement se bahar ho jaata hai. Reject
+karne par wo **wapas aa jaata hai**.
+
+> Ye ulta utna hi khatarnak hai: jo hold koi na hataaye wo aapka paisa **hamesha ke liye**
+> har aane wali settlement se bahar kar deta hai — chup-chaap, kyunki eligibility predicate
+> bas match karna band kar deta hai. Koi error nahi aata. Isiliye teeno terminal states se
+> release bulaya jaata hai.
+
+Ek apwaad: us payment par **chargeback** khula ho to hold nahi hattta. Use hataana explicit
+admin action hai — refund ki logic se hataane ka matlab hota wo paisa settle kar dena jise
+bank usi waqt wapas kheench raha hai.
+
+---
+
+## 90. GET /refunds/:requestId — ek refund
+
+**Access:** 🔒 `verifyJwtToken`
+
+`refund` · `claim` · **`timeline`** · `viewer`. Timeline claim ki hai, aur har audience ke
+liye **banayi** jaati hai — kaccha audit row `snapshot` me poora pricing block rakhta hai
+(`platformPromoCost` samet).
+
+---
+
+## Refund ke notifications
+
+| Kab | Severity | Kya |
+|---|:-:|---|
+| Refund maanga gaya | ⚠️ WARNING | *"Please respond by \<date\> — after that it goes to Trydood"* |
+| Window band ho rahi hai | ⚠️ WARNING | Do nudges, adhe aur teen-chauthai par |
+
+WARNING isliye ki deadline hai, aur use chookne par faisla aapke haath se nikal jaata hai.
+
+---
+
 # Appendix A — Not For Vendor Panel
 
 Ye 62 endpoints backend me hain par vendor panel inko use na kare. Zyada tar ab properly gated hain (`403` denge), par kuch pe abhi bhi role check nahi hai — un pe app ko khud discipline rakhni hogi.
@@ -5859,6 +5979,146 @@ Full categorization → [endpoints_category.md](./endpoints_category.md)
 # Appendix B — Known Issues
 
 Ye backend issues hain jo vendor panel ko directly affect karte hain. **Status 2026-08-22 ko code ke against verify kiya gaya.** Full detail → [security_findings.md](./security_findings.md)
+
+---
+
+## ⚠️ Settlement aapka record hai, aapka form nahi
+
+Settlement par vendor ke liye **koi write endpoint nahi** hai — na approve, na dispute,
+na edit. Ye hamara record hai ki hum aapko kya de rahe hain. Ikhtilaf support se hota
+hai, kyunki uske peechhe aksar koi disputed payment ya chargeback hota hai jispar
+faisla abhi hua hi nahi.
+
+`SUB_VENDOR` ko is baar **poora brand** dikhta hai, apna outlet nahi. Settlement poore
+brand ke ek din ka hai; outlet se kaat kar dikhane ka matlab ek aisa figure jo aapke
+dekhe kisi bhi cheez se match nahi karta — aur wo paisa chhup jaata jo brand ka sach
+me bakaya hai.
+
+---
+
+## 91. GET /settlements — mere payouts
+
+**Access:** 🔒 `verifyJwtToken` — `VENDOR` aur `SUB_VENDOR` dono
+
+| Param | Notes |
+|---|---|
+| `status` | `DRAFT · PENDING_APPROVAL · APPROVED · PROCESSING · PAID · FAILED · ON_HOLD · REVERSED · CANCELLED · ABANDONED · CARRIED_FORWARD` |
+| `open=true` | Jo abhi chal rahe hain |
+| `settlementNumber` · `from` / `to` | Narrow karne ke liye |
+| `page` · `limit` (max 100) | Default 20 |
+
+Sort **`periodEnd` desc** — ye list *"pichhle hafte ka paisa aaya?"* ka jawab dene ke
+liye padhi jaati hai.
+
+> **Khaali list `404` nahi deti.** Pehle hafte wale brand ke paas koi settlement nahi
+> hoti, aur wo bilkul sahi jawab hai — use "kuchh gadbad hai" jaisa dikhana galat hoga.
+
+### Aapko kya dikhta hai
+
+| Field | Aapko | Kyun |
+|---|:-:|---|
+| `grossCollected` · `commissionAmount` · `commissionTax` | ✅ | Apni kitaab se milane ke liye |
+| `vendorPromoCost` · `refundAdjustment` · `chargebackAdjustment` | ✅ | Kya-kya kata |
+| `reserveHeld` · `reserveReleased` · `netPayable` | ✅ | |
+| `bankSnapshot.accountLast4Digits` · `bankName` | ✅ | Kahan bheja |
+| poora `bankSnapshot` (`ifscCode`, `accountHolderName`, `maskedAccountNumber`) | ❌ | Last 4 aur bank ka naam kaafi hai |
+| `needsRevalidation` | ❌ | Andar ka review state — aapke liye sach *"payout ruka hai"* hai |
+| `taintedTransactionIds` | ❌ | Faisla hone se pehle disputed payments ke naam |
+| `failureNote` | ❌ | Staff-to-staff — aapko `failureReason` (category) milta hai |
+| `approvedBy` · `idempotencyKey` | ❌ | Kis admin ne sign kiya, aur andar ki plumbing |
+
+### `statusLabel` — aapko enum nahi dikhta
+
+| Status | Aap padhte hain |
+|---|---|
+| `DRAFT` / `PENDING_APPROVAL` | Being prepared |
+| `APPROVED` | Scheduled for payout |
+| `PROCESSING` | On its way to your bank |
+| `PAID` | Paid |
+| `FAILED` | Payout failed — we are on it |
+| `ON_HOLD` | On hold — being checked |
+| `REVERSED` | Reversed by the bank |
+| `CANCELLED` / `ABANDONED` | Cancelled |
+| `CARRIED_FORWARD` | Carried forward to the next payout |
+
+`PENDING_APPROVAL` aapko waise kabhi nahi dikhta: aapki taraf se kuchh *"pending"* nahi
+hai, paisa bas aa raha hai.
+
+> ⚠️ Doosre brand ka `brandId` bhejne par **khaali page** milta hai, apne rows nahi.
+> Scope aur filter kaate jaate hain, upar-neeche rakhe nahi — filter ka "chal gaya"
+> dikhna wahi tareeka hai jisse koi aisi report bana leta hai jo kabhi lagi hi nahi thi.
+
+---
+
+## 92. GET /settlements/:settlementId — ek payout, legs ke saath
+
+**Access:** 🔒 `verifyJwtToken` — apne brand ka
+
+`settlement` · **`legs`** · `timeline` · `viewer`.
+
+### `legs` — yahan UTR milta hai
+
+Ek payout do NEFT me bhi ja sakta hai (badi rakam), aur bounce ke baad retry **nayi
+leg** banata hai. Har leg apna `utr`, `mode`, `paidAt` aur `amount` rakhti hai.
+
+**UTR wahi ek cheez hai** jo aap teen din baad apne bank statement par dhoondh sakte
+hain jab paisa nahi dikhta. Isi liye ek `payoutUtr` field kaafi nahi thi.
+
+### `timeline`
+
+Har status badla, tareekh ke saath — sabse purana upar. `reason`, `performedBy` aur
+`snapshot` **sirf admin ko** jaate hain: wo notes staff ne staff ke liye likhe hain aur
+aksar kisi aise dispute ka naam lete hain jispar faisla hua hi nahi.
+
+---
+
+## 93. GET /settlements/:settlementId/transactions — statement lines
+
+**Access:** 🔒 `verifyJwtToken` — apne brand ka
+
+| Param | Notes |
+|---|---|
+| `page` · `limit` (max 200) | Default 50 |
+
+Ye alag se paged hai kyunki vyast brand ka ek cycle sau-sau rows ka hota hai, aur
+detail call zyadatar sirf *"kitna, aur kab"* ke liye padha jaata hai.
+
+| Field | Aapko |
+|---|:-:|
+| `invoiceId` · `verifiedAt` · `fundsReceivedAt` · `amount` | ✅ |
+| `voucher.billAmount` · `netBill` · `vendorPayable` · `vendorPromoCost` | ✅ |
+| `voucher.platformPromoCost` · `gatewayFee` · `netReceived` | ❌ |
+
+⚠️ Aakhri teen hamara margin hain, aur wo **usi sub-document par** baithe hain jispar
+aapka `vendorPayable` hai — isi liye ye faisla ek jagah hota hai.
+
+`fundsReceivedAt` **`verifiedAt` se alag** hai: pehla matlab Razorpay ne hamare bank me
+paisa bheja, doosra matlab grahak ne pay kiya. T+N doosri se nahi, **pehli** se ginta
+hai — warna hum wo paisa baant rahe hote jo abhi aaya hi nahi.
+
+---
+
+## Settlement ke notifications
+
+| Kab | Severity | Kya |
+|---|:-:|---|
+| Payout bheja gaya | ℹ️ INFO | Rakam, account ke aakhri 4 digit, aur **UTR** |
+| Payout bounce hua | ⚠️ WARNING | Category (account band, galat IFSC…), staff note nahi |
+| Payout hold par gaya | ⚠️ WARNING | *"On hold — being checked"*, bina tafseel ke |
+
+Har state ke liye notice **nahi** hai. `PENDING_APPROVAL` aur `APPROVED` aisi cheezein
+hain jinke baare me aap kuchh kar nahi sakte, aur jispar amal na ho sake wo
+notification logon ko un notifications ko ignore karna sikhaati hai jo matter karti
+hain.
+
+Hold wali notice me tafseel jaan-boojh kar nahi hai: jo cheez check ho rahi hai wo
+aksar ek disputed payment hoti hai, aur uska naam lena do din ki der ko ek aise
+chargeback par behes bana deta hai jispar abhi kisi ne faisla nahi kiya. Support
+poochhne par bata deta hai — wo baat-cheet hai, push notification nahi.
+
+**Poora settlement flow → [`settlement_flow.md`](./settlement_flow.md).**
+
+---
 
 ## ✅ Jo fix ho gaya
 

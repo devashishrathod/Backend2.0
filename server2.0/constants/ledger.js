@@ -79,7 +79,40 @@ const LEDGER_ENTRY_TYPE = Object.freeze({
   // ---------- later ----------
   // Written when a settlement is PAID, not when it is drafted.
   COMMISSION: "COMMISSION",
-  REFUND: "REFUND",
+  /**
+   * The other half of `COMMISSION`.
+   *
+   * `COMMISSION` credits what we earn; this debits what we therefore no longer
+   * owe the vendor. One economic event, two accounts — exactly the shape
+   * `VENDOR_PROMO_SHARE` / `PLATFORM_PROMO_COST` already use, because an entry
+   * type here maps to one account and one direction.
+   *
+   * ⚠️ Without it `VENDOR_PAYABLE` overstates the vendor's balance by the whole
+   * commission, for ever: capture credits the full `netBill`, the payout debits
+   * only `netPayable` (which `computeTotals` has already netted the commission
+   * out of), and the difference never clears. At a zero rate that is invisible;
+   * at 10% on ₹1,000 it is ₹100 of phantom liability per sale.
+   */
+  VENDOR_COMMISSION: "VENDOR_COMMISSION",
+  /**
+   * ⚠️ **There is deliberately no `REFUND` type, and the absence needs saying.**
+   *
+   * There was one. It was declared here, carried no rule in
+   * `LEDGER_ENTRY_RULES`, and in every version of this repo **nothing ever wrote
+   * it** — a name sitting in the obvious place for anybody posting a refund row
+   * to reach for.
+   *
+   * A refund is booked under the **same entry type it reverses**, in the
+   * opposite direction: `COLLECTION` back out, `VENDOR_PROMO_SHARE` back in,
+   * `CONVENIENCE_FEE` back out. That is what makes a report grouped by type net
+   * to the truth on its own. A flat `REFUND` row would leave, say, a promo cost
+   * that shows every rupee ever committed and never one that came back.
+   *
+   * It could not have been used silently — with no rule, `recordLedgerEntry`
+   * refuses it for want of an account — but somebody supplying an account and a
+   * direction by hand would have got a row that posts, balances, and quietly
+   * breaks every type-grouped report from that day on. See `refund_flow.md` §5.4.
+   */
   CHARGEBACK: "CHARGEBACK",
   CHARGEBACK_REVERSAL: "CHARGEBACK_REVERSAL",
   RESERVE_HOLD: "RESERVE_HOLD",
@@ -146,6 +179,11 @@ const LEDGER_ENTRY_RULES = Object.freeze({
     account: LEDGER_ACCOUNT.PLATFORM_REVENUE,
     direction: LEDGER_DIRECTION.CREDIT,
   },
+  // The vendor side of the same event. See the type's note above.
+  [LEDGER_ENTRY_TYPE.VENDOR_COMMISSION]: {
+    account: LEDGER_ACCOUNT.VENDOR_PAYABLE,
+    direction: LEDGER_DIRECTION.DEBIT,
+  },
   [LEDGER_ENTRY_TYPE.CHARGEBACK]: {
     account: LEDGER_ACCOUNT.VENDOR_PAYABLE,
     direction: LEDGER_DIRECTION.DEBIT,
@@ -174,6 +212,48 @@ const LEDGER_ENTRY_RULES = Object.freeze({
 
 const LEDGER_INDEXES = Object.freeze({
   ONCE_PER_TRANSACTION: "ledger_type_transaction_unique",
+  /**
+   * One row per entry type per refund.
+   *
+   * ⚠️ `ONCE_PER_TRANSACTION` does not cover a refund and cannot: a payment may
+   * be refunded twice, and each refund posts its own set of rows against the
+   * same `transactionId`. Without this index a replayed `refund.processed`
+   * webhook — which Razorpay does send — books the whole set a second time, and
+   * the vendor is clawed back twice for one refund.
+   *
+   * Keyed on `refundRequestId` rather than the transaction, so two genuine
+   * partial refunds each get their own set while neither can be booked twice.
+   */
+  ONCE_PER_REFUND: "ledger_type_refund_unique",
+  /**
+   * One row per entry type per **dispute**.
+   *
+   * Razorpay's dispute events are not monotonic — a late `lost` can arrive after
+   * a `won` — and it redelivers them. Without this, one chargeback claws the
+   * vendor back as many times as the webhook fires.
+   */
+  ONCE_PER_DISPUTE: "ledger_type_dispute_unique",
+  /**
+   * One correction per entry. `reverseLedgerEntry` is deliberately outside the
+   * once-per-transaction index — that is what lets it exist at all — so without
+   * this nothing stopped a retried correction reversing the same money twice.
+   */
+  ONCE_PER_REVERSAL: "ledger_reversalof_unique",
+  /** Serves the admin dashboard's account + date-range roll-up. */
+  PLATFORM_TOTALS: "ledger_account_occurredat",
+  /**
+   * One row per entry type per **payout leg**.
+   *
+   * ⚠️ Keyed on the leg, not the settlement. A settlement can pay in several
+   * legs — a large MANUAL_BANK transfer split across two NEFTs, or a retry after
+   * a bounce — and each leg moves its own money and books its own `PAYOUT`. A
+   * settlement-level key would refuse the second leg's entry and leave real money
+   * out of the ledger.
+   *
+   * `ONCE_PER_TRANSACTION` cannot do this job either: a payout has no
+   * `transactionId` at all.
+   */
+  ONCE_PER_PAYOUT_LEG: "ledger_type_payoutleg_unique",
 });
 
 /** What `reconcileLedger` reports when the books disagree. */

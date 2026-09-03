@@ -79,7 +79,21 @@ const connect = async (uri, attempts = 3) => {
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      await mongoose.connect(uri, { serverSelectionTimeoutMS: 20000 });
+      await mongoose.connect(uri, {
+        serverSelectionTimeoutMS: 20000,
+        /**
+         * ⚠️ Mongoose opens **100** connections by default.
+         *
+         * The suite is strictly serial (`maxWorkers: 1`), so it can never use
+         * more than one at a time — but a shared Atlas M0 has a hard connection
+         * ceiling for the whole cluster, and a client that grabs a hundred of
+         * them starves everything else, including the next operation this very
+         * run makes. The symptom is `MongooseServerSelectionError` mid-test on
+         * assertions that are individually correct, which reads as flakiness.
+         */
+        maxPoolSize: 5,
+        minPoolSize: 1,
+      });
       return;
     } catch (error) {
       lastError = error;
@@ -114,8 +128,44 @@ exports.connectTestDb = async () => {
   return mongoose.connection;
 };
 
+/**
+ * Hand the connection back, by actually closing it.
+ *
+ * ### ⚠️ This was a no-op, and the reasoning behind that was wrong
+ *
+ * The argument was: thirty suites each connecting and disconnecting is thirty
+ * SRV lookups and TLS handshakes against a shared Atlas M0, so let **one**
+ * connection serve the whole run and close it in `globalTeardown`.
+ *
+ * There is no such thing as one connection for the whole run. Jest gives every
+ * test **file** its own module registry — and its own `global` — so `require`ing
+ * mongoose in the next file returns a *different* mongoose with a *different*
+ * connection. Nothing was ever shared. Skipping the disconnect did not reuse a
+ * connection; it leaked one per suite, thirty-odd of them, each with its own
+ * pool and its own topology monitor.
+ *
+ * The symptom was the same shape as the bug it was meant to fix, which is why it
+ * survived: a scatter of unrelated suites failing, every one of them passing
+ * when re-run alone. Measured on the full suite —
+ *
+ * ```
+ *   disconnect as a no-op   15 suites / 294 tests failed
+ *   disconnect for real      2 suites /   4 tests failed   (both real defects)
+ * ```
+ *
+ * — with every one of those failures reading `Refusing to clear collections on
+ * "undefined"`: the connection was gone, not the assertion wrong.
+ *
+ * A test file's `beforeAll` reconnects, and `connect()` above already retries
+ * three times on the transient errors a busy cluster produces, so the handshake
+ * cost this reintroduces is bounded and self-healing in a way the leak was not.
+ *
+ * Set `TEST_DB_KEEP_CONNECTION=1` to hold it open when debugging something that
+ * needs the socket to survive teardown.
+ */
 exports.disconnectTestDb = async () => {
   if (mongoose.connection.readyState === 0) return;
+  if (process.env.TEST_DB_KEEP_CONNECTION) return;
   await mongoose.disconnect();
 };
 
