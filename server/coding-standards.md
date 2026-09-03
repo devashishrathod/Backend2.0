@@ -1,6 +1,6 @@
 # Coding Standards
 
-Node.js + Express + Mongoose backend conventions for **Trydood 2.0** (`server2.0`).
+Node.js + Express + Mongoose backend conventions for **Trydood 2.0** (`server/` — the folder was called `server2.0/` until the legacy backend was removed and this one took its name).
 These rules are derived from the existing codebase — follow them so new code is indistinguishable from old.
 
 ---

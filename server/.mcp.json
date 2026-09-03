@@ -7,9 +7,9 @@
         "code_review_graph",
         "serve"
       ],
-      "cwd": "C:\\Users\\acar\\OneDrive\\Documents\\GitHub\\Backend2.0\\server2.0",
+      "cwd": "C:\\Users\\acar\\OneDrive\\Documents\\GitHub\\Backend2.0\\server",
       "env": {
-        "CRG_REPO_ROOT": "C:\\Users\\acar\\OneDrive\\Documents\\GitHub\\Backend2.0\\server2.0"
+        "CRG_REPO_ROOT": "C:\\Users\\acar\\OneDrive\\Documents\\GitHub\\Backend2.0\\server"
       },
       "type": "stdio"
     }

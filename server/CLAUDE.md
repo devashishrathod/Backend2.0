@@ -399,7 +399,16 @@ callers in the same second.
 
 ## Code Review Graph
 
-This repo is indexed by `code-review-graph`. Its MCP server is configured in `.mcp.json` and scoped to `server2.0/` via `CRG_REPO_ROOT`.
+This repo is indexed by `code-review-graph`. Its MCP server is configured in `server/.mcp.json` and scoped to `server/` via `CRG_REPO_ROOT`.
+
+> ⚠️ `CRG_REPO_ROOT` is set in **two** places — `server/.mcp.json` under `env`, and a
+> user-level Windows environment variable. Both said `...\Backend2.0\server2.0` for a
+> while after the legacy backend was deleted and `server2.0/` was renamed to `server/`,
+> so the MCP server pointed at a directory that no longer existed. Every CRG subcommand
+> otherwise auto-detects the **git root** (`Backend2.0`) and ignores the working
+> directory, which is why the variable exists at all — and why a wrong value builds a
+> graph that looks fine and covers the wrong tree. If you move this folder again, change
+> both.
 
 Use the graph tools to trace callers, impact, and dependencies before editing shared code — `utils/`, `middlewares/`, `constants/`, and `models/` are imported very widely, so a small change there has a large blast radius.
 
