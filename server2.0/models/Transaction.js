@@ -305,6 +305,24 @@ const transactionSchema = new mongoose.Schema(
       enum: Object.values(SETTLEMENT_STAGE),
       index: true,
     },
+    /**
+     * How many times `resumeIncompleteSettlements` has tried and failed, and
+     * when it may try again.
+     *
+     * ⚠️ Without these the sweep took the first 50 stranded rows in natural
+     * order with no sort. One row that always throws — corrupt pricing, a
+     * deleted voucher — holds its slot on every single run, and once fifty such
+     * rows accumulate the job spends every tick failing on the same fifty while
+     * newly stranded payments are never reached. This is the repair path for a
+     * customer who was charged and got nothing, so starving it is the worst
+     * failure this job has.
+     *
+     * An exponential back-off lets a poisoned row drift to the back of the queue
+     * without ever being dropped: it is still retried, just not ahead of a
+     * payment that has never been tried at all.
+     */
+    settlementResumeAttempts: { type: Number, default: 0 },
+    settlementResumeAt: { type: Date },
     // Recorded but deliberately NOT settled: an authorized payment is not a
     // captured one. If it stays authorized it is auto-refunded by Razorpay in
     // about five days, which the customer experiences as a silent failure.
@@ -319,6 +337,17 @@ const transactionSchema = new mongoose.Schema(
       enum: Object.values(DISPUTE_STATUS),
     },
     disputeId: { type: String },
+    /**
+     * Which settlement has already recovered this chargeback from the vendor.
+     *
+     * ⚠️ The same lock the refund side uses, and for the same reason. A
+     * `chargebackAdjustment` computed live from "this brand's lost disputes"
+     * would deduct the **same** chargeback in every cycle, for ever, and each
+     * month's arithmetic would look internally consistent while the vendor was
+     * charged again and again for one lost dispute.
+     */
+    chargebackSettlementId: { ...settlementField },
+    chargebackRecoveredAt: { type: Date },
     disputeAmount: { type: Number },
     disputeReason: { type: String },
     disputePhase: { type: String },
@@ -460,7 +489,51 @@ transactionSchema.index({ purpose: 1, status: 1, createdAt: -1 });
 // for one account's payment to settle against the other account's order.
 transactionSchema.index({ razorpayOrderId: 1, gatewayAccount: 1 });
 
-// buildSettlements' eligibility scan.
+/**
+ * Finding a settlement's own rows — the detail screen and `releaseSettlementClaims`.
+ *
+ * ⚠️ Sparse, so it indexes only rows that **have** a settlement. That is right
+ * for looking one up and useless for the eligibility scan below, which asks the
+ * opposite question.
+ */
 transactionSchema.index({ settlementId: 1 }, { sparse: true });
+
+/**
+ * `buildSettlements`' eligibility scan, which runs **hourly, per brand**.
+ *
+ * ⚠️ The sparse index above cannot serve it, and that is not a tuning nicety —
+ * it is structural. Eligibility asks for `settlementId: null`, and a sparse
+ * index omits exactly those documents. So the query it was labelled as serving
+ * could never use it, and the planner fell back to scanning every voucher
+ * payment ever captured — once for `brandsWithEligibleMoney`'s `distinct`, then
+ * again for each brand's claim.
+ *
+ * Not sparse, deliberately: a plain index stores nulls, which is the whole point.
+ *
+ * Key order follows the predicate's shape — the two equalities that eliminate
+ * the most rows first, then the brand, then the range:
+ *
+ * ```
+ * settlementHold: false        equality, and false for almost everything
+ * settlementId:   null         equality, and the sparse index's blind spot
+ * brandId:        <brand>      equality per brand; the leading prefix also lets
+ *                              `distinct("brandId")` walk the index instead of
+ *                              the collection
+ * fundsReceivedAt: { $lte }    range, so it goes last
+ * ```
+ *
+ * `isRefunded` and `verifiedAt` are left out on purpose: `$ne` cannot use an
+ * index for selection, and adding a second range key after the first buys
+ * nothing. Both are cheap filters once the scan is already narrow.
+ */
+transactionSchema.index(
+  { settlementHold: 1, settlementId: 1, brandId: 1, fundsReceivedAt: 1 },
+  {
+    name: "settlement_eligibility",
+    // Equality only — `partialFilterExpression` rejects `$in`, and this is the
+    // one clause that keeps subscription payments out of a voucher-money index.
+    partialFilterExpression: { purpose: TRANSACTION_PURPOSE.VOUCHER_CLAIM },
+  },
+);
 
 module.exports = mongoose.model("Transaction", transactionSchema);
