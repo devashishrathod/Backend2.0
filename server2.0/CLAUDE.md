@@ -166,6 +166,59 @@ node scripts/migrateCustomerClaimFoundation.js --apply  # change it
 > names none of them on the way out. Drop by name, and only after verifying the
 > replacement index exists — see `scripts/migrateCustomerClaimFoundation.js`.
 
+> ### 🔴 `invoiceId_1` — the index that kept coming back
+>
+> Commit `59fd080` declared `invoiceId: { type: String, unique: true }` on
+> `Transaction`. A path-level `unique: true` makes Mongoose create an index named
+> exactly `invoiceId_1` — **not sparse, not partial**. Mongo indexes a missing
+> field as `null`, so a blanket unique on a nullable path rejects the **second**
+> document that has no value yet. Every voucher claim is created before its
+> invoice exists, so in production that is **roughly every second claim
+> rejected**, with a duplicate-key error naming a field the customer never
+> touched. Nothing else reports it as a fault: to every other layer it looks like
+> a validation error.
+>
+> `3494bb8` replaced it with the named partial index the schema carries today, so
+> **nothing in this build creates it**. It came back on the cluster twice anyway.
+>
+> The cause is an **older build of this same service** still running against the
+> same database: its schema still has `unique: true` on that path, and Mongoose's
+> `autoIndex` rebuilds it on every one of *its* restarts. ⚠️ `MONGO_AUTO_INDEX=false`
+> cannot stop it — those builds connected with no options at all, long before
+> that switch existed. The legacy `server/` folder creates `razorpayOrderId_1`
+> the same way.
+>
+> **What the code does now.** `reapShadowIndexes` runs at boot and hourly. It
+> finds shadows by **shape, not by a list**: any unique index with no partial
+> filter and no sparse flag, sitting on exactly the same key as a partial unique
+> index in the same collection. That covers all 28 partial-unique indexes in this
+> database, and a field added next year the day its index is declared.
+>
+> Two conditions, not confidence, make dropping safe:
+>
+> - it only ever drops an index that is **already superseded** — that shape is
+>   never correct, the partial one exists to replace it;
+> - if the partial replacement is **absent**, nothing is dropped, because removing
+>   the blanket one would leave no uniqueness at all.
+>
+> ⚠️ This reverses an earlier decision in `assertMoneyIndexes` — *"nothing is
+> changed automatically"*. Sound reasoning, wrong outcome: with nothing removing
+> what the old build recreates, the old build wins by default.
+>
+> **What the code cannot do** is make the writer go away. A reap means it
+> restarted inside that hour, so every reap sends a CRITICAL admin notice with the
+> timestamp — the one usable lead, since `$currentOp` is not permitted on Atlas
+> shared tiers.
+>
+> ```bash
+> node scripts/findIndexWriters.js   # shadows, connection count, and the fix
+> ```
+>
+> The fix that ends it is operational, not code: narrow **Atlas → Network Access**
+> to the addresses this deployment actually uses (Elastic IP on EC2), give the old
+> deployment's DB user `readOnly` or delete it, and suspend the old service. An
+> account that cannot write cannot create an index.
+
 Server boots from `index.js`, mounts everything under `/trydood/v1`, and connects to Mongo via `database/mongoDb.js`.
 
 ---
@@ -290,6 +343,50 @@ Gates: `verifyJwtToken` (any) · `isAdmin` · `isVendor` · `isCustomer` · `val
 - Secrets only from `process.env`; never log or return them
 - Soft delete only — domain data is never physically removed
 - Let Joi own all input validation; `stripUnknown` is already enabled
+- **Never `Math.random()` for anything a stranger benefits from guessing.** Use
+  `crypto.randomInt` / `crypto.randomBytes`. OTPs were generated with
+  `Math.random()`: V8's generator is not seeded from any entropy an attacker
+  cannot reach, and its state is recoverable from a run of outputs — which they
+  can collect just by asking for codes to their own number.
+
+### One-time codes
+
+Every OTP path goes through `services/otps/sendOtp.js`, and the throttle lives
+**there** rather than on the routes — login by WhatsApp and email,
+forgot-password, sub-brand signup, and the bank-account attach a refund is paid
+into. A route added next month is covered without anyone remembering, and
+forgetting a rate-limit middleware produces **no error at all**, just an
+unprotected endpoint.
+
+> ⚠️ Before this there was no limit anywhere. Anyone could post a stranger's
+> number to a public login route as fast as they liked, and every request became
+> a WhatsApp message or an SMS **we pay for**, landing on a phone belonging to
+> someone who never asked for it.
+
+| | |
+|---|---|
+| Keyed on | the **target** (number/email) + purpose — never the IP |
+| Defaults | 60s between codes, 5 an hour — `constants/otp.js` |
+| Admin config | `Setting.security.otp`, which wins. Its own top-level block because vendors *and* customers use the same machinery |
+| Storage | `models/OtpThrottle.js` — a **rolling** window of send times |
+
+⚠️ **Not the IP.** Indian mobile networks put thousands of real customers behind
+one CGNAT address, so an IP limit locks out a block of people while barely
+inconveniencing an attacker with a phone. A number is a person.
+
+⚠️ **Not fields on `Otp`.** That document carries a 5-minute TTL, so a counter on
+it would be deleted twelve times inside a one-hour window and cap nothing.
+
+⚠️ **The claim is the write.** `claimOtpSend` prunes the window and appends in a
+single aggregation-pipeline update, and the caller learns the verdict by asking
+whether its own timestamp survived — read-then-write would let two taps send two
+messages, and double the limit the day a second instance starts. Mongoose 9 needs
+`{ updatePipeline: true }` on that call.
+
+⚠️ **A failed send gives the slot back**, pulled **by value**. Keeping it would
+let a provider outage lock a customer out for an hour over a problem entirely on
+our side; releasing by a time range would hand back slots claimed by other
+callers in the same second.
 
 ---
 
@@ -392,6 +489,92 @@ them raise, so each has a sweep whose whole job is to look for the absence —
 `sweepStalePayouts` **alerts and never acts**, deliberately: an unconfirmed NEFT
 may genuinely have left, and auto-failing it would release the rows and pay the
 vendor twice.
+
+### `requiresAdminApproval: false` actually auto-approves now
+
+The setting defaults to `true`, is settable from the admin panel, and its own
+comment said *"turning this off auto-approves"* — while **no code read it**. An
+admin who switched it off got no auto-approval and no error: every settlement
+kept waiting for a click.
+
+`buildSettlements` reads it now and goes straight to `APPROVED`.
+
+⚠️ `settings.requiresAdminApproval === false`, not `Boolean(...)`. A settings
+document written before the field existed has no value at all, and truthiness
+would auto-approve every payout on the platform on the next deploy.
+
+⚠️ Approving is not paying. `PATCH /settlements/admin/:id/pay` is still a
+deliberate human action, and `paySettlement` re-checks `needsRevalidation` there —
+its own note says approval checking the flag *"is not enough"*, because hours pass
+in that window. So this removes a queue, not a guard. `APPROVED` is in
+`SETTLEMENT_PRE_PAYOUT_STATUSES`, so `alertLateSettlements` still watches it.
+
+⚠️ `approvedAt` is stamped, `approvedBy` is not. Leaving `approvedAt` unset would
+make an auto-approved settlement look stuck for ever; naming a user in
+`approvedBy` would be a lie in the record people open to ask who authorised a
+payout. The history row says *"no person reviewed this settlement"*.
+
+### The reserve rate is per brand, and frozen onto the settlement
+
+`reserve.percent` was one flat number, and `riskChargebackCount` sat in the
+constants, in the `Setting` schema and in `getCustomerConfig` — configurable from
+the admin panel — while **no code read it**. The same shape
+`chargebackAdjustment: 0`, `commissionTax: 0`, `reserveReleased: 0` and
+`chargeback.writeOffDays` all had.
+
+`buildReserveRiskMap` decides it now, once for the whole run:
+
+- **Count and rate, both.** A count alone punishes size — 2 chargebacks in 10,000
+  sales is a better merchant than 2 in 40, and holding more from the first is
+  backwards. `riskChargebackCount` triggers a look; `riskDisputeRatePercent`
+  decides.
+- **A volume floor.** 1 of 3 sales is 33% and means nothing. Under
+  `riskMinPayments` the brand keeps the base rate — and says so
+  (`TOO_FEW_PAYMENTS`) rather than reading as clean.
+- **A ceiling.** `maxPercent` binds the base rate too. Without it a bad month
+  holds nearly the whole payout, which is how a recoverable problem becomes a
+  closed outlet.
+- **Won disputes do not count.** A dispute we won is proof the sale was good.
+
+⚠️ Two aggregations for the **whole run**, not two per brand — the map is built
+before the loop and passed into `buildForBrand`, the same way `settings` is.
+
+⚠️ `Settlement.reservePercent` and `reserveBasis` freeze the rate **and the
+working**. The rate comes from a trailing window, so recomputing it when somebody
+opens the statement gives a different number and the page stops adding up. The
+vendor sees both, plus a sentence (`reserveLabel`) — a bare `reserveHeld` is a
+figure they cannot check, and the same ₹1,000 of sales holding ₹50 from one
+outlet and ₹150 from another reads as arbitrary.
+
+### A vendor debt can outlive every cycle that could collect it
+
+`netPayable <= 0` sends a settlement to `CARRIED_FORWARD`, and carrying forward
+**is** releasing every claim it held — so the debt and the takings both flow into
+the next cycle. While the brand trades, new sales net it off. The day they stop,
+the same rows are claimed and released for ever: nothing errors, nothing is
+logged, and the money sits on our books as a receivable from somebody who is not
+coming back.
+
+`alertVendorDebt` (daily, reading `chargeback.writeOffDays`) reports it and never
+acts — writing a debt off is an accounting decision with a person's name on it,
+and doing it at 90 days automatically would forgive a brand that is merely
+between seasons. `writeOffVendorDebt` is the deliberate act.
+
+⚠️ It writes a **pair** of `MANUAL_ADJUSTMENT`s per row — `VENDOR_PAYABLE` credit
+so no future cycle sees a debt, `PLATFORM_COST` debit because we absorbed it. The
+reference goes on the **vendor row only**: `ONCE_PER_REFUND` and
+`ONCE_PER_DISPUTE` are unique on `{reference, entryType}`, so putting it on both
+makes the second a duplicate-key no-op — the debt clears, the cost never appears,
+and the books are short by exactly what was forgiven.
+
+⚠️ `writtenOffAt` is in **both** claim filters. Without it the write-off is
+cosmetic: the next build re-claims the row and the loss is counted twice.
+
+⚠️ The vendor identity grows a third term — `moneyInvariants.test.js` asserts it:
+
+```
+still owed  +  paid  +  written off  ===  share of sale  −  share of refunds
+```
 
 ### A chargeback is recovered from the next cycle
 
@@ -552,6 +735,30 @@ moving — no error anywhere. If you add a third webhook, add it to
   `$exists`, comparisons and `$type`. "In one of these statuses" has to become a
   denormalised boolean — `VoucherClaim.holdsUsageSlot`,
   `LedgerEntry.isOncePerTransaction` — and the index keys on that.
+- Comparing an optional field to `null` in an **aggregation expression** without
+  `$ifNull`. A query *filter* treats an absent field and an explicit `null`
+  alike; an expression does not, and nothing warns:
+
+  ```js
+  { $ne: ["$a.b", null] }                    // true when b is ABSENT
+  { $ne: [{ $ifNull: ["$a.b", null] }, null] }   // false, which is what you meant
+  ```
+
+  Fields that are simply never written until something happens — `settlementId`,
+  `respondBy`, `validTill` — are absent, not null. This shipped twice: the
+  dispute worklist reported `vendorWasPaid: true` for every payment that had
+  **never been settled** (the exact field an admin uses to decide whether there
+  is anything to claw back), and the promo list showed every code with no end
+  date as `isExpired`. `$lt` has the same trap in the other direction — missing
+  sorts *below* every date, so `{$lt: [missing, now]}` is `true`.
+- Handing `sendQuietly` an already-invoked promise instead of a thunk. It calls
+  what it is given **inside** its own try/catch, so `sendQuietly(notify(...))`
+  looks identical, still sends, and quietly drops the one protection the wrapper
+  exists for: the promise was created outside the guard, so a delivery failure
+  becomes an unhandled rejection rather than a logged line — and in Node 24 that
+  takes the job runner down. It is `sendQuietly(() => notify(...), "context")`.
+  A mocked `notify` records the call either way, so a test does **not** catch
+  this; assert `console.error` was not called.
 - Scheduling background work with a bare `setInterval` outside `jobs/index.js`. The
   runner is an in-process timer, so on a multi-instance deploy anything it schedules
   runs once per instance. Add the job to the registry in `jobs/index.js` and it gets

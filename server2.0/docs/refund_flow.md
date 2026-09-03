@@ -5,9 +5,21 @@
 Yeh document batata hai ki refund **aaj kaise chalta hai**, code me. Design ka
 "kyun" `vendor_settlement_plan.md` §5–§6 me hai; yeh "kya hota hai" hai.
 
-> **Status:** Phase S1 ✅ — `SOURCE` refunds (Razorpay usi card/UPI par lautata hai).
-> `MANUAL_BANK` fallback **abhi nahi bana** — S1.5. Neeche §7 me saaf likha hai ki
-> tab tak failed refund ka kya hota hai.
+> ⚠️ **Chargeback isse bilkul alag cheez hai** — usme grahak apne **bank** ke paas jaata
+> hai, hamare paas nahi, aur hum mana nahi kar sakte, sirf sabit kar sakte hain.
+> [`dispute_flow.md`](./dispute_flow.md) me poora.
+
+> **Status:** Phase S1 ✅ — `SOURCE` refunds (Razorpay usi card/UPI par lautata hai) ka
+> poora lifecycle: maangna → vendor ka faisla → escalation → admin payout → webhook →
+> ledger → notice. 9 endpoints, §1.5 me. Poora manifest:
+> [`implementation_phases.md`](./implementation_phases.md).
+>
+> ✅ **`MANUAL_BANK` ab ban gaya** — §7. Jiska card band ho gaya ya UPI handle expire ho
+> gaya, uska refund ab bank account par jaata hai: admin maangta hai, grahak OTP ke saath
+> account deta hai, server penny-drop karta hai, admin NEFT karke UTR bharta hai.
+>
+> Partial refund ab hold chhodta hai (§5.1a) aur ledger teeno account par **zero par
+> aata hai** (§5.1b) — dono money audit me theek hue.
 
 ---
 
@@ -50,6 +62,61 @@ Yeh document batata hai ki refund **aaj kaise chalta hai**, code me. Design ka
               │                hold laga rehta hai,
         COMPLETED              admin ko CRITICAL)
 ```
+
+---
+
+## 1.5 Endpoints
+
+| Method | Path | Kaun | Kya |
+|---|---|---|---|
+| `POST` | `/refunds` | customer | Refund maangna |
+| `PATCH` | `/refunds/:requestId/withdraw` | customer | Apni hi request wapas lena → `CANCELLED` |
+| `PATCH` | `/refunds/:requestId/approve` | vendor / sub-vendor | Rakam ghata sakta hai, badha nahi |
+| `PATCH` | `/refunds/:requestId/reject` | vendor / sub-vendor | `note` zaroori · **hold yahin hattta hai** |
+| `PATCH` | `/refunds/admin/:requestId/approve` | admin | `ADMIN_APPROVED` ya override |
+| `PATCH` | `/refunds/admin/:requestId/reject` | admin | `ADMIN_REJECTED` |
+| `PATCH` | `/refunds/admin/:requestId/pay` | admin | Razorpay ko bhejna |
+| `GET` | `/refunds` | token | Listing — teeno roles, scope token se |
+| `GET` | `/refunds/:requestId` | token | Detail — projection role ke hisaab se (§8) |
+
+**`MANUAL_BANK` (§7)** — jab paisa usi raaste se wapas nahi ja sakta:
+
+| Method | Path | Kaun | Kya |
+|---|---|---|---|
+| `PATCH` | `/refunds/admin/:requestId/request-bank-details` | admin | `FAILED` → `AWAITING_BANK_DETAILS`, `reason` zaroori |
+| `PATCH` | `/refunds/:requestId/bank-account` | customer | Apne verified account me se ek chunna |
+| `PATCH` | `/refunds/admin/:requestId/pay-to-bank` | admin | `PayoutLeg` kholna |
+| `PATCH` | `/refunds/admin/:requestId/confirm-bank-payout` | admin | **UTR zaroori** → refund band |
+| `PATCH` | `/refunds/admin/:requestId/fail-bank-payout` | admin | Bounce — leg rakhi jaati hai |
+
+**Grahak ke bank accounts** — `/bank-accounts`, sab `isCustomer`:
+
+| Method | Path | Kya |
+|---|---|---|
+| `POST` | `/bank-accounts/otp` | Code WhatsApp ya email par |
+| `POST` | `/bank-accounts` | Code + account → server penny-drop karta hai |
+| `GET` | `/bank-accounts` | Apne accounts (masked), unverified bhi — nishaan ke saath |
+| `DELETE` | `/bank-accounts/:accountId` | Soft delete. ⚠️ Mana, agar koi refund uspar taka hua hai |
+
+⚠️ Inme se koi bhi `customerId` accept **nahi** karta — scope hamesha token se. Jo
+endpoint identity filter leta, wo ek aadmi ko doosre ke accounts padhne ya jodne deta.
+
+**Listing query:** `page`, `limit`, `status`, `open`, `brandId`, `from`, `to`.
+
+> Scope aur filter **kaate** jaate hain, upar-neeche rakhe nahi — vendor kisi aur brand ka
+> `brandId` bheje to khaali page milta hai, apne rows nahi.
+
+### 1.5a `/withdraw` — grahak apni baat wapas le sakta hai
+
+Ye endpoint isliye hai ki `CANCELLED` allowance ki ginti me aata hai (§2.3) — bina iske
+wo status kabhi ban hi nahi sakta tha.
+
+Grahak ke liye ye zaroori hai: galti se maangi hui refund, ya wo jiska maamla outlet se
+baat karke sulajh gaya, use vendor ke faisle ka intezaar nahi karna chahiye. Aur vendor
+ke liye bhi — jo request wapas li ja chuki, wo uski 24-ghante wali list se hat jaati hai.
+
+⚠️ `CANCELLED` ginti me isliye aata hai ki *raise karo → vendor dekhe → withdraw karo →
+phir raise karo* vendor ko vyast rakhne ka tareeka hai bina kabhi rejection kamaye.
 
 ---
 
@@ -278,6 +345,41 @@ Jawab do tarah ka hota hai:
 | *"Refund sent to Razorpay successfully"* | Naya refund bheja gaya |
 | *"This refund had already reached Razorpay; it is now linked and processing"* | Kuch naya nahi bheja — pichhli koshish pahunch chuki thi |
 
+### 4.3 Gateway ko bhejne se pehle teen aur jaanch
+
+Ye teeno money audit me judi. Har ek us khidki ko band karti hai jo request banne aur
+paisa nikalne ke beech khuli rehti hai — **aur wo khidki ghanton ki hoti hai**.
+
+**1. Rakam dobara naapi jaati hai, live `amountRefunded` ke against.**
+
+Request Mangalwar ko bani, admin Guruwar ko pay kar raha hai. Beech me usi payment par
+koi doosra refund pura ho gaya — ya dashboard se refund kar diya gaya — to
+`amountRefunded` badh chuki hai. Purani request apni **purani** rakam leke baithi hai.
+
+```js
+const alreadyRefunded = Math.round((transaction.amountRefunded || 0) * 100) / 100;
+```
+
+Bina is jaanch ke total refund payment se **zyada** ja sakta tha. Razorpay khud bhi mana
+karta, par tab error `PROCESSING` row chhod jaata aur samajhne me mushkil hota.
+
+**2. `otherOpen` — usi payment par doosri khuli request ho to mana.**
+
+Do khuli requests, dono approved, dono pay — aur milkar payment se zyada. Ab doosri ko
+saaf `422` milta hai **pehli ka claim code naam lekar**, taaki admin ko dhoondhna na pade
+ki takraav kis se hai.
+
+**3. `vendorAlreadyPaid` — record hota hai aur jawab me lautaya jaata hai.**
+
+`Boolean(payment.settlementId)` — yaani us payment ka paisa vendor ko ja chuka hai ya
+abhi jaa raha hai. Golden rule ke rehte aisa hona hi nahi chahiye, par agar timing
+settings badal di gayi thi to ho sakta hai.
+
+⚠️ Ye refund **rokta nahi** — grahak ka paisa lautna hi chahiye. Ye **batata hai**, taaki
+admin ko pata ho ki iski recovery agle settlement cycle se hogi (`claimRefundAdjustments`),
+aur wo vendor ko pehle se bata sake. Chup-chaap clawback vendor ko agle mahine
+statement me milta — bina kisi chetavani ke.
+
 ---
 
 ## 5. Paisa pahunchta hai — `refund.processed`
@@ -344,6 +446,46 @@ rows par nahi: poore refund ke baad `VENDOR_PAYABLE`, `PLATFORM_REVENUE` aur
 > **aur** tax alag se — har sale par revenue theek GST jitna zyada. Ab
 > `feeNetOfTax` se net jaata hai, aur refund par bhi wahi mirror hota hai.
 
+### 5.1c Teen aur cheezein jo audit me theek huin
+
+**1. `amountRefunded` claim se *pehle* badhta hai.**
+
+Pehla kram tha: claim karo (`isOpen: false`) → phir `amountRefunded` badhao. Beech me ek
+khidki thi jisme request band ho chuki thi par total abhi purana tha — aur usi khidki me
+aane wali eligibility ya nayi request **galat aankda** padhti. Ab total pehle badhta hai.
+
+**2. `isRefunded` aur `refundStatus` ek hi pipeline me nikalte hain.**
+
+```js
+refundStatus: { … },
+isRefunded: { $gte: ["$amountRefunded", fullyRefundedAt] },
+```
+
+⚠️ Pehle `$max` se `amountRefunded` badhta tha aur uske **baad wala `$set`**
+`isRefunded` ko `false` likh deta tha — kyunki `$set` ne wo purani value dekhi jo `$max`
+ne abhi badli thi. Nateeja: poori refund hui payment `isRefunded: false` rehti, aur
+eligibility use **wapas settlement me le aati**. Ek hi aggregation pipeline me dono
+nikalne ka matlab hai ki derived flag apni source value se kabhi asehmat ho hi nahi
+sakta.
+
+**3. `FAILED` bhi claimable status hai.**
+
+Gateway hi asli authority hai ki paisa gaya ya nahi. Hamari request `FAILED` tab hoti hai
+jab Razorpay ko **call** karte waqt error aaya — par wo call pahunch bhi sakti thi. Baad
+me `refund.processed` webhook aaye to use `FAILED` row ko bhi utha lena chahiye. Bina
+iske: paisa grahak ko ja chuka hota, aur hamari row hamesha `FAILED` kehti rehti —
+`stuckFailedRefunds` me CRITICAL, admin baar-baar retry karta, aur **har retry doosri
+baar paisa bhej sakti thi**.
+
+**4. `ALREADY_COMPLETED` par ledger dobara post hota hai.**
+
+Agar row pehle se `COMPLETED` hai to completion `{ applied: false, reason:
+"ALREADY_COMPLETED" }` lautati hai — par ledger phir bhi post karke dekhti hai. Ledger
+entries apne unique index se idempotent hain, to dobara likhne se kuch nahi bigadta;
+**par agar pichhli baar ledger likhne se pehle process mar gaya tha, to wo reversal ab
+bhar jaata hai.** Bina iske ek adhoori row hamesha adhoori rehti aur `VENDOR_PAYABLE`
+par bhoot ka paisa bacha rehta.
+
 ### 5.2 Claim sirf **poore** refund par badalti hai
 
 Aanshik roop se refund hui claim phir bhi ek hui hui claim hai: grahak ne khaya,
@@ -364,12 +506,48 @@ type aisa promo cost dikhata jo kabhi ghata hi nahi.
 
 | Capture | Refund | Account |
 |---|---|---|
-| `COLLECTION` +netBill | `COLLECTION` −clawback | `VENDOR_PAYABLE` |
+| `COLLECTION` +netBill | `COLLECTION` −**netBillRefund** | `VENDOR_PAYABLE` |
 | `VENDOR_PROMO_SHARE` −share | `VENDOR_PROMO_SHARE` +share | `VENDOR_PAYABLE` |
-| `CONVENIENCE_FEE` +fee | `CONVENIENCE_FEE` −fee | `PLATFORM_REVENUE` |
+| **`VENDOR_COMMISSION` −deduction** | **`VENDOR_COMMISSION` +deduction** | `VENDOR_PAYABLE` |
+| `CONVENIENCE_FEE` +fee *(net of tax)* | `CONVENIENCE_FEE` −fee *(net of tax)* | `PLATFORM_REVENUE` |
+| `COMMISSION` +commission *(net of tax)* | `COMMISSION` −commission *(net of tax)* | `PLATFORM_REVENUE` |
 | `PLATFORM_PROMO_COST` −share | `PLATFORM_PROMO_COST` +share | `PLATFORM_COST` |
-| `COMMISSION` +commission | `COMMISSION` −commission | `PLATFORM_REVENUE` |
+| `TAX_COLLECTED` +fee GST +commission GST | `TAX_COLLECTED` −both | `TAX_PAYABLE` |
 | `GATEWAY_FEE` −MDR | `GATEWAY_FEE` −MDR **phir se** | `PLATFORM_COST` |
+
+⚠️ **`COLLECTION` par `netBillRefund` hai, `vendorClawback` nahi.** Do alag number
+hain: capture **gross** `netBill` credit karta hai aur promo share alag debit karta hai,
+to refund ko bhi wahi shakl chahiye. `vendorClawback` settlement ka number hai —
+`computeTotals` use `refundAdjustment` me use karta hai, jahan net hi sahi hai. Galat
+wala lagane se ₹800 ki sale par `VENDOR_PAYABLE` **+₹50** par ruk jaata tha.
+
+### 5.4a ⚠️ `VENDOR_COMMISSION` — wo row jiske bina kitaab band hi nahi hoti
+
+`COMMISSION` batata hai **hum kya kamaye**. `VENDOR_COMMISSION` batata hai **vendor ko
+ab kya nahi dena**. Ek hi ghatna, do account — bilkul wahi jodi jo
+`VENDOR_PROMO_SHARE` / `PLATFORM_PROMO_COST` banate hain, kyunki yahan ek entry type ek
+hi account aur ek hi direction rakhta hai.
+
+Iske bina kya hota tha, ₹1,000 ki sale par 10% commission ke saath:
+
+```
+capture:   COLLECTION  VENDOR_PAYABLE +1000     (commission ka koi debit nahi)
+settlement: netPayable = 1000 − 100 = 900
+payout:    PAYOUT      VENDOR_PAYABLE  −900
+           ────────────────────────────────
+           VENDOR_PAYABLE = +100  ← hamesha ke liye
+```
+
+Har sale par commission jitna **bhoot ka payable**, jo kabhi nahi mitta — aur
+`getVendorBalance` vendor ko wo paisa dikhata jo kabhi unka tha hi nahi.
+
+⚠️ **`commissionDeduction`, `commissionAmount` nahi.** GST agar commission ke **upar**
+lagti hai to vendor se tax bhi kata hai; sirf commission credit karne par unka GST hamare
+margin se jaata.
+
+> Aaj rate `0` hai aur GST off hai, to ye dono row kuch post hi nahi karti —
+> `recordLedgerEntry` zero amount chhod deta hai. `__tests__/money/ledgerBalance.test.js`
+> me **paanch case non-zero rate par** chalte hain, teenon GST modes me, theek isi liye.
 
 Gateway fee hi wo ek row hai jo **reversal nahi** hai: Razorpay refund par apni fee
 wapas nahi karta, to wo nuksaan dobara darj hota hai. `calculateRefundSplit` use
@@ -413,6 +591,7 @@ settlement statement me mile, jab paisa hil chuka ho.
 | `escalateStaleRefunds` | 15m | Vendor ki window khatam → admin (ya auto-approve) |
 | `reconcileRefunds` | 30m | Gateway se poochta hai + **chhoote hue hold wapas lagata hai** |
 | `remindVendorsAboutRefunds` | 60m | Do nudges, ek sweep me ek |
+| `remindCustomersAboutBankDetails` | 60m | Do nudges grahak ko, phir 30 din baad admin ko — §6.4 |
 
 ### 6.1 `reconcileRefunds` gateway par **kabhi nahi likhta**
 
@@ -433,6 +612,32 @@ hai.
 Isliye `reconcileRefunds` sabse pehle yeh theek karta hai, sirf report nahi karta:
 **noticing aur fixing ke beech ki window ek settlement run hai.**
 
+### 6.2a ⚠️ Jo clawback kisi cycle tak pahunch hi nahi sakti
+
+Poora refund ho jaane ke **baad** bhi ek cheez khuli reh jaati hai: uski clawback.
+`COMPLETED` refund ka `vendorClawback` agli settlement claim karti hai — par agar us
+brand ki katautiyan uski bikri se zyada hain, `netPayable` negative ho jaata hai,
+settlement `CARRIED_FORWARD` jaati hai, aur **carry forward ka matlab hi hai ki uske sab
+claims chhod diye jaate hain**. Agla cycle wahi rows dobara claim karta hai, wahi
+negative par pahunchta hai, phir chhod deta hai.
+
+Jab tak brand chal raha hai ye bilkul sahi hai — nayi bikri usse net kar deti hai. **Jis
+din wo dhandha band kar de, ye kabhi khatam nahi hota.** Koi error nahi, koi log nahi,
+kisi report me kuch nahi.
+
+| Kaam | Kya karta hai |
+|---|---|
+| `alertVendorDebt` (roz) | `chargeback.writeOffDays` (90) se purani, bina claim hui clawback par **admin ko batata hai** |
+| `GET /settlements/admin/debt/:brandId` | Faisla lene se pehle dekhna |
+| `PATCH /settlements/admin/debt/:brandId/write-off` | Band karna — likhit wajah ke saath |
+
+⚠️ `RefundRequest.writtenOffAt` **claim filter me** hai. Uske bina write-off sirf dikhawa
+hota: agli build wahi row phir claim karti, phir kaatti, phir negative, phir chhod deti
+— wahi anant loop, ab ek `MANUAL_ADJUSTMENT` ke saath jo kehta hai ki humne pehle hi
+uthaa liya tha. Nuksaan kitaab me **do baar** ginha jaata.
+
+Poora hisaab: [`settlement_flow.md`](./settlement_flow.md) §2.6b.
+
 ### 6.3 Har khula state kisi na kisi ki nazar me hai
 
 | State | Kaun dekhta hai |
@@ -442,37 +647,149 @@ Isliye `reconcileRefunds` sabse pehle yeh theek karta hai, sirf report nahi kart
 | `VENDOR_APPROVED` · `ADMIN_APPROVED` | health · `stalledApprovals` |
 | `PROCESSING` | `reconcileRefunds` + health · `stuckProcessingRefunds` |
 | `FAILED` | health · `stuckFailedRefunds` (CRITICAL) |
+| `AWAITING_BANK_DETAILS` | `remindCustomersAboutBankDetails` — §6.4 |
 | *koi bhi khula, bina hold* | health · `unheldRefunds` (CRITICAL) + reconcile repair |
+| `COMPLETED`, par clawback jo kisi cycle tak pahunch na paaye | `alertVendorDebt` — §6.2a |
+
+### 6.4 `AWAITING_BANK_DETAILS` — do nudge, phir admin ka
+
+Har doosra khula state koi na koi job **hal** kar deta hai. Ye nahi kar sakta: use
+sirf grahak hi aage badha sakta hai, aur kuch kabhi nahi badhayenge — number badal
+gaya, app hat gayi, ya ₹200 ke liye mehnat karna theek nahi laga.
+
+| Kab | Kya |
+|---|---|
+| 24 ghante baad | grahak ko nudge |
+| 96 ghante baad | doosra nudge |
+| **30 din baad** | ⚠️ admin ko — *"ye ab aapka maamla hai"* |
+
+**Nudge dinon ke faasle par hain, ghanton ke nahi.** Jise pehle hi bataya ja chuka ki
+uska refund fail hua, aur phir bar-bar uska account number maanga jaaye — wo use **scam
+samajhta hai**, aur jo paisa uska hai wahi cheez ban jaati hai jisse wo sabse zyada
+katrata hai.
+
+### 6.4a ⚠️ Aakhri stage nudge nahi hai — wo vendor ke liye hai
+
+`settlementHold` us din se laga hai jis din refund maanga gaya, aur wo us payment ko
+**har aane wali settlement** se bahar rakhta hai. Jab tak refund zinda hai ye bilkul
+sahi hai. Jab wo atak jaaye, to ye chup-chaap sazaa ban jaata hai — **vendor hamesha ke
+liye kisi aur ki khamoshi ki keemat bharta hai.**
+
+Isliye 30 din baad admin ko bataya jaata hai, aur wo `release-hold` se hold chhod sakta
+hai — **wajah likhkar**.
+
+> ⚠️ **Hold chhodna refund cancel karna nahi hai.** Paisa abhi bhi grahak ka hai aur
+> request khuli rehti hai. Agar wo kabhi account de dein, to `claimRefundAdjustments`
+> clawback agle cycle se kaat leta hai — kyunki tab tak us payment par `settlementId`
+> lag chuka hoga, aur wahi us function ki shart hai. Kuch bhi maaf nahi hota; sirf
+> vendor ka paisa jamna band hota hai.
+
+⚠️ **30 din se pehle `release-hold` mana karta hai** — us waqt tak refund apne aap poora
+ho sakta hai, aur tab hold chhodna vendor ko us sale ka paisa de deta jo wapas jaane
+wala hai.
+
+⚠️ Aur ek doosri khuli refund usi payment par **ban hi nahi sakti** —
+`refund_open_per_transaction_unique` rokta hai. Isi wajah se override surakshit hai: jo
+ek row chhodi ja rahi hai, wo chupke se kai rows nahi ho sakti.
 
 `GET /transactions/admin/health` par sab dikhta hai.
 
 ---
 
-## 7. ⚠️ Jo abhi nahi bana — `MANUAL_BANK`
+## 7. ✅ `MANUAL_BANK` — jab paisa usi raaste se wapas nahi ja sakta
 
-Plan (§6.1) kehta hai: `SOURCE` pehle, aur `refund.failed` aane par `MANUAL_BANK` —
-grahak se bank account maango, penny-drop verify karo, admin NEFT kare.
+`SOURCE` paisa usi card ya UPI par lautata hai jisse aaya tha. Jab wo instrument
+**band** ho — card cancel, UPI handle expire — to `SOURCE` **har baar** fail hogi, aur
+pehle admin ke paas dabane ko koi doosra button tha hi nahi: request `FAILED` par padi
+rehti, vendor ka paisa ruka rehta, har retry par CRITICAL jaata, aur grahak ko uska
+paisa kabhi nahi milta.
 
-**`SOURCE` bana hai. `MANUAL_BANK` nahi.** Aaj `refund.failed` par:
+```
+SOURCE fail
+   → admin: request-bank-details       → AWAITING_BANK_DETAILS   (grahak ko notice)
+   → grahak: bank account jodta hai    (OTP + penny drop)
+   → grahak: refund par lagata hai     → ADMIN_APPROVED
+   → admin: pay-to-bank                → PayoutLeg INITIATED, refund PROCESSING
+   → admin haath se NEFT karta hai
+   → admin: confirm-bank-payout + UTR  → leg PAID → applyRefundCompletion
+```
 
-| | Kya hota hai |
-|---|---|
-| Request | `FAILED`, par **khuli rehti hai** — paisa abhi bhi wapas jaana hai |
-| Hold | **laga rehta hai** — us claim ka paisa vendor ko nahi jaayega |
-| Admin | CRITICAL notification, har attempt par nayi |
-| Retry | `/admin/:id/pay` phir se `SOURCE` try karta hai |
-| Health | `stuckFailedRefunds` me ginta hai |
+### 7.1 ⚠️ Admin shuru karta hai, apne aap kabhi nahi
 
-⚠️ **Agar instrument sach me paisa le hi nahi sakta** (band card, expire ho chuka
-UPI handle) to `SOURCE` hamesha fail hoti rahegi, aur admin ke paas dabane ko koi
-dusra button nahi hai. Aisa refund tab tak khula rehta hai jab tak S1.5 nahi banta.
+`SOURCE` ka fail hona hamesha *"instrument mar gaya"* nahi hota — gateway ki do-minute
+ki dikkat bhi bilkul aisi hi dikhti hai, aur usme retry chal jaata hai.
 
-Kyun tala gaya: `MANUAL_BANK` ko `CustomerBankAccount` chahiye, aur `models/Bank.js`
-ek **CGPEY verification record** hai, bank-account model nahi — usme customer row
-daalna vendor onboarding ke liye barood hai (account-number uniqueness Mongo index
-nahi, **teen jagah** collection-wide query hai, aur teesri jagah patch na ho to
-vendor ka KYC score `REJECTED` tak gir sakta hai). Details `vendor_settlement_plan.md`
-§6.5 me.
+Apne aap switch karne ka matlab hota: har us grahak se bank details maangna jinka refund
+ek transient blip me atka. **Bina zarurat bank details maangna theek wahi cheez hai jo
+ek asli message ko scam jaisa bana deti hai** — aur uske baad wo grahak asli message par
+bhi bharosa nahi karega.
+
+Isliye `request-bank-details` sirf `FAILED` se chalta hai, aur `reason` **zaroori** hai:
+grahak phone karke poochega ki ye sach hai ya nahi, aur support ke paas jawab me kehne
+ko ek line honi chahiye.
+
+### 7.2 Grahak ka account — OTP, phir penny drop
+
+| Kadam | Kya | Kyun |
+|---|---|---|
+| `POST /bank-accounts/otp` | Code WhatsApp ya email par | Account jodna matlab **paisa kahan jaayega** ye tay karna. Jiske paas grahak ka session hai wo refund apne account par mod sakta tha, aur NEFT wapas nahi aati |
+| `POST /bank-accounts` | Code + account + IFSC | Server **khud** CGPEY penny-drop karta hai |
+| — | `isVerified` server par nikalta hai | ⚠️ Client se verification ki koi baat nahi maani jaati. Jo client `isVerified: true` likh sake, wo refund kahin bhi bhej sakta hai |
+
+⚠️ **Drop fail hone par bhi row likhi jaati hai**, phir error jaata hai. Ye ajeeb lagta
+hai aur jaan-boojh kar hai: support ko dikhna chahiye ki grahak ne koshish ki aur
+provider ne kya kaha. `isVerified: false` hi paisa rokta hai — wo row sabooti hai,
+manzil nahi.
+
+⚠️ **`models/Bank.js` me customer row nahi daali gayi.** Wo ek **CGPEY verification
+record** hai, bank-account model nahi: `brandId` required hai, aur account-number ki
+uniqueness Mongo index se nahi balki **collection-wide query** se aati hai
+(`verifyBankAndFetchDetails`, `createBank`). Customer row waha daalne par ek vendor ko
+onboarding ke beech me *"this account number is already in use"* milta — kisi aise
+grahak ki wajah se jise wo jaante bhi nahi — aur wahi check brand ke verification score
+me jaata hai. Isi liye `MANUAL_BANK` tala gaya tha, aur isi liye ab
+`models/CustomerBankAccount.js` alag hai.
+
+### 7.3 NEFT — wahi machinery jo settlement use karta hai
+
+`PayoutLeg` par `payoutType: REFUND` aur `refundRequestId` ka unique index **pehle se**
+maujood tha; ye din uske liye hi socha gaya tha.
+
+- **Leg pehle banti hai, status baad me badalta hai** — beech me crash ho to `APPROVED`
+  refund + `INITIATED` leg bachti hai, jo dikhti hai. Ulta kram `PROCESSING` refund bina
+  kisi leg ke chhodta, jo padhne me *"paisa nikal gaya par kahin nahi mila"* lagta hai.
+- **Payee leg par freeze hota hai**, account row par nahi. Account baad me badal sakta
+  hai; jhagde me maayne wo rakhta hai ki **is transfer** me paisa kahan gaya.
+- **`isVerified` pay ke waqt dobara jaancha jaata hai.** Attach aur NEFT ke beech ghante
+  lagte hain, aur account hat sakta hai.
+- **UTR zaroori hai** — teen din baad jab grahak kahe "paisa nahi aaya", bank statement
+  par dhoondhne layak wahi ek cheez hai.
+- **Bounce par leg mitayi nahi jaati.** Retry **nayi leg** kholti hai. Purani ko edit
+  karna us baat ko mita deta hai ki paisa kabhi us account me bheja gaya tha — jo jaanch
+  me theek wahi cheez chahiye hoti hai.
+
+### 7.4 ⚠️ Hold poore raaste bhar laga rehta hai
+
+`AWAITING_BANK_DETAILS` **khula status hai** (`REFUND_OPEN_STATUSES` me), aur
+`REFUND_HOLD_RELEASING_STATUSES` me jaan-boojh kar **nahi** hai.
+
+Iske bina do cheezein ek saath tootti: grahak usi payment par **doosra** refund file kar
+pata (`(transactionId, isOpen)` index match karna band kar deta), aur
+`releaseSettlementHold` ko koi khuli request na dikhti — to agli settlement vendor ko us
+sale ka paisa de deti jiska refund abhi bakaya hai. Dono chup-chaap.
+
+`__tests__/money/manualBankRefund.test.js` isi ek baat par ek poora test rakhta hai —
+failure se lekar paisa pahunchne tak, har kadam par hold jaancha jaata hai.
+
+### 7.5 Grahak ko kya dikhta hai
+
+`statusLabel` — **"Add your bank account so we can send it"**, na ki "Awaiting bank
+details". Doosra wala hamari queue batata hai, unka agla kadam nahi.
+
+Notification me: unka claim code, ki **paisa abhi bhi unka hai**, kyun original raasta
+kaam nahi kiya, aur app me jaane ka link. ⚠️ Wo kabhi kisi web form ka link nahi bhejti
+aur kabhi reply me details nahi maangti — kyunki ye ek aisa message hai jo dikhne me
+theek scam jaisa ho sakta hai, aur us grahak ka refund pehle hi ek baar fail ho chuka hai.
 
 ---
 
@@ -512,6 +829,7 @@ padta hai, aur wo aisi jaankari nahi jis par wo kuch kar sake.
 | Nmanzoor | grahak | INFO + support ka raasta |
 | Escalate hua | admin | ⚠️ WARNING |
 | **Refund FAIL hua** | admin | 🔴 **CRITICAL** |
+| **Bank details maangi gayin** | grahak | INFO — §7.5, wo ek notice jo grahak se kuch karne ko kehti hai |
 | Paisa pahuncha | grahak | INFO — **UTR ke saath** |
 
 `PROCESSING` aur `ADMIN_APPROVED` par koi notification **nahi** — asli transitions

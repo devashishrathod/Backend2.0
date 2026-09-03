@@ -1,6 +1,32 @@
 # Customer Voucher Claim — Implementation Plan
 
-> **Status:** approval ke baad phase-by-phase implement hoga
+> ## ✅ Ye ban chuka hai — par ye doc "kya banana tha" hai, "kya hai" nahi
+>
+> **Phase 0 · 1A · 1B · 1C — chaaron ho gaye.** Preview, promo, payment, claim, usage,
+> invoice, notifications, ledger aur saari read APIs sab live hain.
+>
+> **Ye doc jaan-boojh kar waise ka waisa rakha gaya hai.** Isme har faisle ka *kyun* hai
+> — aur wo kahin aur nahi likha. Par implement karte waqt kai jagah is plan se **hatna
+> pada**, kyunki DB par sach kuch aur nikla. Is doc me likhi baat aur aaj ke code me
+> farak ho, to **code sahi hai**.
+>
+> | Kya jaanna hai | Kahan padho |
+> |---|---|
+> | Aaj kaunsa module bana hai, kya nahi | [`implementation_phases.md`](./implementation_phases.md) |
+> | Plan se kahan-kahan hatna pada, aur kyun | Wahi doc — har phase ka "ho gaya" section |
+> | Refund aaj kaise chalta hai | [`refund_flow.md`](./refund_flow.md) |
+> | Settlement aaj kaise chalta hai | [`settlement_flow.md`](./settlement_flow.md) |
+>
+> ⚠️ **Teen jagah is doc ka likha aaj galat hai:**
+> 1. `pricing` block ke teen naam badal gaye (`discountAmount` → `offerDiscount`,
+>    `payableAmount` → `totalPayable`, `totalSavings` → `youSaved`). Purane naam response
+>    me abhi bhi echo hote hain, par **store sirf naye** hote hain.
+> 2. Endpoint paths kebab-case me likhe hain; asli mount `routePrefix` se hota hai —
+>    `/voucher-claims` sahi hai, par outlet verify ka path `code/:claimCode` hai,
+>    `verify/:claimCode` **nahi**.
+> 3. `database/mongoDb.js` wala `autoIndex` note ab purana hai — connection ab tuned hai,
+>    `CLAUDE.md` ka "Production" section dekho.
+>
 > **Sibling doc:** [vendor_settlement_plan.md](./vendor_settlement_plan.md) — paisa bahar jaane wala hissa
 > **Scope:** customer voucher preview → promo → Razorpay payment → claim + usage + transaction records → invoice → notifications
 
@@ -1171,7 +1197,7 @@ Yaani **aaj `convenienceFee` bhi admin panel se set nahi ho sakta**, aur is desi
 - **`JobLock` + job health + boot config check** (§14.5) — multi-instance par chalane se pehle zaroori
 - ✅ **Migration script — `scripts/migrateCustomerClaimFoundation.js`** (§2.6.1, idempotent): naye indexes → verify → purane **naam se** drop · `purpose` + `gatewayAccount` + `settlementStage` backfill · `audience` backfill (`$exists: false` par) · `VoucherUsage` index drop · `Setting.customer` seed
 
-**Files:** `models/Transaction.js` · `VoucherUsage.js` · `PromoCode.js` · `PromoCodeUsage.js` · `WebhookEvent.js` · `Setting.js` · `constants/transaction.js` · `customer.js` · `promoCode.js` · `webhook.js` · `configs/razorpay.js` · `middlewares/optionalAuth.js` · `helpers/transactions/*` · `helpers/promoCodes/*` · `helpers/common/istDate.js` · `services/transactions/handleRazorpayWebhook.js` · `routes/transactions.js` · `scripts/migrations/*`
+**Files:** `models/Transaction.js` · `VoucherUsage.js` · `PromoCode.js` · `PromoCodeUsage.js` · `WebhookEvent.js` · `Setting.js` · `constants/transaction.js` · `customer.js` · `promoCode.js` · `webhook.js` · `configs/razorpay.js` · `middlewares/verifyJwtToken.js` (`optionalAuth` wahin se export hota hai — alag file nahi bani) · `helpers/transactions/*` · `helpers/promoCodes/*` · `helpers/common/istDate.js` · `services/transactions/handleRazorpayWebhook.js` · `routes/transactions.js` · `scripts/migrations/*`
 
 ### Phase 1A — Preview
 - `calculateVoucherPricing()` — §4.1, saare config flags

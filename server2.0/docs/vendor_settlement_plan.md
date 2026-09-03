@@ -1,6 +1,35 @@
 # Vendor Settlement, Refunds & Chargebacks — Implementation Plan
 
-> **Status:** approval ke baad phase-by-phase implement hoga
+> ## ⏳ Aadha ban chuka hai — aur ye doc "kya banana tha" hai, "kya hai" nahi
+>
+> | Phase | Haalat |
+> |---|---|
+> | **S1 — Refunds** | ✅ `SOURCE` ka poora lifecycle. ❌ `MANUAL_BANK` (§6.1, §6.5) nahi bana |
+> | **S2 — Settlement** | ✅ build · claim · approve · payout · reversal · sweeps. ❌ statement PDF, per-brand config |
+> | **S3 — Chargebacks** | ⏳ **sirf recovery bana** (§7.5). Dispute model, evidence pack, reserve, receivables — kuch nahi |
+>
+> **Ye doc jaan-boojh kar waise ka waisa rakha gaya hai.** Isme har faisle ka *kyun* hai —
+> golden rule, hold ka design, promo split, chargeback strategy — aur wo kahin aur nahi
+> likha. Par is doc me likhi baat aur aaj ke code me farak ho, to **code sahi hai**.
+>
+> | Kya jaanna hai | Kahan padho |
+> |---|---|
+> | Kaunsa module bana, kya nahi, kis file me | [`implementation_phases.md`](./implementation_phases.md) |
+> | Refund aaj kaise chalta hai | [`refund_flow.md`](./refund_flow.md) |
+> | Settlement aaj kaise chalta hai | [`settlement_flow.md`](./settlement_flow.md) |
+>
+> ⚠️ **Chaar jagah is doc ka likha aaj galat ya adhoora hai:**
+> 1. **§7.5 chargeback recovery ka strategy likha tha, par code me `chargebackAdjustment`
+>    hardcoded `0` tha** aur ledger types koi likhta hi nahi tha — platform chup-chaap
+>    nuksaan utha raha tha. Money audit me bana. `settlement_flow.md` §2.5a dekho.
+> 2. **Partial refund** ka netting is doc me arithmetic me tha, par code use **filter se**
+>    bahar kar deta tha — ek ₹800 ki sale par vendor ko lagbhag ₹1,100 ka farak. Ab
+>    arithmetic me hi kata hai.
+> 3. **`BrandSettlementConfig`** is doc me maana gaya hai; wo model **bana hi nahi**.
+>    Config saare brands ke liye ek hi hai (`Setting.customer.settlement`).
+> 4. **~40 endpoints implied the par ek bhi path likha nahi tha.** Ab teeno jagah likhe
+>    hain: `settlement_flow.md` §7, `refund_flow.md` §1.5, aur `endpoints_category.md`.
+>
 > **Sibling doc:** [customer_voucher_claim_plan.md](./customer_voucher_claim_plan.md) — paisa andar aane wala hissa
 > **Scope:** money ledger → settlement cycle → vendor payout → refunds → chargebacks
 
@@ -688,7 +717,7 @@ Isse bhi bura: account-number uniqueness Mongo index nahi hai, wo ek **applicati
 // koi cross-collection accountNumber uniqueness NAHI — do customer ek joint account share kar sakte hain
 ```
 
-Verification ke liye alag service — `services/cgpeyAPIs/verifyCustomerBankAccount.js` — apna cache (`{customerId, accountNumber}`), aur **koi cross-brand duplicate check nahi**. `verifyBankAndFetchDetails` aur `createBank` ko haath mat lagao, wo onboarding ke liye load-bearing hain.
+Verification ke liye alag service. ⚠️ **Bani `services/customerBankAccounts/addBankAccount.js` me**, alag `cgpeyAPIs` file ke bajaye — wahi `verifyBankAndFetchDetails` reuse karta hai. Apna cache (`{customerId, accountNumber}`), aur **koi cross-brand duplicate check nahi**. `verifyBankAndFetchDetails` aur `createBank` ko haath mat lagao, wo onboarding ke liye load-bearing hain.
 
 Account attach hone se pehle `verificationStatus: SUCCESS` + `recommendedAction: PROCEED` zaroori. `isNameMatch` / `matchingScore` snapshot me jaayein taaki admin ko approval screen par name-match verdict dikhe.
 
