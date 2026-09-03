@@ -1,6 +1,8 @@
 const Transaction = require("../../models/Transaction");
 const VoucherClaim = require("../../models/VoucherClaim");
 const RefundRequest = require("../../models/RefundRequest");
+const Settlement = require("../../models/Settlement");
+const PayoutLeg = require("../../models/PayoutLeg");
 const {
   TRANSACTION_PURPOSE,
   SETTLEMENT_STAGE,
@@ -8,6 +10,11 @@ const {
 } = require("../../constants/transaction");
 const { VOUCHER_CLAIM_STATUS } = require("../../constants/voucherClaim");
 const { REFUND_REQUEST_STATUS } = require("../../constants/refund");
+const {
+  SETTLEMENT_STATUS,
+  SETTLEMENT_PRE_PAYOUT_STATUSES,
+} = require("../../constants/settlement");
+const { PAYOUT_TYPE, PAYOUT_LEG_STATUS } = require("../../constants/payout");
 const { PAYMENT_STATUS } = require("../../constants");
 const { JOB_HEALTH_STATUS } = require("../../constants/job");
 const {
@@ -58,6 +65,12 @@ exports.getPaymentHealth = async () => {
     stuckFailedRefunds,
     stuckProcessingRefunds,
     unattendedEscalations,
+    stalledApprovals,
+    unheldRefunds,
+    frozenHolds,
+    unconfirmedPayouts,
+    overdueSettlements,
+    strandedDrafts,
   ] = await Promise.all([
     getJobsHealth(),
 
@@ -187,6 +200,161 @@ exports.getPaymentHealth = async () => {
       updatedAt: { $lte: new Date(now - DAY_MS) },
       isDeleted: false,
     }),
+
+    /**
+     * Approved by somebody, paid by nobody.
+     *
+     * ⚠️ Nothing else watches these. `escalateStaleRefunds` only looks at
+     * `REQUESTED`; once a vendor says yes the request leaves every sweep's
+     * filter and waits for an admin to press pay. If nobody does, it waits for
+     * ever — the customer has been told their money is approved and is not
+     * getting it, and the vendor's money stays held behind it.
+     */
+    RefundRequest.countDocuments({
+      status: {
+        $in: [
+          REFUND_REQUEST_STATUS.VENDOR_APPROVED,
+          REFUND_REQUEST_STATUS.ADMIN_APPROVED,
+          REFUND_REQUEST_STATUS.ADMIN_OVERRIDE,
+        ],
+      },
+      updatedAt: { $lte: new Date(now - DAY_MS) },
+      isDeleted: false,
+    }),
+
+    /**
+     * ⚠️ An open refund whose payment is **not** held.
+     *
+     * The one that actually moves money the wrong way: settlement pays the
+     * vendor for a claim that is about to be refunded, and then the refund has
+     * nothing to come out of. The whole "no recovery, no negative balance"
+     * guarantee rests on that hold existing.
+     *
+     * `requestRefund` sets it, but the write is a second round trip after the
+     * request is created — a process that dies in between leaves exactly this.
+     * `reconcileRefunds` repairs it; this counts what it has not got to yet.
+     */
+    RefundRequest.aggregate([
+      { $match: { isOpen: true, isDeleted: false } },
+      {
+        $lookup: {
+          from: "transactions",
+          localField: "transactionId",
+          foreignField: "_id",
+          as: "payment",
+          pipeline: [{ $project: { settlementHold: 1 } }],
+        },
+      },
+      { $unwind: "$payment" },
+      { $match: { "payment.settlementHold": { $ne: true } } },
+      { $count: "total" },
+    ]).then((rows) => rows[0]?.total || 0),
+
+    /**
+     * ⚠️ Money frozen by a hold that nothing will ever lift.
+     *
+     * The exact inverse of `unheldRefunds`, and the more dangerous half. That
+     * one finds an open refund whose payment is *not* held — money that might be
+     * paid out wrongly, which at least surfaces as a complaint. This finds a
+     * payment that **is** held with nothing open behind it: no refund, no live
+     * dispute, and not fully refunded. Nobody complains, because nobody knows.
+     * The eligibility predicate simply stops matching and the vendor's money
+     * leaves every future settlement, silently, for ever.
+     *
+     * Before the admin release endpoint existed there was no way out of this at
+     * all, which is why nothing counted it. Now there is, so it is worth asking.
+     *
+     * A fully refunded payment is excluded: its hold is correct and permanent.
+     */
+    Transaction.aggregate([
+      {
+        $match: {
+          ...claimFilter,
+          settlementHold: true,
+          isRefunded: { $ne: true },
+          // Give a just-raised refund time to write its own row.
+          updatedAt: { $lte: new Date(now - HOUR_MS) },
+          isDeleted: false,
+        },
+      },
+      {
+        $lookup: {
+          from: RefundRequest.collection.name,
+          localField: "_id",
+          foreignField: "transactionId",
+          as: "openRefunds",
+          pipeline: [
+            { $match: { isOpen: true, isDeleted: false } },
+            { $project: { _id: 1 } },
+          ],
+        },
+      },
+      {
+        $match: {
+          openRefunds: { $size: 0 },
+          // A live chargeback is a legitimate reason to hold.
+          $or: [
+            { isDisputed: { $ne: true } },
+            { disputeResolvedAt: { $ne: null } },
+          ],
+        },
+      },
+      { $count: "total" },
+    ]).then((rows) => rows[0]?.total || 0),
+
+    /**
+     * ⚠️ A NEFT that was started and never confirmed.
+     *
+     * `MANUAL_BANK` has no callback — a person reading their banking screen is
+     * the confirmation — so an admin who starts a transfer at 4pm and does not
+     * come back leaves the settlement `PROCESSING` for ever. The vendor reads
+     * "on its way to your bank" indefinitely, no `PAYOUT` row is booked, and
+     * the next cycle skips those rows because they are still claimed.
+     *
+     * Nothing errors. `sweepStalePayouts` alerts on it, so a count that stays
+     * above zero means either that job is not running or nobody is acting on it.
+     */
+    PayoutLeg.countDocuments({
+      payoutType: PAYOUT_TYPE.SETTLEMENT,
+      status: PAYOUT_LEG_STATUS.INITIATED,
+      initiatedAt: { $lte: new Date(now - DAY_MS) },
+      isDeleted: false,
+    }),
+
+    /**
+     * A vendor who has not been paid for money we collected a week ago.
+     *
+     * Not the same as the sweep's window, deliberately: that one alerts at
+     * `notReceivedAlertHours` so somebody has time to act. By the time a
+     * settlement is a week old and still unpaid, the alert has already been sent
+     * and ignored.
+     */
+    Settlement.countDocuments({
+      status: {
+        $in: [
+          ...SETTLEMENT_PRE_PAYOUT_STATUSES,
+          SETTLEMENT_STATUS.FAILED,
+          SETTLEMENT_STATUS.ON_HOLD,
+        ],
+      },
+      netPayable: { $gt: 0 },
+      createdAt: { $lte: new Date(now - 7 * DAY_MS) },
+      isDeleted: false,
+    }),
+
+    /**
+     * An empty `DRAFT` whose key still occupies its period.
+     *
+     * The build writes the shell before it claims rows, so a crash in between
+     * leaves one of these — and the next build then **skips that brand's day**,
+     * for ever, because the period's `idempotencyKey` is taken.
+     * `sweepAbandonedDrafts` voids them hourly.
+     */
+    Settlement.countDocuments({
+      status: SETTLEMENT_STATUS.DRAFT,
+      createdAt: { $lte: new Date(now - 6 * HOUR_MS) },
+      isDeleted: false,
+    }),
   ]);
 
   const stuck = {
@@ -199,6 +367,14 @@ exports.getPaymentHealth = async () => {
     stuckFailedRefunds,
     stuckProcessingRefunds,
     unattendedEscalations,
+    stalledApprovals,
+    unheldRefunds,
+    // Held with nothing open behind it — the silent freeze.
+    frozenHolds,
+    // ---- settlements: the money going the other way ----
+    unconfirmedPayouts,
+    overdueSettlements,
+    strandedDrafts,
   };
 
   /**
@@ -218,7 +394,16 @@ exports.getPaymentHealth = async () => {
      * reason read the other way round: a customer's money is being held and
      * nothing automated will release it.
      */
-    stuckFailedRefunds > 0;
+    stuckFailedRefunds > 0 ||
+    // Money that can still be paid to the wrong side.
+    unheldRefunds > 0 ||
+    /**
+     * CRITICAL for the same reason as `stuckFailedRefunds`: the money has
+     * physically moved and the system does not know it. Every hour this
+     * stays true is an hour the ledger is wrong about a real transfer, and
+     * an hour the vendor's next cycle silently skips those rows.
+     */
+    unconfirmedPayouts > 0;
 
   const attention =
     jobs.status === JOB_HEALTH_STATUS.STALE ||
@@ -236,7 +421,17 @@ exports.getPaymentHealth = async () => {
     stalePendingClaims > 0 ||
     openDisputes > 0 ||
     stuckProcessingRefunds > 0 ||
-    unattendedEscalations > 0;
+    unattendedEscalations > 0 ||
+    stalledApprovals > 0 ||
+    overdueSettlements > 0 ||
+    strandedDrafts > 0 ||
+    /**
+     * ATTENTION rather than CRITICAL: nothing is being lost, it is being
+     * withheld — and there is now a button for it
+     * (`PATCH /transactions/admin/:id/release-hold`). It still has to be
+     * asked about, because the vendor cannot see it and will not ask.
+     */
+    frozenHolds > 0;
 
   return {
     status: critical

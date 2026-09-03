@@ -78,6 +78,33 @@ const NOTIFICATION_TYPES = Object.freeze({
   REFUND_FAILED: "REFUND_FAILED",
   REFUND_ESCALATED: "REFUND_ESCALATED",
   REFUND_REMINDER: "REFUND_REMINDER",
+
+  /**
+   * Settlements — the vendor's side of the same money.
+   *
+   * Same rule as the refunds above: one type per state somebody can act on.
+   * `PENDING_APPROVAL` and `APPROVED` are not here — from the vendor's side
+   * nothing has happened yet that they could do anything about, and a payout
+   * that is merely scheduled is not news. `PAID` is, because it carries the UTR
+   * they need to find it on their statement.
+   */
+  SETTLEMENT_PAID: "SETTLEMENT_PAID",
+  SETTLEMENT_FAILED: "SETTLEMENT_FAILED",
+  SETTLEMENT_ON_HOLD: "SETTLEMENT_ON_HOLD",
+  /**
+   * Admin only. A payout that left and was never confirmed — `MANUAL_BANK` has
+   * no callback, so a NEFT started at 4pm and forgotten leaves the settlement
+   * `PROCESSING` for ever and the vendor reading "on its way to your bank"
+   * indefinitely. Nothing errors; it simply stops.
+   */
+  SETTLEMENT_STUCK: "SETTLEMENT_STUCK",
+  // Admin only. Money owed past the window an admin agreed to pay it in.
+  SETTLEMENT_LATE: "SETTLEMENT_LATE",
+  /**
+   * Admin only, CRITICAL. The payout ledger and the legs disagree, which means
+   * one of the two is wrong about money that has physically moved.
+   */
+  SETTLEMENT_LEDGER_DRIFT: "SETTLEMENT_LEDGER_DRIFT",
   // To the vendor and the outlet, not the customer.
   VOUCHER_CLAIM_RECEIVED: "VOUCHER_CLAIM_RECEIVED",
   // Phase 2: a paid claim that was never scanned inside its window.

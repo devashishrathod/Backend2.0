@@ -134,10 +134,6 @@ exports.releaseJobLock = async (
 
   const update = {
     $set: {
-      lockedBy: null,
-      // In the past, not null: `acquireJobLock` treats both as available, and a
-      // timestamp leaves a readable trace of when the run ended.
-      expiresAt: now,
       lastRunAt: now,
       lastDurationMs: durationMs ?? null,
       ...(intervalMinutes ? { intervalMinutes } : {}),
@@ -159,10 +155,40 @@ exports.releaseJobLock = async (
   }
 
   try {
-    // Scoped to this instance for the lock fields — but the health fields must
-    // land either way, so the filter deliberately does NOT require ownership.
-    // Losing a lease mid-run is exactly when the outcome is most worth knowing.
+    /**
+     * Two writes, because the two halves have opposite ownership rules.
+     *
+     * **The health fields land either way.** Losing a lease mid-run is exactly
+     * when the outcome is most worth knowing, so this is not scoped.
+     */
     await JobLock.updateOne({ _id: name }, update, { upsert: true });
+
+    /**
+     * ⚠️ **The lease is only released if it is still ours.**
+     *
+     * This used to clear `lockedBy` and `expiresAt` in the same unscoped write,
+     * which is a correctness bug rather than a tidiness one: a slow instance
+     * whose lease lapsed, and whose job another instance has since picked up,
+     * would finish and wipe the *live* lease out from under it. A third
+     * instance then acquires freely and the same money job runs twice at once —
+     * the precise thing the lock exists to prevent, caused by the lock's own
+     * release path.
+     *
+     * If we no longer hold it, this matches nothing and does nothing, which is
+     * the correct outcome: the lease belongs to whoever holds it now, and it
+     * will expire on its own schedule.
+     */
+    await JobLock.updateOne(
+      { _id: name, lockedBy: INSTANCE_ID },
+      {
+        $set: {
+          lockedBy: null,
+          // In the past, not null: `acquireJobLock` treats both as available,
+          // and a timestamp leaves a readable trace of when the run ended.
+          expiresAt: now,
+        },
+      },
+    );
   } catch (writeError) {
     console.error(
       `[jobs] could not record the outcome of ${name}:`,

@@ -21,6 +21,7 @@ const {
 } = require("./assertTransactionAccess");
 const { recordRejectedWebhook } = require("./recordRejectedWebhook");
 const { detectDoubleCapture } = require("./detectDoubleCapture");
+const { recordFundsReceived } = require("./recordFundsReceived");
 const {
   buildMoneyListFilter,
   claimProjection,
@@ -44,6 +45,12 @@ module.exports = {
   buildAccessScopeFilter,
   recordRejectedWebhook,
   detectDoubleCapture,
+  /**
+   * The one thing that fills `fundsReceivedAt` — and settlement eligibility keys
+   * on it, not on `verifiedAt`. Paying a vendor from money the gateway has not
+   * settled yet is how a platform funds its own float without deciding to.
+   */
+  recordFundsReceived,
   // The money-read surface: one filter builder, one projection per audience,
   // shared by every listing and by the detail endpoint so they cannot drift.
   buildMoneyListFilter,

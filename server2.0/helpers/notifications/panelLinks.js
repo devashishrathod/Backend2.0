@@ -30,6 +30,10 @@ const PANEL_PATHS = Object.freeze({
   DASHBOARD: "dashboard",
   SUBSCRIPTION: "subscription",
   SUBSCRIPTION_PLANS: "subscription/plans",
+  // Where a vendor reads what they have been paid, and chases what they
+  // have not.
+  SETTLEMENTS: "settlements",
+  settlement: (settlementId) => `settlements/${settlementId}`,
   SUPPORT: "support",
 });
 
@@ -47,6 +51,10 @@ const ADMIN_PATHS = Object.freeze({
    */
   REFUNDS: "refunds",
   refund: (requestId) => `refunds/${requestId}`,
+  // The payout worklist. Same warning as above: a missing key here links to
+  // the word "undefined" and nobody finds out until an admin taps one.
+  SETTLEMENTS: "settlements",
+  settlement: (settlementId) => `settlements/${settlementId}`,
 });
 
 /**

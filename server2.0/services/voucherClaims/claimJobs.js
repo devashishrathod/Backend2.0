@@ -50,12 +50,27 @@ exports.releaseStaleClaimHolds = async () => {
   const config = await getCustomerConfig();
   const cutoff = new Date(Date.now() - config.claim.quoteTtlMinutes * MINUTE_MS);
 
+  /**
+   * ⚠️ Bounded, and oldest first.
+   *
+   * This had no limit and no sort, and the loop below makes **one Razorpay call
+   * per row**. A backlog — a gateway outage, a launch day, a job that was off
+   * for an afternoon — turns a fifteen-minute sweep into a run of thousands of
+   * sequential network calls that holds the `JobLock` for hours. Every other
+   * money job then waits behind it, including the ones that repair holds.
+   *
+   * `createdAt: 1` drains genuinely: the oldest holds are the ones blocking a
+   * customer from claiming again, and each pass permanently resolves whatever it
+   * touches, so the queue shrinks rather than rotating.
+   */
   const stale = await VoucherClaim.find({
     status: VOUCHER_CLAIM_STATUS.PENDING,
     isDeleted: false,
     createdAt: { $lte: cutoff },
   })
     .select("_id transactionId customerId brandId claimCode holdsUsageSlot")
+    .sort({ createdAt: 1 })
+    .limit(200)
     .lean();
 
   if (!stale.length) return { checked: 0, cancelled: 0, keptForCapture: 0 };
@@ -160,6 +175,22 @@ exports.releaseStaleClaimHolds = async () => {
 exports.resumeIncompleteSettlements = async ({ olderThanMinutes = 5 } = {}) => {
   const cutoff = new Date(Date.now() - olderThanMinutes * MINUTE_MS);
 
+  const now = new Date();
+
+  /**
+   * ⚠️ Ordered by how little we have tried, not by whatever Mongo returns first.
+   *
+   * This was a bare `.limit(50)` with no sort. A row that always throws —
+   * corrupt pricing, a voucher since deleted — kept its place in natural order
+   * and consumed a slot on every run. Fifty of those and the sweep spends every
+   * tick failing on the same fifty while newly stranded payments are never
+   * reached at all. That matters more here than anywhere else in this file:
+   * this is the path that repairs a customer who was charged and got nothing.
+   *
+   * `settlementResumeAt` is the back-off gate and `settlementResumeAttempts` is
+   * the ordering. A poisoned row is never dropped — it just stops queueing ahead
+   * of a payment nobody has tried yet.
+   */
   const stranded = await Transaction.find({
     ...buildTransactionFilter({
       purpose: TRANSACTION_PURPOSE.VOUCHER_CLAIM,
@@ -167,7 +198,14 @@ exports.resumeIncompleteSettlements = async ({ olderThanMinutes = 5 } = {}) => {
     }),
     settlementStage: { $exists: true, $ne: SETTLEMENT_STAGE.COMPLETE },
     verifiedAt: { $lte: cutoff },
-  }).limit(50);
+    $or: [
+      { settlementResumeAt: { $exists: false } },
+      { settlementResumeAt: null },
+      { settlementResumeAt: { $lte: now } },
+    ],
+  })
+    .sort({ settlementResumeAttempts: 1, verifiedAt: 1 })
+    .limit(50);
 
   if (!stranded.length) return { found: 0, resumed: 0, failed: 0 };
 
@@ -186,6 +224,30 @@ exports.resumeIncompleteSettlements = async ({ olderThanMinutes = 5 } = {}) => {
       resumed++;
     } catch (error) {
       failed++;
+
+      /**
+       * Back off, so this row stops blocking the ones behind it.
+       *
+       * Doubling from five minutes and capped at six hours: long enough that a
+       * permanently broken row costs one attempt a quarter-day, short enough
+       * that a transient failure — a gateway blip, a lock contention — is
+       * retried while it still matters.
+       */
+      const attempts = (transaction.settlementResumeAttempts || 0) + 1;
+      const backoffMs = Math.min(
+        5 * MINUTE_MS * 2 ** (attempts - 1),
+        6 * 60 * MINUTE_MS,
+      );
+
+      await Transaction.updateOne(
+        { _id: transaction._id },
+        {
+          $set: {
+            settlementResumeAttempts: attempts,
+            settlementResumeAt: new Date(Date.now() + backoffMs),
+          },
+        },
+      );
       console.error(
         `[resumeIncompleteSettlements] ${transaction._id} failed:`,
         error?.message,

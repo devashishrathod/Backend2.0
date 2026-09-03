@@ -17,6 +17,14 @@ const {
   reconcileRefunds,
   remindVendorsAboutRefunds,
 } = require("../services/refunds");
+const {
+  buildSettlements,
+  sweepStalePayouts,
+  sweepStrandedClaims,
+  alertLateSettlements,
+  reconcileSettlementLedger,
+  sweepAbandonedDrafts,
+} = require("../services/settlements");
 const { getSubscriptionConfig } = require("../helpers/settings");
 const {
   acquireJobLock,
@@ -159,6 +167,72 @@ const registry = [
     // Two nudges before the window closes, so a timeout is never a surprise.
     name: "remindVendorsAboutRefunds",
     run: remindVendorsAboutRefunds,
+    intervalMinutes: () => 60,
+  },
+
+  // ---------------- settlements ----------------
+  //
+  // Every other money path here fails loudly. A settlement fails by *not
+  // happening* — no build, an unconfirmed NEFT, a payout that booked no ledger
+  // row — and an absence has to be looked for. That is what these four do.
+  {
+    /**
+     * Build yesterday's payouts.
+     *
+     * Hourly rather than nightly on purpose: `buildSettlements` is idempotent on
+     * `idempotencyKey`, so a second run in the same period builds nothing. What
+     * the short interval buys is that a night the process was down heals itself
+     * on the next tick instead of skipping a brand's day until somebody notices.
+     */
+    name: "buildSettlements",
+    run: buildSettlements,
+    intervalMinutes: () => 60,
+  },
+  {
+    /**
+     * A NEFT that was started and never confirmed. Alerts; never acts — the
+     * money may genuinely have left, and MANUAL_BANK has no recall.
+     */
+    name: "sweepStalePayouts",
+    run: sweepStalePayouts,
+    intervalMinutes: () => 30,
+  },
+  {
+    // Money owed past the window we promised, so the first to know is not the
+    // vendor waiting for it.
+    name: "alertLateSettlements",
+    run: alertLateSettlements,
+    intervalMinutes: () => 60,
+  },
+  {
+    /**
+     * Do the books and the bank transfers agree? Read-only — a ledger row is
+     * never updated and never deleted, and a sweep that could post its own
+     * entries would be a second, unguarded path to the books changing.
+     */
+    name: "reconcileSettlementLedger",
+    run: reconcileSettlementLedger,
+    intervalMinutes: () => 180,
+  },
+  {
+    /**
+     * Rows still claimed by a settlement that is finished with them — the
+     * `beforeRelease` throw that leaves a terminal settlement holding money
+     * nobody can reach. Releasing is safe: these are the statuses that are
+     * defined as releasing.
+     */
+    name: "sweepStrandedClaims",
+    run: sweepStrandedClaims,
+    intervalMinutes: () => 60,
+  },
+  {
+    /**
+     * An empty `DRAFT` left by a build that died between writing the shell and
+     * claiming its rows. Its key still occupies the period, so the next build
+     * skips that brand's day — for ever, silently.
+     */
+    name: "sweepAbandonedDrafts",
+    run: sweepAbandonedDrafts,
     intervalMinutes: () => 60,
   },
 ];
