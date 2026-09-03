@@ -102,12 +102,19 @@ database name ends in `_test`. Never bypass it, and never point a test at
 > separate debugging detours before the cause was obvious.
 >
 > `globalSetup` now takes a lock and a second run is refused by name. If a run is
-> killed the lock self-heals after 45 minutes, or:
+> killed the lock self-heals after 90 minutes, or:
 >
-> ⚠️ That TTL used to be 15 minutes, against a comment claiming the suite took
-> about four. A full run is **17.7 minutes** today, so the lock was quietly
-> lapsing mid-run — protecting nothing at the one moment it was needed. If the
-> suite grows past ~30 minutes, raise `TTL_MS` again rather than letting it lapse.
+> ⚠️ That TTL has been raised twice. It began at 15 minutes against a comment
+> claiming the suite took about four, so the lock was quietly lapsing mid-run —
+> protecting nothing at the one moment it was needed. Raised to 45 when a run
+> measured 17.7 minutes; raised to **90** now, because a full run is **32.6
+> minutes** across 55 suites.
+>
+> ⚠️ Set it against the **slowest** run, not the average. Two runs of the same
+> suite on this machine measured 24.8 and 32.6 minutes — an eight minute spread,
+> on a value that only has to be exceeded once to reproduce the bug. A too-long
+> TTL costs a wait and a `--clear`; a too-short one has cost a debugging session
+> twice. Keep it at roughly 3× the slowest run you have seen.
 >
 > ```bash
 > node scripts/testRunLock.js           # who holds it

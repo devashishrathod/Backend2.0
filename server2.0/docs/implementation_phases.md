@@ -25,7 +25,7 @@
 
 | | |
 |---|---|
-| Money test suites | **55 suites · 1086 pass · 5 todo** (`npm test`, ~25 min) |
+| Money test suites | **55 suites · 1086 pass · 5 todo** (`npm test`, **~33 min** — run lock ka TTL 90 min) |
 | Background jobs | **21** registered in `jobs/index.js` |
 | Money endpoints | 16 settlement · 14 refund · 7 voucher-claim · 15 transaction · **4 dispute** · 4 customer-bank = **60** |
 | Ledger entry types | capture · refund · payout · chargeback · reserve · commission · **manual adjustment** — saat, aur har ek ko koi likhta hai |
