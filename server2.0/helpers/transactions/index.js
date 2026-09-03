@@ -14,6 +14,7 @@ const { buildInvoiceSnapshot } = require("./buildInvoiceSnapshot");
 const { buildTransactionFilter } = require("./buildTransactionFilter");
 const { logPaymentAccounts } = require("./logPaymentAccounts");
 const { assertMoneyIndexes } = require("./assertMoneyIndexes");
+const { reapShadowIndexes } = require("./reapShadowIndexes");
 const {
   assertTransactionAccess,
   assertClaimAccess,
@@ -38,6 +39,12 @@ module.exports = {
   buildTransactionFilter,
   logPaymentAccounts,
   assertMoneyIndexes,
+  /**
+   * ⚠️ Removes what `assertMoneyIndexes` could only report. A blanket unique
+   * index shadowed by a partial one is never correct, and leaving it there is
+   * every second voucher claim rejected.
+   */
+  reapShadowIndexes,
   // Who may open a money row, and how much of it they get to read. One source
   // for both the single-row check and the listing filter.
   assertTransactionAccess,

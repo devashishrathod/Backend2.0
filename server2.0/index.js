@@ -176,10 +176,25 @@ app.use(errorHandler);
     // Background sweeps (subscription + voucher expiry). Started after the
     // listener so a slow first run never delays the port binding, and never
     // allowed to take the process down. Disable with ENABLE_JOBS=false.
-    // Are the money indexes the ones this build expects? A blanket unique index
-    // where a partial one belongs rejects the second row that has no value yet,
-    // and it is invisible until a real payment hits it. Reports only — nothing is
-    // dropped automatically. See helpers/transactions/assertMoneyIndexes.js.
+    /**
+     * Are the money indexes the ones this build expects?
+     *
+     * A blanket unique index where a partial one belongs rejects the second row
+     * that has no value yet, and it is invisible until a real payment hits it.
+     * `assertMoneyIndexes` reports; `reapShadowIndexes` removes.
+     *
+     * ⚠️ It **does** drop now, where it used to only warn. That note said an
+     * automatic drop was "exactly the kind of surprise that should never happen
+     * on its own" — sound reasoning, wrong outcome: with nothing removing what an
+     * older build recreates, the old build wins by default, and what it wins is a
+     * database that rejects half the claims. Only an index already superseded by
+     * a partial one on the same key is ever touched, and if that replacement is
+     * missing nothing is dropped at all.
+     *
+     * Boot is not enough on its own — a shadow created an hour after a deploy
+     * would sit until the next one — so `reapShadowIndexes` is also an hourly
+     * job. See `jobs/index.js` and `helpers/transactions/reapShadowIndexes.js`.
+     */
     assertMoneyIndexes().catch((error) =>
       console.error("[idx] index check failed:", error?.message),
     );

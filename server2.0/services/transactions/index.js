@@ -10,7 +10,13 @@ const {
   getWebhookEvent,
 } = require("./getWebhookEvents");
 const { getPaymentHealth } = require("./getPaymentHealth");
-const { getDisputes } = require("./getDisputes");
+const { disputeDeadlines } = require("./disputeJobs");
+const { reapShadowIndexesJob } = require("./indexJobs");
+const { getDisputes, getDispute } = require("./getDisputes");
+const {
+  addVendorDisputeEvidence,
+  getDisputeEvidencePack,
+} = require("./disputeEvidence");
 
 const {
   releaseTransactionHold,
@@ -31,7 +37,18 @@ module.exports = {
   getWebhookEvents,
   getWebhookEvent,
   getDisputes,
+  getDispute,
+  // What only the outlet has, and everything we can prove, respectively.
+  addVendorDisputeEvidence,
+  getDisputeEvidencePack,
   // Jobs, stuck money and index guarantees in one answer.
   getPaymentHealth,
+  disputeDeadlines,
+  /**
+   * ⚠️ A blanket unique index that an older build of this service keeps
+   * recreating. While it is there, every second voucher claim fails — see the
+   * job for why this is hourly and not only a boot check.
+   */
+  reapShadowIndexesJob,
   getInvoiceByToken: require("./getInvoiceByToken").getInvoiceByToken,
 };

@@ -24,12 +24,32 @@ const {
  * this service still running somewhere and pointed at the same database, whose
  * schema still carries `unique: true` on those paths and whose `autoIndex`
  * rebuilds them on every restart. It could not be identified from here —
- * `currentOp` is not permitted on the M0 tier.
+ * `currentOp` is not permitted on the M0 tier. Bisected to commit `59fd080`,
+ * which declared `invoiceId: { type: String, unique: true }`; `3494bb8` replaced
+ * it with the named partial index the schema carries today.
  *
- * So instead of silently re-dropping forever, every boot says what it found.
- * Nothing is changed automatically: dropping an index at boot is exactly the
- * kind of surprise that should never happen on its own, and a build that is
- * about to be replaced should not be fighting its replacement over indexes.
+ * ### ⚠️ This reports. `reapShadowIndexes` removes.
+ *
+ * This helper used to end with: *"nothing is changed automatically: dropping an
+ * index at boot is exactly the kind of surprise that should never happen on its
+ * own, and a build that is about to be replaced should not be fighting its
+ * replacement over indexes."*
+ *
+ * The reasoning was sound and the outcome was not. With nothing removing what
+ * the old build recreates, **the old build wins by default** — and what it wins
+ * is a production database that rejects roughly every second voucher claim, with
+ * a duplicate-key error naming a field the customer never touched. A warning
+ * printed at boot to a console nobody reads is not a defence.
+ *
+ * So the removal moved to `helpers/transactions/reapShadowIndexes.js`, which
+ * runs at boot **and hourly**, drops only an index already superseded by a
+ * partial one on the same key, refuses to drop when that replacement is missing,
+ * and alerts an admin every time — because a reap means the other writer
+ * restarted inside that hour, and that timestamp is the one usable lead for
+ * finding it.
+ *
+ * This stays as the reporting half: it names what is **missing**, which the
+ * reaper deliberately never creates.
  *
  * Never throws. A reporting helper must not be able to stop the server.
  */
@@ -62,7 +82,7 @@ exports.assertMoneyIndexes = async () => {
     console.warn(
       `⚠️  [idx] legacy ${name} is back — a blanket unique index that rejects the second row with no value. ` +
         `Nothing in this build creates it, so another process is writing to this database. ` +
-        `Drop it with scripts/migrateCustomerClaimFoundation.js --apply, and find what recreated it.`,
+        `reapShadowIndexes drops it at boot and hourly; run scripts/findIndexWriters.js to find what recreated it.`,
     );
   }
 
