@@ -230,7 +230,46 @@ exports.calculateVoucherPricing = ({
   // ---------- what the vendor is owed ----------
   const commissionPercent = Number(config.settlement?.commissionPercent) || 0;
   const commissionAmount = round2((netBill * commissionPercent) / 100);
-  const vendorPayable = round2(netBill - vendorPromoCost - commissionAmount);
+
+  /**
+   * GST on the commission, from the **same three switches** the convenience fee
+   * above uses — not a second set of rules.
+   *
+   * Commission is a service we supply to the vendor, so when GST is on it
+   * attracts the same tax as the fee we charge the customer. Deriving it here
+   * rather than hardcoding a zero is the whole point: `Settlement.commissionTax`
+   * existed as a field with `commissionTax: 0` written into `computeTotals`, the
+   * same shape `chargebackAdjustment: 0` had before it turned out to be a real
+   * hole. At today's `commissionPercent: 0` **and** `isGstEnabled: false` this is
+   * zero twice over, so nothing changes now — and the day either is switched on,
+   * the tax follows on its own instead of waiting to be noticed.
+   *
+   * ⚠️ Frozen onto the claim, like `commissionPercent`. A rate changed next month
+   * must not re-price a sale that already happened.
+   */
+  let commissionTax = 0;
+  if (isGstEnabled && gstPercentage > 0 && commissionAmount > 0) {
+    if (isGstInclusive) {
+      // Already inside the commission. Back it out; the vendor is still deducted
+      // exactly the rate they were quoted.
+      const net = round2(commissionAmount / (1 + gstPercentage / 100));
+      commissionTax = round2(commissionAmount - net);
+    } else {
+      commissionTax = round2((commissionAmount * gstPercentage) / 100);
+    }
+  }
+
+  /**
+   * What actually comes off the vendor.
+   *
+   * Inclusive: the tax is already inside `commissionAmount`, so deducting it
+   * again would charge them twice. On top: it is genuinely extra, and a vendor
+   * deducted only the bare commission would leave us paying their GST.
+   */
+  const commissionDeduction = round2(
+    commissionAmount + (isGstInclusive ? 0 : commissionTax),
+  );
+  const vendorPayable = round2(netBill - vendorPromoCost - commissionDeduction);
 
   return {
     currency: config.currency || CUSTOMER_CURRENCY_DEFAULTS.currency,
@@ -284,5 +323,10 @@ exports.calculateVoucherPricing = ({
     vendorPayable,
     commissionPercent,
     commissionAmount,
+    commissionTax,
+    // What the settlement actually deducts — commission, plus its tax only when
+    // that tax sits on top. Stored rather than re-derived so the settlement and
+    // the ledger cannot disagree about it months later.
+    commissionDeduction,
   };
 };

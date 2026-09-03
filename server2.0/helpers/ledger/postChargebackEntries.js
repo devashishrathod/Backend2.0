@@ -1,9 +1,58 @@
 const { recordLedgerEntry } = require("./recordLedgerEntry");
+const LedgerEntry = require("../../models/LedgerEntry");
 const {
   LEDGER_ENTRY_TYPE,
   LEDGER_ACCOUNT,
   LEDGER_DIRECTION,
 } = require("../../constants/ledger");
+
+/**
+ * How much of the vendor's share this payment has **already** given up.
+ *
+ * ⚠️ One payment can carry more than one dispute — a chargeback that escalates
+ * to pre-arbitration arrives as a second dispute with its own id — and
+ * `ledger_type_dispute_unique` lets each book its own `CHARGEBACK`. The per-call
+ * cap alone is not enough: two disputes could each pass a check against the
+ * whole vendor share and together book more than the vendor was ever paid.
+ *
+ * Reversals count the other way, so a dispute we later won gives its headroom
+ * back rather than permanently shrinking what a genuine second loss may take.
+ */
+const alreadyBookedAgainst = async (transactionId, exceptDisputeId) => {
+  const rows = await LedgerEntry.find({
+    transactionId,
+    entryType: {
+      $in: [
+        LEDGER_ENTRY_TYPE.CHARGEBACK,
+        LEDGER_ENTRY_TYPE.CHARGEBACK_REVERSAL,
+      ],
+    },
+    /**
+     * ⚠️ Everything **except this dispute's own** rows.
+     *
+     * Razorpay redelivers these. Counting a dispute's own earlier entry would
+     * leave it no headroom on the second delivery, so the amount would come out
+     * as zero and `recordLedgerEntry` would report it *skipped* — when the truth
+     * is that it is a **duplicate**, already booked, which the unique index says
+     * far more clearly. The cap is about what other disputes have taken.
+     */
+    ...(exceptDisputeId ? { disputeId: { $ne: exceptDisputeId } } : {}),
+    isDeleted: false,
+  })
+    .select("entryType amount")
+    .lean();
+
+  const total = rows.reduce(
+    (sum, row) =>
+      sum +
+      (row.entryType === LEDGER_ENTRY_TYPE.CHARGEBACK
+        ? Number(row.amount) || 0
+        : -(Number(row.amount) || 0)),
+    0,
+  );
+
+  return Math.round(total * 100) / 100;
+};
 
 /**
  * A chargeback, booked against the vendor's payable.
@@ -36,12 +85,21 @@ const {
  * keying on nothing would claw the vendor back once per delivery.
  */
 
-/** The vendor's share of a payment, which is all a chargeback may take back. */
+/**
+ * The vendor's share of a payment, which is all a chargeback may take back.
+ *
+ * ⚠️ `commissionDeduction`, not `commissionAmount` — the same net the settlement
+ * paid them. With GST on top of the commission the two differ, and clawing back
+ * the larger figure would take from the vendor tax they never received. Falls
+ * back to `commissionAmount` for a claim frozen before the field existed, where
+ * GST was off and the two were equal.
+ */
 const vendorShareOf = (transaction) => {
   const voucher = transaction?.voucher || {};
   const netBill = Number(voucher.netBill) || 0;
   const promo = Number(voucher.vendorPromoCost) || 0;
-  const commission = Number(voucher.commissionAmount) || 0;
+  const commission =
+    Number(voucher.commissionDeduction ?? voucher.commissionAmount) || 0;
   return Math.round((netBill - promo - commission) * 100) / 100;
 };
 
@@ -66,10 +124,22 @@ exports.postChargebackLoss = async ({ transaction, disputeId, amount }) => {
    * charge the vendor for money that was never theirs.
    */
   const vendorShare = vendorShareOf(transaction);
-  const value = Math.min(
-    vendorShare,
-    amount === undefined || amount === null ? vendorShare : Number(amount) || 0,
-  );
+
+  /**
+   * ⚠️ Capped against what this payment has **already** given up, not against
+   * the vendor's whole share.
+   *
+   * With two disputes on one payment — a chargeback and the pre-arbitration that
+   * follows it — the per-call cap let each one take the full vendor share, so
+   * together they could book more than the vendor was ever paid. The books would
+   * then say we recovered money that never existed.
+   */
+  const alreadyBooked = await alreadyBookedAgainst(transaction._id, disputeId);
+  const headroom = Math.max(0, Math.round((vendorShare - alreadyBooked) * 100) / 100);
+
+  const requested =
+    amount === undefined || amount === null ? vendorShare : Number(amount) || 0;
+  const value = Math.min(headroom, requested);
 
   const result = await recordLedgerEntry({
     entryType: LEDGER_ENTRY_TYPE.CHARGEBACK,

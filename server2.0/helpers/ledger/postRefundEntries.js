@@ -102,6 +102,22 @@ exports.postRefundEntries = async ({
       ? round2(pricing.gstAmount)
       : 0;
 
+  /**
+   * The same question again, for the commission's own GST.
+   *
+   * Inclusive — the capture credited `PLATFORM_REVENUE` with the commission
+   * **less** its tax, so the reversal has to come off the same basis. On top —
+   * the capture credited the full commission and the tax went to `TAX_PAYABLE`
+   * beside it, so there is nothing to net out here.
+   *
+   * Unlike the fee's version this is proportional: commission is clawed back on
+   * a partial refund too, so it scales with `ratio` rather than only appearing
+   * on a full one.
+   */
+  const commissionInclusiveTaxBack = pricing.isGstInclusive
+    ? round2(Number(split.commissionTaxReversal) || 0)
+    : 0;
+
   const plan = [
     {
       /**
@@ -167,11 +183,32 @@ exports.postRefundEntries = async ({
       narration: `Refund on ${label} — platform's promo share reversed`,
     },
     {
+      // ⚠️ Net of tax, mirroring the capture. See `commissionInclusiveTaxBack`.
       entryType: LEDGER_ENTRY_TYPE.COMMISSION,
-      amount: split.commissionReversal,
+      amount: round2(split.commissionReversal - commissionInclusiveTaxBack),
       account: LEDGER_ACCOUNT.PLATFORM_REVENUE,
       direction: LEDGER_DIRECTION.DEBIT,
       narration: `Refund on ${label} — commission reversed`,
+    },
+    {
+      /**
+       * The vendor half — a **credit**, giving back what the capture deducted.
+       *
+       * The capture debits `VENDOR_PAYABLE` by `commissionDeduction`. Without
+       * this row a refund would claw back the gross `netBillRefund` from an
+       * account that had only ever been credited the net, leaving the vendor
+       * **negative** by the commission on every refunded sale — the same phantom
+       * balance the capture row fixes, pointing the other way.
+       *
+       * ⚠️ `commissionDeductionReversal`, not `commissionReversal`: with GST on
+       * top the vendor was deducted the tax as well, and crediting only the bare
+       * commission would keep their money.
+       */
+      entryType: LEDGER_ENTRY_TYPE.VENDOR_COMMISSION,
+      amount: split.commissionDeductionReversal,
+      account: LEDGER_ACCOUNT.VENDOR_PAYABLE,
+      direction: LEDGER_DIRECTION.CREDIT,
+      narration: `Refund on ${label} — commission deduction reversed`,
     },
     {
       /**
@@ -190,11 +227,20 @@ exports.postRefundEntries = async ({
       /**
        * `taxRefund` covers the on-top case; `inclusiveTaxBack` covers the tax
        * that was hiding inside the fee. Exactly one of the two is ever non-zero.
+       *
+       * `commissionTaxReversal` is added in **both** cases, because the capture
+       * credits the commission's GST to `TAX_PAYABLE` either way — inclusive or
+       * on top. Leaving it out would keep tax on our books for a commission we
+       * no longer earned.
        */
-      amount: round2(split.taxRefund + inclusiveTaxBack),
+      amount: round2(
+        split.taxRefund +
+          inclusiveTaxBack +
+          (Number(split.commissionTaxReversal) || 0),
+      ),
       account: LEDGER_ACCOUNT.TAX_PAYABLE,
       direction: LEDGER_DIRECTION.DEBIT,
-      narration: `Refund on ${label} — GST on the convenience fee returned`,
+      narration: `Refund on ${label} — GST on the fee and commission returned`,
     },
     {
       // Not a reversal in substance — Razorpay keeps its fee either way, so this

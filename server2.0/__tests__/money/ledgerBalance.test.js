@@ -269,37 +269,33 @@ describe("a sale, then part of it refunded", () => {
 
 describe("commission, once somebody sets a rate", () => {
   /**
-   * ⚠️ `COMMISSION` was reversed on every refund and never posted at capture.
-   * At the default rate of 0 that is invisible — `recordLedgerEntry` skips a
-   * zero amount — so the books only start losing money the day a real rate is
-   * configured. Tested at a non-zero rate for exactly that reason.
+   * ⚠️ Every one of these runs at a **non-zero** rate on purpose.
+   *
+   * `commissionPercent` defaults to `0`, and `recordLedgerEntry` skips a zero
+   * amount — so at the shipped configuration the entire commission path posts
+   * nothing and every mistake in it is invisible. Two have already hidden here:
+   * `COMMISSION` was reversed on refund and never posted at capture, and the
+   * capture credited revenue without ever debiting `VENDOR_PAYABLE`.
+   *
+   * The second one is the expensive one. Capture credits the gross `netBill`;
+   * the payout only ever debits `netPayable`, which the settlement has already
+   * netted the commission out of. With nothing debiting the difference,
+   * `VENDOR_PAYABLE` keeps it for ever — ₹40 a sale here, and
+   * `getVendorBalance` reporting money the vendor was never owed.
    */
-  it("does not drive revenue negative on a refund", async () => {
-    const brandId = oid();
+
+  /** Capture, then refund the whole thing, and hand back the closing balances. */
+  const captureThenFullRefund = async (pricing, claimCode) => {
     const txn = transaction();
-    const withCommission = { ...PRICING, commissionAmount: 40 };
-    const claim = {
-      _id: oid(),
-      brandId,
-      claimCode: "TD-BAL004",
-      pricing: withCommission,
-    };
+    const claim = { _id: oid(), brandId: oid(), claimCode, pricing };
 
-    await postCaptureEntries({
-      transaction: txn,
-      claim,
-      pricing: withCommission,
-    });
-
+    await postCaptureEntries({ transaction: txn, claim, pricing });
     const captured = await balances();
-    expect(captured[LEDGER_ACCOUNT.PLATFORM_REVENUE]).toBe(
-      r2(withCommission.convenienceFee + 40),
-    );
 
     const split = calculateRefundSplit({
-      pricing: withCommission,
-      paidAmount: withCommission.totalPayable,
-      requestedAmount: withCommission.totalPayable,
+      pricing,
+      paidAmount: pricing.totalPayable,
+      requestedAmount: pricing.totalPayable,
       gatewayFee: GATEWAY_FEE,
     });
 
@@ -310,8 +306,93 @@ describe("commission, once somebody sets a rate", () => {
       refundRequest: { _id: oid(), completedAt: new Date() },
     });
 
-    const after = await balances();
+    return { captured, after: await balances(), split };
+  };
+
+  /** GST off on the commission: the deduction is the bare commission. */
+  const PLAIN = {
+    ...PRICING,
+    commissionAmount: 40,
+    commissionTax: 0,
+    commissionDeduction: 40,
+  };
+
+  /** GST **on top**: the vendor is deducted the tax as well, so 40 ≠ 47.20. */
+  const ON_TOP = {
+    ...PRICING,
+    commissionAmount: 40,
+    commissionTax: 7.2,
+    commissionDeduction: 47.2,
+    isGstInclusive: false,
+  };
+
+  /** GST **inclusive**: the tax is inside the 40, so the deduction stays 40. */
+  const INCLUSIVE = {
+    ...PRICING,
+    commissionAmount: 40,
+    commissionTax: 7.2,
+    commissionDeduction: 40,
+    isGstInclusive: true,
+  };
+
+  it("takes the commission off what the vendor is owed, at capture", async () => {
+    const { captured } = await captureThenFullRefund(PLAIN, "TD-BAL004");
+
+    // 800 netBill − 15 vendor promo − 40 commission.
+    expect(captured[LEDGER_ACCOUNT.VENDOR_PAYABLE]).toBe(745);
+  });
+
+  it("does not drive revenue negative on a refund", async () => {
+    const { captured, after } = await captureThenFullRefund(PLAIN, "TD-BAL005");
+
+    expect(captured[LEDGER_ACCOUNT.PLATFORM_REVENUE]).toBe(
+      r2(PLAIN.convenienceFee + 40),
+    );
     expect(after[LEDGER_ACCOUNT.PLATFORM_REVENUE] || 0).toBe(0);
+  });
+
+  it("leaves the vendor owed nothing once it is all refunded", async () => {
+    const { after } = await captureThenFullRefund(PLAIN, "TD-BAL006");
+
+    expect(after[LEDGER_ACCOUNT.VENDOR_PAYABLE] || 0).toBe(0);
+  });
+
+  it("deducts the tax too when GST sits on top of the commission", async () => {
+    const { captured, after } = await captureThenFullRefund(ON_TOP, "TD-BAL007");
+
+    // 800 − 15 − 47.20. Deducting only the bare 40 would leave the platform
+    // paying the vendor's GST out of its own margin on every sale.
+    expect(captured[LEDGER_ACCOUNT.VENDOR_PAYABLE]).toBe(737.8);
+    // Revenue is the commission itself; the tax went to TAX_PAYABLE beside it.
+    expect(captured[LEDGER_ACCOUNT.PLATFORM_REVENUE]).toBe(
+      r2(ON_TOP.convenienceFee + 40),
+    );
+    // 1.80 on the fee + 7.20 on the commission.
+    expect(captured[LEDGER_ACCOUNT.TAX_PAYABLE]).toBe(9);
+
+    expect(after[LEDGER_ACCOUNT.VENDOR_PAYABLE] || 0).toBe(0);
+    expect(after[LEDGER_ACCOUNT.PLATFORM_REVENUE] || 0).toBe(0);
+    expect(after[LEDGER_ACCOUNT.TAX_PAYABLE] || 0).toBe(0);
+  });
+
+  it("books only the net as revenue when GST is inside the commission", async () => {
+    const { captured, after } = await captureThenFullRefund(
+      INCLUSIVE,
+      "TD-BAL008",
+    );
+
+    // The vendor is deducted the rate they were quoted, tax and all.
+    expect(captured[LEDGER_ACCOUNT.VENDOR_PAYABLE]).toBe(745);
+    // ⚠️ 40 − 7.20. Crediting the gross would overstate revenue by the GST on
+    // every settled sale — the mistake the convenience fee already made once.
+    expect(captured[LEDGER_ACCOUNT.PLATFORM_REVENUE]).toBe(
+      r2(INCLUSIVE.convenienceFee + 32.8),
+    );
+    expect(captured[LEDGER_ACCOUNT.TAX_PAYABLE]).toBe(9);
+
+    expect(after[LEDGER_ACCOUNT.VENDOR_PAYABLE] || 0).toBe(0);
+    expect(after[LEDGER_ACCOUNT.PLATFORM_REVENUE] || 0).toBe(0);
+    expect(after[LEDGER_ACCOUNT.TAX_PAYABLE] || 0).toBe(0);
   });
 });
 

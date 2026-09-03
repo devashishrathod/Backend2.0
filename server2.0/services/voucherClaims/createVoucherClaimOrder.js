@@ -350,6 +350,8 @@ exports.createVoucherClaimOrder = async (actor, payload, idempotencyKey) => {
         vendorPromoCost: pricing.vendorPromoCost,
         commissionPercent: pricing.commissionPercent,
         commissionAmount: pricing.commissionAmount,
+        commissionTax: pricing.commissionTax,
+        commissionDeduction: pricing.commissionDeduction,
       },
     });
   } catch (error) {

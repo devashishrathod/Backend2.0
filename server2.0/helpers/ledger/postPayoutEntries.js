@@ -75,6 +75,28 @@ exports.postPayoutEntries = async ({ leg, settlement, isFinalLeg = false }) => {
       amount: isFinalLeg ? settlement?.reserveHeld : 0,
       narration: `Reserve held from ${label}`,
     },
+    {
+      /**
+       * The other half — reserves from earlier settlements whose hold has run
+       * out, being handed back in this one.
+       *
+       * ⚠️ Without it the books never close on a reserve. `RESERVE_HOLD` debits
+       * `VENDOR_PAYABLE` when the money is withheld; nothing credited it back,
+       * so the vendor's balance stayed permanently short by every reserve ever
+       * taken — while `reserveReleased` sat hardcoded at `0` and no cycle ever
+       * paid one out. Invisible today only because `reserve.isEnabled` is false.
+       *
+       * A **credit**, because we are recognising the debt again, and the
+       * `PAYOUT` line above already carries the money out — `netPayable`
+       * includes it.
+       *
+       * Final leg only, for the same reason as the hold: booking it per leg
+       * would give the reserve back several times over.
+       */
+      entryType: LEDGER_ENTRY_TYPE.RESERVE_RELEASE,
+      amount: isFinalLeg ? settlement?.reserveReleased : 0,
+      narration: `Matured reserve released into ${label}`,
+    },
   ];
 
   const entries = [];

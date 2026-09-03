@@ -22,6 +22,35 @@ const feeNetOfTax = (pricing) => {
 };
 
 /**
+ * The same question for the commission: how much of it is actually ours?
+ *
+ * Inclusive — the tax is **inside** `commissionAmount`, so revenue is what is
+ * left after backing it out. On top — `commissionAmount` is already net and the
+ * tax rides beside it. Getting this wrong overstates revenue by exactly the GST
+ * on every settled sale, which is the mistake the convenience fee above already
+ * made once.
+ */
+const commissionNetOfTax = (pricing) => {
+  const commission = Number(pricing?.commissionAmount) || 0;
+  const tax = Number(pricing?.commissionTax) || 0;
+  const inside = pricing?.isGstInclusive ? tax : 0;
+  return Math.round((commission - inside) * 100) / 100;
+};
+
+/**
+ * Everything we owe the government out of this sale, in one row.
+ *
+ * ⚠️ It has to be one row: `ledger_type_transaction_unique` allows a single
+ * entry per type per transaction, so a second `TAX_COLLECTED` for the commission
+ * would be rejected as a duplicate and that tax would simply never be booked.
+ */
+const taxCollected = (pricing) =>
+  Math.round(
+    ((Number(pricing?.gstAmount) || 0) + (Number(pricing?.commissionTax) || 0)) *
+      100,
+  ) / 100;
+
+/**
  * Post every ledger row a captured claim produces, in one call.
  *
  * Six entries, all derived from the frozen pricing block, all idempotent. Called
@@ -120,8 +149,8 @@ exports.postCaptureEntries = async ({ transaction, claim, pricing }) => {
     },
     {
       entryType: LEDGER_ENTRY_TYPE.TAX_COLLECTED,
-      amount: pricing?.gstAmount,
-      narration: `GST on convenience fee (${pricing?.taxType || "n/a"})`,
+      amount: taxCollected(pricing),
+      narration: `GST on convenience fee and commission (${pricing?.taxType || "n/a"})`,
     },
     {
       /**
@@ -133,18 +162,34 @@ exports.postCaptureEntries = async ({ transaction, claim, pricing }) => {
        * `settlement.commissionPercent` defaults to `0` and
        * `recordLedgerEntry` skips a zero amount — the day somebody sets a real
        * rate, the books start losing that much per refund.
-       *
-       * ⚠️ Note what this does **not** do: it credits our revenue and does not
-       * debit `VENDOR_PAYABLE`. The commission is deducted from the vendor on the
-       * settlement side (`computeTotals` subtracts `commissionAmount`), so the
-       * ledger's payable overstates what they are owed by exactly the commission
-       * until that is modelled here too. Left as-is deliberately rather than
-       * invented: at a zero rate it changes nothing, and getting it wrong at a
-       * non-zero one is worse than leaving it visible.
        */
       entryType: LEDGER_ENTRY_TYPE.COMMISSION,
-      amount: pricing?.commissionAmount,
+      amount: commissionNetOfTax(pricing),
       narration: `Commission on ${brandLabel}`,
+    },
+    {
+      /**
+       * The vendor half of the commission — and the row that makes the books
+       * close.
+       *
+       * `COMMISSION` above credits what we earn. Nothing debited what we
+       * therefore no longer owe, so `VENDOR_PAYABLE` kept the whole `netBill`
+       * while the payout only ever debited `netPayable`, which `computeTotals`
+       * had already netted the commission out of. The difference never cleared:
+       * ₹100 of phantom liability on every ₹1,000 sale at a 10% rate, growing
+       * for ever, and `getVendorBalance` reporting the vendor is owed money that
+       * was never theirs.
+       *
+       * ⚠️ `commissionDeduction`, not `commissionAmount` — with GST **on top**
+       * the vendor is deducted the tax too, and debiting only the bare
+       * commission would leave us paying their GST out of our own margin.
+       *
+       * At today's zero rate this posts nothing: `recordLedgerEntry` skips a
+       * zero amount.
+       */
+      entryType: LEDGER_ENTRY_TYPE.VENDOR_COMMISSION,
+      amount: pricing?.commissionDeduction,
+      narration: `Commission deducted from ${brandLabel}`,
     },
   ];
 

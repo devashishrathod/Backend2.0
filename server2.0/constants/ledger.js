@@ -79,6 +79,21 @@ const LEDGER_ENTRY_TYPE = Object.freeze({
   // ---------- later ----------
   // Written when a settlement is PAID, not when it is drafted.
   COMMISSION: "COMMISSION",
+  /**
+   * The other half of `COMMISSION`.
+   *
+   * `COMMISSION` credits what we earn; this debits what we therefore no longer
+   * owe the vendor. One economic event, two accounts — exactly the shape
+   * `VENDOR_PROMO_SHARE` / `PLATFORM_PROMO_COST` already use, because an entry
+   * type here maps to one account and one direction.
+   *
+   * ⚠️ Without it `VENDOR_PAYABLE` overstates the vendor's balance by the whole
+   * commission, for ever: capture credits the full `netBill`, the payout debits
+   * only `netPayable` (which `computeTotals` has already netted the commission
+   * out of), and the difference never clears. At a zero rate that is invisible;
+   * at 10% on ₹1,000 it is ₹100 of phantom liability per sale.
+   */
+  VENDOR_COMMISSION: "VENDOR_COMMISSION",
   REFUND: "REFUND",
   CHARGEBACK: "CHARGEBACK",
   CHARGEBACK_REVERSAL: "CHARGEBACK_REVERSAL",
@@ -145,6 +160,11 @@ const LEDGER_ENTRY_RULES = Object.freeze({
   [LEDGER_ENTRY_TYPE.COMMISSION]: {
     account: LEDGER_ACCOUNT.PLATFORM_REVENUE,
     direction: LEDGER_DIRECTION.CREDIT,
+  },
+  // The vendor side of the same event. See the type's note above.
+  [LEDGER_ENTRY_TYPE.VENDOR_COMMISSION]: {
+    account: LEDGER_ACCOUNT.VENDOR_PAYABLE,
+    direction: LEDGER_DIRECTION.DEBIT,
   },
   [LEDGER_ENTRY_TYPE.CHARGEBACK]: {
     account: LEDGER_ACCOUNT.VENDOR_PAYABLE,
