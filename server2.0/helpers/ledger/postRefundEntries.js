@@ -1,4 +1,6 @@
 const { recordLedgerEntry } = require("./recordLedgerEntry");
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
 const {
   LEDGER_ENTRY_TYPE,
   LEDGER_ACCOUNT,
@@ -86,10 +88,46 @@ exports.postRefundEntries = async ({
 
   const label = claim?.claimCode || transaction?.razorpayPaymentId || "claim";
 
+  /**
+   * The GST that was inside the fee, when the fee was GST-inclusive.
+   *
+   * Only ever non-zero on a full refund, because the convenience fee is only
+   * returned on a full refund — `split.convenienceFeeRefund` is zero otherwise
+   * and so is this.
+   */
+  const inclusiveTaxBack =
+    split.convenienceFeeRefund > 0 &&
+    (Number(pricing.gstAmount) || 0) > 0 &&
+    (Number(pricing.taxOnTop) || 0) === 0
+      ? round2(pricing.gstAmount)
+      : 0;
+
   const plan = [
     {
+      /**
+       * ⚠️ `netBillRefund`, **not** `vendorClawback`.
+       *
+       * The two are not the same number, and using the wrong one left every
+       * fully refunded claim over-crediting the vendor:
+       *
+       * ```
+       * vendorClawback = netBillRefund − vendorPromoReversal − commissionReversal
+       * ```
+       *
+       * It is already net of the promo share. Debiting *that* and then crediting
+       * `vendorPromoReversal` on the next line reverses the vendor's promo
+       * contribution **twice** — once implicitly, once explicitly. On an ₹800
+       * sale with a ₹50 vendor promo share, `VENDOR_PAYABLE` came to rest at
+       * **+₹50** after a full refund instead of zero, and that phantom balance is
+       * real money the next payout would hand over.
+       *
+       * These rows mirror the capture, which credits the **gross** `netBill` and
+       * debits the promo share separately. `vendorClawback` is the settlement
+       * side's number — `computeTotals` uses it for `refundAdjustment`, where net
+       * is exactly right.
+       */
       entryType: LEDGER_ENTRY_TYPE.COLLECTION,
-      amount: split.vendorClawback,
+      amount: split.netBillRefund,
       account: LEDGER_ACCOUNT.VENDOR_PAYABLE,
       direction: LEDGER_DIRECTION.DEBIT,
       narration: `Refund on ${label} — clawed back from the brand`,
@@ -102,8 +140,16 @@ exports.postRefundEntries = async ({
       narration: `Refund on ${label} — brand's promo share reversed`,
     },
     {
+      /**
+       * ⚠️ Mirrors the capture: the fee **net of tax**.
+       *
+       * `split.convenienceFeeRefund` is the gross the customer gets back. When
+       * GST was inclusive, part of that gross is tax the capture booked to
+       * `TAX_PAYABLE`, not revenue — debiting the whole thing here would drive
+       * revenue negative by the GST on every refunded sale.
+       */
       entryType: LEDGER_ENTRY_TYPE.CONVENIENCE_FEE,
-      amount: split.convenienceFeeRefund,
+      amount: round2(split.convenienceFeeRefund - inclusiveTaxBack),
       account: LEDGER_ACCOUNT.PLATFORM_REVENUE,
       direction: LEDGER_DIRECTION.DEBIT,
       narration: `Refund on ${label} — convenience fee returned`,
@@ -126,6 +172,29 @@ exports.postRefundEntries = async ({
       account: LEDGER_ACCOUNT.PLATFORM_REVENUE,
       direction: LEDGER_DIRECTION.DEBIT,
       narration: `Refund on ${label} — commission reversed`,
+    },
+    {
+      /**
+       * ⚠️ The GST we collected on the convenience fee, handed back with it.
+       *
+       * `split.taxRefund` was being **computed and then ignored** — the split
+       * calculator worked it out, and no row ever posted it. So `TAX_PAYABLE`
+       * kept the GST on a fee the customer had already been given back: the
+       * books said we owed the tax authority tax on revenue we no longer had.
+       *
+       * Only ever non-zero on a full refund, because the convenience fee is only
+       * returned on a full refund — `recordLedgerEntry` skips a zero amount, so
+       * a partial refund posts nothing here.
+       */
+      entryType: LEDGER_ENTRY_TYPE.TAX_COLLECTED,
+      /**
+       * `taxRefund` covers the on-top case; `inclusiveTaxBack` covers the tax
+       * that was hiding inside the fee. Exactly one of the two is ever non-zero.
+       */
+      amount: round2(split.taxRefund + inclusiveTaxBack),
+      account: LEDGER_ACCOUNT.TAX_PAYABLE,
+      direction: LEDGER_DIRECTION.DEBIT,
+      narration: `Refund on ${label} — GST on the convenience fee returned`,
     },
     {
       // Not a reversal in substance — Razorpay keeps its fee either way, so this

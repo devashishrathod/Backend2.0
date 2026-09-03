@@ -157,10 +157,25 @@ exports.recordLedgerEntry = async ({
        * **capture** — and the caller would report a ₹800 collection as the
        * refund it had just tried to write.
        */
+      /**
+       * The lookup has to name whichever key the index refused on.
+       *
+       * A refund row shares its `entryType` and `transactionId` with the capture
+       * row it reverses, and a payout row has no `transactionId` at all — so
+       * looking up by those two alone would hand back the **capture**, and the
+       * caller would report an ₹800 collection as the payout it had just tried
+       * to write.
+       */
       const entry = await LedgerEntry.findOne(
-        refundRequestId
-          ? { entryType, refundRequestId }
-          : { entryType, transactionId },
+        payoutLegId
+          ? { entryType, payoutLegId }
+          : refundRequestId
+            ? { entryType, refundRequestId }
+            : disputeId
+              ? // A chargeback shares its `transactionId` with the capture row
+                // it claws back, so the dispute is the only key that finds it.
+                { entryType, disputeId }
+              : { entryType, transactionId },
       );
       return { entry, duplicate: true, skipped: false };
     }

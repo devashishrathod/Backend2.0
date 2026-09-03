@@ -187,6 +187,35 @@ const LEDGER_INDEXES = Object.freeze({
    * partial refunds each get their own set while neither can be booked twice.
    */
   ONCE_PER_REFUND: "ledger_type_refund_unique",
+  /**
+   * One row per entry type per **dispute**.
+   *
+   * Razorpay's dispute events are not monotonic — a late `lost` can arrive after
+   * a `won` — and it redelivers them. Without this, one chargeback claws the
+   * vendor back as many times as the webhook fires.
+   */
+  ONCE_PER_DISPUTE: "ledger_type_dispute_unique",
+  /**
+   * One correction per entry. `reverseLedgerEntry` is deliberately outside the
+   * once-per-transaction index — that is what lets it exist at all — so without
+   * this nothing stopped a retried correction reversing the same money twice.
+   */
+  ONCE_PER_REVERSAL: "ledger_reversalof_unique",
+  /** Serves the admin dashboard's account + date-range roll-up. */
+  PLATFORM_TOTALS: "ledger_account_occurredat",
+  /**
+   * One row per entry type per **payout leg**.
+   *
+   * ⚠️ Keyed on the leg, not the settlement. A settlement can pay in several
+   * legs — a large MANUAL_BANK transfer split across two NEFTs, or a retry after
+   * a bounce — and each leg moves its own money and books its own `PAYOUT`. A
+   * settlement-level key would refuse the second leg's entry and leave real money
+   * out of the ledger.
+   *
+   * `ONCE_PER_TRANSACTION` cannot do this job either: a payout has no
+   * `transactionId` at all.
+   */
+  ONCE_PER_PAYOUT_LEG: "ledger_type_payoutleg_unique",
 });
 
 /** What `reconcileLedger` reports when the books disagree. */

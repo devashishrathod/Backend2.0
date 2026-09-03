@@ -6,6 +6,22 @@ const {
 const { GATEWAY_FEE_BEARER } = require("../../constants/transaction");
 
 /**
+ * The part of the convenience fee that is actually revenue.
+ *
+ * ⚠️ `taxOnTop === 0` while `gstAmount > 0` is the **inclusive** case: the slab
+ * amount already contains the tax, so revenue is what is left after backing it
+ * out. With GST on top, `convenienceFee` is already net and this returns it
+ * unchanged; with GST off, both are zero and it does the same.
+ */
+const feeNetOfTax = (pricing) => {
+  const fee = Number(pricing?.convenienceFee) || 0;
+  const gst = Number(pricing?.gstAmount) || 0;
+  const onTop = Number(pricing?.taxOnTop) || 0;
+  const inclusive = gst > 0 && onTop === 0 ? gst : 0;
+  return Math.round((fee - inclusive) * 100) / 100;
+};
+
+/**
  * Post every ledger row a captured claim produces, in one call.
  *
  * Six entries, all derived from the frozen pricing block, all idempotent. Called
@@ -66,8 +82,21 @@ exports.postCaptureEntries = async ({ transaction, claim, pricing }) => {
       narration: `Promo ${pricing?.promoCode || ""} — brand's share`.trim(),
     },
     {
+      /**
+       * ⚠️ The fee **net of tax**, which is not always `convenienceFee`.
+       *
+       * With GST *on top* (`taxOnTop > 0`) the slab amount is already net and
+       * the tax rides beside it — crediting both is right.
+       *
+       * With GST **inclusive** the slab amount *contains* the tax:
+       * `calculateVoucherPricing` backs it out into `gstAmount` and leaves
+       * `taxOnTop: 0`. Crediting the gross fee to `PLATFORM_REVENUE` and then
+       * the tax again to `TAX_PAYABLE` books the same rupees twice — revenue
+       * overstated by exactly the GST on every single sale, and only when
+       * somebody turns `isGstInclusive` on.
+       */
       entryType: LEDGER_ENTRY_TYPE.CONVENIENCE_FEE,
-      amount: pricing?.convenienceFee,
+      amount: feeNetOfTax(pricing),
       narration: `Convenience fee on ${brandLabel}`,
     },
     {
@@ -93,6 +122,29 @@ exports.postCaptureEntries = async ({ transaction, claim, pricing }) => {
       entryType: LEDGER_ENTRY_TYPE.TAX_COLLECTED,
       amount: pricing?.gstAmount,
       narration: `GST on convenience fee (${pricing?.taxType || "n/a"})`,
+    },
+    {
+      /**
+       * ⚠️ This was missing, while the refund path reversed it.
+       *
+       * `postRefundEntries` debits `PLATFORM_REVENUE` by `commissionReversal`,
+       * so without a credit here every refund drove revenue negative by a
+       * commission that was never booked as earned. Invisible today only because
+       * `settlement.commissionPercent` defaults to `0` and
+       * `recordLedgerEntry` skips a zero amount — the day somebody sets a real
+       * rate, the books start losing that much per refund.
+       *
+       * ⚠️ Note what this does **not** do: it credits our revenue and does not
+       * debit `VENDOR_PAYABLE`. The commission is deducted from the vendor on the
+       * settlement side (`computeTotals` subtracts `commissionAmount`), so the
+       * ledger's payable overstates what they are owed by exactly the commission
+       * until that is modelled here too. Left as-is deliberately rather than
+       * invented: at a zero rate it changes nothing, and getting it wrong at a
+       * non-zero one is worse than leaving it visible.
+       */
+      entryType: LEDGER_ENTRY_TYPE.COMMISSION,
+      amount: pricing?.commissionAmount,
+      narration: `Commission on ${brandLabel}`,
     },
   ];
 
