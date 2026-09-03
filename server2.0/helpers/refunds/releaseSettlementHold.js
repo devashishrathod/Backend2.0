@@ -1,5 +1,19 @@
 const Transaction = require("../../models/Transaction");
 const RefundRequest = require("../../models/RefundRequest");
+const { DISPUTE_STATUS } = require("../../constants/webhook");
+
+/**
+ * Chargeback outcomes that are a **permanent** reason to hold.
+ *
+ * ⚠️ "Resolved" is not the same as "settled in our favour". A dispute we lost is
+ * resolved and the bank has taken the money back — paying the vendor for it
+ * hands out money we no longer have. `CLOSED` is Razorpay's ambiguous terminal
+ * state, so it is treated the same way: a person decides, not this function.
+ */
+const LOSING_DISPUTE_STATUSES = Object.freeze([
+  DISPUTE_STATUS.LOST,
+  DISPUTE_STATUS.CLOSED,
+]);
 
 /**
  * Let a vendor's money back into the settlement run.
@@ -43,9 +57,15 @@ exports.releaseSettlementHold = async ({
   transactionId,
   exceptRequestId,
   reason = "Refund closed",
+  /**
+   * ⚠️ Only the admin release endpoint passes this, and only with a written
+   * reason. It is the "explicit admin action" the dispute webhook's comment
+   * promises — nothing automated may set it.
+   */
+  allowDisputed = false,
 }) => {
   const transaction = await Transaction.findById(transactionId)
-    .select("isDisputed disputeResolvedAt settlementHold")
+    .select("isDisputed disputeResolvedAt disputeStatus settlementHold")
     .lean();
 
   if (!transaction) return { released: false, blockedBy: "MISSING" };
@@ -54,11 +74,23 @@ exports.releaseSettlementHold = async ({
   /**
    * A chargeback outranks everything here.
    *
-   * `disputeResolvedAt` rather than `isDisputed`: Razorpay's dispute events are
-   * not monotonic, and `payment.dispute.lost` arriving after a `won` would flip
-   * a boolean back. The resolution timestamp only ever goes one way.
+   * Two separate conditions, and the second one was missing:
+   *
+   *  - **still open** — `disputeResolvedAt` rather than `isDisputed`, because
+   *    Razorpay's dispute events are not monotonic and a late
+   *    `payment.dispute.lost` after a `won` would flip a boolean back. The
+   *    resolution timestamp only ever goes one way.
+   *  - **resolved against us** — a lost chargeback is *resolved*, so the first
+   *    condition passes and the hold used to come off. The bank has taken that
+   *    money back; settling it pays the vendor from money we no longer hold.
+   *    Reachable through the ordinary refund path: reject a refund on a payment
+   *    that lost a chargeback, and the rejection released the hold.
    */
-  if (transaction.isDisputed && !transaction.disputeResolvedAt) {
+  const disputeBlocks =
+    (transaction.isDisputed && !transaction.disputeResolvedAt) ||
+    LOSING_DISPUTE_STATUSES.includes(transaction.disputeStatus);
+
+  if (disputeBlocks && !allowDisputed) {
     return { released: false, blockedBy: "DISPUTE" };
   }
 

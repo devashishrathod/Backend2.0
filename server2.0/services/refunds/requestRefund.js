@@ -11,6 +11,9 @@ const {
   REFUND_CUSTOMER_LABEL,
 } = require("../../constants/refund");
 const { DUPLICATE_KEY } = require("../../constants/mongo");
+
+/** Half a paisa. Money comparisons here are floats, and floats drift. */
+const PAISA = 0.005;
 const { buildTransactionFilter } = require("../../helpers/transactions");
 const { resolveCustomerId } = require("../../helpers/customers");
 const { getCustomerConfig } = require("../../helpers/settings");
@@ -19,6 +22,7 @@ const {
   assertRefundAllowance,
 } = require("../../helpers/refunds");
 const { recordClaimHistory } = require("../../helpers/voucherClaims");
+const { taintSettlement } = require("../../helpers/settlements");
 const {
   sendQuietly,
   notifyVendorRefundRequested,
@@ -156,10 +160,25 @@ exports.requestRefund = async (actor, payload = {}) => {
   const requestedAmount =
     amount === undefined || amount === null
       ? Math.round((paidAmount - alreadyRefunded) * 100) / 100
-      : amount;
+      : Math.round(Number(amount) * 100) / 100;
 
-  if (!refundConfig.allowPartial && requestedAmount < paidAmount - alreadyRefunded) {
-    throwError(422, "Partial refunds are not available. Please request the full amount.");
+  /**
+   * ⚠️ Rounded, and compared with a paisa of slack.
+   *
+   * `paidAmount - alreadyRefunded` is raw float arithmetic:
+   * `811.8 - 300` is `511.80000000000007`. A customer asking for exactly the
+   * ₹511.80 they had left was told *"partial refunds are not available"* — and
+   * since that is the whole remaining balance, there was no larger amount they
+   * could ask for instead. Permanently locked out of their own money by a
+   * seventh decimal place.
+   */
+  const remaining = Math.round((paidAmount - alreadyRefunded) * 100) / 100;
+
+  if (!refundConfig.allowPartial && requestedAmount < remaining - PAISA) {
+    throwError(
+      422,
+      `Partial refunds are not available. Please request the full ${remaining.toFixed(2)}.`,
+    );
   }
 
   // Throws on anything unrefundable — over the ceiling, zero, already returned.
@@ -212,7 +231,32 @@ exports.requestRefund = async (actor, payload = {}) => {
         isOpen: true,
       }).lean();
 
-      if (existing) return present(existing, { reused: true });
+      if (existing) {
+        /**
+         * The open request wins, and the customer is told **which** amount won.
+         *
+         * ⚠️ Handing this back is right and stays right: one refund may be open
+         * per payment, and for a double tap or a refreshed page the outcome is
+         * genuinely identical — "a retry is not a new decision".
+         *
+         * What was missing is the case where the second ask is a *different*
+         * amount. Somebody with a ₹810 refund pending who then asks for ₹100 was
+         * handed the ₹810 request with nothing to distinguish it from their own
+         * request succeeding. They have no way to know their second ask went
+         * nowhere, so they wait for a figure that was never going to come.
+         *
+         * `askedFor` is set only when the two differ, so the client can say
+         * *"you already have ₹810 in progress"* rather than silently showing a
+         * number the customer did not type.
+         */
+        const asked = Math.round(requestedAmount * 100) / 100;
+        const open = Math.round((existing.requestedAmount ?? 0) * 100) / 100;
+
+        return present(existing, {
+          reused: true,
+          ...(Math.abs(asked - open) > PAISA ? { askedFor: asked } : {}),
+        });
+      }
     }
     throw error;
   }
@@ -234,6 +278,19 @@ exports.requestRefund = async (actor, payload = {}) => {
       },
     },
   );
+
+  /**
+   * ⚠️ The hold above only stops a **future** claim.
+   *
+   * If this payment is already inside a settlement — and between the 02:00 build
+   * and a 14:00 payout it very well may be — setting `settlementHold` changes
+   * nothing about that settlement. So the settlement is flagged too, and
+   * approval refuses while the flag is set.
+   */
+  await taintSettlement({
+    transaction,
+    reason: `Refund requested (${request._id})`,
+  });
 
   // Append-only, and failure-tolerant: losing an audit row must never undo a
   // refund request the customer has already been told about.
@@ -277,7 +334,7 @@ exports.requestRefund = async (actor, payload = {}) => {
  * fight the platform then has to referee, and it is not something they can act
  * on.
  */
-const present = (request, { reused }) => ({
+const present = (request, { reused, askedFor } = {}) => ({
   _id: request._id,
   claimCode: request.claimCode,
   amount: request.requestedAmount,
@@ -288,6 +345,12 @@ const present = (request, { reused }) => ({
   // What they should expect next, in the only terms that matter to them.
   isOpen: REFUND_OPEN_STATUSES.includes(request.status),
   reused,
+  /**
+   * Only present when a retry asked for a **different** amount than the request
+   * that is already open. Its absence means the two matched, so the client can
+   * treat `reused` alone as an ordinary double-tap.
+   */
+  ...(askedFor === undefined ? {} : { askedFor }),
 });
 
 exports.REFUNDABLE_CLAIM_STATUSES = REFUNDABLE_CLAIM_STATUSES;

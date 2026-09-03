@@ -134,7 +134,7 @@ exports.approveRefundAsVendor = async (actor, requestId, payload = {}) => {
     { returnDocument: "after" },
   ).lean();
 
-  if (!updated) throwError(409, alreadyDecided(request));
+  if (!updated) throwError(409, await alreadyDecided(request));
 
   await recordClaimHistory({
     claimId: request.claimId,
@@ -152,6 +152,21 @@ exports.approveRefundAsVendor = async (actor, requestId, payload = {}) => {
       requestedAmount: request.requestedAmount,
     },
   });
+
+  /**
+   * ⚠️ The customer is told here, and was not being told anywhere.
+   *
+   * This file imported `notifyCustomerRefundApproved` and never called it. The
+   * admin path skipped its own notice on the stated belief that "the vendor's
+   * approval already told the customer their money is coming" — it had not. So
+   * on the **normal** path, the one almost every refund takes, the customer
+   * raised a request and then heard nothing at all until the money appeared
+   * days later, if they noticed.
+   */
+  await sendQuietly(
+    () => notifyCustomerRefundApproved({ request: updated }),
+    "customer refund approved (vendor)",
+  );
 
   return present(updated);
 };
@@ -187,7 +202,7 @@ exports.rejectRefundAsVendor = async (actor, requestId, payload = {}) => {
     { returnDocument: "after" },
   ).lean();
 
-  if (!updated) throwError(409, alreadyDecided(request));
+  if (!updated) throwError(409, await alreadyDecided(request));
 
   const release = await releaseSettlementHold({
     transactionId: request.transactionId,
@@ -210,6 +225,21 @@ exports.rejectRefundAsVendor = async (actor, requestId, payload = {}) => {
       blockedBy: release.blockedBy,
     },
   });
+
+  /**
+   * ⚠️ A decline is the message that matters most, and it was never sent.
+   *
+   * A customer whose refund is refused and who hears nothing does not conclude
+   * "declined" — they conclude the request went nowhere, and they raise another
+   * one, or they call. `notifyCustomerRefundRejected` renders
+   * `REFUND_CUSTOMER_LABEL`, never the vendor's written note: that note is
+   * staff-to-staff, and *"customer collected the order in full"* is not a
+   * sentence to show the customer it is about.
+   */
+  await sendQuietly(
+    () => notifyCustomerRefundRejected({ request: updated }),
+    "customer refund rejected (vendor)",
+  );
 
   return present(updated);
 };
@@ -285,7 +315,7 @@ exports.cancelRefund = async (actor, requestId) => {
 
 const assertDecidable = (request) => {
   if (!VENDOR_CAN_DECIDE.includes(request.status)) {
-    throwError(409, alreadyDecided(request));
+    throwError(409, describeStatus(request.status));
   }
 };
 
@@ -295,12 +325,44 @@ const assertDecidable = (request) => {
  * A vendor whose click lost a race needs to know whether their colleague
  * approved it or the clock ran out — those lead to different next actions.
  */
-const alreadyDecided = (request) =>
-  request.status === REFUND_REQUEST_STATUS.VENDOR_TIMEOUT
+/**
+ * What to tell whoever lost the conditional-claim race.
+ *
+ * ⚠️ Re-reads the row. It used to report `request.status` — the value read
+ * **before** the claim — which is by definition a status that was still
+ * decidable. So the outlet manager who lost by a second was told
+ *
+ *     "This refund has already been decided (requested)."
+ *
+ * which says nothing and reads as a bug. The entire point of this message is to
+ * name what it was decided *to*, so the loser knows whether to argue, wait, or
+ * do nothing.
+ *
+ * Falls back to the stale value if the re-read fails: a worse message is better
+ * than a second error on top of the first.
+ */
+/**
+ * The message for a status we already hold.
+ *
+ * Used by the pre-flight check, where the row was just loaded and its status is
+ * genuinely current — there is no race to re-read for, and the check is
+ * synchronous.
+ */
+const describeStatus = (status) => {
+  const readable = String(status).toLowerCase().replace(/_/g, " ");
+  return status === REFUND_REQUEST_STATUS.VENDOR_TIMEOUT
     ? "This refund has already gone to Trydood for review."
-    : `This refund has already been decided (${String(request.status)
-        .toLowerCase()
-        .replace(/_/g, " ")}).`;
+    : `This refund has already been decided — it is now ${readable}.`;
+};
+
+const alreadyDecided = async (request) => {
+  const fresh = await RefundRequest.findById(request._id)
+    .select("status")
+    .lean()
+    .catch(() => null);
+
+  return describeStatus(fresh?.status || request.status);
+};
 
 const loadContext = async (request) => {
   const [claim, transaction] = await Promise.all([

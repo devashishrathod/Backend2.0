@@ -82,6 +82,59 @@ exports.approveRefundAsAdmin = async (actor, requestId, payload = {}) => {
     );
   }
 
+  /**
+   * ⚠️ Reviving a closed request when a newer one is already open.
+   *
+   * `VENDOR_REJECTED` and `CANCELLED` are closed, so the customer is free to
+   * file again — and they usually do. Overriding the old one re-opens it, and
+   * `refund_open_per_transaction_unique` then refuses the write with a raw
+   * duplicate-key error that tells the admin nothing.
+   *
+   * Named here instead, with the thing to do about it: the newer request is the
+   * one that should be decided. Approving the stale one would also mean deciding
+   * an amount the customer may since have changed.
+   */
+  const otherOpen = await RefundRequest.findOne({
+    transactionId: request.transactionId,
+    isOpen: true,
+    _id: { $ne: request._id },
+    isDeleted: false,
+  })
+    .select("_id claimCode status requestedAmount")
+    .lean();
+
+  if (otherOpen) {
+    throwError(
+      409,
+      `The customer has since raised another refund on this payment ` +
+        `(${otherOpen.claimCode || otherOpen._id}), and that one is still open. ` +
+        `Decide that request instead — approving this older one would act on an ` +
+        `amount they may have changed.`,
+    );
+  }
+
+  /**
+   * ⚠️ Has the vendor already been paid for this sale?
+   *
+   * A vendor rejection **releases** `settlementHold`, so the payment goes into
+   * the very next cycle and can be paid out within hours. An override days or
+   * weeks later then refunds a customer from money the vendor already has.
+   *
+   * That is recoverable — `claimRefundAdjustments` takes the clawback out of
+   * their next payout — but it is not free, and it is not what the golden rule
+   * promises. The admin is the only person who can weigh "the customer is right"
+   * against "this now comes out of a vendor who was paid in good faith", so the
+   * decision is theirs; what they must not do is make it without knowing.
+   *
+   * Recorded rather than refused: refusing would leave the customer with no
+   * route at all, which is the outcome this platform's rules reject.
+   */
+  const payment = await Transaction.findById(request.transactionId)
+    .select("settlementId invoiceId")
+    .lean();
+
+  const vendorAlreadyPaid = Boolean(payment?.settlementId);
+
   const updated = await RefundRequest.findOneAndUpdate(
     { _id: request._id, status: { $in: ADMIN_CAN_DECIDE } },
     {
@@ -112,13 +165,31 @@ exports.approveRefundAsAdmin = async (actor, requestId, payload = {}) => {
     performedBy: actor.userId,
     amount: updated.approvedAmount ?? updated.requestedAmount,
     reason: overrideReason || payload.note,
-    snapshot: { requestId: request._id, isOverride, from: request.status },
+    snapshot: {
+      requestId: request._id,
+      isOverride,
+      from: request.status,
+      /**
+       * So the trail says whether this override reached back into money the
+       * vendor already had. Six months later that is the difference between a
+       * routine approval and a clawback somebody has to explain.
+       */
+      vendorAlreadyPaid,
+    },
   });
 
   /**
-   * Only on an **override**. On the normal path the vendor's approval already
-   * told the customer their money is coming, and a second "approved" message an
-   * hour later reads as a second refund.
+   * Only on an **override**, and now for a reason that is actually true.
+   *
+   * ⚠️ The note here used to say the vendor's approval had already told the
+   * customer. It had not — `decideRefund` imported the notice and never sent it,
+   * so on the normal path nobody told the customer anything. That is fixed at
+   * the source; this stays conditional because the vendor path now genuinely
+   * does send one, and a second "approved" an hour later reads as a second
+   * refund.
+   *
+   * An override has no such earlier message: the vendor said no, or said
+   * nothing, so this is the customer's first news that the answer changed.
    */
   if (isOverride) {
     await sendQuietly(
@@ -127,7 +198,15 @@ exports.approveRefundAsAdmin = async (actor, requestId, payload = {}) => {
     );
   }
 
-  return present(updated);
+  return {
+    ...present(updated),
+    /**
+     * Surfaced so the panel can warn before the admin presses pay: this refund
+     * will be clawed back out of the vendor's next payout, not out of money we
+     * are still holding.
+     */
+    vendorAlreadyPaid,
+  };
 };
 
 /** The admin refuses it, and the vendor's money goes back into the run. */
@@ -238,6 +317,36 @@ exports.executeRefund = async (actor, requestId) => {
 
   const amount = request.approvedAmount ?? request.requestedAmount;
 
+  /**
+   * ⚠️ Re-checked against what has **already** gone back, immediately before the
+   * money moves.
+   *
+   * The figure on the request was frozen when it was raised, and the ceiling it
+   * was checked against can have moved since. There is a real window:
+   * `applyRefundCompletion` clears the previous request's `isOpen` **before** it
+   * bumps `amountRefunded`, so a request filed in that gap is sized against a
+   * stale total. A ₹300 refund that had just completed could be followed by a
+   * request for the full ₹811.80 — and this function would have sent it, taking
+   * ₹1,111.80 back on an ₹811.80 payment.
+   *
+   * Razorpay would probably refuse it. That is not a reason to send it: relying
+   * on the gateway to catch our own arithmetic leaves the request `FAILED` with
+   * a message nobody can act on, and it is the one check that costs a single
+   * read at the only point where being wrong is irreversible.
+   */
+  const alreadyRefunded = Math.round((transaction.amountRefunded || 0) * 100) / 100;
+  const paid = Math.round((transaction.paidAmount ?? transaction.amount ?? 0) * 100) / 100;
+  const remaining = Math.round((paid - alreadyRefunded) * 100) / 100;
+
+  if (amount > remaining + 0.005) {
+    throwError(
+      422,
+      `This refund is for ${Number(amount).toFixed(2)} but only ${remaining.toFixed(2)} of ` +
+        `this payment is still refundable — ${alreadyRefunded.toFixed(2)} has already gone back. ` +
+        `Reject this request and ask the customer to raise it for the remaining amount.`,
+    );
+  }
+
   // The claim, and the counter, before anything leaves.
   const claimed = await RefundRequest.findOneAndUpdate(
     { _id: request._id, status: { $in: READY } },
@@ -338,12 +447,33 @@ exports.executeRefund = async (actor, requestId) => {
  * value are indistinguishable by amount, and adopting the wrong one would leave
  * a real refund untracked.
  */
+/**
+ * Razorpay's own terminal-failure state for a refund.
+ *
+ * ⚠️ A refund in this state moved **no money**. Adopting one is not recovery, it
+ * is a trap: `adopt` sets the request back to `PROCESSING`, the `refund.failed`
+ * webhook sets it to `FAILED`, an admin retries, this finds the same dead refund
+ * and adopts it again. The request cycles between two states for ever and the
+ * customer is never paid — while every screen says their refund is on its way.
+ */
+const GATEWAY_REFUND_FAILED = "failed";
+
 const findOurRefund = async (instance, paymentId, requestId) => {
   try {
     const result = await instance.payments.fetchMultipleRefund(paymentId);
     const items = result?.items || [];
     return items.find(
-      (r) => String(r?.notes?.refundRequestId || "") === String(requestId),
+      (r) =>
+        String(r?.notes?.refundRequestId || "") === String(requestId) &&
+        /**
+         * Only one that is still alive. A previous attempt that Razorpay failed
+         * has to be re-issued, not re-adopted — and issuing again is safe
+         * precisely because that one carried nothing.
+         *
+         * A later lookup can then see two refunds under our note, one dead and
+         * one live; this picks the live one, which is the right answer.
+         */
+        String(r?.status || "").toLowerCase() !== GATEWAY_REFUND_FAILED,
     );
   } catch (error) {
     /**

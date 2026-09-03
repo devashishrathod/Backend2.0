@@ -9,6 +9,7 @@ const { VENDOR_TIMEOUT_ACTIONS } = require("../../constants/customer");
 const { getCustomerConfig } = require("../../helpers/settings");
 const { getRazorpayAccount } = require("../../configs/razorpay");
 const { applyRefundCompletion } = require("../../helpers/refunds");
+const { taintSettlement } = require("../../helpers/settlements");
 const { recordClaimHistory } = require("../../helpers/voucherClaims");
 const {
   sendQuietly,
@@ -151,7 +152,98 @@ exports.escalateStaleRefunds = async () => {
  * guards. A reconcile that could pay would be a second, unguarded path to money
  * leaving.
  */
+/**
+ * Put back a settlement hold that never landed.
+ *
+ * ⚠️ The guarantee this whole design rests on is that **an open refund's payment
+ * is always held**. `requestRefund` sets the hold, but as a second round trip
+ * after the request is created — a process that dies in between leaves an open
+ * refund whose money is still eligible for payout. Settlement then pays the
+ * vendor for a claim that is about to be refunded, and the refund has nothing to
+ * come out of.
+ *
+ * Repaired rather than merely reported, because the window between noticing and
+ * fixing is a settlement run. Idempotent: it only touches rows that are wrong.
+ */
+const repairMissingHolds = async () => {
+  /**
+   * ⚠️ The limit is applied to the **broken** rows, not to the open ones.
+   *
+   * This used to read the first 500 open refunds and update whichever of them
+   * lacked a hold. Two things made that a permanent blind spot: there was no
+   * sort, so "first 500" meant natural order; and `FAILED` is an open status
+   * that nothing ever closes, so unrepairable rows pile up at the head and
+   * every newer one starves behind them. A set that never drains cannot be
+   * swept with a plain limit.
+   *
+   * Matching first and limiting after means the batch only ever contains rows
+   * this run is about to fix, so the backlog genuinely shrinks.
+   */
+  const broken = await RefundRequest.aggregate([
+    { $match: { isOpen: true, isDeleted: false } },
+    {
+      $lookup: {
+        from: Transaction.collection.name,
+        localField: "transactionId",
+        foreignField: "_id",
+        as: "payment",
+        pipeline: [{ $project: { settlementHold: 1, settlementId: 1 } }],
+      },
+    },
+    { $unwind: "$payment" },
+    { $match: { "payment.settlementHold": { $ne: true } } },
+    { $limit: 500 },
+    { $project: { _id: 1, transactionId: 1, settlementId: "$payment.settlementId" } },
+  ]);
+
+  if (!broken.length) return 0;
+
+  const result = await Transaction.updateMany(
+    {
+      _id: { $in: broken.map((r) => r.transactionId) },
+      settlementHold: { $ne: true },
+    },
+    {
+      $set: {
+        settlementHold: true,
+        settlementHoldReason: "Open refund — hold re-applied by reconcile",
+      },
+    },
+  );
+
+  /**
+   * ⚠️ And the settlement, which the hold alone does nothing about.
+   *
+   * `settlementHold` is only a **pre-claim** filter. Once a payment carries a
+   * `settlementId`, eligibility has already been decided and setting the hold
+   * changes nothing about that settlement — so the job whose entire purpose is
+   * "stop paying a vendor for a claim under refund" did not stop it. The
+   * settlement has to be flagged, which is what blocks approval.
+   */
+  let tainted = 0;
+  for (const row of broken) {
+    if (!row.settlementId) continue;
+    const result = await taintSettlement({
+      transaction: { _id: row.transactionId, settlementId: row.settlementId },
+      reason: "Open refund found on a payment already inside this settlement",
+    });
+    if (result.tainted) tainted += 1;
+  }
+
+  if (result.modifiedCount || tainted) {
+    console.warn(
+      `[reconcileRefunds] re-applied ${result.modifiedCount} settlement hold(s) ` +
+        `that an open refund should already have had` +
+        (tainted ? `, and flagged ${tainted} settlement(s) already holding them.` : "."),
+    );
+  }
+  return result.modifiedCount || 0;
+};
+
 exports.reconcileRefunds = async () => {
+  // Before anything else: the guarantee the rest of the design rests on.
+  const holdsRepaired = await repairMissingHolds();
+
   const config = await getCustomerConfig();
   // Give the gateway a sensible head start before calling anything stuck.
   const graceMinutes = Number(config.refund?.authorizedAlertMinutes) || 30;
@@ -167,7 +259,14 @@ exports.reconcileRefunds = async () => {
     .lean();
 
   if (!inFlight.length) {
-    return { checked: 0, completed: 0, failed: 0, stillPending: 0, unreachable: 0 };
+    return {
+      checked: 0,
+      completed: 0,
+      failed: 0,
+      stillPending: 0,
+      unreachable: 0,
+      holdsRepaired,
+    };
   }
 
   let completed = 0;
@@ -233,6 +332,7 @@ exports.reconcileRefunds = async () => {
     failed,
     stillPending,
     unreachable,
+    holdsRepaired,
   };
 };
 

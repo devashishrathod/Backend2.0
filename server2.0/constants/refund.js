@@ -59,6 +59,23 @@ const REFUND_OPEN_STATUSES = Object.freeze([
   REFUND_REQUEST_STATUS.VENDOR_APPROVED,
   REFUND_REQUEST_STATUS.VENDOR_TIMEOUT,
   REFUND_REQUEST_STATUS.ADMIN_APPROVED,
+  /**
+   * ⚠️ This was missing, and it is the same state as `ADMIN_APPROVED` in every
+   * way that matters here: an admin has said yes and the money has not moved.
+   *
+   * `isOpen` is derived from this list, so leaving it out did three things at
+   * once. The `(transactionId, isOpen)` unique index stopped protecting the
+   * payment, so a customer could file a *second* refund against it.
+   * `releaseSettlementHold` counted no open request, so a vendor rejection on
+   * that payment released the hold and let the settlement pay out money that was
+   * about to go back. And every `?open=true` worklist hid it, so the refund an
+   * admin overrode was the one they could no longer find.
+   *
+   * The only thing that distinguishes an override is *who* decided and that it
+   * went against the vendor — `isOverride` records that. It has nothing to do
+   * with whether the request is still moving.
+   */
+  REFUND_REQUEST_STATUS.ADMIN_OVERRIDE,
   REFUND_REQUEST_STATUS.PROCESSING,
   // FAILED is open on purpose: the money still has to go back, and the request
   // is what the admin retries from.
