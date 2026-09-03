@@ -148,7 +148,8 @@
       "Bash(node --trace-warnings -e \"require\\('dotenv'\\).config\\(\\); require\\('./routes'\\); console.log\\('ALL ROUTES LOADED'\\);\")",
       "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/71ba6725-28d1-4bef-8e6e-c47b86b6d111/scratchpad/smokeCustomerDetail.js\")",
       "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/71ba6725-28d1-4bef-8e6e-c47b86b6d111/scratchpad/verifyControllers.js\")",
-      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/71ba6725-28d1-4bef-8e6e-c47b86b6d111/scratchpad/probeValidateSchema.js\")"
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/71ba6725-28d1-4bef-8e6e-c47b86b6d111/scratchpad/probeValidateSchema.js\")",
+      "Bash(rm \"C:/Users/acar/.claude/projects/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/memory/never-touch-legacy-server-folder.md\")"
     ]
   }
 }
