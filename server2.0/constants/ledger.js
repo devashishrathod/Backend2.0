@@ -94,7 +94,25 @@ const LEDGER_ENTRY_TYPE = Object.freeze({
    * at 10% on ₹1,000 it is ₹100 of phantom liability per sale.
    */
   VENDOR_COMMISSION: "VENDOR_COMMISSION",
-  REFUND: "REFUND",
+  /**
+   * ⚠️ **There is deliberately no `REFUND` type, and the absence needs saying.**
+   *
+   * There was one. It was declared here, carried no rule in
+   * `LEDGER_ENTRY_RULES`, and in every version of this repo **nothing ever wrote
+   * it** — a name sitting in the obvious place for anybody posting a refund row
+   * to reach for.
+   *
+   * A refund is booked under the **same entry type it reverses**, in the
+   * opposite direction: `COLLECTION` back out, `VENDOR_PROMO_SHARE` back in,
+   * `CONVENIENCE_FEE` back out. That is what makes a report grouped by type net
+   * to the truth on its own. A flat `REFUND` row would leave, say, a promo cost
+   * that shows every rupee ever committed and never one that came back.
+   *
+   * It could not have been used silently — with no rule, `recordLedgerEntry`
+   * refuses it for want of an account — but somebody supplying an account and a
+   * direction by hand would have got a row that posts, balances, and quietly
+   * breaks every type-grouped report from that day on. See `refund_flow.md` §5.4.
+   */
   CHARGEBACK: "CHARGEBACK",
   CHARGEBACK_REVERSAL: "CHARGEBACK_REVERSAL",
   RESERVE_HOLD: "RESERVE_HOLD",
