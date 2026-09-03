@@ -151,3 +151,27 @@ exports.validateGetDisputes = {
     sortOrder: Joi.string().valid("asc", "desc").optional(),
   }),
 };
+
+/**
+ * Letting a held payment back into the settlement run.
+ *
+ * `reason` is **required**, and it is not paperwork. This is the one action that
+ * puts money back into a payout after a chargeback or a failed refund took it
+ * out, and "who decided the vendor keeps this, and why" is the first question
+ * anybody asks when it is queried months later.
+ */
+exports.validateReleaseHold = {
+  params: Joi.object({
+    transactionId: objectId().required().messages({
+      "any.required": "transactionId is required.",
+      "any.invalid": "Invalid transactionId.",
+    }),
+  }),
+  body: Joi.object({
+    reason: Joi.string().trim().min(3).max(500).required().messages({
+      "any.required": "Please say why this hold is being released.",
+      "string.empty": "Please say why this hold is being released.",
+      "string.min": "Please give a little more detail.",
+    }),
+  }),
+};

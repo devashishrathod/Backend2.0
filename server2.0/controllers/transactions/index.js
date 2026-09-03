@@ -15,7 +15,10 @@ const { disputeList } = require("./disputes");
 
 const { paymentHealth } = require("./paymentHealth");
 
+const { releaseHold } = require("./releaseHold");
+
 module.exports = {
+  releaseHold,
   paymentHealth,
   subscribePreview,
   subscribeCreateOrder,

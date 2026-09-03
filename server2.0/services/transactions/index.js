@@ -12,7 +12,14 @@ const {
 const { getPaymentHealth } = require("./getPaymentHealth");
 const { getDisputes } = require("./getDisputes");
 
+const {
+  releaseTransactionHold,
+} = require("./releaseTransactionHold");
+
 module.exports = {
+  // The one explicit way a settlementHold ever comes off outside the
+  // refund-decision paths. See the service for why it has to exist.
+  releaseTransactionHold,
   previewSubscribeOrder,
   createSubscribeOrder,
   verifySubscribeTransaction,

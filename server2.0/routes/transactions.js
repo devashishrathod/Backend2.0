@@ -15,6 +15,7 @@ const {
   validateGetWebhookEvent,
   validateReplayWebhookEvent,
   validateGetDisputes,
+  validateReleaseHold,
 } = require("../validator/transactions");
 const {
   subscribePreview,
@@ -28,6 +29,7 @@ const {
   webhookEventGet,
   webhookReplay,
   disputeList,
+  releaseHold,
   paymentHealth,
 } = require("../controllers/transactions");
 
@@ -146,5 +148,31 @@ router.get(
  * ask for a less complete answer.
  */
 router.get("/admin/health", isAdmin, paymentHealth);
+
+/**
+ * Let a held payment back into the settlement run.
+ *
+ * ### ⚠️ Why this endpoint exists
+ *
+ * `settlementHold` is monotonic by design: five paths set it and, until this,
+ * exactly one cleared it — and that one is reachable only from a refund being
+ * rejected. Everything else that holds money had **no way out at all**: a
+ * chargeback (including one we *won*), a refund that reached `FAILED`, a refund
+ * issued from the Razorpay dashboard, a completed refund.
+ *
+ * The dispute webhook says as much in its own comment — *"releasing it is an
+ * explicit admin action, taken once somebody has decided who bears the loss"* —
+ * and that action was never built. A vendor whose chargeback we won had that
+ * money frozen out of every future settlement, permanently, silently.
+ *
+ * It refuses while a refund is still open: the customer is owed an answer first,
+ * and deciding the refund releases the hold on its own.
+ */
+router.patch(
+  "/admin/:transactionId/release-hold",
+  isAdmin,
+  validateSchema(validateReleaseHold),
+  releaseHold,
+);
 
 module.exports = router;
