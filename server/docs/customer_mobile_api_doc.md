@@ -665,28 +665,63 @@ Live verify kiya (2026-08-26): `{"currentScreen": "HOME"}` → `422 "`HOME` is n
 |---|---|---|
 | `Authorization` | `Bearer <token>` | ✅ |
 
-### Body
-Koi nahi.
+### Body — dono optional 🆕
+| Field | Type | Required | Default | Kya karta hai |
+|---|---|---|---|---|
+| `pushToken` | string | ❌ | – | Is device ka FCM token. Bhejne par isi device ke push notifications band |
+| `allDevices` | boolean | ❌ | `false` | `true` = har device se sign out — **har purana JWT turant dead** |
+
+Khaali body bhi bilkul valid hai — wahi purana behaviour, plus flags ab sahi update hote hain.
+
+```jsonc
+{}                                     // is device se logout
+{ "pushToken": "fcm_abc123..." }       // + is device ka push band
+{ "allDevices": true }                 // + har device ka JWT aur push khatam
+```
 
 ### Success — `200`
 ```json
 {
   "success": true,
   "message": "Logout successful",
-  "data": {}
+  "data": {
+    "allDevices": false,
+    "sessionsEnded": false,
+    "pushDeactivated": 1,
+    "activeDevices": 1
+  }
 }
 ```
 
+| Field | Kya |
+|---|---|
+| `sessionsEnded` | `true` sirf `allDevices` par. Matlab har purana token abhi refuse hone lagega |
+| `pushDeactivated` | Kitne devices ka push band hua. `pushToken` na bheja to `0` |
+| `activeDevices` | Ab kitne devices par push chalu hai. `null` matlab push ko chhua hi nahi gaya |
+
+`allDevices: true` par message badal jaata hai — `"Signed out of all devices"`.
+
 ### Errors
-Sirf [common auth errors](#common-errors).
+| Status | Message | Kab |
+|---|---|---|
+| `401` | *(auth error)* | Token nahi ya invalid |
+| `422` | `pushToken does not look like a valid push token` | 20 chars se chhota |
 
 ### ⚠️ Edge cases & notes
 
-**1. Server-side kuch nahi hota.** Controller sirf success return karta hai — token blacklist nahi hota, `isLoggedIn` flag update nahi hota, FCM token remove nahi hota (wo code commented hai). Purana token expiry tak valid rahega.
+**1. Ye endpoint sabke liye ek hi hai** — customer, vendor, sub-vendor, admin. Aur **suspended account bhi ise call kar sakta hai**: baaki har gate deactivated user ko `401` deta hai taaki client use sign out kar de, to sign-out hi refuse karna wo ek cheez hoti jo use phansa deti.
 
-**2. App ko locally cleanup karna hoga:** token delete, user cache clear, login screen pe navigate.
+**2. Saada logout aapka token invalidate nahi karta.** JWT stateless hai — wo apni expiry tak valid rehta hai. **App ko token khud delete karna hoga**, cache clear karna hoga, login screen pe jaana hoga. Server ki taraf se sirf flags neeche aate hain aur (token bheja ho to) push band hota hai.
 
-**3. FCM/push unsubscribe abhi implement nahi hai** — commented out hai. Logout ke baad bhi push notifications aa sakti hain (jab push feature live hoga).
+**3. `pushToken` na bheja to push chalta rahega.** Ye jaan-boojh kar hai — purane app versions jo ye field nahi bhejte wo logout to kar payenge. Par tab tak un devices ko notifications aate rahenge. `pushDeactivated: 0` isi ka signal hai.
+
+> App ko apna FCM token yaad rakhna chahiye (wahi jo `POST /deviceTokens/register` me bheja tha) aur logout par wapas bhejna chahiye. Pehle iske liye alag se `PUT /deviceTokens/unregister` call karna padta tha — ab ek hi call kaafi hai.
+
+**4. `allDevices: true` sach me har device band karta hai** — phone, tablet, sab. Ye kho gaye phone ka jawab hai. Iske baad har device par agli hi request `401 "Your session has ended. Please log in again."` degi, **is device par bhi** — jis token se aapne ye call kiya wo bhi mar jaata hai.
+
+> ⚠️ Ek chhoti si baareeki: session kill `iat` (seconds) ko compare karta hai aur "strictly before" hai, to **usi second me** banaya gaya token bach jaata hai. Practically kabhi nahi hota — token login par banta hai, logout minton baad hota hai — par login ke turant baad `allDevices` maarne par wo ek token zinda reh sakta hai.
+
+**5. Pending payment logout se cancel nahi hota.** Agar customer Razorpay ke checkout me hai aur app se logout kar deta hai, to payment phir bhi complete ho sakti hai aur webhook claim bana dega. Ye jaan-boojh kar hai — logout par order cancel karna us paise ko phansa deta jo bank se nikal chuka hai.
 
 ---
 
@@ -4412,12 +4447,17 @@ Device ko push se hata deta hai. **Logout pe call karna zaruri hai.**
 
 **3. `deactivated: 0` error nahi hai** — matlab us filter pe koi active row nahi mili (already unregistered, ya token kisi aur ka).
 
-**4. Logout flow me ye zaruri hai** — `POST /auth/logout` push ko touch nahi karta. Sirf logout call karoge to device notifications receive karta rahega. Sahi order:
+**4. Logout ab ye khud kar leta hai** 🆕 — `POST /auth/logout` ko `pushToken` bhej dein, alag call ki zarurat nahi:
 ```
-PUT /deviceTokens/unregister  { token }
-POST /auth/logout
+POST /auth/logout  { "pushToken": "<wahi token jo register kiya tha>" }
 → local token + cache clear
 ```
+
+Ye endpoint tab bhi kaam ka hai jab logout ke bina ek device retire karna ho — jaise
+"logged-in devices" screen se koi purana phone hataana.
+
+> Pehle logout push ko chhoota hi nahi tha aur dono call karni padti thi. Ab `pushToken`
+> na bhejne par bhi logout chalta hai — bas us device ko notifications aate rahenge.
 
 ---
 
@@ -4600,6 +4640,22 @@ Ye backend issues hain jo customer app ko directly affect karte hain. **Status 2
 
 ## ✅ Jo fix ho gaya
 
+### `POST /auth/logout` kuch karta hi nahi tha — FIXED 🆕
+**Pehle:** controller sirf ek line log karke `200` de deta tha. Na push band hota tha, na
+`isLoggedIn` neeche aata tha, na koi token khatam hota tha. App ko alag se
+`PUT /deviceTokens/unregister` maarna padta tha, aur na maare to logged-out phone par
+notifications aate rehte the.
+
+**Ab:** `pushToken` bhejein to usi device ka push band; `allDevices: true` bhejein to har
+device ka JWT aur push dono khatam (kho gaye phone ka jawab). Flags dono taraf se sahi
+hote hain — aur wo teen login paths bhi theek hue jo inhe kabhi set hi nahi karte the,
+WhatsApp login samet. Detail [endpoint #3](#3-post-authlogout) me.
+
+⚠️ Saada logout phir bhi aapka JWT invalidate nahi karta — wo stateless hai aur expiry
+tak valid rehta hai. App ko token khud delete karna hoga. Sirf `allDevices` tokens marta hai.
+
+---
+
 ### "No eligible offer" error — FIXED (v1.3.0)
 **Pehle:** bill kisi bhi offer ke `minBillAmount` se kam ho to preview `400` deta tha. Customer ko lagta tha uska bill hi galat hai, jabki wo bas chhota tha.
 
@@ -4721,12 +4777,6 @@ Aur `NOTIFICATION_TYPES` enum me abhi jo types hain wo mostly subscription/admin
 
 **App pe impact:** notification inbox screen abhi ban nahi sakta. Push aayega par history nahi. Chahiye to backend change lagega.
 
-### 15. 🆕 `POST /auth/logout` push unregister nahi karta
-Logout endpoint sirf success message deta hai — na token invalidate karta hai, na device token deactivate karta hai.
-
-**App pe impact:** logout pe **manually** `PUT /deviceTokens/unregister` call karein, warna logged-out device notifications receive karta rahega. Sahi order [endpoint #32](#32-put-devicetokensunregister) me hai.
-
----
 
 ## Frontend integration checklist
 

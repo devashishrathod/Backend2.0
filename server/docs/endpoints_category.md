@@ -126,6 +126,8 @@ Ye ownership enforcement ka proper pattern hai:
 | `DELETE /categories/delete/:id` · `/subCategories/delete/:id` | Naya `400` — jab tak koi sub-category / brand / voucher use kar raha hai, delete nahi hoga |
 | `GET /vouchers/customer/get-all` | 🔴 `categoryId` / `subCategoryId` **filter ab kaam karta hai** — pehle har category-filtered request `404` deti thi, aur har row me ye fields `undefined` aati thi. Taxonomy `VoucherVersion` par hai, `Voucher` par nahi thi |
 | `GET /vouchers/customer/get-all?search=` | Offer ka title bhi match hota hai ("buy 1 get 1"), aur term ab escape hoti hai — `(` type karne pe `500` nahi aata |
+| `POST /auth/logout` | Naya optional body — `pushToken` (is device ka push band) aur `allDevices` (har JWT + har device khatam). Response me `sessionsEnded` · `pushDeactivated` · `activeDevices`. Pehle ye endpoint kuch karta hi nahi tha |
+| Har login response | Koi field nahi badli, par `isLoggedIn` / `isOnline` **ab sach me set hote hain** — 7 me se 4 token-dene wale paths inhe kabhi set hi nahi karte the, WhatsApp login samet, to admin directory ka `?isLoggedIn=` filter dono taraf se galat tha |
 
 Detail → [security_findings.md](./security_findings.md) · [voucher_brand_features_plan.md](./voucher_brand_features_plan.md)
 
