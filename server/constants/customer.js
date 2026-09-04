@@ -394,6 +394,28 @@ const REFUND_METHODS = Object.freeze({
  */
 const BANK_ATTACH_OTP_PURPOSE = "customer-bank-attach";
 
+/**
+ * The customer home screen's search box.
+ *
+ * `minQueryLength` is the one that changes behaviour rather than volume: below
+ * it the API refuses the query outright, so the app knows exactly when it may
+ * start calling. One character against every brand, voucher and area on the
+ * platform is a scan that returns almost everything and helps nobody.
+ *
+ * `popularQueries` is curated by an admin, not derived from traffic — nothing
+ * logs what customers search for. Empty is a valid state and simply means the
+ * app shows no chips.
+ */
+const CUSTOMER_SEARCH_DEFAULTS = Object.freeze({
+  isEnabled: true,
+  minQueryLength: 2,
+  // Rows per section in overview mode.
+  sectionLimit: 5,
+  // How many recent searches one customer keeps.
+  historyLimit: 20,
+  popularQueries: Object.freeze([]),
+});
+
 const VENDOR_TIMEOUT_ACTIONS = Object.freeze({
   ESCALATE: "ESCALATE",
   AUTO_APPROVE: "AUTO_APPROVE",
@@ -410,6 +432,7 @@ module.exports = {
   REFUND_DEFAULTS,
   CHARGEBACK_DEFAULTS,
   CUSTOMER_CURRENCY_DEFAULTS,
+  CUSTOMER_SEARCH_DEFAULTS,
   SETTLEMENT_CYCLE_TYPES,
   PAYOUT_PROVIDERS,
   REFUND_METHODS,

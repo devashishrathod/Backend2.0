@@ -15,7 +15,9 @@ const {
   PAYOUT_PROVIDERS,
   REFUND_METHODS,
   VENDOR_TIMEOUT_ACTIONS,
+  CUSTOMER_SEARCH_DEFAULTS,
 } = require("../constants/customer");
+const { SEARCH_LIMITS } = require("../constants/search");
 const { GATEWAY_FEE_BEARER } = require("../constants/transaction");
 
 const voucherSettingSchema = new mongoose.Schema(
@@ -592,6 +594,53 @@ const chargebackSettingSchema = new mongoose.Schema(
   { _id: false },
 );
 
+/**
+ * The customer home screen's search box.
+ *
+ * ⚠️ `isEnabled: false` empties the results, it does not remove the endpoint.
+ * `GET /search` keeps answering 200 with a plain "search is unavailable" so the
+ * app can say so; a 404 or 500 would reach the client's generic error handler
+ * and show a broken-app screen for what was a deliberate switch.
+ */
+const searchSettingSchema = new mongoose.Schema(
+  {
+    isEnabled: { type: Boolean, default: CUSTOMER_SEARCH_DEFAULTS.isEnabled },
+    // ⚠️ At least 1. A zero would let an empty query through to a match that
+    // scans brands, vouchers, categories and every outlet address at once.
+    minQueryLength: {
+      type: Number,
+      default: CUSTOMER_SEARCH_DEFAULTS.minQueryLength,
+      min: 1,
+      max: 10,
+    },
+    sectionLimit: {
+      type: Number,
+      default: CUSTOMER_SEARCH_DEFAULTS.sectionLimit,
+      min: 1,
+      max: SEARCH_LIMITS.MAX_SECTION_LIMIT,
+    },
+    historyLimit: {
+      type: Number,
+      default: CUSTOMER_SEARCH_DEFAULTS.historyLimit,
+      min: 1,
+      max: 100,
+    },
+    /**
+     * Admin-curated chips for the empty search box. Nothing derives these from
+     * traffic — no query a customer types is logged anywhere.
+     *
+     * ⚠️ An unset array of strings arrives as `[]`, not `undefined`, so
+     * `getCustomerConfig` cannot use `??` here. Clearing the list in the admin
+     * panel is a legitimate choice and must survive the read.
+     */
+    popularQueries: {
+      type: [String],
+      default: () => [...CUSTOMER_SEARCH_DEFAULTS.popularQueries],
+    },
+  },
+  { _id: false },
+);
+
 const customerSettingSchema = new mongoose.Schema(
   {
     convenienceFee: { type: convenienceFeeSchema, default: () => ({}) },
@@ -603,6 +652,7 @@ const customerSettingSchema = new mongoose.Schema(
     settlement: { type: settlementSettingSchema, default: () => ({}) },
     refund: { type: refundSettingSchema, default: () => ({}) },
     chargeback: { type: chargebackSettingSchema, default: () => ({}) },
+    search: { type: searchSettingSchema, default: () => ({}) },
   },
   { _id: false },
 );

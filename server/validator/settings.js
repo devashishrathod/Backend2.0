@@ -6,6 +6,7 @@ const {
   VENDOR_TIMEOUT_ACTIONS,
 } = require("../constants/customer");
 const { GATEWAY_FEE_BEARER } = require("../constants/transaction");
+const { SEARCH_LIMITS } = require("../constants/search");
 
 const voucherSettingSchema = Joi.object({
   maxOffers: Joi.number().integer().min(1).max(100).optional(),
@@ -271,6 +272,37 @@ const chargebackSettingSchema = Joi.object({
     }),
 });
 
+const searchSettingSchema = Joi.object({
+  isEnabled: Joi.boolean().optional(),
+  /**
+   * ⚠️ Floor of 1. Zero would let an empty query reach a match that runs over
+   * brands, vouchers, categories and every outlet address at once — and return
+   * essentially the whole platform to somebody who typed nothing.
+   */
+  minQueryLength: Joi.number().integer().min(1).max(10).optional().messages({
+    "number.min": "A search needs at least one character to match on.",
+  }),
+  sectionLimit: Joi.number()
+    .integer()
+    .min(1)
+    .max(SEARCH_LIMITS.MAX_SECTION_LIMIT)
+    .optional(),
+  historyLimit: Joi.number().integer().min(1).max(100).optional(),
+  /**
+   * Curated chips for the empty search box.
+   *
+   * ⚠️ No `.min(1)` — unlike the alert arrays above, an empty list here is a
+   * legitimate choice and simply means no chips are shown. Nothing silently
+   * stops working.
+   */
+  popularQueries: Joi.array()
+    .items(
+      Joi.string().trim().min(1).max(SEARCH_LIMITS.MAX_POPULAR_QUERY_LENGTH),
+    )
+    .max(SEARCH_LIMITS.MAX_POPULAR_QUERIES)
+    .optional(),
+});
+
 const customerSettingSchema = Joi.object({
   convenienceFee: convenienceFeeSchema.optional(),
   tax: customerTaxSchema.optional(),
@@ -281,6 +313,7 @@ const customerSettingSchema = Joi.object({
   settlement: settlementSettingSchema.optional(),
   refund: refundSettingSchema.optional(),
   chargeback: chargebackSettingSchema.optional(),
+  search: searchSettingSchema.optional(),
 });
 
 /**

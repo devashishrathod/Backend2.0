@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const { VOUCHER_SORT_BY } = require("../../constants/voucher");
 const { buildAggregateLookup } = require("../../database");
 const { pickVoucherBanner } = require("./pickVoucherBanner");
+const { escapeRegex } = require("../../validator/common");
 
 exports.buildCustomerVoucherPipeline = ({
   latitude,
@@ -306,12 +307,28 @@ exports.buildCustomerVoucherPipeline = ({
    */
 
   if (query.search && !useRelevance) {
+    /**
+     * ⚠️ Escaped. This term comes straight from a search box, and `(` alone is
+     * an invalid pattern — Mongo throws and the customer gets a 500 for typing
+     * a bracket. `.` and `*` are worse: they parse fine and match everything.
+     * Before this it was interpolated raw.
+     */
+    const term = escapeRegex(String(query.search).trim());
+
+    /**
+     * Offer titles count too.
+     *
+     * "buy 1 get 1" is almost never in a voucher's name — it is the offer, and
+     * lives on `version.offers[].title`. Matching only the name meant the
+     * phrase customers actually type found nothing. `offers` is an array, so
+     * the dotted path matches if any one offer does.
+     */
     pipeline.push({
       $match: {
-        "voucher.name": {
-          $regex: query.search,
-          $options: "i",
-        },
+        $or: [
+          { "voucher.name": { $regex: term, $options: "i" } },
+          { "version.offers.title": { $regex: term, $options: "i" } },
+        ],
       },
     });
   }

@@ -20,6 +20,7 @@ const CUSTOMER_BLOCKS = Object.freeze([
   "settlement",
   "refund",
   "chargeback",
+  "search",
 ]);
 
 /**
