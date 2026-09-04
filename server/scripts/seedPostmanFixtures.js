@@ -37,6 +37,12 @@ const { VOUCHER_STATUSES, VOUCHER_DISCOUNT_TYPES } = require("../constants/vouch
 const { VOUCHER_BANNER_TYPE } = require("../constants/voucherBanner");
 const { BANNER_TYPE } = require("../constants/banner");
 const {
+  PROMO_AUDIENCE,
+  PROMO_DISCOUNT_TYPES,
+  PROMO_APPLIES_TO,
+  PROMO_COST_BEARING_MODE,
+} = require("../constants/promoCode");
+const {
   SUBSCRIBED_STATUS,
   SUBSCRIPTION_SOURCE,
 } = require("../constants/subscription");
@@ -107,6 +113,9 @@ const run = async () => {
   const PromotionalTicker = require("../models/PromotionalTicker");
   const TermAndCondition = require("../models/Terms&Condition");
   const PrivacyAndPolicy = require("../models/Privacy&Policy");
+  const PromoCode = require("../models/PromoCode");
+  const PromoCodeUsage = require("../models/PromoCodeUsage");
+  const Setting = require("../models/Setting");
   const Subscription = require("../models/Subscription");
   const Subscribed = require("../models/Subscribed");
 
@@ -156,6 +165,17 @@ const run = async () => {
       PromotionalTicker.deleteMany({ title: /postman seed/ }),
       TermAndCondition.deleteMany({ title: /postman seed/ }),
       PrivacyAndPolicy.deleteMany({ title: /postman seed/ }),
+    ]);
+
+    // Usage rows first — a promo code deleted with its usage left behind
+    // would let `perCustomerUsageLimit` refuse the seeded code on the very
+    // next run, with a message about a code that no longer exists.
+    const promos = await PromoCode.find({ code: new RegExp(MARK) }).select("_id");
+    await PromoCodeUsage.deleteMany({
+      promoCodeId: { $in: promos.map((c) => c._id) },
+    });
+    await Promise.all([
+      PromoCode.deleteMany({ code: new RegExp(MARK) }),
     ]);
     return `${brandIds.length} brand(s), ${userIds.length} user(s)`;
   });
@@ -532,6 +552,54 @@ const run = async () => {
     ]);
 
     return "1 banner + 2 tickers";
+  });
+
+  step("customer promo code (+ the setting that makes it usable)", async () => {
+    /**
+     * ⚠️ Customer promo codes are **off by default** —
+     * `CUSTOMER_PROMO_DEFAULTS.isEnabled` is `false`, so `Setting.customer`
+     * has to say otherwise or the code is refused before it is even looked
+     * up. And on `create-order` that refusal is a hard 422, not the soft
+     * report the preview gives: by then the customer has seen a discounted
+     * price and pressed Pay.
+     *
+     * Seeding the code without this switch produces a collection request
+     * that fails with "Promo codes are not available yet" and looks like a
+     * broken fixture rather than a setting.
+     *
+     * Safe to write here: this script refuses the production database name
+     * outright, so it can only ever reach a scratch one.
+     */
+    const setting = (await Setting.findOne()) || new Setting({});
+    if (!setting.customer) setting.customer = {};
+    if (!setting.customer.promoCode) setting.customer.promoCode = {};
+    setting.customer.promoCode.isEnabled = true;
+    await setting.save();
+
+    await PromoCode.create({
+      code: `${MARK}10`,
+      description: "seeded customer promo for the postman collections",
+      audience: PROMO_AUDIENCE.CUSTOMER,
+      discountType: PROMO_DISCOUNT_TYPES.PERCENT,
+      discountPercent: 10,
+      maxDiscountAmount: 200,
+      appliesTo: PROMO_APPLIES_TO.NET_BILL,
+      // PLATFORM, so no `brandIds` is required and no vendor settlement is
+      // touched by a fixture. VENDOR and SHARED would need a brand list.
+      costBearing: { mode: PROMO_COST_BEARING_MODE.PLATFORM, vendorPercent: 0 },
+      validFrom: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      validTill: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      // ⚠️ Not the default 1. The collection is meant to be re-runnable, and
+      // a per-customer limit of one makes the second pass fail with "You have
+      // already used this promo code" — which reads as a broken request.
+      perCustomerUsageLimit: 999,
+      minBillAmount: 0,
+      firstOrderOnly: false,
+      createdBy: admin._id,
+      isActive: true,
+    });
+
+    return `1 promo code (${MARK}10) + customer.promoCode.isEnabled = true`;
   });
 
   // ── vendor-panel fixtures ────────────────────────────────────────────────

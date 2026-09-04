@@ -33,6 +33,17 @@ node scripts/addSearchRequestsToPostman.js           # 11 requests, sirf custome
 node scripts/addSearchRequestsToPostman.js --apply
 ```
 
+> ⚠️ **In scripts me variables ka koi guard nahi tha, aur uski keemat 28 warnings thi.**
+> Claim aur refund wali scripts ne aise `{{names}}` reference kar diye jo kisi ne
+> environment me daale hi nahi the. Examples kabhi capture nahi hue, to kisi ne chalaya
+> nahi aur kisi ko pata nahi chala — `lib/validate-collection.js` tab se yahi 28 bol raha
+> tha. `fixPostmanClaimVariables.js` ne 22 theek kar diye:
+>
+> ```bash
+> node scripts/fixPostmanClaimVariables.js           # kya badlega
+> node scripts/fixPostmanClaimVariables.js --apply   # badlo
+> ```
+>
 > Search wali script **environment file bhi chhooti hai** — uska folder ek id capture
 > karta hai (`search_history_id`), aur `{{variable}}` jo environment me na ho use
 > `lib/validate-collection.js` refuse karta hai. Wo bhi usi byte-exact round-trip guard
@@ -52,6 +63,34 @@ Script sirf **insert** karti hai aur teen guard rakhti hai:
 
 ⚠️ **In 30 requests ke examples abhi capture nahi hue.** Neeche wala capture step chalana
 baaki hai — usme `newman` chahiye, jo is machine par install nahi hai.
+
+---
+
+## ⚠️ Jo 6 warnings abhi bhi bachi hain — aur unme se do ka trap
+
+`validate-collection.js` abhi bhi **6** bolta hai. Teeno wajah alag hain:
+
+| Variable | Kitne | Kyun bacha | Fix kya hai |
+|---|---:|---|---|
+| `razorpay_order_id` · `razorpay_payment_id` · `razorpay_signature` | 3 | Ek **asli Razorpay checkout** se browser me aate hain. Collection inhe kabhi bhar hi nahi sakti | Manual hi rahega — ye pehle se un 10 endpoints me hai jo headless verify nahi ho sakte |
+| `other_customer_transaction_id` · `other_customer_claim_id` | 3 | Seeder me **doosra customer aur uski claim** nahi hai | Seeder me ek aur customer + uska claim |
+
+### 🔴 Un do authorization tests ka trap
+
+Ye do requests test karti hain ki ek customer doosre ka payment/claim **na khol paaye**:
+
+```
+GET  /voucher-claims/payments/{{other_customer_transaction_id}}   -> asserts 403
+POST /refunds { "claimId": "{{other_customer_claim_id}}" }        -> asserts 403
+```
+
+Variable set hi nahi hota, to literal `{{other_customer_claim_id}}` body me jaata hai.
+Dono validators `objectId()` use karte hain, to jawab **422 "Invalid claimId."** aata hai —
+`403` nahi. Test fail hota hai, par **galat wajah se**.
+
+⚠️ **Ise assertion me 422 accept karwa ke chup mat karana.** Tab test hamesha ke liye green
+ho jayega aur kabhi kuch check nahi karega — aur jo wo check kar raha tha wo ye hai ki ek
+customer doosre ka paisa dekh sakta hai ya nahi. Sahi fix seeder me hai.
 
 ---
 
@@ -186,6 +225,7 @@ Kya banta hai — sab Indore (`[75.8937, 22.7533]`) me:
 |---|---|
 | 1 admin user | banners / tickers ka `createdBy`, curation stamps |
 | 1 category + sub-category | master data |
+| 1 customer promo code (`PMFX10`) | claim order ka promo path. ⚠️ Saath me `Setting.customer.promoCode.isEnabled = true` bhi set hota hai — wo default me **`false`** hai, aur `create-order` par band promo ek **hard 422** hai |
 | 2 brands + 1 outlet each | ek pinned as Top Brand |
 | 10 brand features | profile ka 10-cap exercise karne ke liye |
 | 1 visible showcase (8 media) + 1 hidden | dono showcase endpoints ka farak dikhane ke liye |

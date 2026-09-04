@@ -6140,7 +6140,17 @@
                   "    pm.expect(o.minBillAmount, \"minBillAmount\").to.be.a(\"number\");",
                   "  });",
                   "});",
-                  ""
+                  "",
+                  "",
+                  "// The claim order needs an offer that belongs to this voucher. Captured",
+                  "// here rather than in the feed, because the feed row only carries the",
+                  "// single best offer while the claim may be opened against any of them.",
+                  "if (pm.response.code < 300) {",
+                  "  try {",
+                  "    const offers = pm.response.json().data.version.offers || [];",
+                  "    if (offers.length) pm.environment.set(\"offer_id\", String(offers[0]._id));",
+                  "  } catch (e) {}",
+                  "}"
                 ]
               }
             }
@@ -14272,7 +14282,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"voucherId\": \"{{voucher_id}}\",\n  \"outletId\": \"{{outlet_id}}\",\n  \"billAmount\": 1000,\n  \"offerId\": \"{{offer_id}}\",\n  \"promoCode\": \"{{promo_code}}\"\n}",
+              "raw": "{\n  \"voucherId\": \"{{voucher_id}}\",\n  \"outletId\": \"{{sub_brand_id}}\",\n  \"billAmount\": 1000,\n  \"offerId\": \"{{offer_id}}\",\n  \"promoCode\": \"{{promo_code}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
