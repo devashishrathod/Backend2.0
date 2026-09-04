@@ -1,6 +1,9 @@
 const { generateUniqueCustomerId } = require("./generateUniqueCustomerId");
 const { resolveCustomerByUserId } = require("./resolveCustomer");
 const {
+  resolveCustomerCoordinates,
+} = require("./resolveCustomerCoordinates");
+const {
   resolveCustomerId,
   resolveCustomerIdString,
 } = require("./resolveCustomerId");
@@ -15,6 +18,12 @@ const {
 module.exports = {
   generateUniqueCustomerId,
   resolveCustomerByUserId,
+  /**
+   * Explicit coordinates, else the customer's saved address. Shared so the
+   * voucher feed and the global search cannot disagree about where somebody
+   * is — they differ only in whether a missing location is fatal.
+   */
+  resolveCustomerCoordinates,
   // `req.customerId` is a populated document, not an id. Always normalise.
   resolveCustomerId,
   resolveCustomerIdString,

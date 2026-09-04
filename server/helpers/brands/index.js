@@ -22,6 +22,7 @@ const {
   switchSlot,
   bucketLabel,
 } = require("./entitlementSlots");
+const { outletDistanceExpression } = require("./outletDistanceExpression");
 const {
   resolveBrandIdentity,
   BRAND_IDENTITY_FALLBACK_NAME,
@@ -32,6 +33,7 @@ module.exports = {
   resolveBrandIdentity,
   BRAND_IDENTITY_FALLBACK_NAME,
   assertPublicBrand,
+  outletDistanceExpression,
   generateUniqueBrandId,
   generateBrandMerchantId,
   validateBrandVendor,

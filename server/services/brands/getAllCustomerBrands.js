@@ -4,78 +4,9 @@ const { buildAggregateLookup } = require("../../database");
 const { SYSTEM_VERIFICATION_STATUS } = require("../../constants");
 const { pagination } = require("../../utils");
 const { escapeRegex } = require("../../validator/common");
-
-const EARTH_RADIUS_METERS = 6371000;
-
-const toRadians = (degrees) => (degrees * Math.PI) / 180;
-
-/**
- * Straight-line distance from the caller to one outlet, as an aggregation
- * expression.
- *
- * `$geoNear` is not available here: it has to be the first stage of a pipeline,
- * and this one starts from Brand so that brands — not outlets — stay the rows.
- * So the distance is computed inline instead, using the equirectangular
- * approximation. Over the tens of kilometres a city directory spans its error
- * is a fraction of a percent, which is far below what "sorted by nearest"
- * needs. Exact distances still come from `$geoNear` in the voucher pipeline.
- *
- * `cos(latitude)` is a constant for a given caller, so it is folded in here in
- * JS rather than recomputed per document.
- */
-const distanceExpression = (latitude, longitude) => ({
-  $let: {
-    vars: {
-      lat: { $arrayElemAt: ["$geo.coordinates", 1] },
-      lng: { $arrayElemAt: ["$geo.coordinates", 0] },
-    },
-    in: {
-      $cond: [
-        {
-          $and: [
-            { $eq: [{ $type: "$$lat" }, "double"] },
-            { $eq: [{ $type: "$$lng" }, "double"] },
-          ],
-        },
-        {
-          $multiply: [
-            EARTH_RADIUS_METERS,
-            {
-              $sqrt: {
-                $add: [
-                  {
-                    $pow: [
-                      {
-                        $degreesToRadians: { $subtract: ["$$lat", latitude] },
-                      },
-                      2,
-                    ],
-                  },
-                  {
-                    $pow: [
-                      {
-                        $multiply: [
-                          {
-                            $degreesToRadians: {
-                              $subtract: ["$$lng", longitude],
-                            },
-                          },
-                          Math.cos(toRadians(latitude)),
-                        ],
-                      },
-                      2,
-                    ],
-                  },
-                ],
-              },
-            },
-          ],
-        },
-        null,
-      ],
-    },
-  },
-});
+// Shared with the global search's brand section — see the note in that file
+// for why the formula lives in one place.
+const { outletDistanceExpression } = require("../../helpers/brands");
 
 /**
  * The customer-facing brand directory, and the "Top Brands" tab.
@@ -187,7 +118,7 @@ exports.getAllCustomerBrands = async (query) => {
           $project: {
             _id: 1,
             ...(hasGeo
-              ? { distance: distanceExpression(latitude, longitude) }
+              ? { distance: outletDistanceExpression(latitude, longitude) }
               : {}),
           },
         },
