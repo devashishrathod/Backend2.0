@@ -133,6 +133,11 @@ exports.buildCustomerVoucherPipeline = ({
             description: 1,
             startAt: 1,
             endAt: 1,
+            // ⚠️ The taxonomy lives HERE, on the version — `Voucher` has no
+            // `categoryId` field at all. See the note on the category filter
+            // below for what reading it off the master silently did.
+            categoryId: 1,
+            subCategoryId: 1,
           },
         },
       ],
@@ -261,10 +266,25 @@ exports.buildCustomerVoucherPipeline = ({
     pipeline.push({ $match: { "voucher.isSuggested": true } });
   }
 
+  /**
+   * ⚠️ `version`, not `voucher`.
+   *
+   * A voucher's category is set per **version** — `VoucherVersion.categoryId`
+   * is `required: true`, and the master `Voucher` schema has no such field at
+   * all. These two filters used to match `voucher.categoryId`, a path that is
+   * missing on every document in the collection, so **every** category-filtered
+   * request matched nothing and the endpoint answered 404 "No any voucher
+   * found".
+   *
+   * Nothing reported it as a fault: to the client an empty category is
+   * indistinguishable from a category with no live offers, and the 404 is the
+   * same one a genuinely empty listing returns. The projected `categoryId` and
+   * `subCategoryId` on every row were `undefined` for the same reason.
+   */
   if (query.categoryId) {
     pipeline.push({
       $match: {
-        "voucher.categoryId": new mongoose.Types.ObjectId(query.categoryId),
+        "version.categoryId": new mongoose.Types.ObjectId(query.categoryId),
       },
     });
   }
@@ -272,7 +292,7 @@ exports.buildCustomerVoucherPipeline = ({
   if (query.subCategoryId) {
     pipeline.push({
       $match: {
-        "voucher.subCategoryId": new mongoose.Types.ObjectId(
+        "version.subCategoryId": new mongoose.Types.ObjectId(
           query.subCategoryId,
         ),
       },
@@ -470,9 +490,9 @@ exports.buildCustomerVoucherPipeline = ({
 
       name: "$voucher.name",
 
-      categoryId: "$voucher.categoryId",
+      categoryId: "$version.categoryId",
 
-      subCategoryId: "$voucher.subCategoryId",
+      subCategoryId: "$version.subCategoryId",
 
       createdAt: "$voucher.createdAt",
 
