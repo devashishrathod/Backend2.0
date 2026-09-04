@@ -1102,6 +1102,149 @@
               }
             }
           ]
+        },
+        {
+          "name": "6a. Logout — is device ka push bhi band 🆕",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test(\"push chhua gaya, aur session nahi mara\", function () {",
+                  "  const d = pm.response.json().data;",
+                  "  pm.expect(d, \"pushDeactivated\").to.have.property(\"pushDeactivated\");",
+                  "  pm.expect(d.sessionsEnded, \"sessionsEnded\").to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pushToken\": \"{{push_token}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** 🔒 `verifyJwtTokenEvenIfDeactivated` — suspended account bhi sign out kar sake.\n\nApp wahi FCM token bhejti hai jo usne `POST /deviceTokens/register` par bheja tha, aur\nusi device ke notifications band ho jaate hain. Pehle iske liye alag se\n`PUT /deviceTokens/unregister` maarna padta tha — ab ek call kaafi hai.\n\n| Response field | Kya |\n|---|---|\n| `pushDeactivated` | Kitne devices retire hue. `pushToken` na bheja to `0` |\n| `activeDevices` | Ab kitne devices par push chalu hai. `null` = push chhua hi nahi |\n| `sessionsEnded` | Yahan hamesha `false` — saada logout token invalidate nahi karta |\n\n⚠️ **Anjaan ya pehle se retire token error nahi hai** — `pushDeactivated: 0` aata hai aur\nlogout phir bhi safal. Client retry kar raha ho, ya provider ne token pehle hi mar diya\nho, to logout us wajah se fail nahi hona chahiye.\n\n⚠️ **Filter me hamesha `userId` hota hai**, to ek user doosre ka device chup nahi kara\nsakta — kisi aur ka token bhejne par bhi `0`.\n\n⚠️ **Aapka JWT phir bhi zinda hai.** Wo stateless hai aur expiry tak valid rehta hai —\napp ko use khud delete karna hai. Sirf `allDevices` tokens marta hai (agla request)."
+          },
+          "response": []
+        },
+        {
+          "name": "6b. Logout — sab devices se (kho gaya phone) 🆕",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test(\"sab devices, aur session sach me mara\", function () {",
+                  "  const d = pm.response.json().data;",
+                  "  pm.expect(d.allDevices, \"allDevices\").to.eql(true);",
+                  "  pm.expect(d.sessionsEnded, \"sessionsEnded\").to.eql(true);",
+                  "});",
+                  "",
+                  "pm.test(\"message batata hai ki sab devices se hua\", function () {",
+                  "  pm.expect(pm.response.json().message).to.match(/all devices/i);",
+                  "});",
+                  "",
+                  "// This token is dead now. Anything after this needs a fresh sign-in.",
+                  "pm.environment.unset(\"customer_token\");"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"allDevices\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** 🔒 `verifyJwtTokenEvenIfDeactivated`\n\nHar device se sign out — phone, tablet, sab. Ye kho gaye phone ka jawab hai, aur pehle\niska koi raasta tha hi nahi.\n\nDo cheezein hoti hain jo saade logout me nahi hotin:\n\n1. `User.sessionInvalidatedAt` stamp hota hai — **ab se pehle bana har JWT refuse hone\n   lagta hai**, `401 \"Your session has ended. Please log in again.\"` ke saath.\n2. Us user ke **saare** push devices retire ho jaate hain.\n\n⚠️ **Jis token se aapne ye call kiya wo bhi mar jaata hai.** Iske baad is collection ka\nkoi bhi gated request `401` dega jab tak `00 — Setup & Auth` dobara chal kar naya token\ncapture na kar le. Isiliye ye request folder ke aakhir me hai.\n\n⚠️ Session kill `iat` (seconds) par \"strictly before\" compare karta hai, to **usi second\nme** bana token bach jaata hai. Ye jaan-boojh kar hai — stamp ko truncate karna, token ko\npad karne se behtar hai: sahi session ko galti se maarne ki bajaay ek second ki dhil.\nPractically kabhi nahi dikhta, kyunki token login par banta hai aur logout minton baad."
+          },
+          "response": []
         }
       ]
     },

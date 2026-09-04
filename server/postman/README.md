@@ -6,7 +6,7 @@ jhooth nahi bol sakti.
 
 | Collection | Endpoints | Status |
 |---|---:|---|
-| `trydood-customer.postman_collection.json` | 53 | ⚠️ 116 requests · **132 captured examples** — 28 naye (Voucher Claims + Refunds + Search) **abhi capture nahi hue** |
+| `trydood-customer.postman_collection.json` | 53 | ⚠️ 118 requests · **132 captured examples** — 30 naye (Voucher Claims + Refunds + Search + Logout) **abhi capture nahi hue**, aur 1 purana **stale** hai (neeche) |
 | `trydood-vendor.postman_collection.json` | 92 | ⚠️ 116 requests · **105 captured examples** — 17 naye (Voucher Claims + Refunds + Settlements) **abhi capture nahi hue** |
 | `trydood-admin.postman_collection.json` | 114 | ⬜ Phase 3 |
 | `trydood-security-changes.postman_collection.json` | – | ⏳ Teeno panel collections ready hone par retire hogi |
@@ -31,6 +31,9 @@ node scripts/addRefundRequestsToPostman.js --apply
 
 node scripts/addSearchRequestsToPostman.js           # 11 requests, sirf customer
 node scripts/addSearchRequestsToPostman.js --apply
+
+node scripts/addLogoutRequestsToPostman.js           # 2 requests, sirf customer
+node scripts/addLogoutRequestsToPostman.js --apply
 ```
 
 > ⚠️ **In scripts me variables ka koi guard nahi tha, aur uski keemat 28 warnings thi.**
@@ -91,6 +94,22 @@ Dono validators `objectId()` use karte hain, to jawab **422 "Invalid claimId."**
 ⚠️ **Ise assertion me 422 accept karwa ke chup mat karana.** Tab test hamesha ke liye green
 ho jayega aur kabhi kuch check nahi karega — aur jo wo check kar raha tha wo ye hai ki ek
 customer doosre ka paisa dekh sakta hai ya nahi. Sahi fix seeder me hai.
+
+---
+
+## ⚠️ Ek captured example ab stale hai — `00 — Setup & Auth > 6. Logout`
+
+Wo example tab capture hua tha jab logout `"data": {}` deta tha. Ab response me
+`sessionsEnded`, `pushDeactivated` aur `activeDevices` aate hain, to saved example asli
+API se **mel nahi khata**.
+
+Request khud theek hai — khaali body wala logout aaj bhi bilkul valid call hai, aur use
+regression test ki tarah rakha gaya hai. Sirf uska saved example purana hai.
+
+**Ise haath se mat likhein.** Poora point hi yahi hai ki example ek asli run se aata hai —
+haath ka likha example chup-chaap purana ho jaata hai aur galat example bilkul sahi jaisa
+dikhta hai (do aise ship ho chuke hain, dekhein neeche). Capture step chalne par ye apne
+aap theek ho jayega.
 
 ---
 
