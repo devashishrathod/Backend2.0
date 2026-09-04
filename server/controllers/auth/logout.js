@@ -1,18 +1,12 @@
-// const {
-//   removeFcmTokenFromUserFcmTokensSet,
-// } = require("../../service/userServices");
-const { sendSuccess, sendError } = require("../../utils/index");
+const { asyncWrapper, sendSuccess } = require("../../utils");
+const { logout } = require("../../services/auth");
 
-exports.logout = async (req, res) => {
-  const userId = req.userId;
-  console.log("User logout request received", userId);
-  // const { token } = req.body;
-  //   await removeFcmTokenFromUserFcmTokensSet(userId);
-  // await unsubscibeFromTopic(
-  //   isProdServer()
-  //     ? firebaseTopics.SEND_TO_ALL
-  //     : firebaseTopics.SEND_TO_ALL_STAGING,
-  //   [token]
-  // );
-  return sendSuccess(res, 200, "Logout successful");
-};
+exports.logout = asyncWrapper(async (req, res) => {
+  const result = await logout({ userId: req.userId }, req.body);
+  return sendSuccess(
+    res,
+    200,
+    result.allDevices ? "Signed out of all devices" : "Logout successful",
+    result,
+  );
+});

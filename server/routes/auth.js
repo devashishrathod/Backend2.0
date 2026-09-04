@@ -31,6 +31,7 @@ const {
   validateSetPassword,
   validateForgotPassword,
   validateResetPassword,
+  validateLogout,
 } = require("../validator/auth");
 
 // Creating an account here is an admin action. It used to be public with `role`
@@ -107,6 +108,16 @@ router.post(
 // Deliberately reachable by a deactivated account: every other gate answers a
 // suspended user with a 401 so the client signs them out, and refusing the sign
 // out itself would be the one thing that leaves them stuck.
-router.post("/logout", verifyJwtTokenEvenIfDeactivated, logout);
+//
+// One endpoint for every role. The body is optional — `pushToken` stops this
+// device's notifications, `allDevices: true` additionally kills every JWT issued
+// before now. An empty body still signs out; it just leaves the push
+// registration alone, which is what older clients do.
+router.post(
+  "/logout",
+  verifyJwtTokenEvenIfDeactivated,
+  validateSchema(validateLogout),
+  logout,
+);
 
 module.exports = router;

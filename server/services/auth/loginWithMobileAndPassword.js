@@ -1,7 +1,7 @@
 const User = require("../../models/User");
 const { ROLES } = require("../../constants");
 const { throwError } = require("../../utils");
-const { assertAccountAccess } = require("../../helpers/auth");
+const { assertAccountAccess, markSignedIn } = require("../../helpers/auth");
 
 exports.loginWithMobileAndPassword = async (payload) => {
   let { mobile, password, role } = payload;
@@ -22,5 +22,7 @@ exports.loginWithMobileAndPassword = async (payload) => {
   const matchedPass = await user.matchPassword(password);
   if (!matchedPass) throwError(401, "Invalid credentials! Password mismatch");
   const token = user.getSignedJwtToken();
+  // The admin directory filters on these, and this path never set them.
+  await markSignedIn(user._id);
   return { user, token };
 };

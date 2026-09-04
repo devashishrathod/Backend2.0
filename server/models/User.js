@@ -80,6 +80,20 @@ const userSchema = new mongoose.Schema(
     // lastActivity: { type: Date, default: Date.now },
     // lastLocation: { lat: Number, lng: Number },
     // currentLocation: { lat: Number, lng: Number },
+    /**
+     * ⚠️ Dead. Nothing in this codebase writes any of these — they are always
+     * absent, including in the admin customer detail, which projects `meta` and
+     * therefore shows an empty object to every admin who opens it.
+     *
+     * They are what the legacy backend used for push, one token per user. The
+     * `DeviceToken` model replaced that and does it properly: one row per
+     * install, with its platform, its failure count and a soft retire, so a
+     * customer on a phone and a tablet keeps both. Reviving `meta.fcmToken`
+     * would put a second, worse answer next to it.
+     *
+     * Kept only so an existing document does not lose fields on save. Do not
+     * write to them; if you need per-device state, it belongs on `DeviceToken`.
+     */
     meta: {
       fcmToken: { type: String },
       ipAddress: { type: String },

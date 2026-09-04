@@ -13,6 +13,7 @@ const { verifyMobileOTP } = require("./verifyMobileOTP");
 const { setPassword } = require("./setPassword");
 const { forgotPassword } = require("./forgotPassword");
 const { resetPassword } = require("./resetPassword");
+const { logout } = require("./logout");
 
 module.exports = {
   registerUser,
@@ -28,4 +29,5 @@ module.exports = {
   setPassword,
   forgotPassword,
   resetPassword,
+  logout,
 };

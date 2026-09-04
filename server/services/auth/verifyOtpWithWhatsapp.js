@@ -23,6 +23,12 @@ exports.verifyOtpWithWhatsapp = async (body) => {
 
   user.isMobileVerified = true;
   if (currentScreen) user.currentScreen = currentScreen.toUpperCase().trim();
+  // Set on the document rather than through `markSignedIn`, because this
+  // path already saves — a second write for two booleans is waste. Same two
+  // fields, same meaning; see helpers/auth/markSession.js for why they
+  // matter and why they were missing here.
+  user.isLoggedIn = true;
+  user.isOnline = true;
   await user.save();
 
   const token = user.getSignedJwtToken();
