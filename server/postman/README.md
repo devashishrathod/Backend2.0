@@ -6,7 +6,7 @@ jhooth nahi bol sakti.
 
 | Collection | Endpoints | Status |
 |---|---:|---|
-| `trydood-customer.postman_collection.json` | 48 | ⚠️ 105 requests · **132 captured examples** — 17 naye (Voucher Claims + Refunds) **abhi capture nahi hue** |
+| `trydood-customer.postman_collection.json` | 53 | ⚠️ 116 requests · **132 captured examples** — 28 naye (Voucher Claims + Refunds + Search) **abhi capture nahi hue** |
 | `trydood-vendor.postman_collection.json` | 92 | ⚠️ 116 requests · **105 captured examples** — 17 naye (Voucher Claims + Refunds + Settlements) **abhi capture nahi hue** |
 | `trydood-admin.postman_collection.json` | 114 | ⬜ Phase 3 |
 | `trydood-security-changes.postman_collection.json` | – | ⏳ Teeno panel collections ready hone par retire hogi |
@@ -28,7 +28,15 @@ node scripts/addClaimRequestsToPostman.js --apply   # badlo
 
 node scripts/addRefundRequestsToPostman.js
 node scripts/addRefundRequestsToPostman.js --apply
+
+node scripts/addSearchRequestsToPostman.js           # 11 requests, sirf customer
+node scripts/addSearchRequestsToPostman.js --apply
 ```
+
+> Search wali script **environment file bhi chhooti hai** — uska folder ek id capture
+> karta hai (`search_history_id`), aur `{{variable}}` jo environment me na ho use
+> `lib/validate-collection.js` refuse karta hai. Wo bhi usi byte-exact round-trip guard
+> ke andar likhi jaati hai.
 
 Script sirf **insert** karti hai aur teen guard rakhti hai:
 
@@ -223,7 +231,11 @@ hain, aur folder `07` ke toggle-pairs deliberately aise arrange hain ki list req
 | `07 — Engagement` | Follow / avoid toggles + lists |
 | `08 — Legal` | Terms aur privacy reads |
 | `09 — Push Notifications` | Device register / list / test / unregister |
-| `10 — Access control` | Negative tests — customer token in endpoints pe refuse hona chahiye |
+| `10 — Guest (bina token)` | Har public endpoint bina Authorization header ke |
+| `11 — Voucher Claims` | Order → verify → meri claims / payments → invoice |
+| `12 — Refunds` | Refund maango, wapas lo, dekho |
+| `13 — Search` 🆕 | Global search (guest + signed-in), single-type paginated mode, history CRUD, popular chips |
+| `14 — Access control` | Negative tests — customer token in endpoints pe refuse hona chahiye |
 
 ---
 

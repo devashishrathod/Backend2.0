@@ -15233,7 +15233,632 @@
       ]
     },
     {
-      "name": "13 — Access control (customer token refuse hona chahiye)",
+      "name": "13 — Search",
+      "description": "Home screen ke upar wala global search box.\n\nEk call, paanch sections — brands, offers, categories, sub-categories, areas. Poora\nmodule **token ke bina** chalta hai; sirf history wale endpoints ko login chahiye.\n\n| Section | Source | Location chahiye? |\n|---|---|:-:|\n| `BRAND` | `Brand.brandName` | ❌ |\n| `VOUCHER` | `VoucherVersion` → current published version | ✅ |\n| `CATEGORY` · `SUB_CATEGORY` | `name` | ❌ |\n| `AREA` | live outlets ke `Location.city` | ❌ |\n\nSigned-in customer ko do cheezein extra milti hain aur kuch nahi badalta: coordinates\nna bhejne par uska saved address use ho jaata hai, aur `commit=true` wali query yaad\nrakhi jaati hai.\n\nDesign ka poora *kyun* — [`docs/global_customer_search_plan.md`](../docs/global_customer_search_plan.md)",
+      "item": [
+        {
+          "name": "Search — guest, bina location ⭐",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test(\"sections aate hain, khaali bhi\", function () {",
+                  "  const d = pm.response.json().data;",
+                  "  pm.expect(d.sections, \"sections\").to.be.an(\"array\").with.length.above(0);",
+                  "  pm.expect(d).to.have.property(\"totalResults\");",
+                  "});",
+                  "",
+                  "pm.test(\"bina location voucher section skip hota hai, chupke se nahi\", function () {",
+                  "  const v = pm.response.json().data.sections.find((s) => s.type === \"VOUCHER\");",
+                  "  pm.expect(v, \"VOUCHER section\").to.exist;",
+                  "  pm.expect(v.locationRequired, \"locationRequired\").to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search?q=noida",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "noida"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "**Access:** 🌐 `optionalAuth` — token ke bina bhi chalta hai. Guest home screen ka\nsearch box seedha yahi maarta hai.\n\n| Section | Source | Location chahiye? |\n|---|---|:-:|\n| `BRAND` | `Brand.brandName` | ❌ |\n| `VOUCHER` | `VoucherVersion` → current published version | ✅ |\n| `CATEGORY` · `SUB_CATEGORY` | `name` | ❌ |\n| `AREA` | live outlets ke `Location.city` | ❌ |\n\n⚠️ **`VOUCHER` section location ke bina khaali aata hai, gayab nahi hota** — uspe\n`locationRequired: true` hota hai. Voucher pipeline `$geoNear` se shuru hoti hai aur\n`$geoNear` pipeline ka pehla stage hi ho sakta hai, to \"bina location voucher search\"\nek filter nahi — poori alag pipeline hoti. Section ko chhupa dena ya poori request\n422 kar dena dono galat: pehle me app ko pata hi nahi chalta ki kyun kuch nahi aaya,\ndoosre me location permission deny karne wala guest brand ka naam bhi nahi dhoondh\nsakta — jiske liye location kabhi chahiye hi nahi thi.\n\nHar row ka ek hi shape hota hai, chahe wo kisi bhi type ka ho:\n\n```jsonc\n{\n  \"type\": \"BRAND\",\n  \"id\": \"…\",\n  \"title\": \"Domino's Pizza\",\n  \"subtitle\": \"Food & Beverages · 12 outlets\",\n  \"image\": \"https://…\",\n  \"meta\":   { /* type ke hisaab se */ },\n  \"target\": { \"screen\": \"BRAND_PROFILE\", \"endpoint\": \"/brands/customer/get/…\" }\n}\n```\n\n> `target` **server bhejta hai**, app hardcode nahi karti. Detail route kal badla\n> to ek jagah badlega, har shipped app version me nahi. Yahi `seeAll` ke saath bhi —\n> section apna \"see all\" endpoint aur uske params khud batata hai."
+          },
+          "response": []
+        },
+        {
+          "name": "Search — location ke saath (saare sections)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test(\"location mili to voucher section bharta hai\", function () {",
+                  "  const d = pm.response.json().data;",
+                  "  pm.expect(d.hasLocation, \"hasLocation\").to.eql(true);",
+                  "  const v = d.sections.find((s) => s.type === \"VOUCHER\");",
+                  "  pm.expect(v.locationRequired, \"locationRequired\").to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search?q=off&latitude=22.7533&longitude=75.8937&limit=3",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "off"
+                },
+                {
+                  "key": "latitude",
+                  "value": "22.7533"
+                },
+                {
+                  "key": "longitude",
+                  "value": "75.8937"
+                },
+                {
+                  "key": "limit",
+                  "value": "3"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "`latitude` aur `longitude` **saath me** hi bhejein — akela ek bhejne pe `422`.\n\nSigned-in customer inhe **chhod** sakta hai: uska saved address apne aap use ho jaata\nhai, wahi resolver jo voucher feed use karta hai (`resolveCustomerCoordinates`). Guest\nke paas saved address hota hi nahi, to usse coordinates khud bhejne padte hain.\n\n⚠️ `limit` **per section** hai, poore response ka nahi — 3 ka matlab har section me\nteen rows, kul teen nahi.\n\n⚠️ Voucher matching me offer ka title bhi shaamil hai. \"buy 1 get 1\" kisi voucher ke\n**naam** me nahi hota — wo offer hai, `version.offers[].title` par. Pehle sirf naam\nmatch hota tha, to customer jo phrase sach me type karta hai wo kuch nahi dhoondh\npaata tha."
+          },
+          "response": []
+        },
+        {
+          "name": "Search — signed in, history me save karo (commit)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "// ── history ki id capture, taaki agla request usko delete kar sake ──",
+                  "if (pm.response.code < 300) {",
+                  "  pm.sendRequest({",
+                  "    url: pm.environment.get(\"base_url\") + \"/search/history\",",
+                  "    method: \"GET\",",
+                  "    header: { Authorization: \"Bearer \" + pm.environment.get(\"customer_token\") },",
+                  "  }, function (err, res) {",
+                  "    if (err) return;",
+                  "    try {",
+                  "      const rows = res.json().data;",
+                  "      if (rows && rows.length) pm.environment.set(\"search_history_id\", String(rows[0]._id));",
+                  "    } catch (e) {}",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search?q=pizza&commit=true",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "pizza"
+                },
+                {
+                  "key": "commit",
+                  "value": "true"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**`commit=true` ke bina kuch save nahi hota.** Search box har keystroke pe call\nkarta hai; har call save karne se recent list `p, pi, piz, pizz, pizza` ban jaati\nhai aur feature na hone se badtar ho jaata hai. App ye flag tab bhejti hai jab\ncustomer Enter dabaye ya kisi result pe tap kare.\n\n| Caller | `commit=true` pe kya hota hai |\n|---|---|\n| Signed-in customer | Row upsert — dobara search par nayi row nahi, `searchCount` badhta hai |\n| Guest | Kuch nahi, aur koi error bhi nahi — uski history device par hai |\n| Vendor / admin preview | Kuch nahi — unka `Customer` record hota hi nahi |\n\n⚠️ History likhna search ko **kabhi fail nahi karta**. Results jawab hain, history\nek side effect. Do device ki race, index build — kuch bhi ho, customer ko results\nmilte hain aur error sirf log me jaata hai.\n\n⚠️ `Pizza`, `pizza` aur `pizza  hut` vs `pizza hut` ek hi row hain — dedupe\nlowercase + whitespace-collapsed `normalizedQuery` par hota hai."
+          },
+          "response": []
+        },
+        {
+          "name": "Ek hi type, paginated — Areas ka \"see all\"",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test(\"single-type shape\", function () {",
+                  "  const d = pm.response.json().data;",
+                  "  pm.expect(d.type, \"type\").to.eql(\"AREA\");",
+                  "  pm.expect(d, \"items\").to.have.property(\"items\");",
+                  "  pm.expect(d, \"no sections in this mode\").to.not.have.property(\"sections\");",
+                  "  pm.expect(d, \"totalPages\").to.have.property(\"totalPages\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search?q=ind&type=AREA&page=1&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "ind"
+                },
+                {
+                  "key": "type",
+                  "value": "AREA"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "`type` dene se **response ka shape badal jaata hai**: `sections[]` ki jagah ek\n`items[]` aur `total` / `totalPages` / `page` / `limit`. Row ka envelope wahi rehta\nhai, to app ka row component dono mode me ek hi hai.\n\n| Type | \"See all\" kahan bhejein |\n|---|---|\n| `AREA` | **Yahin** — aur koi raasta hai hi nahi |\n| `BRAND` · `VOUCHER` | Behtar hai `/brands/customer/get-all` · `/vouchers/customer/get-all` — wahan filter aur sort presets hain |\n| `CATEGORY` · `SUB_CATEGORY` | Dono chalega |\n\nAREA akela type hai jiska apna listing endpoint nahi hai: wo kisi collection ka\nlisting nahi, live outlets ke addresses ka grouped result hai. Isiliye ye mode\nmaujood hai.\n\n⚠️ **AREA pe tap karne se koi detail page nahi khulta.** Row me us jagah ka centroid\n(`meta.latitude` / `meta.longitude`) aata hai aur app apni location wahan set kar\ndeti hai — home feed, voucher search sab pehle se `$geoNear` par hain, to sab apne\naap us area ke ho jaate hain. Koi naya filter, koi `city` param kahin nahi.\n\nCentroid us area ke saare outlets ka **औसत** hai, kisi ek dukaan ka pin nahi — warna\n\"Indore\" ka matlab ek gali ban jaata aur wahan switch karne par aadhe area ke offers\n25 km ki radius se bahar chhoot jaate.\n\n⚠️ `meta.city` **free text** hai, normalise nahi hota. \"Andheri West\" aur\n\"andheri west\" ek row hain (lowercase + trim), par \"Andheri  West\" — do space —\nalag reh jaata hai. Search tootti nahi; ek jagah do rows ki tarah dikh sakti hai.\n\n⚠️ `id` (`\"indore|madhya pradesh\"`) **synthetic** hai — list key ke liye. Ise kisi\nendpoint me id ki tarah bhejna nahi hai."
+          },
+          "response": []
+        },
+        {
+          "name": "Sirf kuch sections chahiye — types filter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test(\"sirf maange gaye sections aate hain\", function () {",
+                  "  const types = pm.response.json().data.sections.map((s) => s.type);",
+                  "  pm.expect(types, \"sections\").to.have.members([\"BRAND\", \"CATEGORY\"]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search?q=food&types=BRAND,CATEGORY",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "food"
+                },
+                {
+                  "key": "types",
+                  "value": "BRAND,CATEGORY"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Comma-separated. Na bhejein to saare sections aate hain.\n\n⚠️ `types` (plural, kaunse sections) aur `type` (singular, mode switch) **alag**\ncheezein hain. Dono ek saath bhejne pe `422` — chup-chaap ek ko ignore karna wo\ngalti hai jise koi debug nahi kar paata.\n\nYe latency ke liye hai: har section parallel chalta hai, par jo section aap render\nhi nahi kar rahe uske liye database se poochhne ka koi kaaran nahi."
+          },
+          "response": []
+        },
+        {
+          "name": "Bahut chhoti query — 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 422\", function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test(\"failure envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(false);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search?q=o",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "o"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Minimum `Setting.customer.search.minQueryLength` se aata hai (default **2**), Joi se\nnahi — admin ise badal sakta hai aur Joi schema require ke waqt ek baar banti hai, to\nusme value bake karne se har baad ka badlaav chup-chaap ignore ho jaata.\n\nApp ko is se pehle call hi nahi karni chahiye. Ek character poore platform ke brands,\nvouchers, categories aur har outlet ke address pe match karta hai — aur lagbhag sab\nkuch laut ke aata hai, jisse kisi ka bhala nahi hota."
+          },
+          "response": []
+        },
+        {
+          "name": "page bina type ke — 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 422\", function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test(\"failure envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(false);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search?q=pizza&page=2",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "pizza"
+                },
+                {
+                  "key": "page",
+                  "value": "2"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Overview me paanch sections hain — \"page 2\" ka koi matlab hi nahi banta.\n\nIse chup-chaap ignore karna sasta lagta hai par ek app developer ki poori dopahar le\nleta hai: `page=2` bhejo, page 1 wapas aaye, aur kahin koi error na ho. Refusal me\nseedha likha hai ki `page` sirf `type` ke saath chalta hai."
+          },
+          "response": []
+        },
+        {
+          "name": "Meri recent searches",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test(\"khaali history bhi 200 hai, 404 nahi\", function () {",
+                  "  pm.expect(pm.response.json().data, \"data\").to.be.an(\"array\");",
+                  "});",
+                  "",
+                  "if (pm.response.code < 300) {",
+                  "  try {",
+                  "    const rows = pm.response.json().data;",
+                  "    if (rows.length) pm.environment.set(\"search_history_id\", String(rows[0]._id));",
+                  "  } catch (e) {}",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search/history",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "search",
+                "history"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** 🔒 `isCustomer`\n\nNewest first, `Setting.customer.search.historyLimit` (default **20**) tak. Us cap se\npurani rows har commit ke baad soft-delete ho jaati hain.\n\n⚠️ **Khaali list `200` hai, `404` nahi.** Baaki list endpoints yahan 404 dete hain\n(shared `pagination` throw karti hai), par jis customer ne abhi tak kuch search hi\nnahi kiya wo bilkul normal haal me hai — wahan 404 dena pehle din hi error screen\ndikha dega.\n\n⚠️ Guest ko yahan `401` milta hai, khaali list nahi. Uski history device par hai;\nkhaali array dena \"aapne kuch search nahi kiya\" ka daava hota, jo sach nahi."
+          },
+          "response": []
+        },
+        {
+          "name": "Ek entry hataao",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search/history/{{search_history_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "search",
+                "history",
+                "{{search_history_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** 🔒 `isCustomer` — aur `customerId` **filter ka hissa** hai, baad me check\nnahi hota. Bina uske koi bhi signed-in customer kisi aur ki row ki id bhej kar uski\nhistory ek-ek karke mita sakta tha.\n\n⚠️ Kisi aur ki row par **`404`**, `403` nahi. \"Ye hai to sahi, par aapka nahi\" khud\nek leak hai — usse pata chal jaata hai ki id asli hai.\n\n⚠️ Hataya hua term **dobara search ho sakta hai** aur nayi row ban jaata hai (count 1\nse). Isiliye unique index **partial** hai (`isDeleted: false`) — blanket hota to\nupsert soft-deleted row se takra kar duplicate-key error deta, ek aise field par\njise customer ne kabhi chhua hi nahi."
+          },
+          "response": []
+        },
+        {
+          "name": "Poori history clear",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test(\"deletedCount aata hai\", function () {",
+                  "  pm.expect(pm.response.json().data, \"data\").to.have.property(\"deletedCount\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search/history",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "search",
+                "history"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** 🔒 `isCustomer`\n\n⚠️ Pehle se khaali history par bhi `200` aur `deletedCount: 0`. Customer ne kaha\n\"meri history hata do\" aur history hat chuki hai — \"hataane ko kuch tha hi nahi\"\nek aise sawaal ka jawab hai jo usne poochha hi nahi, aur error screen ke saath."
+          },
+          "response": []
+        },
+        {
+          "name": "Popular searches (guest ke liye chips)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"success envelope\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success, \"success flag\").to.eql(true);",
+                  "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test(\"isEnabled aur queries\", function () {",
+                  "  const d = pm.response.json().data;",
+                  "  pm.expect(d, \"isEnabled\").to.have.property(\"isEnabled\");",
+                  "  pm.expect(d.queries, \"queries\").to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search/popular",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "search",
+                "popular"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "**Access:** 🌐 public\n\nSearch box khulte hi dikhne wali chips. **Admin curate karta hai**\n(`PUT /settings/update` → `customer.search.popularQueries`) — traffic se derive\nnahi hoti, kyunki customer kya search karta hai wo kahin log hi nahi hota, aur ye\nendpoint wo shuruaat jaan-boojh kar nahi kar raha.\n\nMukhya audience guest hai: uski apni recent searches device par hain, to bina iske\nbox khaali khulta.\n\n⚠️ `isEnabled: false` par bhi `200` aur `queries: []` — `404` nahi. Ek switch band\nkarne se endpoint gayab hua nahi lagna chahiye."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "14 — Access control (customer token refuse hona chahiye)",
       "description": "Ye folder **negative tests** ka hai — har request ka pass hona matlab gate kaam kar\nraha hai. Sab customer ke apne token se chalti hain, koi extra setup nahi chahiye.\n\nPehle in me se zyadatar `200` deti thi: 149 me se 35 endpoints bilkul ungated the.\n\n| Status | Kab |\n|---|---|\n| `401` | Token hai hi nahi, ya expire ho gaya |\n| `403` | Token malformed hai, ya role allowed nahi |",
       "item": [
         {
