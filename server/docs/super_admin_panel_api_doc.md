@@ -6261,6 +6261,33 @@ Har block alag se merge hota hai. Nested block bhi merge hota hai — `settlemen
 |---|---|---|
 | `writeOffDays` | `90` | 1–365 |
 
+**`customer.search`** 🆕 — customer home screen ka global search box
+| Field | Default | Validation | Kya karta hai |
+|---|---|---|---|
+| `isEnabled` | `true` | boolean | Kill switch. Neeche dekhein — 404 nahi deta |
+| `minQueryLength` | `2` | 1–10 | Isse chhoti query pe `422` |
+| `sectionLimit` | `5` | 1–20 | `GET /search` me per-section rows |
+| `historyLimit` | `20` | 1–100 | Ek customer ki kitni recent searches rakhni hain |
+| `popularQueries` | `[]` | max 10, har ek max 100 chars | Search box ki curated chips |
+
+```json
+{ "customer": { "search": { "popularQueries": ["pizza", "salon", "weekend offers"] } } }
+```
+
+⚠️ **`popularQueries` traffic se nahi banti.** Customer kya search karta hai wo kahin log
+hi nahi hota — ye list poori tarah aapki hai. Khaali chhodna valid hai aur uska matlab
+sirf itna hai ki app koi chip nahi dikhayegi (koi `.min(1)` nahi hai, unlike alert wale
+arrays).
+
+⚠️ **`isEnabled: false` search band karta hai, endpoint nahi.** `GET /search` phir bhi
+`200` deta hai — `isEnabled: false`, khaali `sections`. `404` ya `503` dena app ke
+generic error handler tak pahunch jaata aur customer ko "kuch toot gaya" screen milti,
+jabki aapne sirf ek switch band kiya tha.
+
+⚠️ **`minQueryLength` yahin se aata hai, Joi se nahi.** Joi schema require ke waqt ek baar
+banti hai, to usme value bake karne se aapka har baad ka badlaav chup-chaap ignore ho
+jaata. Service har request par ye setting padhti hai.
+
 ### ⚠️ Golden rule — ek 422 jo aapko milega
 
 ```
@@ -6293,6 +6320,11 @@ Dono taraf se block hota hai:
 **Sirf ek nested field badalna (baaki reserve fields waise hi rahenge):**
 ```json
 { "customer": { "settlement": { "reserve": { "percent": 15 } } } }
+```
+
+**Search ki chips set karna:**
+```json
+{ "customer": { "search": { "popularQueries": ["pizza", "spa", "weekend offers"] } } }
 ```
 
 **Convenience fee band karna:**

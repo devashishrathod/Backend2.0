@@ -99,6 +99,12 @@ Ye **live verification round** tha. Teen jagah doc code se match nahi kar raha t
 12. [Home Screen APIs](#home-screen-apis)
     - [GET /banners/customer/active](#13-get-bannerscustomeractive)
     - [GET /promotionalTickers/customer/active](#14-get-promotionaltickerscustomeractive)
+12a. [**Search APIs** 🆕](#search-apis-)
+    - [GET /search](#14a-get-search)
+    - [GET /search?type= — ek type, paginated](#14b-get-searchqtype--ek-type-paginated)
+    - [GET /search/popular](#14c-get-searchpopular)
+    - [GET /search/history](#14d-get-searchhistory)
+    - [DELETE /search/history](#14e-delete-searchhistoryhistoryid--delete-searchhistory)
 13. [Voucher APIs](#voucher-apis)
     - [GET /vouchers/customer/get-all](#15-get-voucherscustomerget-all)
     - [GET /vouchers/customer/get/:voucherId](#16-get-voucherscustomergetvoucherid)
@@ -198,7 +204,7 @@ chalte hain.**
 | Gate | Matlab | Kitne |
 |---|---|---:|
 | 🌐 **Public** | Token dekha hi nahi jaata. Response sabke liye ek jaisa | 18 |
-| 🌐 **`optionalAuth`** | Token ho to decode hota hai aur response personalise hota hai; na ho to guest chalta hai | 3 |
+| 🌐 **`optionalAuth`** | Token ho to decode hota hai aur response personalise hota hai; na ho to guest chalta hai | 4 |
 | 🔒 **`verifyJwtToken`** | Koi bhi signed-in role | 7 |
 | 🔒 **`isCustomer`** | Sirf customer | 5 |
 | 🔒 **`verifyJwtTokenEvenIfDeactivated`** | Signed in, suspended account bhi — logout aur push unregister, warna suspended user phasa reh jaata | 2 |
@@ -208,13 +214,15 @@ chalte hain.**
 | Screen | Endpoints |
 |---|---|
 | **Home** | Banner · tickers · categories · sub-categories |
+| **Search** 🆕 | Global search · popular searches. Poora search box guest ke liye khula hai |
 | **Voucher feed** | Feed · voucher detail · discount preview |
 | **Brand** | Directory · profile · showcase gallery · video clips · features |
 | **Legal** | Terms · privacy (sign-up screen ke consent link ke liye zaruri) |
 
 ### Kya guest nahi kar sakta
 
-Profile, saved address, follow / avoid, push notifications — sab kuch jo **"mera"** hai.
+Profile, saved address, follow / avoid, push notifications, **search history** — sab kuch
+jo **"mera"** hai.
 Wahan `401 "Access Denied! Missing authorization token"` aata hai, jo app ke liye login
 screen dikhane ka signal hai.
 
@@ -235,6 +243,10 @@ Na bhejein to:
   "message": "Location is required. Send latitude and longitude, or save an address first."
 }
 ```
+
+Global search bhi wahi resolver use karta hai, par usme location **optional** hai:
+coordinates na ho to sirf offers wala section skip hota hai (`locationRequired: true` ke
+saath) aur brands, categories aur areas normal chalte hain — dekhein [§14a](#14a-get-search).
 
 ### ⚠️ `optionalAuth` ka matlab "koi bhi token chalega" nahi hai
 
@@ -1508,6 +1520,455 @@ Sirf [common auth errors](#common-errors).
 **4. `redirect` handling** banner (#13) jaisa hi hai.
 
 **5. `title` max 100 chars hai** — UI me single line me fit ho jaana chahiye.
+
+---
+
+# Search APIs 🆕
+
+Home screen ke sabse upar wala global search box. Ek call me brands, offers, categories,
+sub-categories aur areas — sab.
+
+**Poora module token ke bina chalta hai.** Sirf history wale teen endpoints ko login
+chahiye — guest ki recent searches uske apne device par rehti hain (§14d).
+
+---
+
+## 14a. GET /search
+
+**Access:** 🌐 **Public** (`optionalAuth`) — guest aur signed-in dono.
+
+Signed-in customer ko do cheezein extra milti hain, baaki kuch nahi badalta:
+coordinates na bhejne par uska saved address use ho jaata hai, aur `commit=true`
+wali query yaad rakhi jaati hai.
+
+### Query Params
+
+| Param | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `q` | string | ✅ | – | Search text. Minimum **2** (admin-configurable), maximum 100 |
+| `latitude` · `longitude` | number | ❌ | – | **Saath me hi** bhejein, warna `422`. Na bhejein to offers skip |
+| `types` | CSV | ❌ | sab | `BRAND,VOUCHER,CATEGORY,SUB_CATEGORY,AREA` me se koi bhi |
+| `type` | enum | ❌ | – | Ek hi type, paginated — **response shape badal jaata hai**, [§14b](#14b-get-searchqtype--ek-type-paginated) |
+| `page` | number | ❌ | `1` | Sirf `type` ke saath. Bina `type` ke `422` |
+| `limit` | number | ❌ | `5` | Overview me **per section**; single-type me page size (max 50) |
+| `commit` | boolean | ❌ | `false` | `true` = ye query history me save karo |
+
+```http
+GET /search?q=pizza&latitude=22.7533&longitude=75.8937&limit=5
+```
+
+### Success — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "Search results fetched",
+  "data": {
+    "query": "pizza",
+    "isEnabled": true,
+    "hasLocation": true,
+    "totalResults": 31,
+    "sections": [
+      {
+        "type": "BRAND",
+        "label": "Brands",
+        "total": 3,
+        "items": [
+          {
+            "type": "BRAND",
+            "id": "68f1a2b3c4d5e6f7a8b9c0a1",
+            "title": "Domino's Pizza",
+            "subtitle": "Food & Beverages · 12 outlets",
+            "image": "https://res.cloudinary.com/…/dominos.jpg",
+            "meta": {
+              "uniqueId": "#TB69063",
+              "isTopBrand": true,
+              "isVerified": true,
+              "followersCount": 4821,
+              "outletCount": 12,
+              "categoryId": "68f0…b3e1",
+              "subCategoryId": "68f0…b3e9",
+              "distanceInMeters": 2310
+            },
+            "target": {
+              "screen": "BRAND_PROFILE",
+              "endpoint": "/brands/customer/get/68f1a2b3c4d5e6f7a8b9c0a1"
+            }
+          }
+        ],
+        "seeAll": {
+          "endpoint": "/brands/customer/get-all",
+          "params": { "search": "pizza" }
+        }
+      },
+      {
+        "type": "VOUCHER",
+        "label": "Offers",
+        "total": 24,
+        "locationRequired": false,
+        "items": [
+          {
+            "type": "VOUCHER",
+            "id": "68f2a2b3c4d5e6f7a8b9d1b7",
+            "title": "Weekend Special – 30% Off",
+            "subtitle": "Domino's Pizza · indore · 1.1 km",
+            "image": "https://res.cloudinary.com/…/voucher.jpg",
+            "meta": {
+              "brandId": "68f1a2b3c4d5e6f7a8b9c0a1",
+              "brandName": "Domino's Pizza",
+              "categoryId": "68f0…b3e1",
+              "subCategoryId": "68f0…b3e9",
+              "bestOffer": { "title": "30%", "discountType": "PERCENTAGE", "discountValue": 30 },
+              "startAt": "2026-09-02T00:00:00.000Z",
+              "endAt": "2026-09-30T13:00:00.000Z",
+              "isSuggested": true,
+              "distance": "1.1 km",
+              "distanceInMeters": 1104
+            },
+            "target": {
+              "screen": "VOUCHER_DETAIL",
+              "endpoint": "/vouchers/customer/get/68f2a2b3c4d5e6f7a8b9d1b7"
+            }
+          }
+        ],
+        "seeAll": {
+          "endpoint": "/vouchers/customer/get-all",
+          "params": { "search": "pizza", "latitude": 22.7533, "longitude": 75.8937 }
+        }
+      },
+      {
+        "type": "CATEGORY",
+        "label": "Categories",
+        "total": 1,
+        "items": [
+          {
+            "type": "CATEGORY",
+            "id": "68f0a2b3c4d5e6f7a8b9b3e1",
+            "title": "Food & Beverages",
+            "subtitle": "6 sub-categories · 48 brands · 130 offers",
+            "image": "https://res.cloudinary.com/…/food.jpg",
+            "meta": {
+              "description": "restaurants, cafes, and food outlets",
+              "subCategoryCount": 6,
+              "brandCount": 48,
+              "voucherCount": 130
+            },
+            "target": {
+              "screen": "CATEGORY_LISTING",
+              "endpoint": "/vouchers/customer/get-all",
+              "params": { "categoryId": "68f0a2b3c4d5e6f7a8b9b3e1" }
+            }
+          }
+        ],
+        "seeAll": { "endpoint": "/categories/getAll", "params": { "search": "pizza", "isActive": true } }
+      },
+      { "type": "SUB_CATEGORY", "label": "Sub-categories", "total": 0, "items": [], "seeAll": { "…": "…" } },
+      {
+        "type": "AREA",
+        "label": "Areas",
+        "total": 3,
+        "items": [
+          {
+            "type": "AREA",
+            "id": "indore|madhya pradesh",
+            "title": "indore",
+            "subtitle": "madhya pradesh · 23 outlets · 11 brands",
+            "image": null,
+            "meta": {
+              "city": "indore",
+              "state": "madhya pradesh",
+              "latitude": 22.7533,
+              "longitude": 75.8937,
+              "outletCount": 23,
+              "brandCount": 11
+            },
+            "target": {
+              "screen": "LOCATION_SWITCH",
+              "params": { "latitude": 22.7533, "longitude": 75.8937, "label": "indore" }
+            }
+          }
+        ],
+        "seeAll": { "endpoint": "/search", "params": { "q": "pizza", "type": "AREA" } }
+      }
+    ]
+  }
+}
+```
+
+### Har row ka ek hi shape hota hai
+
+Chahe type koi bhi ho, row me yahi saat fields hoti hain:
+
+| Field | Kya |
+|---|---|
+| `type` | `BRAND` · `VOUCHER` · `CATEGORY` · `SUB_CATEGORY` · `AREA` |
+| `id` | Us cheez ki id. ⚠️ AREA me ye **synthetic** hai — neeche dekhein |
+| `title` · `subtitle` | Seedha render karne ke liye. Subtitle server banata hai |
+| `image` | AREA me hamesha `null` — jagah ki apni koi tasveer nahi hoti |
+| `meta` | Type ke hisaab se extra fields |
+| `target` | **Tap karne pe kahan jaana hai** |
+
+App ek hi row component se paanchon render kar sakti hai. Naya type kal jud jaye to app ko
+bas ek label chahiye, naya parser nahi.
+
+> **`target` server bhejta hai — app hardcode na kare.** Voucher detail ka path kal badla to
+> ek jagah badlega, har shipped app version me nahi. Yahi `seeAll` ke saath bhi: section apna
+> "see all" endpoint aur params khud batata hai.
+
+| `target.screen` | Kya karna hai |
+|---|---|
+| `BRAND_PROFILE` | `target.endpoint` khol do |
+| `VOUCHER_DETAIL` | `target.endpoint` khol do |
+| `CATEGORY_LISTING` · `SUB_CATEGORY_LISTING` | `target.endpoint` ko `target.params` ke saath call karo |
+| `LOCATION_SWITCH` | App apni location `target.params` ke point par set kare — koi page nahi khulta |
+
+### ⚠️ Location na ho to offers skip hote hain — chupke se nahi
+
+`latitude`/`longitude` na ho (aur signed-in customer ka saved address bhi na ho) to:
+
+- `hasLocation: false`
+- `VOUCHER` section **rehta hai**, par `total: 0` aur **`locationRequired: true`**
+- baaki chaar sections normal chalte hain
+
+App ko us section me "Aas-paas ke offers dekhne ke liye location on karein" dikhana chahiye.
+
+⚠️ `locationRequired: true` aur `total: 0` **do alag baatein** hain:
+
+| | Matlab | App kya kahe |
+|---|---|---|
+| `locationRequired: true` | Humein pata hi nahi aap kahan ho | "Location on karein" |
+| `locationRequired: false`, `total: 0` | Aapke 25 km me is naam ka offer nahi hai | "Aas-paas kuch nahi mila" |
+
+**Kyun skip, poori request fail kyun nahi:** voucher pipeline `$geoNear` se shuru hoti hai
+aur `$geoNear` pipeline ka pehla stage hi ho sakta hai — to "bina location voucher search"
+ek filter hata dena nahi, poori alag pipeline hoti. Aur poori request 422 kar dena us guest
+ko brand ka naam bhi nahi dhoondhne deta jisne location permission deny ki hai — jiske liye
+location kabhi chahiye hi nahi thi.
+
+### Khaali section gayab nahi hota
+
+Har maanga gaya section response me rehta hai, chahe `total: 0` ho. App ko "Brands me kuch
+nahi mila" dikhana ho to uske paas section hona chahiye. Aur `totalResults === 0` se saaf
+pata chalta hai ki kuch bhi nahi mila.
+
+**`404` kabhi nahi aata.** Kuch na milna search ka normal jawab hai.
+
+### Kya kis field pe match hota hai
+
+| Section | Match | Location chahiye? |
+|---|---|:-:|
+| `BRAND` | `brandName` | ❌ |
+| `VOUCHER` | Voucher ka naam **aur** offer ka title | ✅ |
+| `CATEGORY` · `SUB_CATEGORY` | `name` | ❌ |
+| `AREA` | Live outlets ke address ka `city` | ❌ |
+
+Har section me exact match sabse upar, phir jo term se **shuru** hota hai, phir jisme term
+kahin aata hai. Bina iske "pizza" search karne par "Tony's Pizza Corner" "Pizza Hut" ke
+upar aa sakta hai.
+
+⚠️ **Brand ki `description` pe match nahi hota**, sirf naam pe. Lambi description me aadhi
+duniya ke shabd aa jaate hain, aur ek bhatka hua "pizza" kisi ko pizza brand nahi bana deta.
+
+⚠️ **Offer ka title bhi match hota hai.** "buy 1 get 1" kisi voucher ke *naam* me nahi
+hota — wo offer hai. Ye jodne se pehle wo phrase, jo customer sach me type karta hai, kuch
+nahi dhoondh paata tha.
+
+### AREA — jagah, cheez nahi
+
+Outlet ka apna koi naam nahi hota (`SubBrand` me `name` field hai hi nahi), to areas live
+outlets ke **address** se bante hain, city ke hisaab se group karke.
+
+**Tap karne pe koi page nahi khulta.** Row me us jagah ka centroid aata hai aur app apni
+location wahan set kar deti hai — home feed aur voucher search pehle se `$geoNear` par hain,
+to sab apne aap us area ke ho jaate hain.
+
+- Centroid us area ke **saare** outlets ka औसत hai, kisi ek dukaan ka pin nahi. Ek pin lene
+  se "Indore" ka matlab ek gali ban jaata aur wahan switch karne par aadhe area ke offers
+  25 km radius se bahar chhoot jaate.
+- ⚠️ `id` (`"indore|madhya pradesh"`) **synthetic** hai — sirf list key ke liye. Kisi
+  endpoint me id ki tarah **mat bhejein**.
+- ⚠️ `city` free text hai, normalise nahi hota. "Andheri West" aur "andheri west" ek row
+  hain, par "Andheri  West" (do space) alag reh jaata hai. Search tootti nahi — ek jagah do
+  rows ki tarah dikh sakti hai.
+
+### Errors
+
+| Status | Message | Kab |
+|---|---|---|
+| `422` | `Search text is required.` | `q` khaali |
+| `422` | `Search text must be at least 2 characters.` | `minQueryLength` se chhota |
+| `422` | `latitude and longitude must be provided together.` | Ek bheja, doosra nahi |
+| `422` | `` `page` only applies with `type`. `` | Overview me `page` |
+| `422` | Send either `type` … or `types` … | Dono ek saath |
+| `401` | `Your session has expired…` | ⚠️ Expired token guest me downgrade **nahi** hota |
+
+⚠️ Aakhri wala jaan-boojh kar hai: expired token ko chupke se guest bana dena signed-in
+customer ko anonymous view dikha deta bina kisi wajah ke, aur usse kabhi dobara login karne
+ko kaha hi nahi jaata.
+
+### ⚠️ Search box kaise call kare
+
+**`commit=true` sirf tab bhejein jab customer Enter/Search dabaye ya kisi result pe tap
+kare** — type karte waqt nahi. Har keystroke pe commit karne se recent list
+`p, pi, piz, pizz, pizza` ban jaati hai aur feature na hone se badtar ho jaata hai.
+
+2 characters se pehle call hi na karein, aur calls ko debounce karein.
+
+---
+
+## 14b. GET /search?q=…&type= — ek type, paginated
+
+**Access:** 🌐 **Public** (`optionalAuth`)
+
+`type` dene se **response ka shape badal jaata hai**: `sections[]` ki jagah ek `items[]`
+plus pagination. Row ka envelope wahi rehta hai, to app ka row component dono mode me ek hi
+chalta hai.
+
+```http
+GET /search?q=indore&type=AREA&page=2&limit=20
+```
+
+```jsonc
+{
+  "success": true,
+  "message": "Search results fetched",
+  "data": {
+    "query": "indore",
+    "isEnabled": true,
+    "type": "AREA",
+    "hasLocation": false,
+    "total": 12,
+    "totalPages": 1,
+    "page": 2,
+    "limit": 20,
+    "items": [ /* wahi row envelope jo sections me hai */ ]
+  }
+}
+```
+
+### "See all" kahan bhejein
+
+| Type | Kahan |
+|---|---|
+| `AREA` | **Yahin** — `?type=AREA`. Aur koi raasta hai hi nahi |
+| `BRAND` | `GET /brands/customer/get-all?search=` — wahan filters aur sort presets hain |
+| `VOUCHER` | `GET /vouchers/customer/get-all?search=&latitude=&longitude=` |
+| `CATEGORY` · `SUB_CATEGORY` | `GET /categories/getAll?search=` — ya yahin, dono chalega |
+
+Har section apna `seeAll` khud batata hai — app ye table hardcode na kare.
+
+AREA akela type hai jiska apna listing endpoint nahi hai: wo kisi collection ka listing
+nahi, live outlets ke addresses ka grouped result hai. Isiliye ye mode maujood hai.
+
+⚠️ `types` (plural — kaunse sections chahiye) aur `type` (singular — mode switch) **alag**
+hain. Dono ek saath bhejne pe `422`.
+
+---
+
+## 14c. GET /search/popular
+
+**Access:** 🌐 **Public**
+
+Search box khulte hi dikhne wali chips.
+
+```jsonc
+{
+  "success": true,
+  "message": "Popular searches fetched",
+  "data": { "isEnabled": true, "queries": ["pizza", "salon", "weekend offers"] }
+}
+```
+
+Admin curate karta hai (`PUT /settings/update` → `customer.search.popularQueries`) —
+traffic se derive **nahi** hoti. Customer kya search karta hai wo kahin log hi nahi hota,
+aur ye endpoint wo shuruaat jaan-boojh kar nahi kar raha.
+
+Mukhya audience guest hai: uski apni recent searches device par hain, to bina iske box
+khaali khulta.
+
+⚠️ `isEnabled: false` par bhi `200` aur `queries: []` — `404` nahi. Ek switch band karne se
+endpoint gayab hua nahi lagna chahiye, warna app ka generic error handler "kuch toot gaya"
+screen dikha dega.
+
+---
+
+## 14d. GET /search/history
+
+**Access:** 🔒 **`isCustomer`**
+
+```jsonc
+{
+  "success": true,
+  "message": "Search history fetched",
+  "data": [
+    { "_id": "68f5…a1", "query": "pizza", "searchCount": 4, "lastSearchedAt": "2026-09-04T09:12:00.000Z" },
+    { "_id": "68f5…a2", "query": "salon", "searchCount": 1, "lastSearchedAt": "2026-09-03T18:40:00.000Z" }
+  ]
+}
+```
+
+| Param | Type | Default | Notes |
+|---|---|---|---|
+| `limit` | number | `20` | Admin-configurable (`historyLimit`), max 100 |
+
+Newest first. Cap se purani rows har commit ke baad apne aap hat jaati hain.
+
+⚠️ **Khaali history `200` + `[]` hai, `404` nahi** — is doc me baaki list endpoints khaali
+pe 404 dete hain (shared `pagination` throw karti hai), par jisne abhi tak kuch search hi
+nahi kiya wo bilkul normal haal me hai. Wahan 404 pehle din hi error screen dikha deta.
+
+⚠️ **Guest ko `401` milta hai, khaali list nahi.** Uski history device par hai; khaali array
+dena "aapne kuch search nahi kiya" ka daava hota, jo sach nahi. App guest state me ye call
+kare hi na.
+
+### History kab likhi jaati hai
+
+Sirf `GET /search?...&commit=true` pe, aur sirf tab jab caller ek live customer ho:
+
+| Caller | `commit=true` pe |
+|---|---|
+| Signed-in customer | Row upsert — dobara search par nayi row nahi, `searchCount` badhta hai |
+| Guest | Kuch nahi, aur koi error bhi nahi |
+| Vendor / admin preview | Kuch nahi — unka `Customer` record hota hi nahi |
+
+⚠️ `Pizza`, `pizza` aur `pizza  hut` vs `pizza hut` ek hi row hain.
+
+⚠️ History likhna search ko **kabhi fail nahi karta**. Results jawab hain, history ek side
+effect — jo bhi ho jaye, customer ko results milte hain aur error sirf log me jaata hai.
+
+---
+
+## 14e. DELETE /search/history/:historyId · DELETE /search/history
+
+**Access:** 🔒 **`isCustomer`**
+
+```http
+DELETE /search/history/68f5a2b3c4d5e6f7a8b9e1f2   → ek entry
+DELETE /search/history                            → poori history
+```
+
+```jsonc
+{ "success": true, "message": "Search history entry removed" }
+{ "success": true, "message": "Search history cleared", "data": { "deletedCount": 12 } }
+```
+
+### Errors
+
+| Status | Message | Kab |
+|---|---|---|
+| `404` | `Search history entry not found` | Id nahi mili, **ya kisi aur ki hai**, ya pehle se deleted |
+| `422` | `Invalid history id.` | Valid ObjectId nahi |
+| `401` | – | Token nahi |
+| `403` | – | Customer nahi (vendor/admin token) |
+
+⚠️ Kisi aur ki row par **`404`**, `403` nahi. "Ye hai to sahi, par aapka nahi" khud ek leak
+hai — usse pata chal jaata hai ki id asli hai.
+
+⚠️ **Hataya hua term dobara search ho sakta hai** aur nayi row ban jaata hai, count 1 se —
+purani count wapas nahi aati. "Maine wo hata diya tha" ka yahi matlab hona chahiye.
+
+⚠️ Pehle se khaali history clear karne par bhi `200` aur `deletedCount: 0`. Customer ne kaha
+"meri history hata do" aur history hat chuki hai.
 
 ---
 

@@ -124,6 +124,8 @@ Ye ownership enforcement ka proper pattern hai:
 | `GET /categories/getAll` · `/get/:id` | `stats.subCategories` · `stats.brands` · `stats.vouchers` · `stats.promoCodes`, har ek `{ total, active }` |
 | `GET /subCategories/getAll` · `/get/:id` | `stats.brands` · `stats.vouchers` (`promoCodes` sirf category level pe hai) |
 | `DELETE /categories/delete/:id` · `/subCategories/delete/:id` | Naya `400` — jab tak koi sub-category / brand / voucher use kar raha hai, delete nahi hoga |
+| `GET /vouchers/customer/get-all` | 🔴 `categoryId` / `subCategoryId` **filter ab kaam karta hai** — pehle har category-filtered request `404` deti thi, aur har row me ye fields `undefined` aati thi. Taxonomy `VoucherVersion` par hai, `Voucher` par nahi thi |
+| `GET /vouchers/customer/get-all?search=` | Offer ka title bhi match hota hai ("buy 1 get 1"), aur term ab escape hoti hai — `(` type karne pe `500` nahi aata |
 
 Detail → [security_findings.md](./security_findings.md) · [voucher_brand_features_plan.md](./voucher_brand_features_plan.md)
 
@@ -495,6 +497,27 @@ Max **10 active** per brand. Global middleware: `router.use(verifyJwtToken)` —
 | 103 | DELETE | `/subCategories/delete/:id` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 |
 
 > **Customer doc me:** #100, #101 (2)
+
+---
+
+## 18a. Search — `/search` (5) 🆕
+
+Customer home screen ka global search box. Poora module token-less hai; sirf history
+wale teen endpoints `isCustomer` gated hain.
+
+| # | Method | Endpoint | Access | Cat |
+|---|---|---|---|---|
+| 103a | GET | `/search` | Intended: All · Enforced: **optionalAuth** | 🟢 |
+| 103b | GET | `/search/popular` | Intended: All · Enforced: **Public** | 🟢 |
+| 103c | GET | `/search/history` | Intended: CUSTOMER · Enforced: **CUSTOMER** | 🟢 |
+| 103d | DELETE | `/search/history` | Intended: CUSTOMER · Enforced: **CUSTOMER** | 🟢 |
+| 103e | DELETE | `/search/history/:historyId` | Intended: CUSTOMER · Enforced: **CUSTOMER** | 🟢 |
+
+> **Customer doc me:** sab paanch
+>
+> `GET /search` ek call me paanch sections deta hai — BRAND, VOUCHER, CATEGORY,
+> SUB_CATEGORY, AREA. `?type=` dene par ek hi type, paginated. Design ka poora *kyun*
+> [global_customer_search_plan.md](./global_customer_search_plan.md) me hai.
 
 ---
 
