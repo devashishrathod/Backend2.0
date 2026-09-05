@@ -229,11 +229,40 @@ exports.buildCustomerVoucherPipeline = ({
         uniqueId: 1,
         isActive: 1,
         isApproved: 1,
+        // Read by the verification match below, not returned to the client.
+        isRejected: 1,
+        isRevoked: 1,
         joinedDate: 1,
         subscribedId: 1,
       },
     }),
   );
+
+  /**
+   * ⚠️ Only a verified brand's vouchers reach a customer.
+   *
+   * The join above already pulled `isApproved` — but only to render the
+   * verified badge, never to decide whether the row should be here at all. So
+   * an unverified brand's vouchers sat in the feed with the badge simply
+   * switched off, which reads to a customer as "not verified yet" rather than
+   * "should not be on your screen".
+   *
+   * `isRejected` and `isRevoked` are **absent** on brands written before those
+   * flags existed, and in an aggregation expression absent is not false — hence
+   * `$ifNull` on each. `CLAUDE.md` records this trap costing two shipped bugs.
+   */
+  pipeline.push({
+    $match: {
+      $expr: {
+        $and: [
+          { $eq: [{ $ifNull: ["$brand.isActive", false] }, true] },
+          { $eq: [{ $ifNull: ["$brand.isApproved", false] }, true] },
+          { $ne: [{ $ifNull: ["$brand.isRejected", false] }, true] },
+          { $ne: [{ $ifNull: ["$brand.isRevoked", false] }, true] },
+        ],
+      },
+    },
+  });
 
   // Brand -> Subscribed (the brand's purchased subscription instance)
   pipeline.push(

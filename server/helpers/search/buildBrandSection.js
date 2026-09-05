@@ -2,6 +2,7 @@ const Brand = require("../../models/Brand");
 const { buildAggregateLookup } = require("../../database");
 const { pagination } = require("../../utils");
 const { SYSTEM_VERIFICATION_STATUS } = require("../../constants");
+const { customerVisibleBrandFilter } = require("../brands");
 const {
   SEARCH_RESULT_TYPES,
   SEARCH_TARGET_SCREENS,
@@ -61,11 +62,10 @@ exports.buildBrandSection = async ({
 }) => {
   const pipeline = [
     {
-      $match: {
-        isActive: true,
-        isDeleted: false,
-        brandName: searchRegex(term),
-      },
+      // ⚠️ Verified only — search must not surface a brand the directory
+      // hides, or a customer finds by searching what they cannot find by
+      // browsing. `customerVisibleBrandFilter` is the shared definition.
+      $match: customerVisibleBrandFilter({ brandName: searchRegex(term) }),
     },
     // Narrow before the joins — each lookup below runs once per surviving row.
     {
@@ -124,8 +124,10 @@ exports.buildBrandSection = async ({
     {
       $addFields: {
         outletCount: { $size: "$outlets" },
-        // `Brand.isApproved` is never written anywhere in the codebase, so the
-        // real verdict lives on the SystemVerify document.
+        // ⚠️ The comment here claimed `isApproved` is never written. It is —
+        // `reviewBrandVerification` writes it on all three actions — and the
+        // `$match` above now requires it. The badge still reads `SystemVerify`,
+        // which carries the verdict's history.
         isVerified: {
           $eq: ["$verification.status", SYSTEM_VERIFICATION_STATUS.APPROVED],
         },
