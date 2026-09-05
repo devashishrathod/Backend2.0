@@ -159,6 +159,23 @@ const adminNotificationSchema = Joi.object({
   // Defaults to false, like the other two audiences: WhatsApp needs a
   // Meta-approved template per message type before anything sends.
   isWhatsAppNotificationEnabled: Joi.boolean().optional(),
+  /**
+   * How many recipients one broadcast may reach before it is refused.
+   *
+   * ⚠️ `min(1)`, because `0` would refuse every broadcast including a single
+   * named recipient — and the refusal would name a limit nobody remembers
+   * setting.
+   *
+   * ⚠️ No upper bound here on purpose: what this deployment can carry is an
+   * operational judgement, not something a validator should guess. But raising
+   * it does not make a broadcast free — every recipient is a row written and a
+   * push queued, and FCM still takes 500 tokens per batch. Past a few thousand
+   * it belongs in a background job.
+   */
+  maxRecipientsPerDispatch: Joi.number().integer().min(1).optional().messages({
+    "number.min": "maxRecipientsPerDispatch must be at least 1",
+    "number.base": "maxRecipientsPerDispatch must be a number",
+  }),
 });
 
 const adminSettingSchema = Joi.object({

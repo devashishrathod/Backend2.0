@@ -332,6 +332,20 @@ const ADMIN_NOTIFICATION_DEFAULTS = Object.freeze({
   isEmailNotificationEnabled: true,
   isPushNotificationEnabled: true,
   isWhatsAppNotificationEnabled: false,
+  /**
+   * How many recipients one broadcast may reach before it is refused.
+   *
+   * ⚠️ Settable from the admin panel because the right number is a property of
+   * the deployment, not of the code: it depends on how long the mail provider
+   * takes and how many FCM batches the process can hold. Hard-coding it meant
+   * the day the platform outgrew 5,000 users, the only way to reach everyone
+   * was a deploy.
+   *
+   * ⚠️ It is a **refusal**, never a truncation. A caller that believes it
+   * reached everybody and did not is worse than an error — see
+   * `resolveAudience`.
+   */
+  maxRecipientsPerDispatch: 5000,
 });
 
 // Where a notification was actually delivered. IN_APP is always written; the
@@ -382,6 +396,14 @@ const AUDIENCE_TARGETS = Object.freeze({
 // should go through a job rather than a request, so one call cannot tie up the
 // process or the provider quota.
 const AUDIENCE_LIMITS = Object.freeze({
+  /**
+   * ⚠️ The **fallback**, not the rule.
+   *
+   * `Setting.admin.notification.maxRecipientsPerDispatch` wins, read through
+   * `getAdminConfig()`. This is what applies when the settings document was
+   * written before that field existed, or a read fails — the same shape as
+   * every other default here.
+   */
   MAX_RECIPIENTS_PER_DISPATCH: 5000,
   // FCM accepts up to 500 tokens per multicast batch.
   MAX_TOKENS_PER_PUSH_BATCH: 500,

@@ -6,6 +6,7 @@ const SubBrand = require("../../models/SubBrand");
 const { ROLES } = require("../../constants");
 const { AUDIENCE_LIMITS } = require("../../constants/notification");
 const { throwError } = require("../../utils");
+const { getAdminConfig } = require("../settings");
 
 const toObjectIds = (values = []) =>
   values
@@ -40,6 +41,38 @@ const toObjectIds = (values = []) =>
  *                     total: number, truncated: boolean }>}
  */
 exports.resolveAudience = async (target = {}) => {
+  /**
+   * ⚠️ The ceiling is a **setting**, not a constant.
+   *
+   * `AUDIENCE_LIMITS.MAX_RECIPIENTS_PER_DISPATCH` is now only the fallback,
+   * for a settings document written before the field existed. The right
+   * number depends on the deployment — how fast the mail provider is, how
+   * many FCM batches this process can hold — and hard-coding it meant the
+   * day the platform outgrew 5,000 users the only way to reach everyone was
+   * a deploy.
+   *
+   * Read once here rather than inside the role sweep below, which already
+   * runs a query per role.
+   */
+  let maxRecipients = AUDIENCE_LIMITS.MAX_RECIPIENTS_PER_DISPATCH;
+  try {
+    const adminConfig = await getAdminConfig();
+    if (Number.isFinite(adminConfig?.maxRecipientsPerDispatch)) {
+      maxRecipients = adminConfig.maxRecipientsPerDispatch;
+    }
+  } catch (error) {
+    /**
+     * A settings read that fails must not stop a broadcast that is well
+     * inside any sane limit — it falls back to the constant and says so.
+     * Failing closed here would make a settings outage look like a
+     * notification bug.
+     */
+    console.warn(
+      "[notifications] could not read maxRecipientsPerDispatch, using the default:",
+      error?.message,
+    );
+  }
+
   const { userIds, roles, brandIds, customerIds, subBrandIds, all, filters = {} } = target;
 
   const hasAnyTarget =
@@ -110,7 +143,7 @@ exports.resolveAudience = async (target = {}) => {
     // One more than the cap, so truncation can be reported rather than guessed.
     const bulk = await User.find(match)
       .select("_id")
-      .limit(AUDIENCE_LIMITS.MAX_RECIPIENTS_PER_DISPATCH + 1)
+      .limit(maxRecipients + 1)
       .lean();
     bulk.forEach((u) => collected.add(String(u._id)));
   }
@@ -146,14 +179,23 @@ exports.resolveAudience = async (target = {}) => {
   }
 
   const total = users.length;
-  const truncated = total > AUDIENCE_LIMITS.MAX_RECIPIENTS_PER_DISPATCH;
+  const truncated = total > maxRecipients;
 
   if (truncated) {
-    // Never silently drop recipients — a caller that thinks it reached everyone
-    // and did not is worse than an error.
+    /**
+     * Never silently drop recipients — a caller that thinks it reached everyone
+     * and did not is worse than an error.
+     *
+     * ⚠️ **"more than N", not an exact count.** The role sweep above fetches
+     * only `maxRecipients + 1` rows precisely so it never has to count a huge
+     * audience, so `total` here is the cap plus one, not the real size. Printing
+     * it as an exact figure told an admin who set the cap to 1 that the audience
+     * was 2 — raise it to 2 and it fails again, now claiming 3. The honest
+     * statement is that it is over the line, because that is all this knows.
+     */
     throwError(
       422,
-      `This audience resolves to ${total} recipients, above the ${AUDIENCE_LIMITS.MAX_RECIPIENTS_PER_DISPATCH} limit for a single dispatch. Narrow the target or send it as a background job.`,
+      `This audience resolves to more than ${maxRecipients} recipients, which is the limit for a single dispatch. Narrow the target, raise admin.notification.maxRecipientsPerDispatch in settings, or send it as a background job.`,
     );
   }
 

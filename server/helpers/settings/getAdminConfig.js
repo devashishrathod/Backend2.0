@@ -38,5 +38,14 @@ exports.getAdminConfig = async () => {
       s.isPushNotificationEnabled ?? d.isPushNotificationEnabled,
     isWhatsAppNotificationEnabled:
       s.isWhatsAppNotificationEnabled ?? d.isWhatsAppNotificationEnabled,
+    /**
+     * ⚠️ `??`, not `||`. A configured `0` is falsy, and `||` would quietly
+     * rewrite it to 5000 — the same trap `CLAUDE.md` records for
+     * `settlement.delayDays`. Zero is refused by the schema's `min: 1` rather
+     * than by arithmetic here, so if one ever arrives it should surface, not be
+     * papered over.
+     */
+    maxRecipientsPerDispatch:
+      s.maxRecipientsPerDispatch ?? d.maxRecipientsPerDispatch,
   };
 };

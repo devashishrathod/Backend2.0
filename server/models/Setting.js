@@ -391,6 +391,23 @@ const adminNotificationSchema = new mongoose.Schema(
       type: Boolean,
       default: ADMIN_NOTIFICATION_DEFAULTS.isWhatsAppNotificationEnabled,
     },
+    /**
+     * The ceiling on one broadcast, settable without a deploy.
+     *
+     * ⚠️ A **refusal**, not a truncation — `resolveAudience` throws `422` above
+     * it rather than sending to the first N. Silently reaching some of the
+     * audience is the failure this number exists to prevent.
+     *
+     * ⚠️ Raising it does not make a broadcast free: every recipient is one row
+     * written and one push queued, and FCM still takes 500 tokens per batch.
+     * Past a few thousand this belongs in a background job, which is what the
+     * refusal message says.
+     */
+    maxRecipientsPerDispatch: {
+      type: Number,
+      min: 1,
+      default: ADMIN_NOTIFICATION_DEFAULTS.maxRecipientsPerDispatch,
+    },
   },
   { _id: false },
 );
