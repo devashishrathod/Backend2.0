@@ -26,6 +26,8 @@
  */
 require("dotenv").config();
 const dns = require("dns");
+const fs = require("fs");
+const path = require("path");
 const mongoose = require("mongoose");
 
 const {
@@ -74,6 +76,18 @@ const MARK = "PMFX";
 
 const INDORE = [75.8937, 22.7533]; // [longitude, latitude]
 const NEARBY = [75.9051, 22.7712]; // ~2.5 km away
+
+/**
+ * The seeded customer's number, and it has to be a fixed one.
+ *
+ * The money folders read a claim, a payment, a refund and a bank account that
+ * belong to a specific customer, so the collection has to sign in **as** that
+ * customer. `customer-local.postman_environment.json` defaults
+ * `customer_whatsapp` to this value; change it in both places or neither.
+ */
+const CUSTOMER_WHATSAPP = "9700000021";
+/** The second customer, whose money the first one must not be able to open. */
+const OTHER_CUSTOMER_WHATSAPP = "9700000022";
 
 const log = (...a) => console.log(...a);
 
@@ -125,6 +139,29 @@ const run = async () => {
     syncBrandSubscriptionState,
   } = require("../helpers/subscribeds/syncBrandSubscriptionState");
 
+  /**
+   * ── drop shadow indexes before writing any money rows ────────────────────
+   *
+   * ⚠️ This scratch database carried `invoiceId_1` and `razorpayOrderId_1` —
+   * **blanket** unique indexes on nullable paths, the exact pair `CLAUDE.md`
+   * documents. Mongo indexes a missing field as `null`, so a blanket unique on
+   * a nullable path rejects the **second** row that has no value yet: seeding
+   * two unsettled transactions died on `dup key: { invoiceId: null }`, naming a
+   * field the fixture never set.
+   *
+   * `reapShadowIndexes` normally runs at boot and hourly — but a capture run
+   * starts the server with `ENABLE_JOBS=false` (so sweeps do not fire mid-run),
+   * which is precisely why nothing had reaped them here.
+   *
+   * Safe by the helper's own two conditions: it only drops a blanket unique
+   * that is **already superseded** by a partial unique on the same key, and if
+   * that replacement is missing it drops nothing at all.
+   */
+  const { reapShadowIndexes } = require("../helpers/transactions");
+  const reaped = await reapShadowIndexes();
+  const dropped = Array.isArray(reaped) ? reaped.length : reaped?.dropped?.length || 0;
+  if (dropped) log(`  🧹 reaped ${dropped} shadow index(es) before seeding`);
+
   // The pipelines depend on a 2dsphere index on SubBrand.geo and a text index
   // on Voucher; a fresh scratch database has neither until this runs.
   await Promise.all([
@@ -144,6 +181,44 @@ const run = async () => {
     const brandIds = brands.map((b) => b._id);
     const users = await User.find({ uniqueId: new RegExp(MARK) }).select("_id");
     const userIds = users.map((u) => u._id);
+
+    /**
+     * The money rows go first, and they are keyed on the **customer**, not the
+     * user — a `VoucherClaim` carries `customerId`, so deleting the `User` rows
+     * without resolving their `Customer` first leaves orphaned claims that the
+     * next run's listing picks up. Those rows outlive the seed they belong to
+     * and there is nothing in the output to say so.
+     */
+    const Customer = require("../models/Customer");
+    const CustomerBankAccount = require("../models/CustomerBankAccount");
+    const VoucherClaim = require("../models/VoucherClaim");
+    const VoucherClaimHistory = require("../models/VoucherClaimHistory");
+    const Transaction = require("../models/Transaction");
+    const RefundRequest = require("../models/RefundRequest");
+
+    const customers = await Customer.find({
+      uniqueId: new RegExp(MARK),
+    }).select("_id");
+    const customerIds = customers.map((c) => c._id);
+    const claims = await VoucherClaim.find({
+      customerId: { $in: customerIds },
+    }).select("_id");
+    const claimIds = claims.map((c) => c._id);
+
+    const Notification = require("../models/Notification");
+
+    await Promise.all([
+      RefundRequest.deleteMany({ customerId: { $in: customerIds } }),
+      VoucherClaimHistory.deleteMany({ claimId: { $in: claimIds } }),
+      VoucherClaim.deleteMany({ _id: { $in: claimIds } }),
+      Transaction.deleteMany({ customerId: { $in: customerIds } }),
+      CustomerBankAccount.deleteMany({ customerId: { $in: customerIds } }),
+      // Keyed on the customer, like the rows themselves — see the note where
+      // they are written. Leaving these behind would grow the feed by three on
+      // every re-seed and quietly break the `unreadCount` assertions.
+      Notification.deleteMany({ customerId: { $in: customerIds } }),
+      Customer.deleteMany({ _id: { $in: customerIds } }),
+    ]);
 
     await Promise.all([
       Voucher.deleteMany({ brandId: { $in: brandIds } }),
@@ -182,6 +257,14 @@ const run = async () => {
 
   let admin, category, subCategory;
   const brands = [];
+  /**
+   * The published vouchers, kept so the money fixtures below can build a claim
+   * against a real one. `makeVoucher` returns the master; the claim also needs
+   * the published version id, so each entry carries both.
+   */
+  const vouchers = [];
+  /** The seeded customer and their money history — see the step at the bottom. */
+  let money = null;
 
   step("admin user", async () => {
     admin = await User.create({
@@ -473,7 +556,7 @@ const run = async () => {
   };
 
   step("vouchers (published, mapped to outlets)", async () => {
-    await makeVoucher({
+    vouchers.push(await makeVoucher({
       ctx: brands[0],
       name: "flat 30% off on total bill",
       code: "VCH-90000001",
@@ -499,10 +582,10 @@ const run = async () => {
           sortOrder: 2,
         },
       ],
-    });
+    }));
 
     // No banner on this one, so the `bannerType: null` contract is exercised too.
-    await makeVoucher({
+    vouchers.push(await makeVoucher({
       ctx: brands[1],
       name: "buy 1 get 1 on coffee",
       code: "VCH-90000002",
@@ -516,7 +599,7 @@ const run = async () => {
           sortOrder: 1,
         },
       ],
-    });
+    }));
 
     return "2 (1 suggested + banner, 1 plain)";
   });
@@ -574,6 +657,56 @@ const run = async () => {
     if (!setting.customer) setting.customer = {};
     if (!setting.customer.promoCode) setting.customer.promoCode = {};
     setting.customer.promoCode.isEnabled = true;
+
+    /**
+     * ⚠️ `maxOpenRequests` raised from its default of **1**.
+     *
+     * The seeded customer needs an open refund parked in
+     * `AWAITING_BANK_DETAILS` — it is the only status
+     * `PATCH /refunds/:id/bank-account` accepts. With the limit at 1, that one
+     * row consumed the whole allowance, so `POST /refunds` could **never**
+     * succeed: it answered *"You already have a refund in progress"*, which
+     * then left `refund_request_id` empty, which made the withdraw request hit
+     * `/refunds//withdraw` and come back as the router's catch-all
+     * `404 "Invalid API"` — a fixture problem wearing three different disguises.
+     *
+     * Raising it is fixture configuration, not a workaround: the allowance is
+     * admin-configurable by design, and this scratch database needs two open
+     * refunds to demonstrate both halves of the flow.
+     */
+    if (!setting.customer.refund) setting.customer.refund = {};
+    setting.customer.refund.maxOpenRequests = 3;
+
+    /**
+     * The public app config, so `GET /app-config` has something real to answer.
+     *
+     * Left at defaults it returns empty strings for every support field, and the
+     * captured example would document the endpoint as useless. ⚠️ `forceUpdate`
+     * stays **false** and `minVersion` stays low on purpose: a fixture that
+     * locks every client out is a fixture that makes the rest of the collection
+     * look broken.
+     */
+    if (!setting.app) setting.app = {};
+    setting.app.support = {
+      email: "help@trydood.com",
+      phone: "1800-000-000",
+      whatsapp: "9700000001",
+    };
+    setting.app.minVersion = { android: "1.0.0", ios: "1.0.0" };
+    setting.app.latestVersion = { android: "1.4.0", ios: "1.4.0" };
+    setting.app.forceUpdate = false;
+    setting.app.storeUrl = {
+      android: "https://play.google.com/store/apps/details?id=com.trydood",
+      ios: "https://apps.apple.com/app/trydood/id0000000000",
+    };
+    // All on — the collection exercises promo, refunds, claims and search.
+    setting.app.features = {
+      promoCodes: true,
+      refunds: true,
+      voucherClaims: true,
+      search: true,
+    };
+
     await setting.save();
 
     await PromoCode.create({
@@ -798,6 +931,487 @@ const run = async () => {
     return "1 terms + 1 privacy";
   });
 
+  /**
+   * ── the customer, and a money history for them ───────────────────────────
+   *
+   * ### Why the customer is seeded at all
+   *
+   * Everything above is browsable by a guest, so the collection could always
+   * sign up a throwaway number and read it. The money folders cannot: a claim
+   * list needs a claim, a refund needs a payment, and a bank account needs a
+   * penny drop we are not going to pay for on every run.
+   *
+   * So the customer is seeded with a **known** WhatsApp number and a history
+   * attached to it, and `customer_whatsapp` defaults to that number. This is the
+   * same arrangement the vendor collection already uses for its seeded vendor,
+   * and for the same reason.
+   *
+   * ⚠️ It does **not** break the signup tests in folder `00`. `verifyOtp` is
+   * commented out on the WhatsApp path, so any 6-digit code signs this customer
+   * in, and the `isFirst` assertion compares request 2 against request 1 rather
+   * than against `true` — it is a "did not change" regression, not a "is a new
+   * user" one. Point `customer_whatsapp` at a fresh number instead and folders
+   * `00`–`10` still pass; only the money folders go empty.
+   *
+   * ### What cannot be seeded, and is not
+   *
+   * `POST /bank-accounts/otp` and `POST /bank-accounts` are left to run for
+   * real — the first sends a message we pay for, the second is a live CGPey
+   * penny drop against a real bank. Seeding an already-verified row is what lets
+   * the **list**, the **delete** and the refund's **bank-account choice** be
+   * captured truthfully without either.
+   */
+  step("customer + money history (claims, payment, refund, bank account)", async () => {
+    const Customer = require("../models/Customer");
+    const CustomerBankAccount = require("../models/CustomerBankAccount");
+    const VoucherClaim = require("../models/VoucherClaim");
+    const Transaction = require("../models/Transaction");
+    const RefundRequest = require("../models/RefundRequest");
+
+    const { buildClaimPreview } = require("../helpers/vouchers/buildClaimPreview");
+    const {
+      generateClaimCode,
+      buildVoucherInvoiceSnapshot,
+    } = require("../helpers/voucherClaims");
+    const {
+      TRANSACTION_PURPOSE,
+      ACCOUNT_FOR_PURPOSE,
+      SETTLEMENT_STAGE,
+    } = require("../constants/transaction");
+    const { PAYMENT_STATUS } = require("../constants");
+    const { PAYMENT_GATEWAYS } = require("../constants/subscription");
+    const { VOUCHER_CLAIM_STATUS } = require("../constants/voucherClaim");
+    const { REFUND_REQUEST_STATUS } = require("../constants/refund");
+
+    const ctx = brands[0];
+    const voucher = vouchers[0];
+    const version = await VoucherVersion.findOne({
+      voucherId: voucher._id,
+      status: VOUCHER_STATUSES.PUBLISHED,
+    }).lean();
+
+    /** One customer, with the User row the auth path expects to find. */
+    const makeCustomer = async ({ key, whatsapp, name }) => {
+      const user = await User.create({
+        name,
+        role: ROLES.CUSTOMER,
+        whatsappNumber: whatsapp,
+        uniqueId: `USR-${MARK}-${key}`,
+        referralCode: `${MARK}C${key}`,
+      });
+      const customer = await Customer.create({
+        userId: user._id,
+        uniqueId: `#TC${MARK}${key}`,
+        fullName: name,
+        whatsappNumber: whatsapp,
+      });
+      return { user, customer };
+    };
+
+    /**
+     * A paid claim and the payment behind it.
+     *
+     * ⚠️ `pricing` comes from `buildClaimPreview` — the **same** builder the live
+     * `create-order` path runs — rather than being typed out here. Hand-written
+     * money numbers are how a fixture starts disagreeing with the API it is
+     * meant to demonstrate, and every captured example built on it inherits the
+     * lie.
+     */
+    /** Makes every seeded Razorpay order id distinct — see `suffix` below. */
+    let claimSeq = 0;
+
+    /**
+     * @param {number} offerIndex which of the voucher's offers to claim against.
+     *
+     * ⚠️ Not cosmetic. `claim_usageSlot_oncePerUser` is unique on
+     * `{voucherId, customerId, offerId}`, so one customer cannot hold two claims
+     * on the **same** voucher *and* offer — that is the once-per-user rule, and
+     * seeding a second claim with `offerIndex: 0` fails with E11000. The spare
+     * claim uses offer 1, which needs a bill over its own `minBillAmount`.
+     */
+    const makePaidClaim = async ({ owner, billAmount, settled, offerIndex = 0 }) => {
+      const preview = await buildClaimPreview({
+        voucherId: voucher._id,
+        outletId: ctx.outlet._id,
+        billAmount,
+        offerId: version.offers?.[offerIndex]?._id || null,
+        actor: { customerId: owner.customer },
+      });
+
+      const pricing = preview.pricing;
+      const offer = version.offers?.[offerIndex] || null;
+      /**
+       * ⚠️ Unique per **claim**, not per owner.
+       *
+       * This was `owner.user.uniqueId.slice(-4)`, so both of the primary
+       * customer's claims produced `order_PMFXcust` and the second one died on
+       * `razorpayOrderId_1` — a blanket unique index. The counter is what makes
+       * a second claim for the same customer possible at all.
+       */
+      claimSeq += 1;
+      const suffix = `${owner.user.uniqueId.slice(-4).toLowerCase()}${claimSeq}`;
+
+      const claim = await VoucherClaim.create({
+        customerId: owner.customer._id,
+        userId: owner.user._id,
+        voucherId: voucher._id,
+        voucherVersionId: version._id,
+        versionNumber: version.versionNumber,
+        offerId: offer?._id || null,
+        brandId: ctx.brand._id,
+        subBrandId: ctx.outlet._id,
+
+        // Frozen at claim time, exactly as createVoucherClaimOrder freezes them.
+        offerSnapshot: offer ? JSON.parse(JSON.stringify(offer)) : undefined,
+        voucherSnapshot: {
+          name: voucher.name,
+          categoryId: voucher.categoryId,
+          subCategoryId: voucher.subCategoryId,
+        },
+        brandSnapshot: { name: ctx.brand.brandName },
+        outletSnapshot: {
+          uniqueId: ctx.outlet.uniqueId,
+          storeId: ctx.outlet.storeId,
+          state: ctx.location?.state || null,
+        },
+
+        billAmount,
+        offerApplied: preview.offerApplied,
+        pricing,
+
+        status: VOUCHER_CLAIM_STATUS.PAID,
+        // Set the moment the claim exists, never at payment — see CLAUDE.md.
+        holdsUsageSlot: true,
+        claimCode: await generateClaimCode(),
+      });
+
+      const transaction = await Transaction.create({
+        purpose: TRANSACTION_PURPOSE.VOUCHER_CLAIM,
+        gatewayAccount: ACCOUNT_FOR_PURPOSE[TRANSACTION_PURPOSE.VOUCHER_CLAIM],
+        customerId: owner.customer._id,
+        userId: owner.user._id,
+        brandId: ctx.brand._id,
+        subBrandId: ctx.outlet._id,
+        voucherId: voucher._id,
+        createdBy: owner.user._id,
+        gateway: PAYMENT_GATEWAYS.RAZORPAY,
+        amount: pricing.totalPayable,
+        currency: pricing.currency,
+        dueAmount: 0,
+        paidAmount: pricing.totalPayable,
+        status: PAYMENT_STATUS.CAPTURED,
+        verified: true,
+        verifiedAt: new Date(),
+        razorpayOrderId: `order_${MARK}${suffix}`,
+        razorpayPaymentId: `pay_${MARK}${suffix}`,
+
+        // The denormalised copy a settlement totals without joining every claim.
+        voucher: {
+          claimId: claim._id,
+          voucherId: voucher._id,
+          voucherVersionId: version._id,
+          versionNumber: version.versionNumber,
+          offerId: offer?._id || null,
+          billAmount: pricing.billAmount,
+          offerDiscount: pricing.offerDiscount,
+          convenienceFee: pricing.convenienceFee,
+          netBill: pricing.netBill,
+          vendorPayable: pricing.vendorPayable,
+          platformPromoCost: pricing.platformPromoCost,
+          vendorPromoCost: pricing.vendorPromoCost,
+          commissionPercent: pricing.commissionPercent,
+          commissionAmount: pricing.commissionAmount,
+          commissionTax: pricing.commissionTax,
+          commissionDeduction: pricing.commissionDeduction,
+        },
+
+        /**
+         * The invoice link's whole credential. Seeded so
+         * `GET /transactions/invoice/:token` has something real to answer —
+         * without it that endpoint can only ever demonstrate its 404.
+         */
+        ...(settled
+          ? {
+              invoiceToken: `${MARK.toLowerCase()}invoicetoken${suffix}0000000000000000`,
+              invoiceId: `TD/${new Date().getFullYear()}/${MARK}/000${settled ? 1 : 2}`,
+              invoiceUrl:
+                "https://res.cloudinary.com/demo/image/upload/sample.pdf",
+              settlementStage: SETTLEMENT_STAGE.COMPLETE,
+            }
+          : {}),
+      });
+
+      await VoucherClaim.updateOne(
+        { _id: claim._id },
+        { $set: { transactionId: transaction._id } },
+      );
+
+      /**
+       * ⚠️ `invoiceSnapshot`, not just `invoiceToken`.
+       *
+       * `getInvoiceByToken` refuses with **409 "This invoice is not ready yet"**
+       * when the snapshot is absent, and it is right to: a settled transaction
+       * always has one, so its absence means the settle never reached the
+       * invoice stage. Generating a document from live data that may have moved
+       * since would paper over exactly the bug the resume job exists to fix.
+       *
+       * Built by `buildVoucherInvoiceSnapshot` — the same helper the real settle
+       * calls — so the seeded invoice carries the numbers the API would have
+       * frozen, not numbers typed out here.
+       */
+      if (settled) {
+        const snapshot = buildVoucherInvoiceSnapshot({
+          transaction,
+          claim,
+          seller: { name: ctx.brand.brandName },
+          billTo: { name: owner.customer.fullName },
+        });
+        await Transaction.updateOne(
+          { _id: transaction._id },
+          { $set: { invoiceSnapshot: snapshot } },
+        );
+        transaction.invoiceSnapshot = snapshot;
+      }
+
+      return { claim, transaction, pricing };
+    };
+
+    const primary = await makeCustomer({
+      key: "CUST",
+      whatsapp: CUSTOMER_WHATSAPP,
+      name: "postman seed customer",
+    });
+
+    /**
+     * ⚠️ A **second** customer with their own claim, and not for symmetry.
+     *
+     * Two requests in the collection assert that one customer cannot open
+     * another's payment or refund another's claim. Without these rows the
+     * `{{other_customer_*}}` variables stayed empty, the literal `{{…}}` went
+     * into the body, and both `objectId()` validators answered **422 "Invalid
+     * claimId."** — so the tests failed on the wrong thing, and would have gone
+     * green again the moment somebody "fixed" them by accepting a 422. What they
+     * exist to check is whether one customer can see another's money.
+     */
+    const other = await makeCustomer({
+      key: "OTHR",
+      whatsapp: OTHER_CUSTOMER_WHATSAPP,
+      name: "postman seed other customer",
+    });
+
+    const paid = await makePaidClaim({
+      owner: primary,
+      billAmount: 1000,
+      settled: true,
+    });
+
+    /**
+     * A **second** paid claim for the same customer, with no refund on it.
+     *
+     * `POST /refunds` needs a claim that is not already refunded, and claim A
+     * carries the parked `AWAITING_BANK_DETAILS` refund. With only one claim the
+     * refund request had nothing eligible to aim at, so its captured example was
+     * a refusal and `refund_request_id` was never set — which then broke the
+     * withdraw request too.
+     */
+    const paidSpare = await makePaidClaim({
+      owner: primary,
+      // Offer 1 is "flat 150 off above 800", so the bill has to clear 800.
+      billAmount: 900,
+      settled: false,
+      offerIndex: 1,
+    });
+
+    const otherPaid = await makePaidClaim({
+      owner: other,
+      billAmount: 600,
+      settled: false,
+    });
+
+    /**
+     * A verified account, standing in for a penny drop nobody paid for.
+     *
+     * `isVerified: true` is what every payout path checks, so this row is a
+     * usable destination — which is the point: it makes the list, the delete and
+     * the refund's bank-account choice all capturable for real.
+     */
+    const makeAccount = async ({ accountNumber, last4, bank, branch }) =>
+      CustomerBankAccount.create({
+        customerId: primary.customer._id,
+        accountHolderName: "postman seed customer",
+        accountNumber,
+        maskedAccountNumber: accountNumber.replace(/\d(?=\d{4})/g, "*"),
+        accountLast4Digits: last4,
+        ifscCode: "HDFC0001234",
+        bankName: bank,
+        branchName: branch,
+        isVerified: true,
+        verifiedAt: new Date(),
+        isNameMatch: true,
+        matchingScore: 100,
+      });
+
+    const account = await makeAccount({
+      accountNumber: "912010004512345",
+      last4: "2345",
+      bank: "HDFC Bank",
+      branch: "Indore Vijay Nagar",
+    });
+
+    /**
+     * A **spare** account, and the delete request targets this one.
+     *
+     * ⚠️ `PATCH /refunds/:id/bank-account` (folder 12) attaches `account` above
+     * to the parked refund, and `DELETE /bank-accounts/:id` then refuses with
+     * `409 "A refund is waiting to be paid into this account"` — correct
+     * behaviour, but it meant the delete could never demonstrate its success.
+     * Folder 12 runs before folder 13, so ordering cannot fix it; a second
+     * account can.
+     */
+    const spareAccount = await makeAccount({
+      accountNumber: "912010009988776",
+      last4: "8776",
+      bank: "HDFC Bank",
+      branch: "Indore Palasia",
+    });
+
+    /**
+     * A refund parked in `AWAITING_BANK_DETAILS`, which is the **only** status
+     * `PATCH /refunds/:requestId/bank-account` accepts.
+     *
+     * Reaching it through the API needs an admin to have tried `SOURCE`, watched
+     * it fail against a closed instrument, and then asked for bank details — a
+     * three-actor sequence the customer collection cannot drive. Seeding the
+     * state is what makes the customer's half of that flow demonstrable.
+     */
+    /**
+     * ⚠️ `claimId` must be **this** customer's claim.
+     *
+     * It briefly pointed at the other customer's claim while carrying the
+     * primary customer's `customerId`. The bank-details endpoint only checks
+     * `customerId` + status, so every test still passed — and the row was
+     * nonsense: a refund on a purchase its owner never made. A fixture that
+     * lies in a way no assertion reads is worse than one that fails.
+     */
+    const awaitingBank = await RefundRequest.create({
+      claimId: paid.claim._id,
+      transactionId: paid.transaction._id,
+      customerId: primary.customer._id,
+      brandId: ctx.brand._id,
+      requestedAmount: 200,
+      approvedAmount: 200,
+      status: REFUND_REQUEST_STATUS.AWAITING_BANK_DETAILS,
+      reason: "OTHER",
+      reasonNote: "Seeded so the bank-details step has something to answer.",
+      method: "MANUAL_BANK",
+      isOpen: true,
+    });
+
+    /**
+     * ── the customer's notification feed ─────────────────────────────────────
+     *
+     * Written directly rather than through `notify()`, for the same reason the
+     * claims are: `notify()` also **delivers** — it would send real email for
+     * every seeded row, on every re-seed.
+     *
+     * ⚠️ Keyed on `customerId`, not `userId`. That is how `refundNotices` and
+     * `voucherClaimNotices` write them, and it is what the customer feed scopes
+     * on; seeding them against `userId` would produce rows the feed cannot see
+     * and a fixture that silently proves nothing.
+     *
+     * A mix on purpose: two unread and one already read, so the `unreadCount`
+     * badge has something to be right about, and a row carrying `meta.claimId`
+     * so the deep-link whitelist is actually exercised.
+     */
+    const Notification = require("../models/Notification");
+    const {
+      NOTIFICATION_AUDIENCE,
+      NOTIFICATION_TYPES,
+      NOTIFICATION_SEVERITY,
+    } = require("../constants/notification");
+
+    const notifications = await Notification.insertMany([
+      {
+        customerId: primary.customer._id,
+        audience: NOTIFICATION_AUDIENCE.CUSTOMER,
+        type: NOTIFICATION_TYPES.VOUCHER_PAYMENT_SUCCESS,
+        severity: NOTIFICATION_SEVERITY.INFO,
+        title: "Payment received",
+        body: `Your voucher is ready. Show ${paid.claim.claimCode} at the counter.`,
+        meta: {
+          claimId: paid.claim._id,
+          claimCode: paid.claim.claimCode,
+          transactionId: paid.transaction._id,
+          brandId: ctx.brand._id,
+          // ⚠️ Deliberately here and deliberately never returned to a customer —
+          // the projection is a whitelist, so this row proves it holds.
+          internalNote: "seeded — must never reach the customer projection",
+        },
+        isRead: false,
+      },
+      {
+        customerId: primary.customer._id,
+        audience: NOTIFICATION_AUDIENCE.CUSTOMER,
+        type: NOTIFICATION_TYPES.REFUND_REQUESTED,
+        severity: NOTIFICATION_SEVERITY.INFO,
+        title: "We have your refund request",
+        body: "We have asked the outlet about it. We will let you know as soon as there is an answer.",
+        meta: { refundRequestId: awaitingBank._id, claimId: paid.claim._id },
+        isRead: false,
+      },
+      {
+        customerId: primary.customer._id,
+        audience: NOTIFICATION_AUDIENCE.CUSTOMER,
+        type: NOTIFICATION_TYPES.ANNOUNCEMENT,
+        severity: NOTIFICATION_SEVERITY.INFO,
+        title: "Welcome to Trydood",
+        body: "Browse offers near you and save on every bill.",
+        isRead: true,
+        readAt: new Date(),
+      },
+      /**
+       * ⚠️ The **other** customer's row, and the scope test needs it to be real.
+       *
+       * `mark-read` proves ownership by matching nothing rather than by refusing
+       * — so the test has to send a **valid id that belongs to somebody else**.
+       * A made-up ObjectId would also return `matched: 0`, and would keep doing
+       * so if the scope were removed entirely: the test would pass while
+       * checking nothing at all.
+       */
+      {
+        customerId: other.customer._id,
+        audience: NOTIFICATION_AUDIENCE.CUSTOMER,
+        type: NOTIFICATION_TYPES.ANNOUNCEMENT,
+        severity: NOTIFICATION_SEVERITY.INFO,
+        title: "Welcome to Trydood",
+        body: "This row belongs to the other seeded customer, on purpose.",
+        isRead: false,
+      },
+    ]);
+
+    money = {
+      primary,
+      other,
+      paid,
+      paidSpare,
+      otherPaid,
+      account,
+      spareAccount,
+      awaitingBank,
+      notifications,
+      // The offer the claim flow prices against — see the note where it is written.
+      offerId: version.offers?.[0]?._id || null,
+    };
+
+    return [
+      `customer ${CUSTOMER_WHATSAPP}`,
+      `1 paid+settled claim`,
+      `1 verified bank account`,
+      `1 refund AWAITING_BANK_DETAILS`,
+      `+ other customer ${OTHER_CUSTOMER_WHATSAPP} with their own claim`,
+    ].join(" · ");
+  });
+
   // ── execute ──────────────────────────────────────────────────────────────
   for (const { what, fn } of plan) {
     if (!APPLY) {
@@ -808,12 +1422,119 @@ const run = async () => {
     log(`  ✅ ${what}${detail ? ` — ${detail}` : ""}`);
   }
 
+  /**
+   * ── write the seeded ids into the Postman environment ────────────────────
+   *
+   * Five of the collection's variables cannot be captured by the collection
+   * itself: `bank_account_id` needs a paid penny drop, `invoice_token` is
+   * deliberately never returned by any endpoint, `awaiting_bank_refund_id`
+   * needs an admin to have watched a `SOURCE` refund fail, and the two
+   * `other_customer_*` ids belong to a different customer on purpose.
+   *
+   * ⚠️ They used to be printed and left for someone to paste. Nobody did, so
+   * the two cross-customer 403 tests sent the literal `{{other_customer_claim_id}}`,
+   * `objectId()` rejected it, and both answered **422 instead of 403** — failing
+   * for the wrong reason, and one lazy "fix" away from being permanently green
+   * while checking nothing. Writing them here removes the manual step that was
+   * never going to happen.
+   *
+   * ⚠️ Order matters: **generate, then seed, then capture.** Re-running
+   * `postman/generate-customer-collection.js` rewrites the environment with
+   * empty values, so it has to run before this, not after.
+   */
+  if (APPLY && money) {
+    const envPath = path.join(
+      __dirname,
+      "..",
+      "postman",
+      "environments",
+      "customer-local.postman_environment.json",
+    );
+
+    if (!fs.existsSync(envPath)) {
+      log(`\n  ⚠️  ${path.basename(envPath)} not found — skipped writing ids.`);
+    } else {
+      const seeded = {
+        customer_whatsapp: CUSTOMER_WHATSAPP,
+        /**
+         * ⚠️ The claim order needs this and the collection cannot capture it.
+         *
+         * `offerId` is optional in the validator but **not nullable**, so an
+         * empty `{{offer_id}}` is not "no offer" — it is
+         * `422 "Body.offerId is not allowed to be empty"`, and the whole claim
+         * flow stops at its first request. The offers live on the published
+         * `VoucherVersion`, which no customer endpoint returns by id.
+         */
+        offer_id: String(money.offerId || ""),
+        /** The claim `POST /refunds` aims at — no refund on it yet. */
+        refundable_claim_id: String(money.paidSpare.claim._id),
+        bank_account_id: String(money.account._id),
+        /** The one nothing points at, so `DELETE` can show its 200. */
+        spare_bank_account_id: String(money.spareAccount._id),
+        /**
+         * A real notification belonging to the **other** customer. The scope
+         * test needs a valid id it is not allowed to touch — a fabricated one
+         * would return `matched: 0` even with no scoping at all.
+         */
+        other_customer_notification_id: String(
+          money.notifications[money.notifications.length - 1]._id,
+        ),
+        invoice_token: String(money.paid.transaction.invoiceToken),
+        awaiting_bank_refund_id: String(money.awaitingBank._id),
+        other_customer_claim_id: String(money.otherPaid.claim._id),
+        other_customer_transaction_id: String(money.otherPaid.transaction._id),
+      };
+
+      const raw = fs.readFileSync(envPath, "utf8");
+      const env = JSON.parse(raw);
+      const missing = [];
+
+      for (const [key, value] of Object.entries(seeded)) {
+        const row = env.values.find((v) => v.key === key);
+        if (row) row.value = value;
+        else missing.push(key);
+      }
+
+      /**
+       * A variable the collection references but the environment does not
+       * declare is refused by `lib/validate-collection.js`, so a silent miss
+       * here becomes a loud failure there rather than an empty `{{…}}` in a
+       * request body.
+       */
+      if (missing.length) {
+        throw new Error(
+          `Environment is missing ${missing.join(", ")} — re-run ` +
+            "postman/generate-customer-collection.js first.",
+        );
+      }
+
+      // These files are CRLF; matching the generator's own output keeps the
+      // diff to the values that actually changed.
+      const CRLF = raw.includes("\r\n");
+      const out = JSON.stringify(env, null, 2) + "\n";
+      fs.writeFileSync(envPath, CRLF ? out.replace(/\n/g, "\r\n") : out);
+      log(`\n  ✅ wrote ${Object.keys(seeded).length} ids into ${path.basename(envPath)}`);
+    }
+  }
+
   if (APPLY) {
     log(`
 Seeded.
 
-Customer collection ke liye:
-  customer_whatsapp   koi bhi naya 10-digit number (collection khud signup kar legi)
+Customer collection ke liye — seeded customer ka number use karein, warna money
+folders (11 Claims / 12 Refunds / 13 Bank Accounts) khaali chalenge:
+
+  customer_whatsapp         ${CUSTOMER_WHATSAPP}   (claim + payment + refund + bank account)
+  other_customer_whatsapp   ${OTHER_CUSTOMER_WHATSAPP}   (403 cross-customer tests)
+
+Ye teen ids environment me pehle se bhar di jaati hain (collection inhe khud
+capture nahi kar sakti — inke liye admin ya live penny drop chahiye):
+
+  bank_account_id               ${money ? money.account._id : "—"}
+  invoice_token                 ${money ? money.paid.transaction.invoiceToken : "—"}
+  awaiting_bank_refund_id       ${money ? money.awaitingBank._id : "—"}
+  other_customer_claim_id       ${money ? money.otherPaid.claim._id : "—"}
+  other_customer_transaction_id ${money ? money.otherPaid.transaction._id : "—"}
 
 Vendor collection ke liye — seeded vendor ka number use karein, warna naya vendor
 banega jiska brand na approved hoga na subscribed:
