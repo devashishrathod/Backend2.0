@@ -808,6 +808,41 @@ moving — no error anywhere. If you add a third webhook, add it to
 - `tempFileDir: "/tmp/"` in `index.js` is fine on Linux; make sure the unit has
   a writable `/tmp` and something clears it.
 
+## Working agreement
+
+### 🔴 Never commit without being asked
+
+Implement → test → **report what changed and what the tests said** → wait for the
+user to say commit. Every time, for every change.
+
+`git add` counts: do not stage speculatively either. When several changes are
+ready, list them and let the user choose which to commit and how to group them.
+
+⚠️ The `.githooks/pre-commit` coverage gate is **not** permission. It checks a
+commit that is already happening; it does not decide that one should.
+
+### Databases here are disposable
+
+`Trydood2` (dev), `Trydood2_postman` (collection fixtures) and `Trydood2_test`
+(money suite) are all development data. **Production starts on a fresh, empty
+database at launch.**
+
+So judge the **code and the schema relationships**, not the rows. A count like
+"23 brands, 5 verified" describes a database people have been clicking through
+for months and predicts nothing about production.
+
+- A cleanup script is never the *fix* for a code bug. Fix the code — the data is
+  going away. Cleanup scripts still earn their place (`auditOrphans.js`,
+  `cleanupOrphans.js`): they keep dev usable and they record the shape of the
+  problem.
+- Do not size a decision on current row counts, and say when a measurement is
+  only illustrative.
+- Where the choice is between "the correct relationship" and "convenient for the
+  rows that exist today", take the correct relationship. The whole point is that
+  a fresh production database never grows the orphans and drift this one did.
+
+---
+
 ## Never
 
 - `try/catch` in a controller
