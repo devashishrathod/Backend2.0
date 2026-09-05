@@ -150,3 +150,96 @@ exports.validateBroadcastNotification = {
     }),
   }),
 };
+
+/**
+ * A person changing their own channel toggles.
+ *
+ * ⚠️ Every field optional, and `min(1)` rather than requiring all three. A
+ * panel toggle changes one switch; sending the whole object would let a screen
+ * that loaded five minutes ago silently revert a change made since on another
+ * device. The service applies only the keys that are present.
+ */
+exports.validateUpdateMyNotificationPreferences = {
+  body: Joi.object({
+    email: Joi.boolean().optional().messages({
+      "boolean.base": "email must be true or false",
+    }),
+    push: Joi.boolean().optional().messages({
+      "boolean.base": "push must be true or false",
+    }),
+    whatsapp: Joi.boolean().optional().messages({
+      "boolean.base": "whatsapp must be true or false",
+    }),
+  })
+    .min(1)
+    .messages({
+      "object.min":
+        "Send at least one of email, push or whatsapp to change.",
+    }),
+};
+
+/**
+ * An admin reading somebody's toggles.
+ *
+ * ⚠️ Exactly one of the three ids — an admin screen holds whichever it has:
+ * the customer directory a `customerId`, the brand list a `brandId`, the user
+ * table a `userId`. `xor` rather than `or` so two ids that disagree can never
+ * be sent, which would otherwise resolve silently to whichever the service
+ * checked first.
+ */
+exports.validateGetUserNotificationPreferences = {
+  query: Joi.object({
+    userId: objectId().optional().messages({
+      "any.invalid": "Invalid userId",
+    }),
+    customerId: objectId().optional().messages({
+      "any.invalid": "Invalid customerId",
+    }),
+    brandId: objectId().optional().messages({
+      "any.invalid": "Invalid brandId",
+    }),
+  })
+    .xor("userId", "customerId", "brandId")
+    .messages({
+      "object.xor":
+        "Pass exactly one of userId, customerId or brandId.",
+      "object.missing":
+        "Pass exactly one of userId, customerId or brandId.",
+    }),
+};
+
+/** An admin changing somebody's. Same addressing, plus the channels. */
+exports.validateUpdateUserNotificationPreferences = {
+  body: Joi.object({
+    userId: objectId().optional().messages({
+      "any.invalid": "Invalid userId",
+    }),
+    customerId: objectId().optional().messages({
+      "any.invalid": "Invalid customerId",
+    }),
+    brandId: objectId().optional().messages({
+      "any.invalid": "Invalid brandId",
+    }),
+    email: Joi.boolean().optional().messages({
+      "boolean.base": "email must be true or false",
+    }),
+    push: Joi.boolean().optional().messages({
+      "boolean.base": "push must be true or false",
+    }),
+    whatsapp: Joi.boolean().optional().messages({
+      "boolean.base": "whatsapp must be true or false",
+    }),
+  })
+    .xor("userId", "customerId", "brandId")
+    /**
+     * ⚠️ `or` on the channels as well as `xor` on the ids. Without it a body
+     * carrying only an id would be a valid request that changes nothing and
+     * still answers 200 — which reads to a panel as a saved toggle.
+     */
+    .or("email", "push", "whatsapp")
+    .messages({
+      "object.xor": "Pass exactly one of userId, customerId or brandId.",
+      "object.missing":
+        "Pass exactly one of userId, customerId or brandId, and at least one of email, push or whatsapp.",
+    }),
+};
