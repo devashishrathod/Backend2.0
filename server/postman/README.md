@@ -4,12 +4,25 @@ Ek collection per panel. Har collection **generate hoti hai**, hand-likhi nahi �
 limits aur defaults `constants/` se seedhe padhe jaate hain, to collection API ke baare me
 jhooth nahi bol sakti.
 
-| Collection | Endpoints | Status |
+| Collection | Requests | Status |
 |---|---:|---|
-| `trydood-customer.postman_collection.json` | **62** | ✅ 135 requests · 473 assertions · **0 failed** · **198 captured examples, 135/135 requests par** |
-| `trydood-vendor.postman_collection.json` | 97 | ⚠️ 116 requests · **105 captured examples** — Voucher Claims + Refunds + Settlements **abhi capture nahi hue**. Phase 2 |
-| `trydood-admin.postman_collection.json` | 170 | ⬜ Phase 3 |
-| `trydood-security-changes.postman_collection.json` | – | ⏳ Teeno panel collections ready hone par retire hogi |
+| `trydood-customer.postman_collection.json` | 140 | ✅ 492 assertions · **0 failed** · 206 examples, **140/140 requests par** |
+| `trydood-vendor.postman_collection.json` | 125 | ✅ 292 assertions · **0 failed** · 141 examples, **125/125 requests par** |
+| `trydood-admin.postman_collection.json` | 71 | ✅ 138 assertions · **0 failed** · 82 examples, **71/71 requests par** |
+| `trydood-brand-verification` · `trydood-subscription` · `trydood-security-changes` | 125 | Feature slices, panel collections nahi — inhe alag rakha gaya hai, dekho niche |
+
+> ### Admin collection sirf 71 requests kyun, jabki admin ke 84 route hain
+>
+> Kyunki 35 admin routes ke requests **pehle se** `brand-verification`,
+> `subscription` aur `security-changes` me hain. Wo teeno admin panel nahi hain —
+> wo feature slices hain jinhe kisi aur cheez ko test karne ke liye admin token
+> chahiye tha — par unke requests asli hain aur chalti hain.
+>
+> `trydood-admin` un **49 endpoints** ko cover karti hai jinke liye **kahin koi
+> request thi hi nahi**, aur baaki 35 ko dobara nahi likhti. `POST
+> /subscriptions/create` ki chauthi copy ek aur jagah hoti jise badalna padta —
+> aur is repo me duplicate request definitions ki keemat pehle hi chuki ja chuki
+> hai (dekho `lib/accountFolders.js`).
 
 > Endpoint counts [`../docs/endpoints_category.md`](../docs/endpoints_category.md) se —
 > 212 total, jinme customer ke 62, vendor ke 97, admin ke 170 (shared endpoints kai

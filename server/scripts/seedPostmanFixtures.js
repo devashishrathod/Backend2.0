@@ -32,6 +32,7 @@ const mongoose = require("mongoose");
 
 const {
   ROLES,
+  LOGIN_TYPES,
   SYSTEM_VERIFICATION_STATUS,
   SUBSCRIPTION_TYPES,
 } = require("../constants");
@@ -88,6 +89,16 @@ const NEARBY = [75.9051, 22.7712]; // ~2.5 km away
 const CUSTOMER_WHATSAPP = "9700000021";
 /** The second customer, whose money the first one must not be able to open. */
 const OTHER_CUSTOMER_WHATSAPP = "9700000022";
+
+/**
+ * The admin collection's sign-in.
+ *
+ * ⚠️ Not a secret, and not reused anywhere. This account only ever exists in
+ * the seeded postman database, which `--db` points at explicitly. The admin
+ * collection's environment carries the same string — change it in both places
+ * or neither.
+ */
+const ADMIN_PASSWORD = "PostmanSeed@2026";
 
 const log = (...a) => console.log(...a);
 
@@ -251,6 +262,17 @@ const run = async () => {
        */
       Transaction.deleteMany({ razorpayOrderId: new RegExp(MARK, "i") }),
       Transaction.deleteMany({ invoiceId: new RegExp(MARK, "i") }),
+
+      /**
+       * Same shape again: `dispute_gateway_id_unique` is on the gateway's own
+       * id, and the seeded one has no `customerId` link the clear was walking.
+       * Keyed on the marker so it survives its brand being deleted a run
+       * earlier.
+       */
+      require("../models/Dispute").deleteMany({
+        disputeId: new RegExp(MARK, "i"),
+      }),
+      require("../models/Bank").deleteMany({ brandId: { $in: brandIds } }),
     ]);
 
     await Promise.all([
@@ -298,15 +320,51 @@ const run = async () => {
   const vouchers = [];
   /** The seeded customer and their money history — see the step at the bottom. */
   let money = null;
+  /** Rows that exist purely so the admin collection has something safe to delete. */
+  let throwaway = null;
+  /**
+   * The DRAFT version the admin collection sends through review.
+   *
+   * Hoisted out of its step because the env-writing block at the bottom needs
+   * it, and `POST /vouchers/review/:versionId` has no other way to reach a
+   * version sitting in review — a vendor puts it there, not an admin.
+   */
+  let draftVersion = null;
 
   step("admin user", async () => {
     admin = await User.create({
       name: "postman seed admin",
       role: ROLES.ADMIN,
-      email: `seed.admin.${MARK.toLowerCase()}@trydood.test`,
+      /**
+       * ⚠️ `.com`, not `.test` — this account could not log in at all.
+       *
+       * Joi's email rule checks the TLD against IANA's list, and `.test` is
+       * reserved but not on it. So `POST /auth/login` answered
+       * *"Please enter a valid Email address"* for the only admin the seeded
+       * database had, and the refusal named the format rather than saying the
+       * address was unusable — which reads as a typo in the request, not a
+       * problem with the fixture.
+       *
+       * `example.com` is IANA-reserved for exactly this and has a TLD Joi
+       * accepts. A real domain here would mean seeded mail aimed at somebody's
+       * actual inbox.
+       */
+      email: `seed.admin.${MARK.toLowerCase()}@example.com`,
       whatsappNumber: "9700000001",
       uniqueId: `USR-${MARK}-ADMIN`,
       referralCode: `${MARK}ADM`,
+      /**
+       * ⚠️ With a password, because the admin collection signs in with one.
+       *
+       * `POST /auth/login` is the only admin entry point — the WhatsApp flow
+       * refuses `role: "ADMIN"` outright, deliberately, so that knowing the
+       * endpoint is not enough to mint an admin. Seeding this account without a
+       * password left the collection with no way in at all.
+       *
+       * The `pre("save")` hook hashes it, so this is never stored in the clear.
+       */
+      password: ADMIN_PASSWORD,
+      loginType: LOGIN_TYPES.PASSWORD,
     });
     return admin.uniqueId;
   });
@@ -475,6 +533,63 @@ const run = async () => {
       })),
     );
     return `${titles.length} on ${brands[0].brand.brandName}`;
+  });
+
+  /**
+   * A verified bank account per brand — **before** any settlement is built.
+   *
+   * ⚠️ Without this, `freezeBankSnapshot` returns `undefined` and every
+   * settlement is built with no `bankSnapshot`. Approve and retry then refuse
+   * with *"This brand has no verified bank account"* — correctly, because a
+   * payout to nowhere has no recall. But it meant six seeded settlements that
+   * no admin action could touch, and the refusal names the brand rather than
+   * the fixture, so it reads as a data problem in the panel.
+   *
+   * `isVerified: true` specifically. `models/Bank.js` is a **CGPEY penny-drop
+   * record**, so a row exists for accounts the drop *failed* on — the snapshot
+   * checks the flag, not the row.
+   */
+  step("verified bank account per brand (settlements need the snapshot)", async () => {
+    const Bank = require("../models/Bank");
+
+    for (const [i, { brand, user }] of brands.entries()) {
+      const bank = await Bank.create({
+        brandId: brand._id,
+        user: user._id,
+        accountHolderName: brand.brandName,
+        accountNumber: `9000000000${i}`,
+        maskedAccountNumber: `XXXXXXXX${i}00${i}`,
+        accountLast4Digits: `0${i}0${i}`,
+        ifscCode: "HDFC0000001",
+        bankName: "postman seed bank",
+        branchName: "seed branch",
+        accountType: "CURRENT",
+        isNameMatch: true,
+        isValid: true,
+        isVerified: true,
+        verificationStatus: "SUCCESS",
+        verifiedAt: new Date(),
+        /**
+         * Required by the model, because a penny-drop record without the
+         * provider's own ids is a claim nobody can go back and check. Seeded
+         * with obviously-fake values rather than omitted — an empty string here
+         * would look like a real verification whose reference was lost.
+         */
+        verificationProvider: "CGPEY",
+        providerRequestId: `${MARK.toLowerCase()}-bank-req-${i}`,
+        providerTransactionId: `${MARK.toLowerCase()}-bank-txn-${i}`,
+        recommendedAction: "ACCEPT",
+        verificationResponse: {
+          seeded: true,
+          note: "postman fixture — no penny drop was performed",
+        },
+      });
+
+      // `freezeBankSnapshot` reads `Brand.BankId`, not the other direction.
+      await Brand.updateOne({ _id: brand._id }, { $set: { BankId: bank._id } });
+    }
+
+    return `${brands.length} verified account(s)`;
   });
 
   step("showcase section with a clips-eligible video", async () => {
@@ -667,7 +782,43 @@ const run = async () => {
       },
     ]);
 
-    return "1 banner + 2 tickers";
+    /**
+     * Two more, marked throwaway, for the admin collection to update and
+     * delete.
+     *
+     * ⚠️ The collection cannot create these itself. `POST /banners/create` and
+     * `POST /promotionalTickers/create` take a **file upload**, not a URL —
+     * `"Please upload a image file for this banner type"` — and there is no
+     * binary fixture in the repo for newman to attach. So create stays
+     * uncovered and is named as such in the folder, rather than shipping a
+     * request that cannot pass.
+     *
+     * They are separate rows from the two above on purpose: those are the
+     * customer collection's home-screen examples, and a delete pointed at them
+     * takes that folder down.
+     */
+    throwaway = {
+      banner: await Banner.create({
+        title: "postman seed throwaway banner",
+        description: "Admin collection isko update aur delete karti hai.",
+        type: BANNER_TYPE.IMAGE,
+        image: { url: "https://res.cloudinary.com/demo/image/upload/sample.jpg" },
+        redirect: { type: "NONE" },
+        startDate: null,
+        endDate: null,
+        createdBy: admin._id,
+        isActive: false,
+      }),
+      ticker: await PromotionalTicker.create({
+        title: "postman seed throwaway ticker",
+        icon: { url: "https://res.cloudinary.com/demo/image/upload/sample.jpg" },
+        displayOrder: 99,
+        createdBy: admin._id,
+        isActive: false,
+      }),
+    };
+
+    return "1 banner + 2 tickers (+ 2 throwaway for the admin collection)";
   });
 
   step("customer promo code (+ the setting that makes it usable)", async () => {
@@ -848,7 +999,7 @@ const run = async () => {
       voucherCode: "VCH-90000003",
       status: VOUCHER_STATUSES.DRAFT,
     });
-    const draftVersion = await VoucherVersion.create({
+    draftVersion = await VoucherVersion.create({
       voucherId: draft._id,
       brandId: ctx.brand._id,
       versionNumber: 1,
@@ -1669,6 +1820,20 @@ const run = async () => {
       // The offer the claim flow prices against — see the note where it is written.
       offerId: version.offers?.[0]?._id || null,
 
+      /**
+       * ⚠️ The builders themselves, not just their output.
+       *
+       * The admin settlement step needs more claims — three more per brand,
+       * across three periods — and rebuilding that machinery there would put a
+       * second copy of the pricing, the claim code and the invoice snapshot
+       * beside this one. `buildClaimPreview` is already the reason these
+       * numbers agree with the live API; a second builder is how they stop.
+       */
+      makeCustomer,
+      makePaidClaim,
+      brandA,
+      brandB,
+
       // ── what the vendor collection's money folders read ──
       vendor: {
         settleA,
@@ -1690,6 +1855,371 @@ const run = async () => {
       `1 verified bank account`,
       `1 refund AWAITING_BANK_DETAILS`,
       `+ other customer ${OTHER_CUSTOMER_WHATSAPP} with their own claim`,
+    ].join(" · ");
+  });
+
+  /**
+   * ── settlements in every state an admin can act on ───────────────────────
+   *
+   * The admin settlement folder has **twelve** actions and they are a state
+   * machine, not a list: `approve` needs PENDING_APPROVAL, `pay` needs
+   * APPROVED, `confirm` and `fail` need PROCESSING, `retry` and `abandon` need
+   * FAILED, `reverse` needs PAID. One settlement cannot serve them — the first
+   * request moves it and every later one gets a `422` naming a transition it
+   * never asked for.
+   *
+   * ⚠️ So: several real settlements, each parked where its action starts.
+   *
+   * "Real" is doing work here. `Settlement` carries gross, commission, tax,
+   * reserve, clawbacks and `reserveBasis`, and typing those out is how a
+   * fixture starts disagreeing with the arithmetic it demonstrates. Instead
+   * `buildSettlements` runs **three times over three periods** — the eligible
+   * transactions are backdated so each run claims a different one — and the
+   * results are then walked into position with `transitionSettlement`, the
+   * same helper the endpoints use. Numbers from the builder, states from the
+   * state machine, nothing invented here.
+   */
+  let adminMoney = null;
+  step("settlements parked in each state the admin folder acts on", async () => {
+    const VoucherClaim = require("../models/VoucherClaim");
+    const Transaction = require("../models/Transaction");
+    const Settlement = require("../models/Settlement");
+    const { SETTLEMENT_STATUS } = require("../constants/settlement");
+    const { buildSettlements } = require("../services/settlements");
+    const { transitionSettlement } = require("../helpers/settlements");
+
+    const DAY = 24 * 60 * 60 * 1000;
+    const actor = { userId: admin._id, role: ROLES.ADMIN };
+
+    /**
+     * One extra settled sale per brand per period.
+     *
+     * ⚠️ `claim_usageSlot_oncePerUser` is unique on `{voucher, customer,
+     * offer}`, and brand A's voucher has two offers while brand B's has one.
+     * So the rows come from **more customers**, not more claims per customer —
+     * three of them, one per period.
+     */
+    const rounds = [];
+    for (let i = 0; i < 3; i += 1) {
+      const owner = await money.makeCustomer({
+        key: `3${i}`,
+        whatsapp: `97000000${30 + i}`,
+        name: `postman settlement customer ${i + 1}`,
+      });
+      const a = await money.makePaidClaim({
+        owner,
+        billAmount: 950,
+        settled: true,
+        on: money.brandA,
+      });
+      const b = await money.makePaidClaim({
+        owner,
+        billAmount: 850,
+        settled: true,
+        on: money.brandB,
+      });
+
+      /**
+       * Backdated so each build claims exactly one round. The eligibility
+       * filter is `verifiedAt <= periodEnd` with `settlementId: null` — the
+       * lock — so the oldest build runs first and takes only what it can see.
+       */
+      /**
+       * ⚠️ Every build below has to land in the **past**.
+       *
+       * `buildSettlements({ at })` settles the IST day `delayDays` before `at`,
+       * so the offsets have to leave room for that on both sides. The first
+       * attempt used now-10/-7/-4 with a +6 day build, which put the third
+       * build at **now + 2 days** — and a period that has not happened yet
+       * produces no settlement. The seed then reported "built 4" with nothing
+       * else wrong.
+       */
+      const at = new Date(Date.now() - (13 - i * 3) * DAY);
+      await Transaction.updateMany(
+        { _id: { $in: [a.transaction._id, b.transaction._id] } },
+        { $set: { verifiedAt: at, fundsReceivedAt: at } },
+      );
+      rounds.push({ a, b, at });
+    }
+
+    /**
+     * Oldest first — see the note above.
+     *
+     * ⚠️ The settlements the **money step** already built are excluded up front.
+     * Without that, round one's "what is new" query was `$nin: []`, which
+     * matches everything — so it picked the two newest settlements in the
+     * database, which were the vendor collection's. The admin folder then
+     * walked those through its state machine and `abandon` released their rows,
+     * leaving the vendor's statement empty. Nothing errored: the ids were real,
+     * the transitions were legal, and the damage showed up two collections
+     * away as *"statement khaali hai"*.
+     */
+    const preexisting = (await Settlement.find({}).select("_id").lean()).map(
+      (s) => s._id,
+    );
+
+    for (const r of rounds) {
+      await buildSettlements({ at: new Date(r.at.getTime() + 5 * DAY) });
+    }
+
+    /**
+     * ⚠️ Collected after **all** the builds, not two per round.
+     *
+     * A round does not reliably produce one settlement per brand: a brand whose
+     * period nets to zero goes `CARRIED_FORWARD`, and a period with nothing
+     * eligible produces none at all. Taking `limit(2)` per round therefore
+     * mis-attributed rows whenever a round came up short, and the count only
+     * disagreed at the end.
+     */
+    const built = await Settlement.find({ _id: { $nin: preexisting } })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    if (built.length < 6) {
+      const byStatus = built.reduce((acc, s) => {
+        acc[s.status] = (acc[s.status] || 0) + 1;
+        return acc;
+      }, {});
+      throw new Error(
+        `Expected at least 6 settlements across 3 periods, built ${built.length} ` +
+          `(${JSON.stringify(byStatus)}). The backdated transactions may not be ` +
+          "eligible — see buildEligibilityFilter, and note that a brand with a " +
+          "verified bank account is required for the snapshot.",
+      );
+    }
+
+    /**
+     * Park each one where its action begins.
+     *
+     * ⚠️ Through `transitionSettlement`, not `updateOne`. It enforces
+     * `ALLOWED_SETTLEMENT_TRANSITIONS` and releases the claimed rows on the
+     * terminal states — a fixture written with `$set: { status }` would sit in
+     * a state the real machine can never produce, and the example captured
+     * from it would document behaviour that cannot happen.
+     */
+    const park = async (settlement, path) => {
+      let doc = await Settlement.findById(settlement._id);
+      for (const to of path) {
+        doc = await transitionSettlement({
+          settlement: doc,
+          to,
+          actor,
+          reason: "postman seed — parked for the admin collection",
+        });
+        doc = await Settlement.findById(settlement._id);
+      }
+      return doc;
+    };
+
+    const S = SETTLEMENT_STATUS;
+    // Left where the builder put it: approve → pay → confirm → reverse all
+    // chain off this one, which is the happy path in order.
+    const approvable = built[0];
+    const holdable = built[1];
+    const cancellable = await park(built[2], [S.APPROVED, S.ON_HOLD]);
+    // PROCESSING, so `confirm` and `fail` both have a live payout to act on.
+    const processing = await park(built[3], [S.APPROVED, S.PROCESSING]);
+    // FAILED, for `retry` (→ APPROVED) and `abandon`.
+    const failed = await park(built[4], [S.APPROVED, S.PROCESSING, S.FAILED]);
+    const abandonable = await park(built[5], [
+      S.APPROVED,
+      S.PROCESSING,
+      S.FAILED,
+    ]);
+
+    /**
+     * ── refunds, one per admin action ────────────────────────────────────
+     *
+     * Same reasoning as the settlements above and as the vendor's three: these
+     * are states, not a list. `approve` needs an undecided refund, `pay` needs
+     * one already approved, and the manual-bank pair needs one sitting in the
+     * NEFT flow. Sharing a row means the first request decides it and every
+     * later one answers `422` for "already decided" — the right status for the
+     * wrong reason, which is the same as no test at all.
+     */
+    const RefundRequest = require("../models/RefundRequest");
+    const CustomerBankAccount = require("../models/CustomerBankAccount");
+    const { REFUND_REQUEST_STATUS } = require("../constants/refund");
+    /** Keeps every seeded account number distinct — they are unique per row. */
+    let claimSeqForBanks = 0;
+
+    const refundTargets = [];
+    for (let i = 0; i < 5; i += 1) {
+      const owner = await money.makeCustomer({
+        key: `4${i}`,
+        whatsapp: `97000000${40 + i}`,
+        name: `postman admin refund customer ${i + 1}`,
+      });
+      refundTargets.push(
+        await money.makePaidClaim({
+          owner,
+          billAmount: 900,
+          settled: true,
+          on: i % 2 === 0 ? money.brandA : money.brandB,
+        }),
+      );
+    }
+
+    /**
+     * ⚠️ `settlementHold: true` alongside every one of them.
+     *
+     * That is what asking for a refund really does — the money stops being
+     * eligible for any settlement the moment somebody asks for it back. A
+     * fixture without the hold would let these payments into a settlement, and
+     * then demonstrate exactly the "paid the vendor, now claw it back" case the
+     * hold exists to make impossible.
+     */
+    const openRefund = async (source, status, extra = {}) => {
+      await Transaction.updateOne(
+        { _id: source.transaction._id },
+        { $set: { settlementHold: true } },
+      );
+      return RefundRequest.create({
+        claimId: source.claim._id,
+        transactionId: source.transaction._id,
+        customerId: source.claim.customerId,
+        brandId: source.claim.brandId,
+        requestedAmount: 300,
+        status,
+        reason: "OTHER",
+        reasonNote: "Seeded for the admin refund folder.",
+        isOpen: true,
+        ...extra,
+      });
+    };
+
+    const adminApprovable = await openRefund(
+      refundTargets[0],
+      REFUND_REQUEST_STATUS.VENDOR_APPROVED,
+    );
+    const adminRejectable = await openRefund(
+      refundTargets[1],
+      REFUND_REQUEST_STATUS.VENDOR_APPROVED,
+    );
+    const adminPayable = await openRefund(
+      refundTargets[2],
+      REFUND_REQUEST_STATUS.ADMIN_APPROVED,
+      { approvedAmount: 300 },
+    );
+    /**
+     * ── the manual-bank flow needs three rows, not one ──
+     *
+     * The gates are narrow and they disagree with each other on purpose:
+     *
+     *   `request-bank-details`  status **must** be FAILED, and the point is
+     *                           that no account has been chosen yet
+     *   `pay-to-bank`           status in [ADMIN_APPROVED, ADMIN_OVERRIDE,
+     *                           FAILED] **and** a verified
+     *                           `customerBankAccountId`
+     *
+     * So the row that demonstrates *asking* for bank details cannot be the row
+     * that demonstrates *paying* to them — asking moves it to
+     * AWAITING_BANK_DETAILS, which `pay-to-bank` does not accept. And confirm
+     * and fail each consume their own payout leg, so they need a row each.
+     */
+    const adminBank = await openRefund(
+      refundTargets[3],
+      REFUND_REQUEST_STATUS.FAILED,
+      { approvedAmount: 300, method: "MANUAL_BANK" },
+    );
+
+    /**
+     * A verified account for the two rows that actually pay out.
+     *
+     * ⚠️ `isVerified: true` is what every payout path checks. An unverified row
+     * can exist — it is a penny-drop record, and drops fail — and paying into
+     * one is the single payout mistake with no recall.
+     */
+    const bankFor = async (source) =>
+      (
+        await CustomerBankAccount.create({
+          customerId: source.claim.customerId,
+          accountHolderName: "postman admin refund customer",
+          accountNumber: `88000000000${claimSeqForBanks}`,
+          maskedAccountNumber: `XXXXXXX000${claimSeqForBanks}`,
+          accountLast4Digits: `000${claimSeqForBanks++}`,
+          ifscCode: "HDFC0000001",
+          bankName: "postman seed bank",
+          isVerified: true,
+          verifiedAt: new Date(),
+        })
+      )._id;
+
+    const payoutTarget = await money.makePaidClaim({
+      owner: await money.makeCustomer({
+        key: "45",
+        whatsapp: "9700000045",
+        name: "postman admin payout customer",
+      }),
+      billAmount: 900,
+      settled: true,
+      on: money.brandA,
+    });
+
+    const adminPayout = await openRefund(
+      payoutTarget,
+      REFUND_REQUEST_STATUS.FAILED,
+      {
+        approvedAmount: 300,
+        method: "MANUAL_BANK",
+        customerBankAccountId: await bankFor(payoutTarget),
+      },
+    );
+    const adminFailable = await openRefund(
+      refundTargets[4],
+      REFUND_REQUEST_STATUS.FAILED,
+      {
+        approvedAmount: 300,
+        method: "MANUAL_BANK",
+        customerBankAccountId: await bankFor(refundTargets[4]),
+      },
+    );
+
+    /**
+     * ── a dispute, so the evidence pack has something to build from ──
+     *
+     * ⚠️ A fabricated `disputeId` would 404 whether the endpoint works or not.
+     * The pack is the one screen an admin answers Razorpay from, and "it
+     * returns 404" is not evidence that it assembles correctly.
+     */
+    const Dispute = require("../models/Dispute");
+    const disputeSource = money.paid;
+    const dispute = await Dispute.create({
+      disputeId: `disp_${MARK.toLowerCase()}0001`,
+      transactionId: disputeSource.transaction._id,
+      brandId: disputeSource.claim.brandId,
+      customerId: disputeSource.claim.customerId,
+      status: "OPEN",
+      amount: 300,
+      reason: "Seeded so the evidence pack has a real dispute to assemble.",
+      openedAt: new Date(),
+      respondBy: new Date(Date.now() + 7 * DAY),
+    });
+
+    adminMoney = {
+      approvable,
+      holdable,
+      cancellable,
+      processing,
+      failed,
+      abandonable,
+      brandId: brands[0].brand._id,
+      adminApprovable,
+      adminRejectable,
+      adminPayable,
+      adminBank,
+      adminPayout,
+      adminFailable,
+      dispute,
+      /** Carries a hold from the refunds above, so release-hold has a target. */
+      heldTransaction: refundTargets[0].transaction,
+    };
+
+    void VoucherClaim;
+    return [
+      `6 settlements`,
+      `${approvable.status} · ${holdable.status} · ${cancellable.status}`,
+      `${processing.status} · ${failed.status} · ${abandonable.status}`,
     ].join(" · ");
   });
 
@@ -1838,6 +2368,45 @@ const run = async () => {
         subscription_transaction_id: String(v.subscriptionTxn._id),
       };
       writeEnvIds("vendor-local.postman_environment.json", seeded);
+    }
+
+    /**
+     * ── the admin side ──
+     *
+     * Every one of these is a state an API caller cannot reach from outside: an
+     * admin does not create settlements (a nightly job does), does not open
+     * refunds (a customer does), and cannot put a transaction on hold without a
+     * refund existing first. The six settlement ids are six *different*
+     * settlements, one parked where each action begins.
+     */
+    if (adminMoney) {
+      const a = adminMoney;
+      writeEnvIds("admin-local.postman_environment.json", {
+        brand_id: String(brands[0].brand._id),
+        category_id: String(category._id),
+        draft_version_id: String(draftVersion?._id || ""),
+
+        admin_banner_id: String(throwaway.banner._id),
+        admin_ticker_id: String(throwaway.ticker._id),
+
+        held_transaction_id: String(a.heldTransaction._id),
+        dispute_id: String(a.dispute.disputeId),
+
+        admin_refund_id: String(a.adminApprovable._id),
+        admin_rejectable_refund_id: String(a.adminRejectable._id),
+        admin_payable_refund_id: String(a.adminPayable._id),
+        admin_bank_refund_id: String(a.adminBank._id),
+        admin_payout_refund_id: String(a.adminPayout._id),
+        admin_failable_refund_id: String(a.adminFailable._id),
+
+        settlement_approvable_id: String(a.approvable._id),
+        settlement_holdable_id: String(a.holdable._id),
+        settlement_cancellable_id: String(a.cancellable._id),
+        settlement_processing_id: String(a.processing._id),
+        settlement_failed_id: String(a.failed._id),
+        settlement_abandonable_id: String(a.abandonable._id),
+        other_brand_settlement_id: String(money.vendor.settlementB?._id || ""),
+      });
     }
   }
 
