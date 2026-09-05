@@ -71,12 +71,18 @@ const CUSTOMER_TAX_DEFAULTS = Object.freeze({
 /**
  * Customer-side promo codes.
  *
- * Off until the customer checkout ships. While off, passing a promo code is
- * rejected outright rather than silently ignored — charging full price on a
- * code the customer believes they applied is not acceptable.
+ * On by default. Passing a promo code while this is off is rejected outright
+ * rather than silently ignored — charging full price on a code the customer
+ * believes they applied is not acceptable, and that stays true whichever way
+ * the default points.
+ *
+ * ⚠️ `allowWhenNoOffer` below stays **off**. That is a separate decision and a
+ * more expensive one: a promo on top of no vendor offer at all is a pure
+ * giveaway with no supply behind it, so it is turned on deliberately per
+ * platform rather than inherited from this flag.
  */
 const CUSTOMER_PROMO_DEFAULTS = Object.freeze({
-  isEnabled: false,
+  isEnabled: true,
   // A promo on top of no offer at all is a pure giveaway with no vendor supply
   // behind it, so it needs to be turned on deliberately.
   allowWhenNoOffer: false,
