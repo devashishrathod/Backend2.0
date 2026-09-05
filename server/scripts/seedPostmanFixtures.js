@@ -100,6 +100,32 @@ const OTHER_CUSTOMER_WHATSAPP = "9700000022";
  */
 const ADMIN_PASSWORD = "PostmanSeed@2026";
 
+/**
+ * The email-verification fixture.
+ *
+ * ⚠️ This code is not special to the server. The seeder writes an `Otp` row
+ * whose hash is `hashOtp(EMAIL_VERIFY_OTP, target, purpose)` — the same
+ * function `verifyOtp` uses — so the production path verifies it exactly as
+ * it would a code a real person received. There is no test mode and no
+ * branch: nothing here is reachable outside this seeded database.
+ */
+const EMAIL_VERIFY_OTP = "424242";
+/**
+ * The address each collection switches **to** — one per role, not one shared.
+ *
+ * ⚠️ `verifyOtp` consumes the code on success, so a single shared address
+ * meant the first collection to run took it and the other two answered `401`.
+ * That reads as a broken endpoint rather than an eaten fixture.
+ *
+ * No send-request targets any of these, so the codes survive the two
+ * `send-verification` calls that run earlier in the same folder.
+ */
+const VERIFY_EMAIL_TARGETS = Object.freeze({
+  customer: "verify.customer.pmfx@example.com",
+  vendor: "verify.vendor.pmfx@example.com",
+  admin: "verify.admin.pmfx@example.com",
+});
+
 const log = (...a) => console.log(...a);
 
 const run = async () => {
@@ -1926,6 +1952,51 @@ const run = async () => {
   });
 
   /**
+   * ── a real OTP, so the email-verify success can be captured ──────────────
+   *
+   * ⚠️ Written through `hashOtp`, not stored in the clear — the row is exactly
+   * what `sendOtp` would have written, so `verifyOtp` cannot tell the
+   * difference and nothing in the server had to change to allow it.
+   */
+  step("email-verification OTPs (real rows, no test mode)", async () => {
+    const { saveOtp } = require("../database/otpRepository");
+    const { hashOtp } = require("../utils");
+    const { EMAIL_VERIFY_OTP_PURPOSE } = require("../constants/otp");
+    const { LOGIN_TYPES } = require("../constants");
+
+    /**
+     * Two rows, and both are needed.
+     *
+     * The collection verifies **to** `VERIFY_EMAIL_TARGET` and then back to the
+     * account's own address. Without the second row the account would be left
+     * on a different email and the next run's login — which reads the original
+     * — would fail, exactly as `Set Password` did before its restore existed.
+     */
+    /**
+     * One per collection, plus the admin's own address for its restore.
+     *
+     * ⚠️ The admin needs **two** rows: the first verify consumes the code for
+     * the new address, so the restore back to the original needs its own.
+     * Customer and vendor sign in by WhatsApp and have no email to restore to.
+     */
+    const targets = [
+      ...Object.values(VERIFY_EMAIL_TARGETS),
+      admin.email,
+    ].filter(Boolean);
+
+    for (const target of targets) {
+      await saveOtp(
+        LOGIN_TYPES.EMAIL,
+        target,
+        EMAIL_VERIFY_OTP_PURPOSE,
+        hashOtp(EMAIL_VERIFY_OTP, target, EMAIL_VERIFY_OTP_PURPOSE),
+      );
+    }
+
+    return `${targets.length} address(es) with a verifiable code`;
+  });
+
+  /**
    * ── the two worklists that were answering 404 ────────────────────────────
    *
    * `GET /transactions/webhook/events` and `GET /brands/admin/verifications`
@@ -2492,6 +2563,9 @@ const run = async () => {
         awaiting_bank_refund_id: String(money.awaitingBank._id),
         other_customer_claim_id: String(money.otherPaid.claim._id),
         other_customer_transaction_id: String(money.otherPaid.transaction._id),
+        email_otp: EMAIL_VERIFY_OTP,
+        verify_email: VERIFY_EMAIL_TARGETS.customer,
+        account_email: String(money.primary.user.email || ""),
       };
       writeEnvIds("customer-local.postman_environment.json", seeded);
     }
@@ -2531,6 +2605,9 @@ const run = async () => {
         settlement_id: String(v.settlementA?._id || ""),
         subscription_transaction_id: String(v.subscriptionTxn._id),
         dispute_id: String(adminMoney?.dispute?.disputeId || ""),
+        email_otp: EMAIL_VERIFY_OTP,
+        verify_email: VERIFY_EMAIL_TARGETS.vendor,
+        account_email: String(brands[0].user.email || ""),
       };
       writeEnvIds("vendor-local.postman_environment.json", seeded);
     }
@@ -2567,6 +2644,9 @@ const run = async () => {
         statement_token: String(a.paid?.statementToken || ""),
 
         admin_user_id: String(admin._id),
+        email_otp: EMAIL_VERIFY_OTP,
+        verify_email: VERIFY_EMAIL_TARGETS.admin,
+        account_email: String(admin.email || ""),
         webhook_event_id: String(webhookEvent?.eventId || ""),
         system_verify_id: String(systemVerify?._id || ""),
 

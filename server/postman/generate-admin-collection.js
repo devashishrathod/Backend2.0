@@ -843,6 +843,14 @@ const transactionFolder = folder(
 const emailFolder = emailVerificationFolder({
   name: "14 — Email Verification",
   token: ADM,
+  /**
+   * ⚠️ Only this collection restores. The admin signs in **by email**, so a
+   * verify that leaves the address changed breaks the next run's login — and
+   * the failure surfaces at folder 00, pointing at authentication rather than
+   * here. Customer and vendor accounts sign in by WhatsApp and have no email to
+   * begin with.
+   */
+  restoreEmail: true,
 });
 
 const gateFolder = folder(
@@ -1153,6 +1161,10 @@ const envFile = (name, baseUrl) => ({
       enabled: true,
     },
     { key: "email_otp", value: "", type: "default", enabled: true },
+    /** The address the verify request switches **to**. Seeder writes its OTP. */
+    { key: "verify_email", value: "", type: "default", enabled: true },
+    /** What the account started with, for the restore. Empty where there was none. */
+    { key: "account_email", value: "", type: "default", enabled: true },
 
     // ── generated per run by the pre-request script ──
     { key: "now_iso", value: "", type: "default", enabled: true },

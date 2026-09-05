@@ -26,7 +26,7 @@ const { req, folder, A } = require("./builders");
  * @param {string} args.name   the folder's numbered title in this collection
  * @param {string} args.token  environment variable holding the bearer token
  */
-const emailVerificationFolder = ({ name, token }) =>
+const emailVerificationFolder = ({ name, token, restoreEmail = false }) =>
   folder(
     name,
     [
@@ -148,11 +148,18 @@ const emailVerificationFolder = ({ name, token }) =>
       }),
 
       req({
-        name: "Code ke saath verify karo",
+        name: "Code ke saath verify karo ⭐",
         method: "POST",
         segments: ["auth", "email", "verify"],
         token,
-        body: { otp: "{{email_otp}}" },
+        /**
+         * ⚠️ Names its **own** address, because the two send-requests above
+         * overwrite the OTP row for whatever they target — a code seeded for
+         * the account's own address would be replaced by a random one before
+         * this ran. `verifyEmail` takes an optional `email`, so this stays a
+         * genuine change and exercises `assertNotTaken` and the write too.
+         */
+        body: { otp: "{{email_otp}}", email: "{{verify_email}}" },
         description: [
           "Sahi code par address **likha aur verified dono ek hi save me** hota hai.",
           "",
@@ -168,24 +175,73 @@ const emailVerificationFolder = ({ name, token }) =>
           "⚠️ Code **consume** ho jata hai, to wahi code dobara nahi chalega — warna",
           "ek purana code baad me address phir se badal sakta tha.",
           "",
-          "⚠️ `{{email_otp}}` ek asli inbox se aata hai. Collection ise bhar nahi",
-          "sakti, isliye iska saved example wahi refusal hai jo khaali/galat code par",
-          "aata hai — success ka shape doc me hai.",
+          "⚠️ **`{{email_otp}}` ek asli OTP row se aata hai — server me koi test",
+          "mode nahi hai.** Seeder wahi `hashOtp(code, target, purpose)` use karke",
+          "row likhta hai jo production likhta, isliye `verifyOtp` bilkul waise hi",
+          "chalta hai jaise kisi asli inbox se aaye code par: wahi hash compare,",
+          "wahi attempt counter, wahi consume-on-success.",
+          "",
+          "Ek flag daalna — *\"test me 000000 chalega\"* — theek wahi shape hai",
+          "jisse is repo ka WhatsApp OTP bypass shuru hua tha. Jo branch",
+          "production me pahunch sakti hai wo gap hai, chahe kaise bhi guard karo.",
         ].join("\n"),
         assert: [
-          ...A.custom("verify hua, ya asli refusal", [
-            "const code = pm.response.code;",
-            'pm.expect(code, "status").to.be.oneOf([200, 400, 401, 403, 409, 422]);',
-            "const b = pm.response.json();",
-            "if (code === 200) {",
-            '  pm.expect(b.data.isEmailVerified, "isEmailVerified").to.eql(true);',
-            '  pm.expect(b.data.email, "email").to.be.a("string");',
-            "} else {",
-            "  pm.expect(b.success).to.eql(false);",
-            "}",
+          ...A.status(200),
+          ...A.ok(),
+          ...A.custom("address likha aur verified — ek hi save me", [
+            "const d = pm.response.json().data;",
+            'pm.expect(d.isEmailVerified, "isEmailVerified").to.eql(true);',
+            'pm.expect(d.email, "email").to.eql(pm.environment.get("verify_email"));',
+            "// ⚠️ Dono ek saath. Do step me karne par ek pal aisa banta jahan",
+            "// naya address padha hota aur isEmailVerified false — theek wahi",
+            "// haalat jisse nikalne ka raasta ye feature de raha hai.",
+            'pm.expect(d.wasChange, "wasChange").to.eql(true);',
           ]),
         ],
       }),
+
+      /**
+       * Puts the address back.
+       *
+       * ⚠️ Only where the account **started** with one. A customer or vendor
+       * here signs in by WhatsApp and has no email at all, so there is nothing
+       * to restore to. The admin signs in **by email** — leaving it changed
+       * breaks the next run's login at folder 00, and the failure points at
+       * authentication rather than at the request that moved it. Exactly what
+       * `Set Password` did before its own restore existed.
+       */
+      ...(restoreEmail
+        ? [
+            req({
+              name: "Address wapas set karo (state restore)",
+              method: "POST",
+              segments: ["auth", "email", "verify"],
+              token,
+              body: { otp: "{{email_otp}}", email: "{{account_email}}" },
+              description: [
+                "Upar wali request ne address badal diya. Ye use wapas wahi kar",
+                "deti hai jo environment me hai.",
+                "",
+                "⚠️ Iske liye seeder ne **doosri** OTP row likhi hai — original",
+                "address ke liye. Ek hi row se kaam nahi chalta: pehla verify use",
+                "consume kar chuka hota hai.",
+                "",
+                "⚠️ Ye cosmetic nahi hai. Admin email se login karta hai, to bina",
+                "iske agla run `00 — Setup & Auth` par gir jaata.",
+              ].join("\n"),
+              assert: [
+                ...A.custom("address wapas aa gaya", [
+                  "const code = pm.response.code;",
+                  'pm.expect(code, "status").to.be.oneOf([200, 401, 409, 422]);',
+                  "if (code === 200) {",
+                  '  pm.expect(pm.response.json().data.email, "email")',
+                  '    .to.eql(pm.environment.get("account_email"));',
+                  "}",
+                ]),
+              ],
+            }),
+          ]
+        : []),
     ],
   );
 

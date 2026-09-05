@@ -3418,6 +3418,10 @@ const envFile = (name, baseUrl) => ({
      * refusal and the success shape lives in the doc.
      */
     { key: "email_otp", value: "", type: "default", enabled: true },
+    /** The address the verify request switches **to**. Seeder writes its OTP. */
+    { key: "verify_email", value: "", type: "default", enabled: true },
+    /** What the account started with, for the restore. Empty where there was none. */
+    { key: "account_email", value: "", type: "default", enabled: true },
 
     // ── notification inbox ──
     { key: "notification_id", value: "", type: "default", enabled: true },
