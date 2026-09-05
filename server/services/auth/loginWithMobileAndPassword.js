@@ -2,6 +2,7 @@ const User = require("../../models/User");
 const { ROLES } = require("../../constants");
 const { throwError } = require("../../utils");
 const { assertAccountAccess, markSignedIn } = require("../../helpers/auth");
+const { sanitizeUser } = require("../../helpers/users");
 
 exports.loginWithMobileAndPassword = async (payload) => {
   let { mobile, password, role } = payload;
@@ -24,5 +25,7 @@ exports.loginWithMobileAndPassword = async (payload) => {
   const token = user.getSignedJwtToken();
   // The admin directory filters on these, and this path never set them.
   await markSignedIn(user._id);
-  return { user, token };
+  // See loginWithEmailAndPassword: this document carries the bcrypt hash because
+  // the password had to be compared against it.
+  return { user: sanitizeUser(user), token };
 };

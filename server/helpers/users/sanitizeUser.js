@@ -1,4 +1,27 @@
-const SENSITIVE_USER_FIELDS = Object.freeze(["password", "otp", "__v"]);
+/**
+ * ⚠️ `meta` is in this list, and it is the one entry that is not obviously a
+ * credential.
+ *
+ * It holds `fcmToken`, `ipAddress`, `deviceId` — the push token in particular is
+ * a capability: whoever has it can address notifications at that device. Echoing
+ * it back in a login response puts it into client logs and crash reports for no
+ * benefit, because nothing reads it there. A client that wants to know which
+ * devices are registered has `GET /deviceTokens/get-mine`.
+ *
+ * Checked before adding: `meta` appears in **zero** captured Postman examples
+ * and **zero** documented response shapes. (The `meta` visible in search results
+ * is a different object on a different document and is untouched by this.)
+ *
+ * `otp` is kept here as a guard rather than a fact — the `User` schema has no
+ * such path today, so deleting it is a no-op that costs nothing and keeps
+ * working if one is ever added.
+ */
+const SENSITIVE_USER_FIELDS = Object.freeze([
+  "password",
+  "otp",
+  "__v",
+  "meta",
+]);
 
 /**
  * Strip credentials off a User before it goes out over HTTP.

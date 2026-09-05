@@ -4,6 +4,7 @@ const { verifyOtp } = require("../otps");
 const { sendOtpVerificationSuccessMail } = require("../../helpers/nodeMailer");
 const { LOGIN_TYPES, ROLES } = require("../../constants");
 const { assertAccountAccess } = require("../../helpers/auth");
+const { sanitizeUser } = require("../../helpers/users");
 
 exports.verifyEmailOTP = async (body) => {
   let { otp, email, role, currentScreen } = body;
@@ -27,7 +28,13 @@ exports.verifyEmailOTP = async (body) => {
     user = await user.save();
     const token = user.getSignedJwtToken();
     await sendOtpVerificationSuccessMail(email);
-    return { user, token };
+    /**
+     * The `-password` projection above already keeps the hash out. This adds the
+     * rest of what `sanitizeUser` guards — `__v` and `meta` (the device's push
+     * token and IP) — so every token-issuing path answers with the same shape
+     * rather than each one remembering its own subset.
+     */
+    return { user: sanitizeUser(user), token };
   }
   throwError(400, "Invalid OTP");
 };
