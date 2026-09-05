@@ -57,7 +57,22 @@ const run = async () => {
   const orphans = async ({ label, from, localField, to, extraMatch = {} }) => {
     const rows = await col(from)
       .aggregate([
-        { $match: { [localField]: { $type: "objectId" }, ...extraMatch } },
+        /**
+         * ⚠️ Soft-deleted rows are not orphans any more.
+         *
+         * Without this the report never goes green: `cleanupOrphans.js` sets
+         * `isDeleted: true` — the repo-wide rule, and the right call, because a
+         * hard delete would take the history that explains the orphan with it —
+         * and this script kept counting them. A tool that still shouts after
+         * the fix has been applied teaches people to stop reading it.
+         */
+        {
+          $match: {
+            [localField]: { $type: "objectId" },
+            isDeleted: { $ne: true },
+            ...extraMatch,
+          },
+        },
         {
           $lookup: {
             from: to,
@@ -71,8 +86,10 @@ const run = async () => {
       ])
       .toArray();
 
+    // Same filter as the aggregation above, so `4 / 29` compares like with like.
     const total = await col(from).countDocuments({
       [localField]: { $type: "objectId" },
+      isDeleted: { $ne: true },
       ...extraMatch,
     });
 
