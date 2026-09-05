@@ -5,10 +5,14 @@
 **Base URL (Staging):** `https://backend2-0-4v4i.onrender.com/trydood/v1`
 **Framework:** Express.js (Node.js, CommonJS)
 **Database:** MongoDB (Mongoose ODM)
-**Scope:** Super admin panel ke **110 endpoints**
-**Last verified:** 2026-08-22 against current code · Source: `server2.0` scan (143 total endpoints, categorization → [endpoints_category.md](./endpoints_category.md))
+**Scope:** Super admin panel ke endpoints — platform ke **216 routes** me se admin-category ke **84** ([endpoints_category.md](./endpoints_category.md))
+**Postman:** [`trydood-admin.postman_collection.json`](../postman/trydood-admin.postman_collection.json) — 71 requests, **har ek par live-captured example**
 
-> **Note:** Ye doc code se banaya gaya hai, live API testing se nahi. Har request field, error message, aur response shape actual controller/service/validator code se verify kiya gaya hai. Jahan behaviour buggy ya adhoora hai, wahan ⚠️ marker hai.
+> **Note:** Ye doc code padhkar likha gaya — har request field, error message aur response shape controller/service/validator se verify kiya gaya hai. Jahan behaviour buggy ya adhoora hai, wahan ⚠️ marker hai.
+>
+> **Ab uske upar live run bhi hai.** Admin collection ke 71 requests seeded database par asli server ke against chalte hain aur unke saved examples asli responses hain, likhe hue nahi. Wo run **teen cheezein pakad chuka hai** jo code padhne se nahi dikhtin: `PUT /notifications/preferences` har caller ko `500` de raha tha (validator ka closing brace), seeded admin ka email hi login validator ne kabhi accept nahi kiya hota (`.test` TLD), aur settlement approve/retry chup-chaap refuse karte the kyunki kisi brand ke paas verified bank account tha hi nahi.
+>
+> ⚠️ Baaki 35 admin routes ke requests `trydood-brand-verification`, `trydood-subscription` aur `trydood-security-changes` me hain — admin collection unhe dobara nahi likhti. Dekho [`postman/README.md`](../postman/README.md).
 
 ---
 

@@ -11,7 +11,7 @@
 
 > ✅ **Ye doc live API ke against verify hota hai**, sirf code padhkar nahi likha jaata. Saare endpoints ek chalte hue server pe seeded fixtures ke saath run hote hain: **135 requests, 473 assertions, 0 failed.**
 >
-> ✅ **Postman ke saare examples asli responses hain** — **198 examples, 135/135 requests par**, sab ek live run se capture kiye gaye ([`postman/trydood-customer.postman_collection.json`](../postman/trydood-customer.postman_collection.json)). Koi bhi example haath se nahi likha gaya, isliye wo galat ho hi nahi sakta jab tak API khud galat na ho.
+> ✅ **Postman ke saare examples asli responses hain** — **206 examples, 140/140 requests par**, sab ek live run se capture kiye gaye ([`postman/trydood-customer.postman_collection.json`](../postman/trydood-customer.postman_collection.json)). Koi bhi example haath se nahi likha gaya, isliye wo galat ho hi nahi sakta jab tak API khud galat na ho.
 >
 > ✅ **Har `**Access:**` line routes se derive hoti hai**, likhi nahi jaati — `postman/lib/routeGates.js` `routes/` padhta hai.
 >
@@ -73,7 +73,7 @@ nahi the; upar se do module poori tarah gayab the.
 | 🆕 **Bank Account APIs (4)** | Poora naya module — [17m](#17m-post-bank-accountsotp--code-maango-)–[17p](#17p-delete-bank-accountsaccountid--account-hataao-). Refund jab **usi raaste se wapas nahi ja sakta** tab yahi destination banta hai |
 | 🆕 **Failed refund ka redirect** | [17j-1 `PATCH /refunds/:requestId/bank-account`](#17j-1-patch-refundsrequestidbank-account--failed-refund-kahan-bheju-) — customer batata hai paisa kahan bheja jaaye. Iske bina refund `FAILED` par baitha rehta tha, vendor ka paisa hold me phansa rehta tha, aur grahak ko uska **kabhi milta hi nahi** |
 | **Claims / Refunds / Search TOC me aaye** | Ye sections doc me the par Table of Contents me nahi — is baar link ho gaye |
-| **125/125 Postman requests par saved example** | Pehle 118 me se **30 requests ke examples hi nahi the** (claims, refunds, search, logout). Ab har request par asli captured response hai |
+| **140/140 Postman requests par saved example** | Pehle 118 me se **30 requests ke examples hi nahi the** (claims, refunds, search, logout). Ab har request par asli captured response hai — 492 assertions, 0 failed |
 | 🆕 **Enums Reference poora hua** | 8 naye block: `VOUCHER_CLAIM_STATUS` · `PAYMENT_STATUS` · `REFUND_REASON` · `REFUND_REQUEST_STATUS` + customer labels · refund `method` · abuse limits · `SEARCH_RESULT_TYPES` · claim code alphabet. Sab values `constants/` ke against verify ki gayi hain |
 | 🔴 **Postman generator zinda hua** | `generate-customer-collection.js` **chal hi nahi raha tha** — neeche dekhein |
 | **Env me teeno URL** | `local_url` · `stage_url` · `prod_url` — teeno environment files me, taaki `base_url` badalne se target switch ho jaaye bina re-import |

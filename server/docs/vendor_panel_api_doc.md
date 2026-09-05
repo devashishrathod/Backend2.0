@@ -6,9 +6,9 @@
 **Framework:** Express.js (Node.js, CommonJS)
 **Database:** MongoDB (Mongoose ODM)
 **Scope:** Vendor / brand panel ke **81 endpoints**
-**Last verified:** 2026-08-27 against current code · Source: `server2.0` scan (149 total endpoints, categorization → [endpoints_category.md](./endpoints_category.md))
+**Last verified:** live run against current code · Platform ke **216 routes** me se vendor-category ke ([endpoints_category.md](./endpoints_category.md))
 
-> ✅ **v1.2.0 se ye doc live API ke against verify ho chuka hai** — sirf code padhkar nahi likha gaya. Saare 78 endpoints ek chalte hue server pe seeded fixtures ke saath run kiye gaye: **101 requests, 234 assertions, sab pass.** Collection: [`postman/trydood-vendor.postman_collection.json`](../postman/trydood-vendor.postman_collection.json)
+> ✅ **v1.2.0 se ye doc live API ke against verify ho chuka hai** — sirf code padhkar nahi likha gaya. Har endpoint ek chalte hue server pe seeded fixtures ke saath run kiya gaya: **125 requests, 292 assertions, 0 failed, aur 125/125 par live-captured example.** Voucher Claims, Refunds aur Settlements pehli baar is run me chale — pehle wo teen folders generator me the hi nahi. Collection: [`postman/trydood-vendor.postman_collection.json`](../postman/trydood-vendor.postman_collection.json)
 >
 > Jahan behaviour buggy ya adhoora hai, wahan ⚠️ (ya 🔴, agar wo cheez tod deti hai) marker hai.
 
