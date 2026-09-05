@@ -7662,21 +7662,101 @@ gaya ya shuru nahi hua.
 | 4 | **Voucher redemption** | Counter par voucher redeem mark karna | Vendor redemption screen ban hi nahi sakti | `PATCH /voucher-claims/:id/redeem` — status, `redeemedAt`, `redeemedBy`; refund window par asar dekhna |
 | 5 | **SUB_VENDOR ka daayra** | Outlet manager apne outlet ka kaam kare | Account banta hai par lagbhag bekaar | `resolveActorBrand` ko sub-vendor scope dena — **11 services** use karti hain, blast radius bada |
 
-## C3. Postman collection ki teen documented limitations
+## C3. ✅ Do solve ho gaye, ek bacha
 
-Ye **bug nahi hain** — ye wo cheezein hain jo ek committed collection kar hi nahi
-sakti. Teeno par request maujood hai aur example refusal ka hai, taaki endpoint
-undocumented na rahe.
+Ye teeno "bug" nahi the — ye wo cheezein thin jo ek **committed collection** kar
+nahi sakti. Do ka ab asli coverage hai, teesra jaan-boojh kar waisa hi hai.
 
-| # | Kya | Kyun capture nahi ho sakta | Kya kiya ja sakta hai |
-|---|---|---|---|
-| 6 | `POST /banners/create`, `POST /promotionalTickers/create` | Multipart file chahiye; repo me koi binary fixture nahi | Ek chhoti sample image commit karna, ya capture step me runtime par generate karna |
-| 7 | Razorpay webhooks (`/transactions/webhook/razorpay`, `/customer`) | Raw body par HMAC chahiye; secret ko committed env me daalna credential leak hoga | Pre-request script jo secret ko `pm.environment` se le, aur wo value CI se inject ho — repo me nahi |
-| 8 | `POST /auth/email/verify` ka success | Code asli inbox me jaata hai; collection mail padh nahi sakti | Test-mode par ek fixed OTP, sirf seeded database ke liye |
+### ✅ #6 — Banner aur ticker upload · ab jest me tested
 
-⚠️ Teeno ka saved example **refusal** hai, aur wo jaan-boojh kar hai. Request
-hataane se `verifyApiCoverage` green dikhta aur endpoint kahin documented na
-hota — jo isse bura hai.
+**Kya tha:** dono creates ko file chahiye, aur repo me koi binary fixture nahi.
+Dono ka saved example `422` tha — jo sirf ye sabit karta hai ki validator zinda
+hai, upload ke baare me kuch nahi.
+
+**Kyun fixture nahi daali:** uploads asli Cloudinary account me `folder: "Images"`
+jaate hain. Har capture run par ek asli upload hota, aur wo 1×1 PNG jama hote
+rehte — jinhe kabhi koi delete nahi karta.
+
+**Ab:** `__tests__/money/mediaUploadRollback.test.js` — **12 tests**, mocked
+uploader. Yahan wo cheezein test hoti hain jo ek captured `200` kabhi nahi
+karta:
+
+| Kya | Kyun maayne rakhta hai |
+|---|---|
+| `type` se field derive hona (IMAGE→`image`, VIDEO→`video`, GIF→`gif`) | Galat hone par banner ban jaata aur **blank render** hota |
+| VIDEO banner par image file → `422`, aur upload **attempt hi nahi** | Jo file reject honi hai uske liye Cloudinary ko paisa dena galat kram hai |
+| Overlap guard upload se **pehle** chalta hai | Wahi wajah |
+| Insert fail hone par uploaded media **delete** ho | Warna asset Cloudinary me hamesha rehta, jise koi reference nahi karta aur koi dhoondh nahi sakta |
+| Rollback asli error ko **nigal na le** | Warna `422 "Title is required"` ki jagah rollback ka error dikhta |
+| Insert safal hone par kuch delete **na** ho | — |
+
+⚠️ **Mutation-tested.** `deleteBannerMedia` wali line hata kar chalaya — test
+fail hua, phir file restore ki. Ek test jo bug hataane par bhi pass ho jaaye,
+na hone se bura hai.
+
+⚠️ Ek asli farq bhi pakda gaya: banner khud file ki jaanch karta hai, ticker
+`files?.icon` seedha uploader ko de deta hai. Do endpoint jo ek jaise dikhte
+hain, alag behave karte hain — ab wo assert hai, taaki badle to jaan-boojh kar
+badle.
+
+### ✅ #8 — Email verify ka success · ab asli capture hai
+
+**Kya tha:** code asli inbox me jaata hai, collection mail padh nahi sakti.
+Saved example `401` tha.
+
+**Kaise solve kiya — aur kaise nahi kiya:** server me **koi test mode nahi**
+daala. Koi `if (isTest)`, koi magic OTP jise server accept kare — kuch nahi.
+
+Uske bajaye **seeder ek asli `Otp` row likhta hai**, usi
+`hashOtp(code, target, purpose)` se jo production likhta hai. Collection wahi
+code bhejti hai aur `verifyOtp` **bilkul badla hua nahi** chalta: wahi hash
+compare, wahi attempt counter, wahi consume-on-success.
+
+⚠️ **Ye farq zaroori hai.** Ek flag daalna — *"test me `000000` chalega"* —
+theek wahi shape hai jisse is repo ka WhatsApp OTP bypass shuru hua tha. Jo
+branch production me pahunch sakti hai wo gap hai, chahe kaise bhi guard karo —
+aur `NODE_ENV` yahan guard karta hi nahi (dev machine ke kuch shells me wo
+`production` set hai). Is design me production me **naya code path exist hi
+nahi karta**, to exploit karne ko kuch nahi hai.
+
+Do baatein jo isse chalane layak banati hain:
+
+- **Har collection ka apna address** (`verify.customer.…`, `verify.vendor.…`,
+  `verify.admin.…`). Ek shared address se pehli collection code consume kar
+  leti thi aur baaki do ko `401` milta tha — jo toote endpoint jaisa padha
+  jaata hai, khaayi hui fixture jaisa nahi.
+- **Admin ke liye restore.** Admin **email se login** karta hai, to badla hua
+  address agle run ka login tod deta — aur failure folder `00` par dikhti,
+  us request par nahi jisne address hilaya. Wahi jo `Set Password` ne kiya tha.
+  Uske liye seeder **doosri** row likhta hai, kyunki pehla verify pehli wali
+  consume kar chuka hota hai.
+
+### ⚠️ #7 — Razorpay webhooks · jaan-boojh kar waise hi
+
+`POST /transactions/webhook/razorpay` aur `/customer` ka signature raw body par
+HMAC hai. Collection use bana sakti hai — **par tabhi jab webhook secret ek
+committed env file me ho**, yaani repo me credential, sirf ek green tick ke
+liye. Wo galat sauda hai.
+
+**Aur iski zarurat bhi nahi:** `__tests__/money/webhook.test.js` isko **14
+tests** se cover karta hai aur asli HMAC banata hai:
+
+```js
+crypto.createHmac("sha256", secret).update(rawBody).digest("hex")
+```
+
+To signature verification, replay, aur out-of-order events sab tested hain.
+Collection ka `400` **documentation** hai, gap nahi.
+
+⚠️ Par ek baat: naya webhook event type add karne par **jest test likhna
+padega** — collection use nahi pakdegi. Aur naya webhook path `index.js` ke
+`WEBHOOK_PATHS` me daalna na bhoolein, warna wo rate limiter ke peeche chala
+jaayega — jiska symptom hai **paisa chup-chaap rukna**, kyunki `429` par
+Razorpay kuch der retry karke chhod deta hai.
+
+**Agar kabhi chahiye ho:** pre-request script jo `pm.environment` se secret le,
+aur wo value **CI se inject** ho — repo me kabhi nahi.
+
 
 ---
 
