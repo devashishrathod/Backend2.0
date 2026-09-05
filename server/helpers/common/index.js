@@ -5,6 +5,7 @@ const {
   istDateKey,
   istFinancialYear,
 } = require("./istDate");
+const { generateUniqueDisplayId } = require("./generateUniqueDisplayId");
 
 module.exports = {
   IST_OFFSET_MINUTES,
@@ -12,4 +13,5 @@ module.exports = {
   istDayEnd,
   istDateKey,
   istFinancialYear,
+  generateUniqueDisplayId,
 };

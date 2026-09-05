@@ -2,7 +2,15 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { ROLES, LOGIN_TYPES, SCREENS } = require("../constants");
-const { customerField, brandField, subBrandField } = require("./validObjectId");
+const {
+  NOTIFICATION_PREFERENCE_DEFAULTS,
+} = require("../constants/notification");
+const {
+  customerField,
+  brandField,
+  subBrandField,
+  userField,
+} = require("./validObjectId");
 const {
   isValidEmail,
   isValidUsername,
@@ -69,7 +77,52 @@ const userSchema = new mongoose.Schema(
     uniqueId: { type: String, required: true, unique: true },
     appliedReferralCode: { type: String },
     referralCount: { type: Number, default: 0 },
-    // notificationPreferences: {},
+    /**
+     * Which channels this person will accept a notification on.
+     *
+     * One home for all four roles — a customer, a vendor, an outlet manager and
+     * an admin each have exactly one `User`, so the toggles, the API and the
+     * read are the same everywhere and a role added later needs nothing.
+     * `notify()` already resolves a `userId` on every path (`brandId` → the
+     * brand's owner, `customerId` → the customer's user), so reading these costs
+     * no extra query.
+     *
+     * ⚠️ Independent of each other. WhatsApp off with email and push on means
+     * email and push still send.
+     *
+     * ⚠️ **Never read these fields directly.** `default: true` applies only to
+     * documents created after this field existed — every user already in the
+     * database has no `notificationPreferences` at all, and absent has to mean
+     * *on*. `helpers/notifications/channelPreferences.js` is the only place that
+     * makes that call, and a test asserts nothing else does.
+     *
+     * The in-app row is not on this list, on purpose: it is the record every
+     * delivery outcome is written back onto.
+     */
+    notificationPreferences: {
+      email: {
+        type: Boolean,
+        default: NOTIFICATION_PREFERENCE_DEFAULTS.email,
+      },
+      push: {
+        type: Boolean,
+        default: NOTIFICATION_PREFERENCE_DEFAULTS.push,
+      },
+      whatsapp: {
+        type: Boolean,
+        default: NOTIFICATION_PREFERENCE_DEFAULTS.whatsapp,
+      },
+      /**
+       * Who last changed these, and when.
+       *
+       * An admin can switch another person's notifications off from their
+       * profile card, and *"why did I stop getting emails?"* has to be
+       * answerable. Absent `updatedBy` with a present `updatedAt` means the
+       * person changed it themselves.
+       */
+      updatedBy: userField,
+      updatedAt: { type: Date },
+    },
     // paymentPreferences: {},
     followerCount: { type: Number, default: 0 },
     followingCount: { type: Number, default: 0 },
@@ -188,5 +241,69 @@ userSchema.index(
     partialFilterExpression: { appliedReferralCode: { $type: "string" } },
   },
 );
+
+/**
+ * ---------------- the three fields somebody signs in with ----------------
+ *
+ * ### ⚠️ There was no uniqueness on any of them
+ *
+ * `username`, `referralCode` and `uniqueId` were unique. `whatsappNumber`,
+ * `email` and `mobile` were not — and those are the ones every auth path looks a
+ * user up by:
+ *
+ * ```js
+ * User.findOne({ whatsappNumber, role, isDeleted: false })   // assumes one
+ * ```
+ *
+ * `findOne` on a non-unique key returns **an** answer, not **the** answer, and
+ * nothing in the code notices. It has already happened: `8210574144` had four
+ * CUSTOMER accounts in the dev database, all created inside the same second —
+ * four concurrent taps that each passed a read-then-write existence check and
+ * each inserted. From that moment their login landed on whichever row the
+ * planner felt like, so which history they saw was decided by nothing at all.
+ *
+ * The existence check cannot fix this and never could: two requests both read
+ * "no user" before either writes. **The index decides, not the timing** — the
+ * same discipline the money paths already use for idempotency keys and the
+ * once-per-user claim slot.
+ *
+ * ### Why `{ field, role }` and not the field alone
+ *
+ * Every lookup in the codebase is keyed on the pair, and the same person
+ * legitimately holds a CUSTOMER and a VENDOR account on one number. Making the
+ * number globally unique would refuse a vendor signing up to buy something,
+ * which is a real thing people do.
+ *
+ * ### Why partial, and why `isDeleted: false` is in the filter
+ *
+ * ⚠️ **A blanket unique on a nullable path rejects the second row that has no
+ * value.** `email` and `mobile` are absent on OTP-created accounts, and Mongo
+ * indexes a missing field as `null` — so a plain unique index here would refuse
+ * the second customer who never gave an email, with a duplicate-key error naming
+ * a field they never filled in. That is the `invoiceId_1` failure in `CLAUDE.md`,
+ * and this is the shape that avoids it.
+ *
+ * `isDeleted: false` is in the filter so a **soft-deleted account releases its
+ * number**. Without it, closing an account would silently reserve that phone
+ * number for ever, and the person could never sign up again.
+ *
+ * ⚠️ Both conditions are equality/`$type`, which is all `partialFilterExpression`
+ * accepts — no `$in`, no `$ne`. See the note in `CLAUDE.md`.
+ */
+const identityIndex = (field) => [
+  { [field]: 1, role: 1 },
+  {
+    name: `user_${field}_role_unique`,
+    unique: true,
+    partialFilterExpression: {
+      [field]: { $type: "string" },
+      isDeleted: false,
+    },
+  },
+];
+
+userSchema.index(...identityIndex("whatsappNumber"));
+userSchema.index(...identityIndex("email"));
+userSchema.index(...identityIndex("mobile"));
 
 module.exports = mongoose.model("User", userSchema);

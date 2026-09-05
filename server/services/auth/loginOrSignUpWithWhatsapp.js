@@ -112,6 +112,36 @@ const createUserWithProfile = async ({ whatsappNumber, role }) => {
       error?.writeErrors?.some((e) => e?.code === 11000);
 
     if (isDuplicate) {
+      /**
+       * ⚠️ A duplicate here is usually **the other tap winning**, not a failure.
+       *
+       * Since `user_whatsappNumber_role_unique` exists, two concurrent signups on
+       * the same number no longer both insert — one loses on the index. Telling
+       * that person *"could not complete signup, please try again"* would be a
+       * lie about an account that now exists, and their retry would just race
+       * again.
+       *
+       * So the loser re-reads and continues with the winner's row. Same shape as
+       * the claim and refund paths: the index decides who writes, and the one who
+       * did not write is handed what the winner made.
+       *
+       * ⚠️ Before that index, this branch is what four rows on `8210574144` got
+       * past — nothing collided, so nothing was refused, and each tap made its
+       * own account.
+       */
+      const winner = await User.findOne({
+        whatsappNumber,
+        role,
+        isDeleted: false,
+      });
+      if (winner) return winner;
+
+      /**
+       * No winner means the collision was on a generated value —
+       * `uniqueId`, `referralCode` or `merchantId`, all produced by
+       * read-then-write helpers that two callers can land on together. The
+       * transaction rolled back, so a retry genuinely is the right advice.
+       */
       throwError(409, "Could not complete signup, please try again.");
     }
     throw error;
@@ -176,9 +206,20 @@ exports.loginOrSignUpWithWhatsapp = async (body) => {
       );
     }
     user = await createUserWithProfile({ whatsappNumber, role });
-  } else {
-    user = await repairRoleProfile(user, role, whatsappNumber);
   }
+
+  /**
+   * Always, not only on the existing-user branch.
+   *
+   * `createUserWithProfile` can now return a row it did **not** create — the
+   * winner of a signup race, handed back after the index refused this request's
+   * insert. That row is normally complete, but it was written by another
+   * request whose outcome this one cannot see, so assuming it is whole is
+   * exactly the assumption that produced orphaned accounts before.
+   *
+   * Idempotent by design: a healthy account falls straight through.
+   */
+  user = await repairRoleProfile(user, role, whatsappNumber);
 
   //  await sendOtp(LOGIN_TYPES.WHATSAPP, whatsappNumber);
 
