@@ -920,15 +920,78 @@ Admin ke liye **email OTP recommended path** hai — yahan verification actually
 
 ## 12. POST /auth/logout
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** Intended: All roles · Enforced: **Any authenticated** (deactivated account bhi kar sakta hai)
 
-### Success — `200`
-```json
-{ "success": true, "message": "Logout successful", "data": {} }
+### Body — optional
+| Field | Type | Default | Kya karta hai |
+|---|---|---|---|
+| `pushToken` | string | — | Is device ka push band |
+| `allDevices` | boolean | `false` | `true` = har device se sign out — **har purana JWT turant dead** |
+
+```jsonc
+{ }                        // sirf is session ka flag saaf
+{ "pushToken": "fcm..." }  // + is device ka push band
+{ "allDevices": true }     // + har device ka JWT aur push khatam
 ```
 
-### ⚠️ Note
-Server-side kuch nahi hota. Sahi sequence: `PUT /deviceTokens/unregister` → `POST /auth/logout` → local clear.
+### Success — `200`
+```jsonc
+{
+  "success": true,
+  "message": "Logout successful",
+  "data": {
+    "allDevices": false,
+    "sessionsEnded": false,
+    "pushDeactivated": 1,
+    "activeDevices": 1
+  }
+}
+```
+
+### ✅ RESOLVED — pehle ye sach me kuch nahi karta tha
+
+**Pehle:** endpoint `200` deta tha aur **server par kuch nahi hota tha** — na `isLoggedIn`, na push, na token. Ek chori hua JWT apni poori umr tak chalta rehta, aur notifications us phone par aati rehti jisse user sign out kar chuka tha. Ye doc bhi wahi sequence sikhata tha (`unregister` phir `logout`), yaani client ko wo kaam karna padta jo server ko karna chahiye tha.
+
+**Ab:** flags set hote hain, push deactivate hota hai, aur `allDevices: true` par **har** purana JWT khatam.
+
+⚠️ **`allDevices` sabse zaroori admin ke liye.** Ek admin account platform ka har brand, har payment aur har settlement dekh sakta hai — kho gaye laptop par `sessionsEnded` hi wo ek switch hai jo turant sab band karta hai.
+
+---
+
+## 12a. POST /auth/email/send-verification 🆕
+## 12b. POST /auth/email/verify 🆕
+
+**Access:** 🔒 `verifyJwtToken` — **har role**, koi role gate nahi.
+
+`User.isEmailVerified` sabke paas tha aur koi bhi use set nahi kar sakta tha — email edit karne par flag `false` ho jaata tha aur wapas `true` karne ka koi raasta nahi tha.
+
+Ye wahi do endpoint hain jo vendor panel aur customer app use karte hain: ek `User`, ek flow. `email` **dono call par optional** — na bhejein to account ka apna address confirm hota hai, bhejein to us par switch (aur **verify hone tak account nahi badalta**).
+
+```jsonc
+// 12a
+{ }                              // apna address confirm
+{ "email": "ops@trydood.com" }   // is par switch
+
+// 12b
+{ "otp": "482913" }
+```
+
+| Code | Kab |
+|---|---|
+| `200` | Code gaya / verify ho gaya |
+| `401` | Code galat, expire, ya use ho chuka |
+| `403` | Attempts khatam |
+| `409` | Address pehle se verified, ya kisi aur ke **usi role** ke account par |
+| `422` | Account par email hai hi nahi aur aapne bheja bhi nahi |
+| `429` | Throttle — 60s gap, 5 per hour, **target address** par keyed |
+
+⚠️ **Code hamesha naye address par jaata hai**, purane par nahi. Purane mailbox par bhejna sirf ye sabit karta hai ki insaan purana mailbox padh leta hai — sawal wo hai hi nahi.
+
+⚠️ **`sentTo` masked hota hai.** Ye endpoint chori hui session se bhi chal sakta hai.
+
+⚠️ **Uniqueness `{ email, role }` par**, aur **verify par dobara** check hoti hai — dono call ke beech minute nikalte hain aur utni der me koi aur wo address le sakta hai.
+
+Poora detail: [vendor doc #19c/#19d](./vendor_panel_api_doc.md#19c-post-authemailsend-verification-).
 
 ---
 
@@ -6219,7 +6282,35 @@ Sirf [common auth errors](#common-errors) + `403` role check.
 | `vendor.subscription` | Niche full table |
 | `customer` | Niche full table — **naya**, pehle pahunch me hi nahi tha |
 | `admin.notification` | 🆕 `isEmailNotificationEnabled` · `isPushNotificationEnabled` · `isWhatsAppNotificationEnabled` |
+| `app` | 🆕 `minVersion` · `latestVersion` · `support` · `features` — niche |
 | `isActive` | boolean |
+
+### 🆕 `app` — mobile app ka force-update aur support contact
+
+```json
+{
+  "app": {
+    "minVersion":    { "android": "1.4.0", "ios": "1.4.0" },
+    "latestVersion": { "android": "1.6.2", "ios": "1.6.1" },
+    "support":  { "email": "help@trydood.com", "phone": "18001234567", "whatsapp": "919876543210" },
+    "features": { "promoCodes": true, "refunds": true, "voucherClaims": true, "search": true }
+  }
+}
+```
+
+Yahi block **`GET /app-config`** padhta hai — wo public hai, token ke bina, aur app launch par pehla call hota hai.
+
+> ### 🔴 Ye block yahan hone ki poori wajah
+>
+> Minimum version pehle bhi `Setting` me tha, par use padhne ka ekmatra raasta `GET /settings/get` tha — jo `isAdmin` hai. Matlab app use padh hi nahi sakti thi: number **build me hardcode** hota tha, aur badalne ke liye wahi update chahiye hota jo wo maang raha hai.
+>
+> Ab yahan se badla ja sakta hai aur app agle launch par dekh legi — koi release nahi.
+
+⚠️ **`updateRequired` server tay karta hai, app nahi.** Client apna version bhejta hai aur `GET /app-config` jawab deta hai. Do apps me *"kya main minimum se neeche hoon"* likhna do mauke hain `"1.10.0" < "1.9.0"` wali galti karne ke — jo **text me sach hai** — aur wo galti theek un builds me hoti jinhe theek karne ke liye wahi update chahiye jo wo maang rahe hain.
+
+⚠️ **`features` display flags hain, gate nahi.** Inhe `false` karne se endpoint band nahi hota — app us tab/button ko chhupa deti hai. Asli gate `customer.promoCode.isEnabled` jaise blocks me hai. Dono ko ek samajhna matlab ek feature UI se gayab par API par khula.
+
+⚠️ `GET /app-config` **whitelist** se banta hai, `Setting` minus kuch nahi. Wahi document commission, reserve rate, settlement timing aur gateway-fee bearer bhi rakhta hai — ek spread us line par bilkul normal dikhta aur platform ki economics public kar deta.
 
 ### 🆕 `admin.notification` — admin audience ke apne channels
 
