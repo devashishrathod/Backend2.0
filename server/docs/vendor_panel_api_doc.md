@@ -89,14 +89,14 @@ Ye **re-verification round** tha — har endpoint ka gate code se dobara nikala 
 
 ## Overview
 
-Vendor panel 18 functional areas cover karta hai:
+Vendor panel 22 functional areas cover karta hai:
 
 | # | Area | Endpoints | Kya karta hai |
 |---|---|---:|---|
 | 1 | Auth | 10 | WhatsApp/Email/Mobile OTP login + password set/forgot/reset + logout |
 | 2 | User Profile | 3 | Profile fetch, update, delete |
 | 3 | Push Notifications | 4 | Device register/unregister, my devices, test |
-| 4 | Notification Feed | 2 | In-app notifications + mark read |
+| 4 | Notification Feed | 4 | In-app notifications, mark read, aur email/push/WhatsApp toggles ([#19a](#19a-get-notificationspreferences-), [#19b](#19b-put-notificationspreferences-)) |
 | 5 | Onboarding | 8 | Business details → PAN → GST → Bank → system verify → partnership → acknowledge |
 | 6 | KYC Verification | 3 | Live PAN / GST / Bank verification (CGPey) |
 | 7 | Brand | 3 | Brand detail, update, verification history |
@@ -111,6 +111,10 @@ Vendor panel 18 functional areas cover karta hai:
 | 16 | Payments | 4 | Checkout preview, order, verify, invoice |
 | 17 | Master Data | 4 | Categories + sub-categories |
 | 18 | Legal | 4 | Terms & Conditions, Privacy Policy |
+| 19 | Voucher Claims | 5 | Read-only — claims, payments, aur counter par code verify ([#82](#82-get-voucher-claims--mere-brand-ki-claims)–[#86](#86-get-voucher-claimscodeclaimcode--counter-par)) |
+| 20 | Refunds | 4 | Worklist, approve, reject, detail ([#87](#87-get-refunds--mere-brand-ki-refunds)–[#90](#90-get-refundsrequestid--ek-refund)) |
+| 21 | Settlements | 3 | Payouts, legs, statement lines ([#91](#91-get-settlements--mere-payouts)–[#93](#93-get-settlementssettlementidtransactions--statement-lines)) |
+| 22 | Email Verification | 2 | 🆕 Address confirm ya change ([#19c](#19c-post-authemailsend-verification-), [#19d](#19d-post-authemailverify-)) — har role ke liye ek hi flow |
 
 **Important architecture notes:**
 
@@ -1370,6 +1374,102 @@ aur email/WhatsApp hi ek raasta bachta hai. Poori list aur rule:
 [`docs/notification_preferences.md`](./notification_preferences.md).
 
 ⚠️ **OTP ismein nahi aata** — koi apne hi login code ko silence na kar paye.
+
+---
+
+## 19c. POST /auth/email/send-verification 🆕
+
+**Access:** 🔒 `verifyJwtToken` — **har role**: vendor, outlet manager, customer, admin. Koi role gate nahi.
+
+`User.isEmailVerified` sabke paas tha aur **koi bhi use set nahi kar sakta tha**. Email edit karne par flag `false` ho jaata tha aur wapas `true` karne ka koi endpoint hi nahi tha — badge sirf ek taraf ja sakta tha. Yahi wo gap hai jo *"Known Gaps #5"* me likha tha.
+
+### Verify aur change ek hi jodi hai
+
+`email` **dono call par optional** hai:
+
+| Bheja | Kya hota hai |
+|---|---|
+| kuch nahi | Account par jo address hai wahi confirm hota hai |
+| naya address | Us par switch — par **verify hone tak account nahi badalta** |
+
+Do alag endpoints ka matlab hota client pehle decide kare ki address badla hai ya nahi — aur wo faisla server ke paas pehle se hai.
+
+```jsonc
+{ }                                  // account ka apna email confirm karo
+{ "email": "billing@cafemocha.in" }  // is address par switch karo
+```
+
+### Response — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "We have sent a code to bi***g@cafemocha.in.",
+  "data": {
+    "sentTo": "bi***g@cafemocha.in",   // ⚠️ hamesha masked
+    "isChange": true                    // true = address badla ja raha hai
+  }
+}
+```
+
+> ### ⚠️ Code hamesha **naye** address par jaata hai
+>
+> Purane mailbox par code bhejna sirf ye sabit karta hai ki insaan purana mailbox padh leta hai. Sawal wo hai hi nahi — sawal ye hai ki naya address unka hai ya nahi.
+
+⚠️ **`sentTo` masked hai** kyunki ye endpoint chori hui session se bhi chal sakta hai, aur poora address us haath me nayi jaankari hoti.
+
+⚠️ **Uniqueness `{ email, role }` par hai.** Ek hi address ka VENDOR aur CUSTOMER account rakhna supported hai — vendor apne hi platform par khareedari kar sakta hai. Collision sirf **usi role** ke andar hai.
+
+### Throttle
+
+`sendOtp` ke andar — **60 second gap, 5 per hour**, **target address** par keyed, IP par nahi. Route par rakhna matlab agla OTP endpoint bina protection ke chala jaata, aur bhoolne par **koi error hi nahi aata** — bas ek khula endpoint jo har request par paisa kharch karta hai.
+
+| Code | Kab |
+|---|---|
+| `200` | Code chala gaya |
+| `409` | Ye address pehle se verified hai (aur badla bhi nahi ja raha) |
+| `409` | Wo address kisi aur ke **usi role** ke account par hai |
+| `422` | Account par email hai hi nahi, aur aapne bheja bhi nahi |
+| `429` | Throttle — 60s ke andar dobara, ya ghante me chhathi baar |
+
+---
+
+## 19d. POST /auth/email/verify 🆕
+
+**Access:** 🔒 `verifyJwtToken` — har role.
+
+```jsonc
+{ "otp": "482913" }                                        // apna address confirm
+{ "otp": "482913", "email": "billing@cafemocha.in" }       // switch confirm
+```
+
+### Response — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "Email address updated and verified.",
+  "data": { "email": "billing@cafemocha.in", "isEmailVerified": true, "wasChange": true }
+}
+```
+
+⚠️ **Address likhna aur verified mark karna ek hi save me** hota hai. Do step me karne par ek pal aisa banta jahan naya address padha hota aur `isEmailVerified: false` — theek wahi haalat jisse nikalne ka raasta ye feature de raha hai.
+
+⚠️ **Uniqueness yahan dobara check hoti hai.** Dono call ke beech minute nikalte hain, aur utni der me koi aur wo address le sakta hai. Sirf bhejte waqt check karna aapko ek verified duplicate de deta.
+
+⚠️ **`loginType` nahi badalta.** `verifyEmailOTP` use `EMAIL` karta hai kyunki wo ek sign-in hai; ye nahi — aapke paas pehle se token hai. Yahan badalna ek WhatsApp vendor ka record sirf isliye badal deta ki usne apna address confirm kiya.
+
+⚠️ **Code consume ho jaata hai** — wahi code dobara nahi chalega, warna ek purana code baad me address phir se badal sakta tha.
+
+| Code | Kab |
+|---|---|
+| `200` | Verified |
+| `401` | Code galat, expire, ya pehle se use ho chuka |
+| `403` | Attempts khatam — naya code maangna padega |
+| `409` | Wo address is beech me kisi aur ne le liya |
+| `422` | `otp` nahi bheja, ya email ka format galat |
+
+> ⚠️ **Iska success example Postman me capture nahi hua** — code ek asli inbox me jaata hai aur collection use padh nahi sakti. Saved example wahi refusal hai jo khaali code par aata hai; upar wala `200` shape code se likha gaya hai.
 
 ---
 
@@ -6352,10 +6452,13 @@ enforce nahi hota.
 **Vendor panel pe impact:** redemption/scan screen abhi ban nahi sakta. Voucher analytics
 bhi limited rahegi. Ye agle phase ka kaam hai.
 
-### 5. Email verification ka endpoint nahi hai
-Email change pe `isEmailVerified: false` ho jaata hai, par verify karne ka raasta nahi.
+### 5. ✅ RESOLVED — Email verification ab hai
 
-**Vendor panel pe impact:** email verified badge/flow abhi na banayein.
+**Pehle:** email change pe `isEmailVerified: false` ho jaata tha, aur wapas `true` karne ka koi raasta nahi tha. Badge sirf ek hi taraf ja sakta tha.
+
+**Ab:** [`POST /auth/email/send-verification`](#19c-post-authemailsend-verification-) aur [`POST /auth/email/verify`](#19d-post-authemailverify-) — dono `verifyJwtToken` ke peeche, **koi role gate nahi**. Wahi do endpoint customer app bhi use karti hai.
+
+**Vendor panel pe impact:** verified badge aur email-change flow ab banaya ja sakta hai.
 
 ### 6. `POST /auth/logout` push unregister nahi karta
 Aur token blacklist bhi nahi hai — JWT apni expiry tak valid rehta hai.
