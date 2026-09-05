@@ -176,6 +176,17 @@ exports.getAllAdminBrands = async (query = {}) => {
         isSignUpCompleted: 1,
         isOnBoardingCompleted: 1,
         createdAt: 1,
+        /**
+         * The vendor's own channel toggles, so the directory can show the state
+         * without a call per row.
+         *
+         * ⚠️ Raw, and it is often **absent** — the field only appears once
+         * somebody changes a setting, and absent means every channel is on. A
+         * client must not read these booleans directly; the resolved answer is
+         * on `GET /notifications/admin/preferences`, which also reports whether
+         * the platform switch is overriding them.
+         */
+        notificationPreferences: 1,
       },
     }),
     ...buildAggregateLookup({

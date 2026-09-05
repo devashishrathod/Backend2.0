@@ -9,9 +9,10 @@ const {
 const { sendMail } = require("../nodeMailer");
 const { dispatchPush } = require("../push");
 const { sendWhatsApp } = require("../whatsapp");
-const { getSubscriptionConfig, getCustomerConfig } = require("../settings");
 const Customer = require("../../models/Customer");
 const { resolveCustomerId } = require("../customers");
+const { isChannelAllowed } = require("./channelPreferences");
+const { resolveAudienceChannels } = require("./audienceChannels");
 
 /**
  * Resolve where to reach a brand: the address on the brand, falling back to the
@@ -46,13 +47,22 @@ const resolveRecipient = async (brandId, userId, customerId) => {
   const targetUserId = userId || customer?.userId || brand?.userId;
   const user = targetUserId
     ? await User.findById(targetUserId)
-        .select("email name mobile whatsappNumber")
+        // ⚠️ `notificationPreferences` rides along on a read that already
+        // happens — the person's channel toggles cost no extra query on any
+        // path, which is precisely why they live on `User`.
+        .select("email name mobile whatsappNumber notificationPreferences")
         .lean()
     : null;
 
   return {
     userId: targetUserId || null,
     customerId: resolvedCustomerId || null,
+    /**
+     * Raw, not normalised. `channelPreferences.js` owns the "absent means on"
+     * decision and is the only place allowed to make it — handing a normalised
+     * object around would let a second opinion form somewhere else.
+     */
+    notificationPreferences: user?.notificationPreferences || null,
     email: customer?.email || brand?.email || user?.email || null,
     phone:
       customer?.whatsappNumber ||
@@ -77,14 +87,16 @@ const resolveRecipient = async (brandId, userId, customerId) => {
  *
  * Shaped the same either way, so the three delivery blocks below do not have to
  * know which audience they are serving.
+ *
+ * ⚠️ **Admin used to fall through to the vendor block**, because the branch was
+ * *"customer? … otherwise vendor"*. So switching off vendor renewal reminders
+ * also switched off `SETTLEMENT_LEDGER_DRIFT`, `REFUND_FAILED` and every other
+ * alert whose job is to reach a person when money has gone wrong — and nothing
+ * said so, because the in-app rows kept appearing exactly as before.
+ *
+ * That branch, and the `{}` fallback that used to sit under it, now live in
+ * `audienceChannels.js` as a table — see that file for what `{}` cost.
  */
-const getNotificationConfig = async (audience) => {
-  if (audience === NOTIFICATION_AUDIENCE.CUSTOMER) {
-    const { notification } = await getCustomerConfig();
-    return notification;
-  }
-  return getSubscriptionConfig();
-};
 
 /**
  * Record a notification and try to deliver it.
@@ -156,25 +168,42 @@ exports.notify = async ({
       dedupeKey,
     });
 
-    // One config read for all three channels. Guarded, because a notification
-    // must not be lost to a settings read failing — the row is already written,
-    // and defaults are the right fallback for a delivery decision.
-    let config = {};
-    try {
-      config = await getNotificationConfig(audience);
-    } catch (error) {
-      console.error(
-        `[notify] could not read notification settings for ${notification._id}:`,
-        error?.message,
-      );
-    }
+    /**
+     * Which channels may carry this, to this person.
+     *
+     * Two switches, decided once and used by all three blocks below:
+     *
+     *  - the **platform** toggle for this audience — an operational kill switch
+     *  - this person's **own** `notificationPreferences`
+     *
+     * A send needs both. `ALWAYS_DELIVER_TYPES` lets a handful of notices
+     * outrank the personal one — never the platform one, because that is what is
+     * set when SMTP is down or a Meta template does not exist.
+     *
+     * ⚠️ One config read for all three channels, and it **cannot fail into an
+     * ambiguous state**: `resolveAudienceChannels` never throws and always
+     * returns three real booleans, falling back to that audience's declared
+     * defaults. That is what lets every gate below be the same expression
+     * instead of three operators that disagreed about a missing flag.
+     *
+     * ⚠️ The row above is already written. None of this can stop the record;
+     * it only decides what leaves the process.
+     */
+    const { channels: platform } = await resolveAudienceChannels(audience);
+    const allow = (channel) =>
+      isChannelAllowed({
+        channel,
+        preferences: recipient.notificationPreferences,
+        platformEnabled: platform[channel],
+        type,
+      });
 
     // ---------------- push ----------------
     // Fire-and-forget for the same reason as email: this runs inside payment
     // verification and the webhook receiver, and a provider round trip has no
     // business on either. `dispatchPush` never throws.
     const pushing =
-      push && recipient.userId && config.isPushNotificationEnabled !== false
+      push && recipient.userId && allow("push").allowed
         ? dispatchPush([recipient.userId], {
             title,
             body,
@@ -210,7 +239,7 @@ exports.notify = async ({
     const messaging =
       whatsapp?.params?.length &&
       recipient.phone &&
-      config.isWhatsAppNotificationEnabled === true
+      allow("whatsapp").allowed
         ? sendWhatsApp({
             phone: recipient.phone,
             type,
@@ -252,20 +281,35 @@ exports.notify = async ({
 
     if (!email) return { created: true, notification };
 
-    if (!config.isEmailNotificationEnabled || !recipient.email) {
+    if (!allow("email").allowed || !recipient.email) {
       return { created: true, notification };
     }
 
     // Delivery result is written back onto the row whenever it lands.
+    //
+    // ⚠️ `mail` is spread, not re-listed field by field.
+    //
+    // It used to be re-listed — `lines`, `ctaLabel`, `ctaUrl`, `footnote` — and
+    // that list is what dropped **19 email buttons**: five notice files passed
+    // `buttonText` / `buttonUrl`, which was not on it, so the field never reached
+    // `sendMail`. The mail sent, looked complete, recorded `EMAIL` on the row, and
+    // simply had no button in it. Nothing errored and nothing logged, because a
+    // key that is not destructured is not an error in JavaScript.
+    //
+    // Spreading removes the class of bug rather than that one instance: a field
+    // the renderer learns later — a second button, a preheader, an attachment —
+    // works from a notice helper with no change here.
+    //
+    // ⚠️ `to` comes **after** the spread, so a notice cannot redirect its own
+    // mail by putting a `to` in `mail`. The three below follow it for the same
+    // reason: they are the fallbacks, and the caller's `mail.title` is already
+    // consulted inside them.
     const deliver = sendMail({
+      ...(mail || {}),
       to: recipient.email,
       subject: mail?.subject || title,
       title: mail?.title || title,
       body: mail?.body || body,
-      lines: mail?.lines,
-      ctaLabel: mail?.ctaLabel,
-      ctaUrl: mail?.ctaUrl,
-      footnote: mail?.footnote,
     })
       .then((result) =>
         Notification.updateOne(
@@ -318,5 +362,4 @@ exports.notify = async ({
  * a copy of the logic is the only way to catch it.
  */
 exports.resolveRecipient = resolveRecipient;
-exports.getNotificationConfig = getNotificationConfig;
 

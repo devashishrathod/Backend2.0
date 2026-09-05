@@ -127,9 +127,22 @@ exports.resolveAudience = async (target = {}) => {
       isDeleted: false,
       ...(filters.hasEmail ? { email: { $nin: [null, ""] } } : {}),
     })
-      .select("_id role")
+      /**
+       * ⚠️ `notificationPreferences` comes back with the role because
+       * `notifyAudience` bypasses `notify()` entirely — it writes rows with
+       * `insertMany` and pushes in one bulk call. Without this the broadcast
+       * path would be the one place a person's own toggles did not apply, and
+       * that is the path that reaches everybody at once.
+       *
+       * Raw, not normalised: `channelPreferences.js` owns "absent means on".
+       */
+      .select("_id role notificationPreferences")
       .lean();
-    users = alive.map((u) => ({ userId: String(u._id), role: u.role }));
+    users = alive.map((u) => ({
+      userId: String(u._id),
+      role: u.role,
+      notificationPreferences: u.notificationPreferences || null,
+    }));
   }
 
   const total = users.length;

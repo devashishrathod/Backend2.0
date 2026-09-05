@@ -201,6 +201,139 @@ const NOTIFICATION_TYPES = Object.freeze({
   BRAND_AWAITING_RE_REVIEW: "BRAND_AWAITING_RE_REVIEW",
 });
 
+/**
+ * The notifications a personal preference cannot silence.
+ *
+ * ### The rule, so this list can be argued with rather than guessed at
+ *
+ * A type belongs here only if **one** of these is true:
+ *
+ *  1. the notice itself is what cuts the reader off from the in-app feed, so
+ *     there is no other way for them to ever learn it; or
+ *  2. money is held, owed or forfeit until somebody acts, and silence means it
+ *     stays that way.
+ *
+ * Everything else is silenceable. A vendor who muted email can still open the
+ * app and read the row — that is what makes the row the record.
+ *
+ * ### ⚠️ Severity is not the test
+ *
+ * `CRITICAL` looks like the obvious rule and is the wrong one.
+ * `REFUND_BANK_DETAILS_REQUESTED` is deliberately `INFO` — *"alarming someone
+ * about their own money is how a real message gets mistaken for a fake one"* —
+ * and it is the single notice that most has to arrive, because the customer's
+ * refund sits with us until they answer it. Severity says how loud; this says
+ * whether it may be dropped.
+ *
+ * ### ⚠️ This overrides the person, never the platform
+ *
+ * The admin's platform toggles are an operational kill switch — SMTP down, or
+ * WhatsApp templates not yet approved by Meta. Bypassing those would mean
+ * attempting a send that the provider rejects out of sight. Only the individual's
+ * own preference is overridden.
+ */
+const ALWAYS_DELIVER_TYPES = Object.freeze([
+  /**
+   * Rule 1, in its purest form. The vendor cannot sign in — so the in-app row
+   * exists and is unreachable — and push is switched off in this notice on
+   * purpose, because the same operation retires their device tokens. Email and
+   * WhatsApp are not the preferred channels here; they are the only ones.
+   */
+  "BRAND_DEACTIVATED",
+  /**
+   * Rule 2. The refund could not go back the way it came, and the money stays
+   * with us until the customer supplies an account. It is also the only
+   * customer notice that asks them to do anything.
+   */
+  "REFUND_BANK_DETAILS_REQUESTED",
+  /**
+   * Rule 2, admin side. A customer has been told their money is coming and it
+   * has not arrived; nothing in the system will fix it, only a person retrying
+   * or switching to a bank transfer.
+   */
+  "REFUND_FAILED",
+  /** Rule 2. The payout legs and the ledger disagree about money that has physically moved. */
+  "SETTLEMENT_LEDGER_DRIFT",
+  /**
+   * Rule 2, indirectly and at scale: while a shadow index is present, roughly
+   * every second voucher claim fails with a duplicate-key error on a field the
+   * customer never touched.
+   */
+  "SHADOW_INDEX_REAPED",
+  /**
+   * Rule 2. Missing a dispute deadline forfeits the money automatically. The
+   * bank does not ask twice and Razorpay does not chase.
+   */
+  "DISPUTE_DEADLINE",
+]);
+
+/** True when a type must be delivered whatever the recipient has switched off. */
+const alwaysDelivers = (type) => ALWAYS_DELIVER_TYPES.includes(type);
+
+/**
+ * The channels a person can switch off for themselves.
+ *
+ * ⚠️ `IN_APP` is deliberately **not** here. The notification row is the record —
+ * it is what the feed reads, what an admin opens to answer "what were they
+ * told?", and what every delivery outcome is written back onto. A preference
+ * that could stop the row being written would be a preference to have no
+ * history, and the outbound channels would then have nothing to report against.
+ *
+ * Keyed by the preference field name, valued by the channel it governs, so the
+ * two can never drift apart.
+ */
+const NOTIFICATION_PREFERENCE_CHANNELS = Object.freeze({
+  email: "EMAIL",
+  push: "PUSH",
+  whatsapp: "WHATSAPP",
+});
+
+/**
+ * The same three channels, named the way the **platform** settings spell them.
+ *
+ * `Setting.<audience>.…isEmailNotificationEnabled` and
+ * `User.notificationPreferences.email` are the same channel in two vocabularies,
+ * and every place that combines them needs the translation. Declared once here
+ * so a fourth channel is one entry rather than a hunt.
+ */
+const PLATFORM_CHANNEL_KEYS = Object.freeze({
+  email: "isEmailNotificationEnabled",
+  push: "isPushNotificationEnabled",
+  whatsapp: "isWhatsAppNotificationEnabled",
+});
+
+/**
+ * Everything on, for everybody, until they say otherwise.
+ *
+ * ⚠️ These are the defaults for a **new** `User` document. Every user that
+ * already exists has no `notificationPreferences` field at all, and a missing
+ * field must read as **on** — see `helpers/notifications/channelPreferences.js`,
+ * which is the only place allowed to make that decision.
+ */
+const NOTIFICATION_PREFERENCE_DEFAULTS = Object.freeze({
+  email: true,
+  push: true,
+  whatsapp: true,
+});
+
+/**
+ * The admin audience's platform toggles.
+ *
+ * ⚠️ WhatsApp is the only one off, and for the same reason it is off for vendors
+ * and customers: a Meta-approved template per message type does not exist yet.
+ * Email and push are **on**, and an admin alert is the last thing that should be
+ * silent by default — these are the messages sent when money has already gone
+ * wrong.
+ *
+ * An admin who personally wants fewer emails has
+ * `User.notificationPreferences`, which quiets them without quieting the team.
+ */
+const ADMIN_NOTIFICATION_DEFAULTS = Object.freeze({
+  isEmailNotificationEnabled: true,
+  isPushNotificationEnabled: true,
+  isWhatsAppNotificationEnabled: false,
+});
+
 // Where a notification was actually delivered. IN_APP is always written; the
 // rest are attempted when a destination exists and the channel is enabled.
 const NOTIFICATION_CHANNELS = Object.freeze({
@@ -275,4 +408,10 @@ module.exports = {
   NOTIFICATION_CHANNELS,
   NOTIFICATION_SEVERITY,
   NOTIFICATION_DEFAULTS,
+  NOTIFICATION_PREFERENCE_CHANNELS,
+  PLATFORM_CHANNEL_KEYS,
+  NOTIFICATION_PREFERENCE_DEFAULTS,
+  ADMIN_NOTIFICATION_DEFAULTS,
+  ALWAYS_DELIVER_TYPES,
+  alwaysDelivers,
 };

@@ -148,6 +148,17 @@ exports.getAllAdminCustomers = async (query = {}) => {
         isSignUpCompleted: 1,
         isOnBoardingCompleted: 1,
         createdAt: 1,
+        /**
+         * The customer's own channel toggles, so the directory can show the
+         * state without a call per row.
+         *
+         * ⚠️ Raw, and usually **absent** — the field only appears once somebody
+         * changes a setting, and absent means every channel is on. Do not read
+         * these booleans directly; `GET /notifications/admin/preferences` gives
+         * the resolved answer and says whether a platform switch is overriding
+         * them.
+         */
+        notificationPreferences: 1,
         updatedAt: 1,
       },
     }),

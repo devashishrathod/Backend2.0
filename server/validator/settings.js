@@ -140,6 +140,31 @@ const customerNotificationSchema = Joi.object({
   isWhatsAppNotificationEnabled: Joi.boolean().optional(),
 });
 
+/**
+ * The admin audience's outbound channels.
+ *
+ * ⚠️ Its own block, not a corner of `vendor` or `customer`, because the whole
+ * point is that the three cannot silence each other. `getNotificationConfig`
+ * used to fall through to the vendor block for admin, so switching off vendor
+ * renewal reminders also switched off `SETTLEMENT_LEDGER_DRIFT`, `REFUND_FAILED`
+ * and every other alert that fires when money has gone wrong.
+ *
+ * ⚠️ This is a **kill switch for an outage**, not a preference. An admin who
+ * personally wants fewer emails has `PUT /notifications/preferences`, which
+ * quiets them without quieting the rest of the team.
+ */
+const adminNotificationSchema = Joi.object({
+  isEmailNotificationEnabled: Joi.boolean().optional(),
+  isPushNotificationEnabled: Joi.boolean().optional(),
+  // Defaults to false, like the other two audiences: WhatsApp needs a
+  // Meta-approved template per message type before anything sends.
+  isWhatsAppNotificationEnabled: Joi.boolean().optional(),
+});
+
+const adminSettingSchema = Joi.object({
+  notification: adminNotificationSchema.optional(),
+});
+
 const customerInvoiceSchema = Joi.object({
   // ⚠️ Changing this starts a NEW counter. Numbers already issued keep the old
   // prefix, which is correct — an invoice number is a permanent legal reference.
@@ -338,6 +363,64 @@ const securitySettingSchema = Joi.object({
   otp: otpSettingSchema.optional(),
 });
 
+/**
+ * The public block — everything here is readable by anyone at `GET /app-config`.
+ *
+ * ⚠️ Validate it **more** strictly than the private blocks, not less. A typo in
+ * `minVersion` does not fail here and does not fail on save; it fails on every
+ * customer's phone at launch, and the fix needs the very update the typo is
+ * demanding. So the version shape is enforced rather than trusted.
+ */
+const appVersionSchema = Joi.object({
+  android: Joi.string()
+    .trim()
+    .pattern(/^\d+(\.\d+){0,2}$/)
+    .optional()
+    .messages({ "string.pattern.base": "android version must look like 1.2.3" }),
+  ios: Joi.string()
+    .trim()
+    .pattern(/^\d+(\.\d+){0,2}$/)
+    .optional()
+    .messages({ "string.pattern.base": "ios version must look like 1.2.3" }),
+});
+
+const appSettingSchema = Joi.object({
+  minVersion: appVersionSchema.optional(),
+  latestVersion: appVersionSchema.optional(),
+  /**
+   * ⚠️ This locks every user out of every build below `minVersion`, at once.
+   * There is no staged rollout and no undo other than setting it back — so it is
+   * its own field rather than something inferred from a version bump.
+   */
+  forceUpdate: Joi.boolean().optional(),
+  updateMessage: Joi.string().trim().max(300).optional(),
+  storeUrl: Joi.object({
+    android: Joi.string().trim().uri().allow("").optional(),
+    ios: Joi.string().trim().uri().allow("").optional(),
+  }).optional(),
+  /**
+   * Where every "please contact support" sentence in the app points. Blank is
+   * allowed — it is the honest state before somebody fills it in, and refusing
+   * blank would mean the block could never be partially configured.
+   */
+  support: Joi.object({
+    email: Joi.string().trim().lowercase().email().allow("").optional(),
+    phone: Joi.string().trim().allow("").optional(),
+    whatsapp: Joi.string().trim().allow("").optional(),
+  }).optional(),
+  /**
+   * ⚠️ These hide screens in the app. They do **not** close endpoints — the
+   * server keeps enforcing on its own, so turning `promoCodes` off here still
+   * leaves `create-order` returning its hard 422 rather than silently accepting.
+   */
+  features: Joi.object({
+    promoCodes: Joi.boolean().optional(),
+    refunds: Joi.boolean().optional(),
+    voucherClaims: Joi.boolean().optional(),
+    search: Joi.boolean().optional(),
+  }).optional(),
+});
+
 exports.validateUpdateSetting = {
   body: Joi.object({
     vendor: Joi.object({
@@ -347,6 +430,14 @@ exports.validateUpdateSetting = {
     }).optional(),
     customer: customerSettingSchema.optional(),
     security: securitySettingSchema.optional(),
+    /**
+     * ⚠️ Without this entry the block was unreachable. `stripUnknown` is on, so
+     * an `admin` key in the body was silently removed — no error, a 200, and a
+     * toggle that never moved. The model had the field and `getAdminConfig()`
+     * read it; nothing could write it.
+     */
+    admin: adminSettingSchema.optional(),
+    app: appSettingSchema.optional(),
     isActive: Joi.boolean().optional(),
   })
     .min(1)
