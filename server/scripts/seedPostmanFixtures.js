@@ -220,6 +220,39 @@ const run = async () => {
       Customer.deleteMany({ _id: { $in: customerIds } }),
     ]);
 
+    /**
+     * ⚠️ By **brand** as well as by customer.
+     *
+     * `Transaction.deleteMany({ customerId })` above misses every row that has
+     * no customer — a vendor's subscription payment is exactly that shape, so
+     * the seeded one survived the clear and the next run died on
+     * `razorpayOrderId_unique_partial`. The failure reads as a duplicate id
+     * bug; the cause is a clear that did not clear.
+     *
+     * Settlements were never cleared at all, so they accumulated one pair per
+     * run and `Settlement.findOne().sort({createdAt: -1})` started picking a
+     * settlement whose transactions had already been deleted.
+     */
+    const Settlement = require("../models/Settlement");
+    await Promise.all([
+      Transaction.deleteMany({ brandId: { $in: brandIds } }),
+      RefundRequest.deleteMany({ brandId: { $in: brandIds } }),
+      Settlement.deleteMany({ brandId: { $in: brandIds } }),
+
+      /**
+       * ⚠️ And by the id's own marker, because `brandId` stops being a handle.
+       *
+       * A row seeded in run N points at a brand that run N+1 deleted. By run
+       * N+2 that brandId matches nothing, so every filter above walks past it
+       * — and the row is still holding `order_pmfxsub1` on a unique index. The
+       * seed then fails with a duplicate-key error that looks like a bug in
+       * the id it is generating rather than in the clear that left the old one
+       * behind. The marker is on the value itself, so it survives the orphaning.
+       */
+      Transaction.deleteMany({ razorpayOrderId: new RegExp(MARK, "i") }),
+      Transaction.deleteMany({ invoiceId: new RegExp(MARK, "i") }),
+    ]);
+
     await Promise.all([
       Voucher.deleteMany({ brandId: { $in: brandIds } }),
       VoucherVersion.deleteMany({ brandId: { $in: brandIds } }),
@@ -990,6 +1023,27 @@ const run = async () => {
       status: VOUCHER_STATUSES.PUBLISHED,
     }).lean();
 
+    /**
+     * Brand B, so the vendor collection has a row it must be **refused**.
+     *
+     * ⚠️ A fabricated id proves nothing here. `GET /voucher-claims/:id` answers
+     * 404 for an id that does not exist whether the ownership check works or
+     * not — so a 403 test built on a made-up id passes with the check deleted.
+     * It has to be a real claim belonging to a real other brand.
+     */
+    const brandA = { ctx, voucher, version };
+    const otherCtx = brands[1];
+    const otherVoucher = vouchers[1];
+    const otherVersion = await VoucherVersion.findOne({
+      voucherId: otherVoucher._id,
+      status: VOUCHER_STATUSES.PUBLISHED,
+    }).lean();
+    const brandB = {
+      ctx: otherCtx,
+      voucher: otherVoucher,
+      version: otherVersion,
+    };
+
     /** One customer, with the User row the auth path expects to find. */
     const makeCustomer = async ({ key, whatsapp, name }) => {
       const user = await User.create({
@@ -1029,7 +1083,20 @@ const run = async () => {
      * seeding a second claim with `offerIndex: 0` fails with E11000. The spare
      * claim uses offer 1, which needs a bill over its own `minBillAmount`.
      */
-    const makePaidClaim = async ({ owner, billAmount, settled, offerIndex = 0 }) => {
+    const makePaidClaim = async ({
+      owner,
+      billAmount,
+      settled,
+      offerIndex = 0,
+      /**
+       * Which brand's voucher this claim is against — `brandA` unless told
+       * otherwise. Destructured below so the body keeps reading `ctx`,
+       * `voucher` and `version`; the parameter default is evaluated in the
+       * parameter scope, so it still sees the outer ones.
+       */
+      on = brandA,
+    }) => {
+      const { ctx, voucher, version } = on;
       const preview = await buildClaimPreview({
         voucherId: voucher._id,
         outletId: ctx.outlet._id,
@@ -1133,7 +1200,15 @@ const run = async () => {
         ...(settled
           ? {
               invoiceToken: `${MARK.toLowerCase()}invoicetoken${suffix}0000000000000000`,
-              invoiceId: `TD/${new Date().getFullYear()}/${MARK}/000${settled ? 1 : 2}`,
+              /**
+               * ⚠️ Numbered by `claimSeq`, like `razorpayOrderId` above.
+               *
+               * This was `000${settled ? 1 : 2}` — and the branch is inside
+               * `if (settled)`, so it was `0001` for **every** settled claim.
+               * One was fine; the vendor fixtures need three, and the second
+               * died on `invoiceId_unique_partial`.
+               */
+              invoiceId: `TD/${new Date().getFullYear()}/${MARK}/${String(claimSeq).padStart(4, "0")}`,
               invoiceUrl:
                 "https://res.cloudinary.com/demo/image/upload/sample.pdf",
               settlementStage: SETTLEMENT_STAGE.COMPLETE,
@@ -1229,6 +1304,20 @@ const run = async () => {
     });
 
     /**
+     * The same customer, on **brand B**. This is the row every cross-brand 403
+     * in the vendor collection points at — see the note on `brandB` above.
+     *
+     * Settled, so it is also eligible for brand B's settlement below and the
+     * "somebody else's payout" test has a real settlement to be refused from.
+     */
+    const otherBrandPaid = await makePaidClaim({
+      owner: other,
+      billAmount: 700,
+      settled: true,
+      on: brandB,
+    });
+
+    /**
      * A verified account, standing in for a penny drop nobody paid for.
      *
      * `isVerified: true` is what every payout path checks, so this row is a
@@ -1305,6 +1394,184 @@ const run = async () => {
       reasonNote: "Seeded so the bank-details step has something to answer.",
       method: "MANUAL_BANK",
       isOpen: true,
+    });
+
+    /**
+     * ── the vendor's side of the same money ──────────────────────────────────
+     *
+     * Folders 18-20 of the vendor collection (Voucher Claims, Refunds,
+     * Settlements) have never carried a captured example, and this is why:
+     * every id they need is one a vendor **cannot produce**. A vendor does not
+     * create claims, does not open refunds, and does not build settlements — a
+     * customer and a nightly job do. So none of it can be captured from an
+     * earlier request in the run the way `voucher_id` or `section_id` are.
+     *
+     * ⚠️ Three separate refunds, not one.
+     *
+     * The folder's approve, reject and "raise the amount → 422" requests all
+     * pointed at a single `{{refund_request_id}}`, in that order. Approve
+     * decides it, so reject then ran against an already-decided refund and the
+     * 422 arrived for "already decided" rather than for the raised amount —
+     * a test that fails, or passes, for a reason unrelated to what it claims to
+     * check. Each gets its own row.
+     */
+    const vendorCustA = await makeCustomer({
+      key: "24",
+      whatsapp: "9700000024",
+      name: "postman vendor-side customer a",
+    });
+    const vendorCustB = await makeCustomer({
+      key: "25",
+      whatsapp: "9700000025",
+      name: "postman vendor-side customer b",
+    });
+
+    /**
+     * ⚠️ Each claim needs a distinct `{voucher, customer, offer}`.
+     *
+     * `claim_usageSlot_oncePerUser` is unique on exactly that triple (where
+     * `holdsUsageSlot: true`), which is the once-per-user rule. Brand A's
+     * voucher carries two offers and brand B's carries one, so extra customers
+     * — not extra claims per customer — are what buys the rows below.
+     */
+    const settleA = await makePaidClaim({
+      owner: vendorCustA,
+      billAmount: 900,
+      settled: true,
+    });
+    const approveTarget = await makePaidClaim({
+      owner: vendorCustA,
+      billAmount: 900,
+      settled: false,
+      offerIndex: 1,
+    });
+    const rejectTarget = await makePaidClaim({
+      owner: vendorCustB,
+      billAmount: 900,
+      settled: false,
+    });
+    const raiseTarget = await makePaidClaim({
+      owner: vendorCustB,
+      billAmount: 900,
+      settled: false,
+      offerIndex: 1,
+    });
+    /** Brand B's own settled sale, so its settlement has something in it. */
+    const settleB = await makePaidClaim({
+      owner: vendorCustA,
+      billAmount: 800,
+      settled: true,
+      on: brandB,
+    });
+
+    /**
+     * A refund the vendor still has to decide.
+     *
+     * ⚠️ `settlementHold: true` on the payment, because that is what opening a
+     * refund really does — the money stops being eligible for any settlement
+     * the moment somebody asks for it back. Leaving it false would let these
+     * payments into the settlement below, so the fixture would demonstrate
+     * exactly the "paid the vendor, now claw it back" case the hold exists to
+     * make impossible.
+     */
+    const makeOpenRefund = async ({ source, brandId, requestedAmount, note }) => {
+      await Transaction.updateOne(
+        { _id: source.transaction._id },
+        { $set: { settlementHold: true } },
+      );
+      return RefundRequest.create({
+        claimId: source.claim._id,
+        transactionId: source.transaction._id,
+        customerId: source.claim.customerId,
+        brandId,
+        requestedAmount,
+        status: REFUND_REQUEST_STATUS.REQUESTED,
+        reason: "OTHER",
+        reasonNote: note,
+        isOpen: true,
+      });
+    };
+
+    const approveRefund = await makeOpenRefund({
+      source: approveTarget,
+      brandId: ctx.brand._id,
+      requestedAmount: 400,
+      note: "Seeded for the vendor approve example.",
+    });
+    const rejectRefund = await makeOpenRefund({
+      source: rejectTarget,
+      brandId: ctx.brand._id,
+      requestedAmount: 400,
+      note: "Seeded for the vendor reject example.",
+    });
+    const raiseRefund = await makeOpenRefund({
+      source: raiseTarget,
+      brandId: ctx.brand._id,
+      requestedAmount: 400,
+      note: "Seeded so approving a *raised* amount can show its 422.",
+    });
+    const otherBrandRefund = await makeOpenRefund({
+      source: otherBrandPaid,
+      brandId: otherCtx.brand._id,
+      requestedAmount: 300,
+      note: "Belongs to brand B — the vendor collection's 403.",
+    });
+
+    /**
+     * ── settlements, built by the real job ───────────────────────────────────
+     *
+     * ⚠️ Not written by hand. `Settlement` carries gross, commission, tax,
+     * reserve, refund clawbacks and `reserveBasis` — hand-typing those is how a
+     * fixture starts disagreeing with the arithmetic it is meant to
+     * demonstrate, and every captured example inherits the lie. The seeder
+     * already takes this line with `buildClaimPreview` for claim pricing.
+     *
+     * Eligibility is a date test, so the two settled payments are backdated
+     * past the configured `delayDays` and `payoutBufferHours` first —
+     * `fundsReceivedAt` is *observed from Razorpay* in production, never
+     * inferred, which is exactly why nothing in the seed path sets it.
+     */
+    const FIVE_DAYS_AGO = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    await Transaction.updateMany(
+      {
+        _id: { $in: [settleA.transaction._id, settleB.transaction._id] },
+      },
+      { $set: { verifiedAt: FIVE_DAYS_AGO, fundsReceivedAt: FIVE_DAYS_AGO } },
+    );
+
+    const { buildSettlements } = require("../services/settlements");
+    await buildSettlements();
+
+    const Settlement = require("../models/Settlement");
+    const settlementA = await Settlement.findOne({ brandId: ctx.brand._id })
+      .sort({ createdAt: -1 })
+      .lean();
+    const settlementB = await Settlement.findOne({
+      brandId: otherCtx.brand._id,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    /**
+     * A subscription payment, so `GET /voucher-claims/payments/:id` can show
+     * its **404** against a transaction that genuinely exists.
+     *
+     * ⚠️ One collection holds both purposes and `buildTransactionFilter` is
+     * what keeps them apart. Pointing that test at a fabricated id would prove
+     * only that a missing row 404s — not that a *subscription* row is refused
+     * by the claim surface, which is the thing worth knowing.
+     */
+    const subscriptionTxn = await Transaction.create({
+      purpose: TRANSACTION_PURPOSE.SUBSCRIPTION,
+      gatewayAccount: ACCOUNT_FOR_PURPOSE[TRANSACTION_PURPOSE.SUBSCRIPTION],
+      gateway: PAYMENT_GATEWAYS.RAZORPAY,
+      brandId: ctx.brand._id,
+      userId: ctx.user._id,
+      amount: 4999,
+      status: PAYMENT_STATUS.CAPTURED,
+      verified: true,
+      razorpayOrderId: `order_${MARK.toLowerCase()}sub1`,
+      razorpayPaymentId: `pay_${MARK.toLowerCase()}sub1`,
     });
 
     /**
@@ -1401,6 +1668,20 @@ const run = async () => {
       notifications,
       // The offer the claim flow prices against — see the note where it is written.
       offerId: version.offers?.[0]?._id || null,
+
+      // ── what the vendor collection's money folders read ──
+      vendor: {
+        settleA,
+        settleB,
+        otherBrandPaid,
+        approveRefund,
+        rejectRefund,
+        raiseRefund,
+        otherBrandRefund,
+        settlementA,
+        settlementB,
+        subscriptionTxn,
+      },
     };
 
     return [
@@ -1442,18 +1723,52 @@ const run = async () => {
    * `postman/generate-customer-collection.js` rewrites the environment with
    * empty values, so it has to run before this, not after.
    */
-  if (APPLY && money) {
-    const envPath = path.join(
-      __dirname,
-      "..",
-      "postman",
-      "environments",
-      "customer-local.postman_environment.json",
-    );
+  /**
+   * Write a set of ids into one environment file.
+   *
+   * ⚠️ A missing key **throws** rather than being skipped. A variable the
+   * collection references but the environment does not declare is not an empty
+   * string — Postman sends `{{claim_id}}` literally, so the request lands on
+   * the router's catch-all and answers `404 Invalid API`, a refusal that reads
+   * as a routing bug and has nothing to do with claims. `validate-collection.js`
+   * refuses it too, so failing loudly here is the cheaper of the two.
+   */
+  const writeEnvIds = (file, seeded) => {
+    const envPath = path.join(__dirname, "..", "postman", "environments", file);
 
     if (!fs.existsSync(envPath)) {
-      log(`\n  ⚠️  ${path.basename(envPath)} not found — skipped writing ids.`);
-    } else {
+      log(`\n  ⚠️  ${file} not found — skipped writing ids.`);
+      return;
+    }
+
+    const raw = fs.readFileSync(envPath, "utf8");
+    const env = JSON.parse(raw);
+    const missing = [];
+
+    for (const [key, value] of Object.entries(seeded)) {
+      const row = env.values.find((v) => v.key === key);
+      if (row) row.value = value;
+      else missing.push(key);
+    }
+
+    if (missing.length) {
+      throw new Error(
+        `${file} is missing ${missing.join(", ")} — re-run the matching ` +
+          "postman/generate-*-collection.js first.",
+      );
+    }
+
+    // These files are CRLF; matching the generator's own output keeps the diff
+    // to the values that actually changed.
+    const CRLF = raw.includes("\r\n");
+    const out = JSON.stringify(env, null, 2) + "\n";
+    fs.writeFileSync(envPath, CRLF ? out.replace(/\n/g, "\r\n") : out);
+    log(`  ✅ wrote ${Object.keys(seeded).length} ids into ${file}`);
+  };
+
+  if (APPLY && money) {
+    log("");
+    {
       const seeded = {
         customer_whatsapp: CUSTOMER_WHATSAPP,
         /**
@@ -1484,36 +1799,45 @@ const run = async () => {
         other_customer_claim_id: String(money.otherPaid.claim._id),
         other_customer_transaction_id: String(money.otherPaid.transaction._id),
       };
+      writeEnvIds("customer-local.postman_environment.json", seeded);
+    }
 
-      const raw = fs.readFileSync(envPath, "utf8");
-      const env = JSON.parse(raw);
-      const missing = [];
+    /**
+     * ── the vendor side ──
+     *
+     * None of these can be captured from an earlier request in the run: a
+     * vendor cannot create a claim, cannot open a refund, and cannot build a
+     * settlement. Which is exactly why folders 18-20 have never had an example.
+     */
+    {
+      const v = money.vendor;
+      const seeded = {
+        brand_id: String(brands[0].brand._id),
+        sub_brand_id: String(brands[0].outlet._id),
 
-      for (const [key, value] of Object.entries(seeded)) {
-        const row = env.values.find((v) => v.key === key);
-        if (row) row.value = value;
-        else missing.push(key);
-      }
+        /** A settled sale on this vendor's own brand. */
+        claim_id: String(v.settleA.claim._id),
+        claim_code: String(v.settleA.claim.claimCode || ""),
+        claim_transaction_id: String(v.settleA.transaction._id),
 
-      /**
-       * A variable the collection references but the environment does not
-       * declare is refused by `lib/validate-collection.js`, so a silent miss
-       * here becomes a loud failure there rather than an empty `{{…}}` in a
-       * request body.
-       */
-      if (missing.length) {
-        throw new Error(
-          `Environment is missing ${missing.join(", ")} — re-run ` +
-            "postman/generate-customer-collection.js first.",
-        );
-      }
+        /** Real rows on brand B — see the note where they are seeded. */
+        other_brand_claim_id: String(v.otherBrandPaid.claim._id),
+        other_brand_refund_id: String(v.otherBrandRefund._id),
+        other_brand_settlement_id: String(v.settlementB?._id || ""),
 
-      // These files are CRLF; matching the generator's own output keeps the
-      // diff to the values that actually changed.
-      const CRLF = raw.includes("\r\n");
-      const out = JSON.stringify(env, null, 2) + "\n";
-      fs.writeFileSync(envPath, CRLF ? out.replace(/\n/g, "\r\n") : out);
-      log(`\n  ✅ wrote ${Object.keys(seeded).length} ids into ${path.basename(envPath)}`);
+        /**
+         * ⚠️ Three refunds, one per decision the folder demonstrates. Sharing
+         * one made reject and the 422 run against a refund approve had already
+         * decided.
+         */
+        refund_request_id: String(v.approveRefund._id),
+        rejectable_refund_id: String(v.rejectRefund._id),
+        raise_refund_id: String(v.raiseRefund._id),
+
+        settlement_id: String(v.settlementA?._id || ""),
+        subscription_transaction_id: String(v.subscriptionTxn._id),
+      };
+      writeEnvIds("vendor-local.postman_environment.json", seeded);
     }
   }
 

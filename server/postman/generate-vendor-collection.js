@@ -3037,11 +3037,33 @@ const collection = {
 };
 
 // ---------------------------------------------------------------- env
+/**
+ * Every environment carries **all three** URLs, not just its own.
+ *
+ * `base_url` is what the requests use; the other three sit beside it so a run
+ * can be retargeted by copying one value across — no re-import, and no editing
+ * 116 requests.
+ *
+ * ⚠️ Changing `base_url` mid-run does not re-authenticate. The captured
+ * `vendor_token` belongs to whichever deployment issued it, so switching means
+ * re-running `00 — Setup & Auth` first.
+ */
+const URLS = {
+  local: "http://localhost:8080/trydood/v1",
+  staging: "https://backend2-0-4v4i.onrender.com/trydood/v1",
+  production: "https://api.trydood.com/trydood/v1",
+};
+
 const envFile = (name, baseUrl) => ({
   id: `trydood-vendor-${name}`,
   name: `Trydood Vendor — ${name}`,
   values: [
     { key: "base_url", value: baseUrl, type: "default", enabled: true },
+
+    // ── the other deployments, for retargeting without a re-import ──
+    { key: "local_url", value: URLS.local, type: "default", enabled: true },
+    { key: "stage_url", value: URLS.staging, type: "default", enabled: true },
+    { key: "prod_url", value: URLS.production, type: "default", enabled: true },
 
     // ── fill this in — seeder isko print karta hai ──
     { key: "vendor_whatsapp", value: "9700000011", type: "default", enabled: true },
@@ -3078,6 +3100,53 @@ const envFile = (name, baseUrl) => ({
     // ── the seeder creates this one; publish needs an APPROVED version ──
     {
       key: "approved_version_id",
+      value: "",
+      type: "default",
+      enabled: true,
+    },
+
+    /**
+     * ── the money folders (18-20) — all seeded ──
+     *
+     * ⚠️ These were **not declared at all**, which is why 17 requests across
+     * Voucher Claims, Refunds and Settlements have never carried a captured
+     * example. An undeclared `{{…}}` is not an empty string: it is sent
+     * literally, so `/refunds/{{refund_request_id}}/approve` hits the
+     * catch-all and answers `404 Invalid API` — a refusal that looks like a
+     * routing bug and has nothing to do with refunds.
+     *
+     * None of them can be captured from an earlier request: a vendor cannot
+     * create a claim (a customer does), cannot open a refund (a customer
+     * does), and cannot build a settlement (a nightly job does). The
+     * cross-brand ids exist so the 403s are proven against a **real** row
+     * belonging to somebody else — a fabricated id returns 404 whether the
+     * ownership check works or not, which is a test that passes for the wrong
+     * reason.
+     */
+    { key: "claim_id", value: "", type: "default", enabled: true },
+    { key: "claim_code", value: "", type: "default", enabled: true },
+    { key: "claim_transaction_id", value: "", type: "default", enabled: true },
+    { key: "other_brand_claim_id", value: "", type: "default", enabled: true },
+    {
+      key: "subscription_transaction_id",
+      value: "",
+      type: "default",
+      enabled: true,
+    },
+    /**
+     * ⚠️ Three refunds, not one shared between approve, reject and the raised
+     * amount. They ran in that order against a single id, so approve decided
+     * the refund and the other two then acted on a decided row — the 422
+     * arrived for "already decided" rather than for the raised amount, which is
+     * a test passing for a reason unrelated to its name.
+     */
+    { key: "refund_request_id", value: "", type: "default", enabled: true },
+    { key: "rejectable_refund_id", value: "", type: "default", enabled: true },
+    { key: "raise_refund_id", value: "", type: "default", enabled: true },
+    { key: "other_brand_refund_id", value: "", type: "default", enabled: true },
+    { key: "settlement_id", value: "", type: "default", enabled: true },
+    {
+      key: "other_brand_settlement_id",
       value: "",
       type: "default",
       enabled: true,
