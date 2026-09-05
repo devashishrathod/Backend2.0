@@ -6184,6 +6184,34 @@ Full categorization → [endpoints_category.md](./endpoints_category.md)
 
 ---
 
+# Dispute evidence — vendor ka bayaan
+
+Bank ne ek payment wapas maang liya (chargeback). Razorpay ko jawab bhejne se pehle vendor apna paksh record karta hai.
+
+## `POST /disputes/:disputeId/evidence`
+## `POST /transactions/disputes/:disputeId/evidence`
+
+**Access:** 🔒 `isVendorOrSubVendor` — **outlet manager tak**.
+
+Body: `{ "note": "Customer ne counter par voucher redeem kiya, CCTV timestamp ke saath." }`
+
+⚠️ **Gate `SUB_VENDOR` tak jaan-boojh kar pahunchta hai.** Jo insaan counter par tha wahi aksar jaanta hai ki hua kya — use bahar rakhne ka matlab hota sabse achhi gawahi ka na aana.
+
+⚠️ Ye faisla **nahi** karta, sirf record karta hai. Dispute jeetne ya haarne ka jawab Razorpay se webhook par aata hai, aur wo bhi **out of order** aa sakta hai: `ledger_type_dispute_unique` isiliye dispute par keyed hai, transaction par nahi — ek der se aaya `lost` ek `won` ke baad aa sakta hai.
+
+⚠️ **Do mount, ek hi handler.** `/disputes` naya saaf raasta hai, `/transactions/disputes/...` purana. Dono live hain, isliye dono documented hain — naya kaam naye wale par likhein.
+
+Worklist (`GET /disputes`) khud is collection me nahi hai: uska gate koi role nahi maangta aur scope token se aata hai, isliye wo [admin doc](./super_admin_panel_api_doc.md) me hai. Vendor wahi endpoint call karke apne hi brand ke disputes dekh sakta hai.
+
+| Code | Kab |
+|---|---|
+| `200` | Bayaan record ho gaya |
+| `403` | Dusre brand ka dispute |
+| `404` | Dispute maujood nahi |
+| `422` | `note` khaali |
+
+---
+
 # Appendix B — Known Issues
 
 Ye backend issues hain jo vendor panel ko directly affect karte hain. **Status 2026-08-22 ko code ke against verify kiya gaya.** Full detail → [security_findings.md](./security_findings.md)

@@ -7291,6 +7291,151 @@ aise settlement se bandha chhod dega jo kabhi pay nahi hogi.
 
 ---
 
+# Reference — endpoints ka baaki hissa
+
+Ye section un endpoints ko cover karta hai jo `scripts/verifyApiCoverage.js` ne **undocumented** pakde the. Har ek collection me maujood hai, saved example ke saath — yahan wo cheezein likhi hain jo example se nahi dikhtin.
+
+## Brands — status aur curation
+
+### `PUT /brands/admin/:brandId/status`
+
+Do alag switch, aur wo ek jaise **nahi** hain:
+
+| Field | Asar |
+|---|---|
+| `isActive: false` | Brand **band** — vendor bhi andar nahi aa sakta |
+| `hideFromCustomers: true` | Sirf listing se hataata hai; vendor kaam karta rehta hai |
+
+⚠️ Dispute ke dauraan aksar **doosra** chahiye hota hai, pehla nahi. Dono ko ek samajhna ek chalte hue brand ko band kar deta hai, aur vendor ko pata bhi nahi chalta ki kyun.
+
+⚠️ `reason` **sirf deactivate karte waqt** accept hota hai — `isActive: true` ke saath bhejne par `422 "A reason is only accepted when deactivating an account"`. Ye jaan-boojh kar hai: wapas chaalu karne ki wajah record me rakhne layak nahi, band karne ki hai.
+
+### `GET /brands/admin/top-brands` · `PUT /brands/admin/top-brands/:brandId`
+
+Home screen par kaunse brands upar aayenge. `PUT` body: `{ isTopBrand, sortOrder, note }`.
+
+⚠️ Ye **editorial** faisla hai, algorithmic nahi. Koi score isse nahi chalata — jo yahan set hoga wahi dikhega, isliye purani entries kisi ko hataye bina baithi rehti hain.
+
+### `GET /vouchers/admin/suggestions` · `PUT /vouchers/admin/suggestions/:voucherId`
+
+Wahi cheez vouchers ke liye — `suggested: true` wale customer feed me upar aate hain.
+
+---
+
+## Refunds — manual bank ka poora raasta
+
+Gateway refund refuse kar de (window band, payment bahut purana), to paisa NEFT se jaata hai. Chaar endpoints, aur **ye ek state machine hai**:
+
+```
+ADMIN_APPROVED → request-bank-details → AWAITING_BANK_DETAILS
+                 (customer account jodta hai)
+               → pay-to-bank          → PROCESSING
+               → confirm-bank-payout  → COMPLETED
+                 ya fail-bank-payout  → FAILED (wapas khulta hai)
+```
+
+| Endpoint | Body | Kya kehta hai |
+|---|---|---|
+| `PATCH /refunds/admin/:requestId/request-bank-details` | `{ reason }` | "Gateway se nahi ja sakta, account do" |
+| `PATCH /refunds/admin/:requestId/pay-to-bank` | — | "Maine NEFT **shuru** kiya" |
+| `PATCH /refunds/admin/:requestId/confirm-bank-payout` | `{ utr, mode, paidAt }` | "Paisa **pahunch** gaya" |
+| `PATCH /refunds/admin/:requestId/fail-bank-payout` | `{ reason }` | "Bank ne wapas kiya" |
+
+⚠️ **`pay-to-bank` aur `confirm-bank-payout` alag isliye hain** ki shuru hona aur pahunchna do alag ghatnaayein hain. Ek endpoint hota to dono ek jaise dikhte — aur `sweepStalePayouts` ka poora kaam theek wahi farq dekhna hai: wo un payouts ko dhoondhta hai jo shuru hue aur confirm nahi hue.
+
+⚠️ `paidAt` alag field hai, `updatedAt` nahi. NEFT kal shuru hua aur aaj confirm hua — reconciliation wahi padhta hai jo **bank ne** kiya, wo nahi jab humne form bhara.
+
+⚠️ `utr` bank ka reference hai — baad me "paisa sach me gaya?" ka jawab sirf usi se milta hai.
+
+---
+
+## Settlements — jo `12 — Settlements` me nahi the
+
+| Endpoint | From → To | Rows chhodta hai? |
+|---|---|---|
+| `PATCH /settlements/admin/:id/cancel` | ON_HOLD / APPROVED → CANCELLED | ✅ haan |
+| `PATCH /settlements/admin/:id/retry` | FAILED → APPROVED | ❌ nahi |
+| `PATCH /settlements/admin/:id/abandon` | FAILED → ABANDONED | ✅ haan |
+
+⚠️ **`retry` aur `abandon` ka asli farq yahi hai.** Retry rows apne paas rakhta hai — wahi payout dobara koshish karega. Abandon unhe chhod deta hai, to paisa agle cycle me kisi doosri settlement me wapas aa jaata hai. Ulta karne par ya to paisa do baar chala jaata hai, ya hamesha ke liye phans jaata hai.
+
+### `GET /settlements/admin/debt/:brandId` · `PATCH /settlements/admin/debt/:brandId/write-off`
+
+`netPayable <= 0` settlement ko `CARRIED_FORWARD` bhejta hai — aur carry forward karna **hi** rows chhodna hai, to bakaya aur kamai dono agle cycle me chale jaate hain. Jab tak brand bech raha hai, nayi sales use kaat deti hain.
+
+⚠️ **Jis din wo band karta hai, wahi rows hamesha claim aur release hoti rehti hain** — koi error nahi, koi log nahi, aur paisa hamari kitaab par ek aise aadmi se receivable ban kar baith jaata hai jo wapas nahi aa raha. `alertVendorDebt` roz ye report karta hai aur **kuch karta nahi**; 90 din par apne aap maaf kar dena us brand ko maaf kar dega jo bas season ke beech me hai.
+
+Write-off body: `{ reason, olderThanDays }`.
+
+⚠️ Ye har row par **do** `MANUAL_ADJUSTMENT` likhta hai — `VENDOR_PAYABLE` credit taaki agla cycle bakaya na dekhe, aur `PLATFORM_COST` debit kyunki nuksaan humne uthaya. Reference **sirf vendor row par** jaata hai: `ONCE_PER_REFUND` aur `ONCE_PER_DISPUTE` `{reference, entryType}` par unique hain, to dono par daalne se doosra duplicate-key no-op ban jaata — bakaya saaf ho jaata, cost kabhi aati hi nahi, aur kitaab theek utni kam ho jaati jitna maaf kiya.
+
+---
+
+## Transactions — hold chhodna
+
+### `PATCH /transactions/admin/:transactionId/release-hold`
+
+Body: `{ reason }` — **required**.
+
+⚠️ **Is endpoint se pehle in states se koi raasta hi nahi tha.** `settlementHold` refund maangte hi lag jaata hai, aur wahi ek line *"vendor ko de chuke, ab wapas lo"* wali poori samasya hata deti hai. Uska ulta utna hi khatarnak hai: **jo hold koi chhodta nahi, wo vendor ka paisa hamesha ke liye har settlement se bahar rakh deta hai — chup-chaap**, kyunki eligibility predicate bas match karna band kar deti hai.
+
+⚠️ Tab tak mana karta hai jab tak koi refund khula hai ya chargeback unresolved hai.
+
+### `GET /disputes/:disputeId/evidence-pack` · `GET /transactions/disputes/:disputeId/evidence-pack`
+
+Ek hi jawab, do mount — `/disputes` naya saaf raasta, `/transactions/disputes/...` purana. Razorpay ko jawab dene ke liye jo chahiye ek jagah: payment, claim, invoice, redemption ka waqt.
+
+⚠️ `ledger_type_dispute_unique` **dispute** par keyed hai, transaction par nahi — Razorpay dispute webhooks dobara bhejta hai **aur out of order** bhejta hai, to ek der se aaya `lost` ek `won` ke baad aa sakta hai.
+
+---
+
+## Showcase — admin bhi kar sakta hai
+
+Ye aath endpoints `isVendorOrAdmin` hain, yaani admin bhi kisi brand ka showcase chala sakta hai. **Request aur saved example [vendor collection](./vendor_panel_api_doc.md) ke `10 — Showcase` folder me hai** — yahan dobara nahi rakhe gaye, kyunki ek hi request ki do copy matlab do jagah badalna, aur ek badli-doosri-reh-gayi hi drift ki shuruaat hai.
+
+| Endpoint | Kya |
+|---|---|
+| `GET /showcase/section/get/:sectionId` | Ek section, media ke saath |
+| `PUT /showcase/section/update/:sectionId` | Section ka naam/visibility |
+| `DELETE /showcase/section/delete/:sectionId` | Soft delete |
+| `POST /showcase/section/:sectionId/add-media` | **multipart** — file chahiye |
+| `PUT /showcase/section/:sectionId/media/replace/:mediaId` | **multipart** |
+| `PATCH /showcase/section/:sectionId/media/update/:mediaId` | Sirf caption/alt — file nahi |
+| `PUT /showcase/section/:sectionId/media/reorder` | **Poora** order bhejein |
+| `DELETE /showcase/section/:sectionId/media/delete/:mediaId` | Soft delete |
+
+⚠️ Reorder **poori list** maangta hai, sirf hile hue item nahi — `"2 sections expected, 1 received"` wahi refusal hai. Aadha order bhejna baaki ko `sortOrder: 0` par gira deta, aur gallery chup-chaap bikhar jaati.
+
+---
+
+## Public / role-agnostic
+
+### `GET /settlements/statement/:token`
+
+⚠️ **Poore settlements module ka ekmatra public route.** Koi bearer nahi — path ka token hi credential hai. Wahi token vendor ke email/WhatsApp me jaane wale statement link me hota hai, isliye ye us aadmi ke liye kaam karta hai jo abhi login nahi hai.
+
+⚠️ Token **sirf tab mint hota hai jab settlement `PAID` bane** (`transitionSettlement`: `becomingPaid && !statementToken`). Isliye galat token par `404` aata hai, `401` nahi — `401` ye bata deta ki token maujood hai par aapka nahi.
+
+### `GET /disputes` · `GET /disputes/:disputeId`
+
+Gate sirf `verifyJwtToken` — **scope token se aata hai**. Vendor apne brand ke disputes dekhta hai, admin sabke. Isi wajah se ye kisi ek role ki collection me fit nahi hota; request `13 — Disputes` folder me hai.
+
+⚠️ `respondBy` **absent** hota hai jab tak Razorpay deadline na de. Use aggregation me `null` se compare karna bina `$ifNull` ke ulta jawab deta hai — yahi galti `vendorWasPaid: true` bana chuki hai un payments par jo **kabhi settle hi nahi hue**, aur wahi field admin dekhkar tay karta hai ki wapas lene ko kuch hai bhi ya nahi.
+
+### `GET /` · `GET /my-ip` · `GET /client-ip`
+
+⚠️ Teeno `index.js` seedha serve karta hai — **`/trydood/v1` ke bahar**. Collection me `{{host_url}}` use hota hai, `{{base_url}}` nahi; warna `/trydood/v1/my-ip` banta hai jo router ka catch-all `404` deta hai, aur wo galti routing bug jaisi dikhti hai.
+
+| Route | Kya |
+|---|---|
+| `GET /` | Health check — plain text, envelope nahi |
+| `GET /my-ip` | **Is process** ka outbound address — Atlas Network Access allow-list ke liye |
+| `GET /client-ip` | Caller ka address, `TRUST_PROXY` ke through |
+
+⚠️ `/client-ip` galat hona mehnga hai: rate limiter isi par ginta hai. `TRUST_PROXY` ghalat hone par limiter **poore desh ko ek client** gin leta hai; ulta, jo hop hai hi nahi use trust karna matlab caller ka khud likha `X-Forwarded-For` maan lena.
+
+---
+
 # Appendix A — Not For Admin Panel
 
 Admin ke paas platform ka sabse zyada access hai, par **33 endpoints** aise hain jo admin panel me nahi aane chahiye.
