@@ -6,8 +6,20 @@ const { SUBSCRIPTION_ACTION } = require("../../constants/subscription");
 const { notify } = require("./notify");
 const { formatMoney } = require("../subscribeds/buildOrderSummary");
 
-const asDate = (value) =>
-  value ? new Date(value).toLocaleDateString("en-IN") : "-";
+/**
+ * ⚠️ `formatDate`, not a local helper.
+ *
+ * This file used to print `29/8/2027` while the claim notices printed
+ * `1 Sept 2026` and the settlement notices `2 Sept 2026, 4:00 pm` — three formats
+ * to the same vendor. Worse, none of them named a timezone, so every one rendered
+ * in the server's (UTC in production). See `formatDateTime.js`.
+ *
+ * A plan boundary is a **day**, so no time: "Valid till 29 Aug 2027 11:59 PM" is
+ * a longer way of saying the same date.
+ */
+const { formatDate } = require("./formatDateTime");
+
+const asDate = formatDate;
 
 /**
  * WhatsApp template variables, per notification type.
@@ -209,6 +221,17 @@ exports.notifySubscriptionExpired = ({
     dedupeKey: `SUBSCRIPTION_EXPIRED:${subscribed._id}`,
     deepLink: deepLink(PANEL_PATHS.SUBSCRIPTION_PLANS),
     mail: {
+      /**
+       * ⚠️ This notice and the cancellation below had **no detail table** while
+       * every other subscription notice did — so the two messages a vendor is
+       * most likely to query were the two that named neither the plan nor the
+       * date. "Which plan?" and "expired when?" are the first two questions.
+       */
+      lines: [
+        ["Plan", subscription?.name || "-"],
+        ["Ended on", asDate(subscribed.endDate)],
+        ["Status", "Expired"],
+      ],
       ctaLabel: "Renew now",
       ctaUrl: vendorUrl(PANEL_PATHS.SUBSCRIPTION_PLANS),
     },
@@ -242,6 +265,16 @@ exports.notifySubscriptionCancelled = ({
     dedupeKey: `SUBSCRIPTION_CANCELLED:${subscribed._id}`,
     deepLink: deepLink(PANEL_PATHS.SUBSCRIPTION_PLANS),
     mail: {
+      /**
+       * ⚠️ The internal `reason` is **not** a row here, the same way it is not in
+       * the body. It is an admin's note to other admins; the vendor gets the fact
+       * and a way to act on it. See `brandStatusNotices.js` for the same rule.
+       */
+      lines: [
+        ["Plan", subscription?.name || "-"],
+        ["Cancelled on", asDate(new Date())],
+        ["Status", "Cancelled"],
+      ],
       ctaLabel: "Subscribe again",
       ctaUrl: vendorUrl(PANEL_PATHS.SUBSCRIPTION_PLANS),
     },

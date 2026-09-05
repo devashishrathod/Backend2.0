@@ -9,7 +9,12 @@ const { throwError } = require("../../utils");
 const { getSubscriptionConfig } = require("../settings");
 const { summarizeUsage } = require("../brands");
 const { commitPromoCode, releasePromoCode } = require("../promoCodes");
-const { notifyAdmins } = require("../notifications");
+const {
+  notifyAdmins,
+  ADMIN_PATHS,
+  adminUrl,
+  deepLink,
+} = require("../notifications");
 const {
   NOTIFICATION_TYPES,
   NOTIFICATION_SEVERITY,
@@ -241,6 +246,19 @@ exports.settleSubscriptionPayment = async ({
         totalUsageLimit: promoCommit.promoCode?.totalUsageLimit,
       },
       dedupeKey: `PROMO_OVER_LIMIT:${claimed._id}`,
+      deepLink: deepLink(ADMIN_PATHS.promo(claimed.pricing?.promoCode)),
+      mail: {
+        lines: [
+          ["Promo code", claimed.pricing?.promoCode || "-"],
+          ["Redemptions", String(promoCommit.promoCode?.usedCount ?? "-")],
+          ["Limit", String(promoCommit.promoCode?.totalUsageLimit ?? "-")],
+          ["Transaction", String(claimed._id)],
+        ],
+        ctaLabel: "Open promo code",
+        ctaUrl: adminUrl(ADMIN_PATHS.promo(claimed.pricing?.promoCode)),
+        footnote:
+          "Nothing to undo — the payment was quoted at that price before the code ran out. Raise the cap or close the code.",
+      },
     });
   }
 

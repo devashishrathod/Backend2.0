@@ -27,6 +27,21 @@ jest.mock("../../helpers/notifications/notify", () => ({
   resolveRecipient: jest.fn(),
 }));
 
+/**
+ * ⚠️ `VENDOR_DEBT_AGED` goes through `notifyAdmins` now, and the reason is worth
+ * keeping.
+ *
+ * It used to be `notify({ brandId, audience: ADMIN })` — which reads as "an
+ * admin notice about this brand" and is not what it did. `brandId` made
+ * `resolveRecipient` resolve the **brand's own email**, so an internal figure
+ * and the sentence *"Collect it, or write it off"* were delivered to the outlet
+ * the alert is about.
+ */
+jest.mock("../../helpers/notifications/notifyAdmins", () => ({
+  // Stamps the audience, exactly as the real one does before calling `notify`.
+  notifyAdmins: (args) => mockNotify({ ...args, audience: "ADMIN" }),
+}));
+
 const {
   connectTestDb,
   disconnectTestDb,

@@ -44,7 +44,18 @@ const {
   sendQuietly,
   notifyVendorDisputeRaised,
   notifyVendorDisputeResolved,
+  ADMIN_PATHS,
+  adminUrl,
+  deepLink,
 } = require("../../helpers/notifications");
+/**
+ * ⚠️ Deadlines in an admin alert go through the shared formatter, in IST.
+ *
+ * `new Date(dispute.respond_by * 1000).toLocaleDateString("en-IN")` printed a
+ * bare date in the **server's** zone, on the one deadline that forfeits the money
+ * when it passes. See `helpers/notifications/formatDateTime.js`.
+ */
+const { formatDateTime } = require("../../helpers/notifications/formatDateTime");
 const { formatMoney } = require("../../helpers/subscribeds");
 const {
   RAZORPAY_ACCOUNTS,
@@ -356,6 +367,18 @@ const processWebhookEvent = async ({
         severity: NOTIFICATION_SEVERITY.CRITICAL,
         title: `No settlement path for a captured payment`,
         body: `Transaction ${transaction.invoiceId || transaction._id} has purpose "${transaction.purpose}", which has no settler. The money is captured and nothing has been activated. Known purposes: ${SETTLER_PURPOSES.join(", ")}.`,
+        deepLink: deepLink(ADMIN_PATHS.transaction(transaction._id)),
+        mail: {
+          lines: [
+            ["Invoice", transaction.invoiceId || "-"],
+            ["Purpose", transaction.purpose || "-"],
+            ["Gateway account", transaction.gatewayAccount || "-"],
+            ["Razorpay order", transaction.razorpayOrderId || "-"],
+            ["Known purposes", SETTLER_PURPOSES.join(", ")],
+          ],
+          ctaLabel: "Open transaction",
+          ctaUrl: adminUrl(ADMIN_PATHS.transaction(transaction._id)),
+        },
         meta: {
           transactionId: transaction._id,
           purpose: transaction.purpose,
@@ -559,7 +582,7 @@ const processWebhookEvent = async ({
     // this has to reach a human rather than sit in the webhook log.
     if (isOpen || tainted.tainted) {
       const respondBy = dispute.respond_by
-        ? new Date(dispute.respond_by * 1000).toLocaleDateString("en-IN")
+        ? formatDateTime(new Date(dispute.respond_by * 1000))
         : "unknown";
       await notifyAdmins({
         type: NOTIFICATION_TYPES.PAYMENT_DISPUTED,
@@ -592,6 +615,7 @@ const processWebhookEvent = async ({
             : null,
           reason: dispute.reason_code || dispute.reason,
         },
+        deepLink: deepLink(ADMIN_PATHS.dispute(transaction._id)),
         dedupeKey: `PAYMENT_DISPUTED:${dispute.id}:${disputeStatus}`,
         mail: {
           lines: [
@@ -599,6 +623,30 @@ const processWebhookEvent = async ({
             ["Respond by", respondBy],
             ["Reason", dispute.reason_code || dispute.reason || "-"],
             ["Invoice", transaction.invoiceId || "-"],
+            ...(tainted.tainted
+              ? [["Settlement", tainted.settlement.settlementNumber || "-"]]
+              : []),
+          ],
+          /**
+           * Two buttons when a settlement is involved, because there are two
+           * things to do and they are on different screens: file the evidence
+           * against the dispute, and rebuild the settlement that is now on hold.
+           */
+          actions: [
+            {
+              label: "Open dispute",
+              url: adminUrl(ADMIN_PATHS.dispute(transaction._id)),
+            },
+            ...(tainted.tainted
+              ? [
+                  {
+                    label: "Open settlement",
+                    url: adminUrl(
+                      ADMIN_PATHS.settlement(tainted.settlement._id),
+                    ),
+                  },
+                ]
+              : []),
           ],
           footnote:
             "Submit evidence from the Razorpay dashboard before the deadline.",
@@ -1116,6 +1164,27 @@ exports.handleRazorpayWebhook = async ({
       title: `Razorpay webhook delivered to the wrong endpoint`,
       body: `A ${account} account delivery ("${event}") arrived on the ${expectedAccount} webhook URL. It was processed, but the ${account} dashboard should point at /transactions/webhook/razorpay${account === RAZORPAY_ACCOUNTS.CUSTOMER ? "/customer" : ""}.`,
       meta: { event, expectedAccount, actualAccount: account, ...ids },
+      /**
+       * The webhook **list**, not one event: nothing is wrong with this delivery
+       * — it was processed. What is wrong is a dashboard setting, and the list is
+       * where the pattern of misrouted deliveries is visible.
+       */
+      deepLink: deepLink(ADMIN_PATHS.WEBHOOKS),
+      mail: {
+        lines: [
+          ["Event", event || "-"],
+          ["Arrived on", `${expectedAccount} endpoint`],
+          ["Signed by", `${account} account`],
+          [
+            "Should point at",
+            `/transactions/webhook/razorpay${account === RAZORPAY_ACCOUNTS.CUSTOMER ? "/customer" : ""}`,
+          ],
+        ],
+        ctaLabel: "Open webhook log",
+        ctaUrl: adminUrl(ADMIN_PATHS.WEBHOOKS),
+        footnote:
+          "Fix the endpoint in the Razorpay dashboard for that account — this delivery was processed, but the misconfiguration breaks the day the two secrets diverge.",
+      },
       dedupeKey: `WEBHOOK_MISROUTE:${expectedAccount}:${account}`,
     });
   }
@@ -1191,6 +1260,21 @@ exports.handleRazorpayWebhook = async ({
         razorpayOrderId: ids.razorpayOrderId,
         razorpayPaymentId: ids.razorpayPaymentId,
         error: error?.message,
+      },
+      // The stored payload, because replaying it is the whole remedy.
+      deepLink: deepLink(ADMIN_PATHS.webhook(record._id)),
+      mail: {
+        lines: [
+          ["Event", event || "-"],
+          ["Error", error?.message || "-"],
+          ["Razorpay order", ids.razorpayOrderId || "-"],
+          ["Razorpay payment", ids.razorpayPaymentId || "-"],
+          ["Event id", String(resolvedEventId || "-")],
+        ],
+        ctaLabel: "Open webhook & replay",
+        ctaUrl: adminUrl(ADMIN_PATHS.webhook(record._id)),
+        footnote:
+          "Razorpay will not retry this — it already has our 200. The stored payload is the only way back in.",
       },
       dedupeKey: `WEBHOOK_FAILED:${resolvedEventId}`,
       mail: {

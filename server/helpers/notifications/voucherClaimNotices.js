@@ -9,6 +9,7 @@ const {
   PANEL_PATHS,
   deepLink,
   vendorUrl,
+  customerUrl,
   invoiceUrl,
 } = require("./panelLinks");
 const {
@@ -21,12 +22,17 @@ const money = (amount) =>
     { minimumFractionDigits: 2, maximumFractionDigits: 2 },
   )}`;
 
-const onDate = (date) =>
-  new Date(date || Date.now()).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+/**
+ * ⚠️ `formatDateTime`, and the time is the point.
+ *
+ * These are payment moments. A customer checking a receipt against a bank SMS,
+ * or asking why a claim expired, is matching to the minute — and the old local
+ * helper printed the **date only**, in the server's timezone. See
+ * `formatDateTime.js`.
+ */
+const { formatDateTime } = require("./formatDateTime");
+
+const onDate = (date) => formatDateTime(date || Date.now());
 
 /**
  * Everything a voucher claim tells someone.
@@ -80,9 +86,22 @@ exports.notifyClaimPaid = async ({ claim, transaction }) => {
         ["Date", onDate(claim.paidAt)],
         ["Claim code", claim.claimCode],
       ],
-      ...(download
-        ? { buttonText: "Download Invoice", buttonUrl: download }
-        : {}),
+      /**
+       * Two buttons, and the order is deliberate: the invoice is what this email
+       * exists for, and the order screen is where everything else about the claim
+       * lives — the code to show at the counter, the window it is valid in.
+       *
+       * Each is dropped independently when its base is unconfigured
+       * (`PUBLIC_API_URL`, `CUSTOMER_APP_URL`), rather than the pair being
+       * all-or-nothing.
+       */
+      actions: [
+        ...(download ? [{ label: "Download Invoice", url: download }] : []),
+        {
+          label: "View your order",
+          url: customerUrl(CUSTOMER_PATHS.order(claim._id)),
+        },
+      ],
     },
     // The WhatsApp template's URL button is approved against a fixed base with
     // only the last segment dynamic — so the token is passed, not a full URL.
@@ -113,6 +132,10 @@ exports.notifyClaimFailed = async ({ claim, reason }) => {
         ["Amount", money(claim.pricing?.totalPayable)],
         ["Reason", reason || "The payment was not completed"],
       ],
+      // Back to the voucher, matching the deep link — so they can try again
+      // rather than hunt for the offer a second time.
+      ctaLabel: "Try again",
+      ctaUrl: customerUrl(CUSTOMER_PATHS.voucher(claim.voucherId)),
     },
   });
 };
@@ -147,6 +170,8 @@ exports.notifyClaimRefunded = async ({ claim, transaction, amount, reference }) 
         ["Claim code", claim.claimCode],
         ...(reference ? [["Reference", reference]] : []),
       ],
+      ctaLabel: "View refund",
+      ctaUrl: customerUrl(CUSTOMER_PATHS.transaction(transaction?._id)),
     },
   });
 };
@@ -188,8 +213,8 @@ exports.notifyVendorClaimReceived = async ({ claim }) => {
         ["Your payable", money(claim.pricing?.vendorPayable)],
         ["Date", onDate(claim.paidAt)],
       ],
-      buttonText: "Open Dashboard",
-      buttonUrl: vendorUrl(PANEL_PATHS.DASHBOARD),
+      ctaLabel: "Open Dashboard",
+      ctaUrl: vendorUrl(PANEL_PATHS.DASHBOARD),
     },
   });
 };
@@ -216,6 +241,8 @@ exports.notifyClaimExpired = async ({ claim }) => {
         ["Claim code", claim.claimCode],
         ["Expired on", onDate(claim.expiresAt)],
       ],
+      ctaLabel: "View your order",
+      ctaUrl: customerUrl(CUSTOMER_PATHS.order(claim._id)),
     },
   });
 };

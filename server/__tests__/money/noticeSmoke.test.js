@@ -10,6 +10,23 @@ jest.mock("../../helpers/notifications/notify", () => ({
   resolveRecipient: jest.fn(),
 }));
 
+/**
+ * ⚠️ Admin notices go through `notifyAdmins`, so it is the seam for those.
+ *
+ * They used to call `notify({ audience: ADMIN })`, which addresses nobody: with
+ * no `brandId` / `customerId` / `userId` there is no email and no device, so the
+ * row was written and **nothing was delivered**. `notifyAdmins` fans out one row
+ * per active admin instead — and reads the database to find them, which this
+ * file has no connection for.
+ *
+ * Forwarded to the same spy because the assertion is the same one: *"the notice
+ * built this payload"*. The fan-out itself is exercised against a real seeded
+ * admin in `claimJobs.test.js`.
+ */
+jest.mock("../../helpers/notifications/notifyAdmins", () => ({
+  notifyAdmins: (args) => mockNotify({ ...args, audience: "ADMIN" }),
+}));
+
 const notices = require("../../helpers/notifications");
 const { SETTLEMENT_STATUS } = require("../../constants/settlement");
 const { REFUND_REQUEST_STATUS } = require("../../constants/refund");

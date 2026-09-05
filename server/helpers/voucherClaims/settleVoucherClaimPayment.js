@@ -12,6 +12,9 @@ const {
   notifyClaimPaid,
   notifyVendorClaimReceived,
   notifyClaimFailed,
+  ADMIN_PATHS,
+  adminUrl,
+  deepLink,
 } = require("../notifications");
 const {
   NOTIFICATION_TYPES,
@@ -276,6 +279,27 @@ exports.settleVoucherClaimPayment = async ({
           transactionId: claimed._id,
         },
         dedupeKey: `SLOT_CONFLICT:${claim._id}`,
+        deepLink: deepLink(ADMIN_PATHS.claim(claim._id)),
+        mail: {
+          lines: [
+            ["Claim code", claim.claimCode || "-"],
+            ["Amount charged", String(claim.pricing?.totalPayable ?? "-")],
+            ["Transaction", String(claimed._id)],
+          ],
+          /**
+           * Two screens, because the decision needs both: the claim says what was
+           * redeemed twice, and the transaction is where a refund is issued from.
+           */
+          actions: [
+            { label: "Open claim", url: adminUrl(ADMIN_PATHS.claim(claim._id)) },
+            {
+              label: "Open transaction",
+              url: adminUrl(ADMIN_PATHS.transaction(claimed._id)),
+            },
+          ],
+          footnote:
+            "The payment is settled and the customer has been charged — nothing is broken. The decision is whether the second redemption should be refunded.",
+        },
       });
     }
   }
@@ -427,6 +451,18 @@ exports.settleVoucherClaimPayment = async ({
         `was honoured because the money was taken at that price, so the code is now over its cap.`,
       meta: { claimId: claim._id, promoCode: claim.promoCode },
       dedupeKey: `PROMO_OVER_LIMIT:${claim.promoCode}`,
+      deepLink: deepLink(ADMIN_PATHS.promo(claim.promoCode)),
+      mail: {
+        lines: [
+          ["Promo code", claim.promoCode || "-"],
+          ["Claim code", claim.claimCode || "-"],
+          ["Discount honoured", String(claim.pricing?.promoDiscount ?? "-")],
+        ],
+        ctaLabel: "Open promo code",
+        ctaUrl: adminUrl(ADMIN_PATHS.promo(claim.promoCode)),
+        footnote:
+          "Nothing to undo — the money was taken at that price. Lower the cap or close the code if it should stop here.",
+      },
     });
   }
 

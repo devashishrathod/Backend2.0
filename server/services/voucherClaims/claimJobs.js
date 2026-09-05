@@ -10,7 +10,13 @@ const {
   settleVoucherClaimPayment,
   recordClaimHistory,
 } = require("../../helpers/voucherClaims");
-const { notifyAdmins } = require("../../helpers/notifications");
+const {
+  notifyAdmins,
+  ADMIN_PATHS,
+  adminUrl,
+  deepLink,
+} = require("../../helpers/notifications");
+const { formatDateTime } = require("../../helpers/notifications/formatDateTime");
 const { getCustomerConfig } = require("../../helpers/settings");
 const {
   NOTIFICATION_TYPES,
@@ -265,6 +271,23 @@ exports.resumeIncompleteSettlements = async ({ olderThanMinutes = 5 } = {}) => {
         `customer who paid and a vendor who has not been credited.`,
       meta: { failed, found: stranded.length },
       dedupeKey: `RESUME_FAILED:${new Date().toISOString().slice(0, 13)}`,
+      /**
+       * The **list**, not a record: this alert is about a batch, and the
+       * individual ids are in `meta` for a client that wants them. Pointing at
+       * one of several would hide the rest.
+       */
+      deepLink: deepLink(ADMIN_PATHS.TRANSACTIONS),
+      mail: {
+        lines: [
+          ["Could not resume", String(failed)],
+          ["Stranded settlements found", String(stranded.length)],
+          ["Checked at", formatDateTime(new Date())],
+        ],
+        ctaLabel: "Open transactions",
+        ctaUrl: adminUrl(ADMIN_PATHS.TRANSACTIONS),
+        footnote:
+          "Every step of a settle is idempotent, so these are safe to resume again once the cause is fixed.",
+      },
     });
   }
 
@@ -326,6 +349,18 @@ exports.reconcileClaimPayments = async ({ olderThanMinutes = 15 } = {}) => {
           razorpayPaymentId: payment.id,
         },
         dedupeKey: `RECONCILED:${payment.id}`,
+        deepLink: deepLink(ADMIN_PATHS.transaction(transaction._id)),
+        mail: {
+          lines: [
+            ["Razorpay payment", payment.id || "-"],
+            ["Recovered at", formatDateTime(new Date())],
+            ["Status", "Settled by reconciliation"],
+          ],
+          ctaLabel: "Open transaction",
+          ctaUrl: adminUrl(ADMIN_PATHS.transaction(transaction._id)),
+          footnote:
+            "Nothing is owed — this is already settled. The reason the webhook never arrived is what needs looking at.",
+        },
       });
     } catch (error) {
       console.error(
@@ -386,6 +421,26 @@ exports.alertStuckAuthorizations = async () => {
     // One alert an hour, not one per payment — if auto-capture is off there
     // will be hundreds and they all say the same thing.
     dedupeKey: `STUCK_AUTH:${new Date().toISOString().slice(0, 13)}`,
+    deepLink: deepLink(ADMIN_PATHS.TRANSACTIONS),
+    mail: {
+      lines: [
+        ["Stuck payments", String(stuck.length)],
+        ["Oldest authorized at", formatDateTime(stuck[0]?.authorizedAt)],
+        ["Alert threshold", `${config.refund.authorizedAlertMinutes} minutes`],
+        [
+          "Examples",
+          stuck
+            .slice(0, 5)
+            .map((t) => t.razorpayPaymentId)
+            .filter(Boolean)
+            .join(", ") || "-",
+        ],
+      ],
+      ctaLabel: "Open transactions",
+      ctaUrl: adminUrl(ADMIN_PATHS.TRANSACTIONS),
+      footnote:
+        "If this fired at all, auto-capture is off on the CUSTOMER account and every payment is in this state.",
+    },
   });
 
   return { stuck: stuck.length };

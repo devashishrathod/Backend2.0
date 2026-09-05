@@ -21,13 +21,17 @@ const money = (amount) =>
     { minimumFractionDigits: 2, maximumFractionDigits: 2 },
   )}`;
 
-const onDate = (date) =>
-  date
-    ? new Date(date).toLocaleString("en-IN", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    : "-";
+/**
+ * ⚠️ `formatDateTime` — and on this file it matters most.
+ *
+ * The helper it replaces had no `timeZone`, so a dispute's `respondBy` printed in
+ * the server's zone (UTC in production): five and a half hours off, on a deadline
+ * whose whole property is that **missing it loses the money automatically**. The
+ * bank does not ask twice. See `formatDateTime.js`.
+ */
+const { formatDateTime } = require("./formatDateTime");
+
+const onDate = formatDateTime;
 
 /**
  * A dispute response deadline is close, or has passed.
@@ -117,8 +121,8 @@ exports.notifyDisputeDeadline = async ({
         ["Status", transaction?.disputeStatus || "-"],
         ["Respond by", when],
       ],
-      buttonText: "Open dispute",
-      buttonUrl: adminUrl(ADMIN_PATHS.dispute(transaction?._id)),
+      ctaLabel: "Open dispute",
+      ctaUrl: adminUrl(ADMIN_PATHS.dispute(transaction?._id)),
     },
   });
 };
@@ -194,8 +198,8 @@ exports.notifyVendorDisputeRaised = async ({
         ["Status", "Held while we contest it"],
         ["What helps", "Bill / KOT number, camera timestamp, staff account"],
       ],
-      buttonText: "Open dispute",
-      buttonUrl: vendorUrl(PANEL_PATHS.dispute(dispute?._id)),
+      ctaLabel: "Open dispute",
+      ctaUrl: vendorUrl(PANEL_PATHS.dispute(dispute?._id)),
     },
   });
 };
@@ -271,8 +275,8 @@ exports.notifyVendorDisputeResolved = async ({
               : "Nothing to deduct — it was never paid out",
         ],
       ],
-      buttonText: "Open dispute",
-      buttonUrl: vendorUrl(PANEL_PATHS.dispute(dispute?._id)),
+      ctaLabel: "Open dispute",
+      ctaUrl: vendorUrl(PANEL_PATHS.dispute(dispute?._id)),
     },
   });
 };
