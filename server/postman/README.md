@@ -4,32 +4,73 @@ Ek collection per panel. Har collection **generate hoti hai**, hand-likhi nahi �
 limits aur defaults `constants/` se seedhe padhe jaate hain, to collection API ke baare me
 jhooth nahi bol sakti.
 
+**Teen collections. Teen docs. Aur koi nahi.**
+
 | Collection | Requests | Status |
 |---|---:|---|
 | `trydood-customer.postman_collection.json` | 140 | ✅ 492 assertions · **0 failed** · 206 examples, **140/140 requests par** |
-| `trydood-vendor.postman_collection.json` | 125 | ✅ 292 assertions · **0 failed** · 141 examples, **125/125 requests par** |
-| `trydood-admin.postman_collection.json` | 71 | ✅ 138 assertions · **0 failed** · 82 examples, **71/71 requests par** |
-| `trydood-brand-verification` · `trydood-subscription` · `trydood-security-changes` | 125 | Feature slices, panel collections nahi — inhe alag rakha gaya hai, dekho niche |
+| `trydood-vendor.postman_collection.json` | 127 | ✅ 294 assertions · **0 failed** · 143 examples, **127/127 requests par** |
+| `trydood-admin.postman_collection.json` | 113 | ✅ 258 assertions · **0 failed** · 124 examples, **113/113 requests par** |
 
-> ### Admin collection sirf 71 requests kyun, jabki admin ke 84 route hain
+> ### ✅ 219/219 — aur ye ab naapa jaata hai, gina nahi jaata
 >
-> Kyunki 35 admin routes ke requests **pehle se** `brand-verification`,
-> `subscription` aur `security-changes` me hain. Wo teeno admin panel nahi hain —
-> wo feature slices hain jinhe kisi aur cheez ko test karne ke liye admin token
-> chahiye tha — par unke requests asli hain aur chalti hain.
+> ```bash
+> node scripts/verifyApiCoverage.js
+> ```
 >
-> `trydood-admin` un **49 endpoints** ko cover karti hai jinke liye **kahin koi
-> request thi hi nahi**, aur baaki 35 ko dobara nahi likhti. `POST
-> /subscriptions/create` ki chauthi copy ek aur jagah hoti jise badalna padta —
-> aur is repo me duplicate request definitions ki keemat pehle hi chuki ja chuki
-> hai (dekho `lib/accountFolders.js`).
+> ```
+> Routes served: 219  (216 in routes/, 3 in index.js)
+>   ✅ endpoints_category.md    219/219 categorised
+>   ✅ role docs                219/219 documented
+>   ✅ collections              219/219 have a request
+>   ✅ saved examples           219/219 have an example
+> ```
+>
+> Ye routes **built Express routers** se padhta hai (`lib/routeInventory.js`),
+> kisi list se nahi — to jo route maujood hai wo report me hai, chahe kisi ko
+> yaad ho ya na ho.
+>
+> ⚠️ Pehle ye haath se gina jaata tha aur **har baar** drift karta tha: vendor
+> doc 78 endpoints kehti thi, uski collection me 116 requests thin, aur uska
+> generator 19 folders banata tha ek aisi file ke liye jisme 22 the. Teen number,
+> teen source, koi milaane wala nahi.
 
-> Endpoint counts [`../docs/endpoints_category.md`](../docs/endpoints_category.md) se —
-> 212 total, jinme customer ke 62, vendor ke 97, admin ke 170 (shared endpoints kai
-> docs me aate hain).
+> ### 🔴 Teen collections delete ki gayin — aur kyun
+>
+> `trydood-brand-verification`, `trydood-security-changes` aur
+> `trydood-subscription` kabhi panel nahi thin — har ek kaam ka ek tukda thi
+> jise kisi aur cheez ke liye token chahiye tha. Par unme **32 admin routes ki
+> ekmatra request** thi, yaani wo galti se load-bearing ban chuki thin: unhe
+> delete karna un endpoints ki coverage bhi le jaata, chup-chaap.
+>
+> Pehle sab kuch teen panel collections me migrate hua
+> (`lib/adminMigratedFolders.js`, script se — haath se nahi, aur field-by-field
+> diff karke), **tab** wo hataayi gayin.
+>
+> **Chauthi collection mat banao.** Jo endpoint upar wali table me fit na ho,
+> uska matlab gate galat hai — table nahi.
+
+### Kaunsa endpoint kahan jaata hai
+
+Gate se tay hota hai, isse nahi ki kahan achha lagta hai:
+
+| Gate | Doc | Collection |
+|---|---|---|
+| `isCustomer` | customer | `trydood-customer` |
+| `isVendor` · `isVendorOrSubVendor` | vendor | `trydood-vendor` |
+| `isAdmin` | admin | `trydood-admin` |
+| `isVendorOrAdmin` · `isBrandSideOrAdmin` | **vendor + admin** | vendor only |
+| `PUBLIC` · `optionalAuth` · `verifyJwtToken` | koi ek | koi ek |
+
+⚠️ `isVendorOrAdmin` **dono docs** me likha jaata hai par **ek** collection me
+request hoti hai. Dono role sach me call kar sakte hain, to dono docs ko bolna
+chahiye — par do collections me ek hi request rakhna matlab do jagah maintain
+karna, aur jis din ek badli aur doosri reh gayi, jo reh gayi wo chup-chaap jhooth
+bolne lagti hai.
 
 Companion docs: [`../docs/customer_mobile_api_doc.md`](../docs/customer_mobile_api_doc.md) ·
 [`../docs/vendor_panel_api_doc.md`](../docs/vendor_panel_api_doc.md) ·
+[`../docs/super_admin_panel_api_doc.md`](../docs/super_admin_panel_api_doc.md) ·
 [`../docs/endpoints_category.md`](../docs/endpoints_category.md)
 
 ---
