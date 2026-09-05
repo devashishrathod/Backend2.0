@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const { isValidateStoreId } = require("../validator/common");
+const { locationField } = require("./validObjectId");
 
 const voucherSubBrandSchema = new mongoose.Schema(
   {
@@ -43,9 +44,12 @@ const voucherSubBrandSchema = new mongoose.Schema(
         required: true,
       },
     },
-    locationId: {
-      type: mongoose.Schema.Types.ObjectId,
-    },
+    /**
+     * ⚠️ Was a bare ObjectId with no `ref`, while `Brand` and `Customer` both
+     * use `locationField` for the same relationship. Three models pointing at
+     * one collection, one of them unable to say so.
+     */
+    locationId: locationField,
     subBrandName: {
       type: String,
     },

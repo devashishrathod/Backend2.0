@@ -9,7 +9,6 @@ const {
   voucherField,
   voucherVersionField,
   voucherClaimField,
-  billField,
   settlementField,
   refundRequestField,
   subscribedField,
@@ -110,7 +109,6 @@ const transactionSchema = new mongoose.Schema(
     subscriptionId: subscriptionField,
     subscribedId: subscribedField,
     voucherId: voucherField,
-    billId: billField,
     createdBy: userField,
     settlementId: settlementField,
     /**
