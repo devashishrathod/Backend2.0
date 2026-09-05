@@ -1423,6 +1423,129 @@ GET /notifications/get-all?brandId=68f1a2b3c4d5e6f7a8b9c3a1
 
 ---
 
+## 22a. GET /notifications/admin/preferences 🆕
+
+**Access:** Intended: ADMIN · Enforced: **ADMIN**
+
+Kisi bhi ek user ke teen channel toggles padho — customer, vendor, outlet manager
+ya doosra admin. Profile card ke switches yahin se aate hain.
+
+### Query — **teeno me se theek ek**
+| Field | Type | Notes |
+|---|---|---|
+| `userId` | ObjectId | Seedha user |
+| `customerId` | ObjectId | Customer directory se |
+| `brandId` | ObjectId | Brand list se — brand ka **owner** resolve hota hai |
+
+⚠️ **`xor` hai, `or` nahi.** Do id bhejne par `422`. Warna do id aapas me disagree
+karein to service jo pehle check kare wahi jeet jaata — chup-chaap.
+
+```
+GET /notifications/admin/preferences?customerId=68f1a2b3c4d5e6f7a8b9c3a1
+```
+
+### Success — `200`
+```jsonc
+{
+  "success": true,
+  "message": "Notification preferences fetched successfully",
+  "data": {
+    "userId": "68f1a2b3c4d5e6f7a8b9c001",
+    "role": "CUSTOMER",
+    "audience": "CUSTOMER",
+    "channels": {
+      "email":    { "preference": true,  "effective": true,  "blockedBy": null },
+      "push":     { "preference": false, "effective": false, "blockedBy": "PREFERENCE" },
+      "whatsapp": { "preference": true,  "effective": false, "blockedBy": "PLATFORM" }
+    },
+    "updatedBy": { "_id": "68f1…", "name": "ops admin", "role": "ADMIN" },
+    "updatedAt": "2026-09-05T09:12:00.000Z"
+  }
+}
+```
+
+### Errors
+| Status | Message |
+|---|---|
+| `422` | `Pass exactly one of userId, customerId or brandId.` |
+| `422` | `This customer has no user account to set preferences on` |
+| `404` | `User not found` · `Customer not found` · `Brand not found` |
+
+## 22b. PUT /notifications/admin/preferences 🆕
+
+**Access:** Intended: ADMIN · Enforced: **ADMIN**
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `userId` \| `customerId` \| `brandId` | ObjectId | ✅ | Theek **ek** |
+| `email` | boolean | ⚠️ | |
+| `push` | boolean | ⚠️ | |
+| `whatsapp` | boolean | ⚠️ | |
+
+⚠️ Kam se kam ek channel bhi chahiye. Sirf id bhejna ek aisi request hoti jo kuch
+badalti nahi aur phir bhi `200` deti — panel use "save ho gaya" padhta.
+
+```json
+{ "customerId": "68f1a2b3c4d5e6f7a8b9c3a1", "push": false }
+```
+
+### 🔴 Ye **user ki** preference likhta hai, platform toggle nahi
+
+Ek customer ka WhatsApp on karne se **har customer** ka WhatsApp on nahi hota.
+Platform-wide switch `PUT /settings` me hai (neeche `Setting.admin.notification`
+aur `Setting.customer.notification`).
+
+Agar platform switch hi band hai, to write **ho jaata hai** aur response saaf
+bolta hai:
+
+```jsonc
+"whatsapp": { "preference": true, "effective": false, "blockedBy": "PLATFORM" }
+```
+
+Toggle on dikhega ek note ke saath. User ka choice store rehta hai aur jis din
+platform switch chalu hoga usi din lag jayega. `422` dena user ka choice record
+hi nahi hone deta.
+
+### ⚠️ `updatedBy` sirf naam deta hai
+
+`{ _id, name, role }` — email/mobile nahi. Ye kisi **doosre** ke profile card par
+render hota hai; *"kis admin ne chhua"* ke liye naam chahiye, colleague ke inbox
+ka raasta nahi.
+
+`updatedBy: null` + `updatedAt` present = **usi bande ne khud badla tha**. Khud ka
+change purana admin stamp hata deta hai, taaki naam wahan na pada rahe jo ab state
+explain nahi karta.
+
+### ⚠️ Chhe types preference se upar hain
+
+`REFUND_BANK_DETAILS_REQUESTED`, `BRAND_DEACTIVATED`, `REFUND_FAILED`,
+`SETTLEMENT_LEDGER_DRIFT`, `SHADOW_INDEX_REAPED`, `DISPUTE_DEADLINE` — inme chup
+rehne se padhne wale ki pahunch ya paisa jaata hai. Rule aur poori list:
+[`notification_preferences.md`](./notification_preferences.md).
+
+⚠️ **Ye sirf user ka toggle override karti hain, platform ka nahi** — platform
+switch tab lagta hai jab SMTP down ho ya Meta template na ho, aur us haalat me
+send karna sirf provider se reject hona hai.
+
+### Profile card par bina extra call ke
+
+Raw sub-document un responses me already aa jaata hai jo panel pehle se fetch
+karta hai:
+
+| Endpoint | Kahan |
+|---|---|
+| `GET /customers/admin/get-all` | `account.notificationPreferences` |
+| `GET /customers/admin/:customerId` | `account.notificationPreferences` |
+| `GET /brands/admin/get-all` | `vendor.notificationPreferences` |
+
+⚠️ **Raw hai, aur aksar poori tarah absent.** Field tabhi banta hai jab koi pehli
+baar setting badalta hai — **absent ka matlab sab on**. Un booleans ko seedha mat
+padhiye; resolved jawab (aur platform override) `GET /notifications/admin/preferences`
+deta hai.
+
+---
+
 # Brand Verification APIs
 
 Vendor KYC review queue. **Ye admin ka core workflow hai.**
@@ -6095,7 +6218,38 @@ Sirf [common auth errors](#common-errors) + `403` role check.
 | `vendor.showcase` | `maxSections` · `maxItemsPerSection` · `maxImagesPerSection` · `maxVideosPerSection` · `maxImageSizeMB` · `maxVideoSizeMB` (sab ≥1) · `allowedImages[]` · `allowedVideos[]` (min 1 item) · `isActive` |
 | `vendor.subscription` | Niche full table |
 | `customer` | Niche full table — **naya**, pehle pahunch me hi nahi tha |
+| `admin.notification` | 🆕 `isEmailNotificationEnabled` · `isPushNotificationEnabled` · `isWhatsAppNotificationEnabled` |
 | `isActive` | boolean |
+
+### 🆕 `admin.notification` — admin audience ke apne channels
+
+```json
+{ "admin": { "notification": { "isEmailNotificationEnabled": false } } }
+```
+
+Merged hai, replaced nahi — ek flag PATCH karne se baaki do waise hi rehte hain.
+
+### 🔴 Pehle ye block pahunch me hi nahi tha
+
+`getNotificationConfig(audience)` ka branch *"customer? … warna vendor"* tha, aur
+**admin `warna` me gir jaata tha**. Matlab `vendor.subscription.isEmailNotificationEnabled`
+off karne se admin ki `SETTLEMENT_LEDGER_DRIFT`, `REFUND_FAILED` aur har wo alert
+bhi band ho jaati thi jo paisa galat hone par kisi insaan tak pahunchne ke liye
+hai — aur kuch bola nahi jaata tha, kyunki in-app rows waise hi aati rehti thi.
+
+Ab teen audience, teen block, koi kisi ko chup nahi kara sakta.
+
+### ⚠️ Ye outage ka kill switch hai, preference nahi
+
+Defaults **on** hain aur on hi rehne chahiye — email `true`, push `true`, WhatsApp
+`false` (Meta template pending). Jis admin ko personally kam email chahiye uske
+paas `PUT /notifications/preferences` hai, jo sirf **use** chup karti hai, poori
+team ko nahi.
+
+⚠️ Live `Setting` document me ye field abhi **physically hai hi nahi** — wo iske
+add hone se pehle likha gaya tha. Mongoose read par defaults hydrate kar deta hai,
+isliye `GET /settings` me block **dikhta hai** aur delivery bhi sahi chalti hai;
+DB me row pehli write par banti hai. Koi migration nahi chahiye.
 
 ### `vendor.subscription` fields
 

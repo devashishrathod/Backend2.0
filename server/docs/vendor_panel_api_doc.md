@@ -1290,6 +1290,89 @@ Response ka `unreadCount` fresh hai — badge directly update kar sakte hain.
 
 ---
 
+## 19a. GET /notifications/preferences 🆕
+
+**Access:** ⚪ **Har role** — Vendor, Sub-vendor, Customer, Admin
+
+Teen channel — email, push, WhatsApp — **ek doosre se independent**. Id token se
+aati hai, to ye endpoint kisi aur ko address nahi kar sakta.
+
+### Success — `200`
+```jsonc
+{
+  "success": true,
+  "message": "Notification preferences fetched successfully",
+  "data": {
+    "userId": "68f1a2b3c4d5e6f7a8b9c001",
+    "role": "VENDOR",
+    "audience": "VENDOR",
+    "channels": {
+      "email":    { "preference": true,  "effective": true,  "blockedBy": null },
+      "push":     { "preference": true,  "effective": true,  "blockedBy": null },
+      "whatsapp": { "preference": true,  "effective": false, "blockedBy": "PLATFORM" }
+    },
+    "updatedBy": null,
+    "updatedAt": null
+  }
+}
+```
+
+### ⚠️ `preference` alag hai, `effective` alag
+
+`preference` = vendor ne kya chuna. `effective` = abhi actually kuch jaata hai ya
+nahi. Ek platform-wide switch vendor ke choice ko rok sakta hai, aur us haalat me
+sirf `preference: true` dikhana panel ka jhooth bolna hota.
+
+Aaj **WhatsApp platform-wide off hai** (Meta template pending), to
+`blockedBy: "PLATFORM"` normal case hai. `blockedBy`: `null` · `"PREFERENCE"` ·
+`"PLATFORM"`.
+
+### ⚠️ Sub-vendor ka toggle apna alag hai
+
+Brand ke notifications brand ke **owner** ko jaate hain. Outlet manager alag
+`User` hai apni toggles ke saath. Owner ki band karne se counter par baitha banda
+chup nahi hota.
+
+### ⚠️ In-app feed in teen me nahi hai
+
+Notification **row hamesha** likhi jaati hai — ye toggles sirf bahar jaane wali
+delivery tay karte hain.
+
+## 19b. PUT /notifications/preferences 🆕
+
+**Access:** ⚪ Har role — apni hi.
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `email` | boolean | ⚠️ | |
+| `push` | boolean | ⚠️ | |
+| `whatsapp` | boolean | ⚠️ | |
+
+⚠️ **Kam se kam ek** chahiye. **Partial hai** — sirf jo bheja wahi badalta hai.
+Poora object bhejne se paanch minute purani screen doosre device ka change palat
+degi.
+
+```json
+{ "whatsapp": false }
+```
+
+### Errors
+| Status | Message |
+|---|---|
+| `422` | `Send at least one of email, push or whatsapp to change.` |
+
+### ⚠️ Chhe notifications band nahi hoti
+
+Wo jinme chup rehna padhne wale ka hi nuksaan hai — jaise `BRAND_DEACTIVATED`,
+jismein vendor sign in hi nahi kar sakta, to in-app row uski pahunch se bahar hai
+aur email/WhatsApp hi ek raasta bachta hai. Poori list aur rule:
+[`docs/notification_preferences.md`](./notification_preferences.md).
+
+⚠️ **OTP ismein nahi aata** — koi apne hi login code ko silence na kar paye.
+
+---
+
 # Onboarding APIs
 
 Vendor onboarding 8 endpoints me hota hai. Har step `user.currentScreen` aage badhata hai — login ke baad wahi field batati hai vendor kahan resume kare.
