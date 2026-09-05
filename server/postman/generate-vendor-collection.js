@@ -74,6 +74,12 @@ const {
   emailVerificationFolder,
   notificationPreferenceRequests,
 } = require("./lib/accountFolders");
+/**
+ * ⚠️ `isVendorOrSubVendor`, so these belong here and not in the admin
+ * collection: an outlet manager who actually served the customer is often
+ * the only person who knows what happened at the counter.
+ */
+const { vendorDisputeRequests } = require("./lib/adminOpsFolders");
 
 const OUT = __dirname;
 const ENV_DIR = path.join(OUT, "environments");
@@ -651,6 +657,21 @@ const feedFolder = folder(
 // ===========================================================================
 // 20a — Email Verification (har role ke liye ek hi flow)
 // ===========================================================================
+const disputeEvidenceFolder = folder(
+  "21 — Dispute evidence",
+  [
+    "Bank ne ek payment wapas maanga. Yahan vendor apna bayaan deta hai.",
+    "",
+    "⚠️ Gate `isVendorOrSubVendor` hai — outlet manager tak. Wahi insaan aksar",
+    "jaanta hai ki counter par kya hua, aur use bahar rakhne ka matlab hota",
+    "sabse achhi gawahi ka na aana.",
+    "",
+    "Worklist khud admin collection me hai (`GET /disputes`), kyunki uska gate",
+    "koi role nahi maangta — scope token se aata hai, isliye wo kisi ek role ki",
+    "collection me fit nahi hoti.",
+  ].join("\n"),
+  vendorDisputeRequests({ token: V }),
+);
 const emailFolder = emailVerificationFolder({
   name: "21 — Email Verification",
   token: V,
@@ -2905,6 +2926,7 @@ const items = [
   claimsFolder,
   refundsFolder,
   settlementsFolder,
+  disputeEvidenceFolder,
   emailFolder,
   // Last, like the customer collection's: its negative tests deliberately call
   // admin surfaces, so anything ordered after it would run against a token that
@@ -3106,6 +3128,16 @@ const envFile = (name, baseUrl) => ({
       enabled: true,
     },
     { key: "email_otp", value: "", type: "default", enabled: true },
+    { key: "dispute_id", value: "", type: "default", enabled: true },
+
+    /**
+     * The server root, without the API prefix — see the admin collection's
+     * Health & Ops folder for why three routes need it.
+     */
+    { key: "host_url", value: baseUrl.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+    { key: "local_host", value: URLS.local.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+    { key: "stage_host", value: URLS.staging.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+    { key: "prod_host", value: URLS.production.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
 
     // ── captured automatically ──
     { key: "vendor_token", value: "", type: "secret", enabled: true },

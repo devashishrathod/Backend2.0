@@ -188,9 +188,52 @@ const run = async () => {
 
   // ── clear previous seed ──────────────────────────────────────────────────
   step("clear previous seed", async () => {
-    const brands = await Brand.find({ uniqueId: new RegExp(MARK) }).select("_id");
+    /**
+     * ⚠️ By brand **name** as well as by the marker.
+     *
+     * The vendor collection's onboarding folder signs up a throwaway vendor on
+     * a random number every run and walks it through onboarding, which creates
+     * a real `Brand` named `postman onboarding brand`. Those carry a generated
+     * `uniqueId`, so `uniqueId: /PMFX/` never saw them — and one accumulated
+     * per capture run, for ever.
+     *
+     * Measured: 18 of the 20 rows in the customer collection's brand-directory
+     * example were these leftovers, and one had no `brandName` at all (an
+     * onboarding that stopped before the name was written), which is what
+     * finally broke that folder's `brandName` assertion. The directory was
+     * quietly filling with test brands the whole time.
+     */
+    const brands = await Brand.find({
+      $or: [
+        { uniqueId: new RegExp(MARK) },
+        { brandName: /^postman onboarding brand/ },
+        { brandName: { $in: [null, ""] } },
+      ],
+    }).select("_id");
     const brandIds = brands.map((b) => b._id);
-    const users = await User.find({ uniqueId: new RegExp(MARK) }).select("_id");
+    /**
+     * ⚠️ By the **number** as well as by the marker.
+     *
+     * `uniqueId: /PMFX/` only finds rows this script created. But the
+     * collections sign in, and `loginOrSignUpWithWhatsapp` creates a real
+     * account with a *generated* `uniqueId` — so after any collection run there
+     * are seeded-number users the marker cannot see.
+     *
+     * The next seed then dies on `user_whatsappNumber_role_unique`, and the
+     * error names a duplicate rather than a clear that did not clear. That
+     * index is doing its job; the filter was the thing that was wrong.
+     *
+     * `97000000xx` is reserved for these fixtures — the collections' own
+     * throwaway signups use `9799990xxx`, and both live only in the seeded
+     * database that `--db` points at explicitly.
+     */
+    const users = await User.find({
+      $or: [
+        { uniqueId: new RegExp(MARK) },
+        { whatsappNumber: /^97000000\d{2}$/ },
+        { mobile: /^97000000\d{2}$/ },
+      ],
+    }).select("_id");
     const userIds = users.map((u) => u._id);
 
     /**
@@ -273,6 +316,22 @@ const run = async () => {
         disputeId: new RegExp(MARK, "i"),
       }),
       require("../models/Bank").deleteMany({ brandId: { $in: brandIds } }),
+      /**
+       * ⚠️ The admin collection's `POST /auth/register` uses a **fixed**
+       * email, so the second run correctly refuses it as a duplicate. It
+       * carries no `PMFX` marker, so nothing else here would clear it.
+       */
+      User.deleteMany({ email: "newadmin@trydood.com" }),
+      /**
+       * ⚠️ Created by the admin collection's **own** request, not by this
+       * seeder, and it carries no `PMFX` marker — so nothing here was clearing
+       * it and every run after the first answered `409 "already exists"` before
+       * doing anything at all.
+       */
+      require("../models/PromoCode").deleteMany({ code: "LAUNCH20" }),
+      require("../models/WebhookEvent").deleteMany({
+        eventId: new RegExp(MARK, "i"),
+      }),
     ]);
 
     await Promise.all([
@@ -322,6 +381,14 @@ const run = async () => {
   let money = null;
   /** Rows that exist purely so the admin collection has something safe to delete. */
   let throwaway = null;
+  /** Fixtures the admin environment block reads after every step has run. */
+  let webhookEvent = null;
+  let systemVerify = null;
+  let subscriptionPlan = null;
+  let subscribedRow = null;
+  let promoCode = null;
+  let termsRow = null;
+
   /**
    * The DRAFT version the admin collection sends through review.
    *
@@ -893,7 +960,7 @@ const run = async () => {
 
     await setting.save();
 
-    await PromoCode.create({
+    promoCode = await PromoCode.create({
       code: `${MARK}10`,
       description: "seeded customer promo for the postman collections",
       audience: PROMO_AUDIENCE.CUSTOMER,
@@ -921,7 +988,7 @@ const run = async () => {
 
   // ── vendor-panel fixtures ────────────────────────────────────────────────
   step("subscription plan + an active subscription on brand A", async () => {
-    const plan = await Subscription.create({
+    subscriptionPlan = await Subscription.create({
       name: "postman seed pro",
       description: "seeded plan for the vendor collection",
       price: 4999,
@@ -958,17 +1025,17 @@ const run = async () => {
      * reason that had nothing to do with what the example was demonstrating.
      */
     for (const { user, brand } of brands) {
-      await Subscribed.create({
+      subscribedRow = await Subscribed.create({
         userId: user._id,
         brandId: brand._id,
         subscribedBy: user._id,
-        subscriptionId: plan._id,
+        subscriptionId: subscriptionPlan._id,
         durationInDays: 365,
         durationInYears: 1,
         startDate: new Date(Date.now() - 86400000),
         endDate: new Date(Date.now() + 86400000 * 364),
-        price: plan.price,
-        paidAmount: plan.price,
+        price: subscriptionPlan.price,
+        paidAmount: subscriptionPlan.price,
         dueAmount: 0,
         status: SUBSCRIBED_STATUS.ACTIVE,
         source: SUBSCRIPTION_SOURCE.ADMIN_MANUAL,
@@ -984,7 +1051,7 @@ const run = async () => {
     const b = await Brand.findById(brands[0].brand._id).select(
       "isSubscribed vouchersLimit isVouchersUnlimited subBrandsLimit showcaseLimit",
     );
-    return `${plan.name} — isSubscribed=${b.isSubscribed}, outlets=${b.subBrandsLimit}, showcase=${b.showcaseLimit}`;
+    return `${subscriptionPlan.name} — isSubscribed=${b.isSubscribed}, outlets=${b.subBrandsLimit}, showcase=${b.showcaseLimit}`;
   });
 
   step("draft + approved voucher versions (submit / publish ke liye)", async () => {
@@ -1106,7 +1173,7 @@ const run = async () => {
       type: "CUSTOMER",
       isActive: true,
     });
-    await PrivacyAndPolicy.create({
+    termsRow = await PrivacyAndPolicy.create({
       title: "postman seed privacy policy",
       description: "Seeded Privacy Policy.",
       type: "CUSTOMER",
@@ -1859,6 +1926,79 @@ const run = async () => {
   });
 
   /**
+   * ── the two worklists that were answering 404 ────────────────────────────
+   *
+   * `GET /transactions/webhook/events` and `GET /brands/admin/verifications`
+   * both came back `404 "No any … found"`. That is `pagination()` doing what it
+   * always does — it throws on an empty page rather than returning one — but it
+   * means an empty collection and a broken endpoint capture **identically**,
+   * and the saved example then documents a failure as if it were the contract.
+   */
+  step("webhook events + a brand verification row (worklists need rows)", async () => {
+    const WebhookEvent = require("../models/WebhookEvent");
+    const SystemVerify = require("../models/SystemVerify");
+    const { TRANSACTION_PURPOSE } = require("../constants/transaction");
+
+    /**
+     * One FAILED and one PROCESSED. The list defaults to failures — that is the
+     * worklist's whole purpose — and the replay endpoint needs a failed one to
+     * act on, so seeding only successes would leave replay with nothing.
+     */
+    webhookEvent = await WebhookEvent.create({
+      provider: "RAZORPAY",
+      eventId: `evt_${MARK.toLowerCase()}_failed_1`,
+      event: "payment.captured",
+      status: "FAILED",
+      account: ROLES.VENDOR,
+      purpose: TRANSACTION_PURPOSE.SUBSCRIPTION,
+      error: "Seeded: downstream settle threw, so this row is replayable.",
+      /**
+       * ⚠️ The **full** payload, not just the preview.
+       *
+       * `replay` refuses without it — *"This event has no stored payload, so it
+       * cannot be replayed"* — and replaying a failed event is the entire
+       * reason that folder exists. A preview-only row makes the endpoint look
+       * broken when it is behaving exactly as designed.
+       */
+      payload: {
+        event: "payment.captured",
+        payload: {
+          payment: { entity: { id: `pay_${MARK.toLowerCase()}_seed` } },
+        },
+      },
+      payloadPreview: '{"event":"payment.captured","seeded":true}',
+      attempts: 1,
+    });
+
+    await WebhookEvent.create({
+      provider: "RAZORPAY",
+      eventId: `evt_${MARK.toLowerCase()}_ok_1`,
+      event: "payment.captured",
+      status: "PROCESSED",
+      account: ROLES.CUSTOMER,
+      purpose: TRANSACTION_PURPOSE.VOUCHER_CLAIM,
+      payloadPreview: '{"event":"payment.captured","seeded":true}',
+      processedAt: new Date(),
+      attempts: 1,
+    });
+
+    /**
+     * A verification sitting in MANUAL_REVIEW, because that is the state the
+     * queue exists to show. APPROVED rows are history; the queue is a list of
+     * decisions somebody still owes.
+     */
+    systemVerify = await SystemVerify.create({
+      brandId: brands[0].brand._id,
+      attemptNumber: 1,
+      score: 72,
+      status: "MANUAL_REVIEW",
+      remarks: "Seeded so the review queue has a row to open.",
+    });
+
+    return "2 webhook events (1 FAILED, 1 PROCESSED) + 1 MANUAL_REVIEW verification";
+  });
+
+  /**
    * ── settlements in every state an admin can act on ───────────────────────
    *
    * The admin settlement folder has **twelve** actions and they are a state
@@ -1900,7 +2040,18 @@ const run = async () => {
      * three of them, one per period.
      */
     const rounds = [];
-    for (let i = 0; i < 3; i += 1) {
+    /**
+     * ⚠️ Four rounds, not three — the fourth exists only to be walked all the
+     * way to PAID.
+     *
+     * `statementToken` is minted at that transition and nowhere else
+     * (`transitionSettlement`: `becomingPaid && !settlement.statementToken`),
+     * and `GET /settlements/statement/:token` is the one **public** settlement
+     * route. With no PAID settlement there is no token, the path segment is
+     * empty, and the request answers `401` — which names authentication for
+     * what is really a missing id.
+     */
+    for (let i = 0; i < 4; i += 1) {
       const owner = await money.makeCustomer({
         key: `3${i}`,
         whatsapp: `97000000${30 + i}`,
@@ -1975,13 +2126,13 @@ const run = async () => {
       .sort({ createdAt: 1 })
       .lean();
 
-    if (built.length < 6) {
+    if (built.length < 7) {
       const byStatus = built.reduce((acc, s) => {
         acc[s.status] = (acc[s.status] || 0) + 1;
         return acc;
       }, {});
       throw new Error(
-        `Expected at least 6 settlements across 3 periods, built ${built.length} ` +
+        `Expected at least 7 settlements across 4 periods, built ${built.length} ` +
           `(${JSON.stringify(byStatus)}). The backdated transactions may not be ` +
           "eligible — see buildEligibilityFilter, and note that a brand with a " +
           "verified bank account is required for the snapshot.",
@@ -2026,6 +2177,18 @@ const run = async () => {
       S.PROCESSING,
       S.FAILED,
     ]);
+
+    /**
+     * Walked all the way to PAID, purely so it carries a `statementToken`.
+     *
+     * ⚠️ Nothing in the collection acts on this one. It exists because the
+     * token is minted at that transition and nowhere else, and the public
+     * statement route has no bearer at all — the token in the path **is** the
+     * credential, so there is no other way to obtain one.
+     */
+    const paid = built[6]
+      ? await park(built[6], [S.APPROVED, S.PROCESSING, S.PAID])
+      : null;
 
     /**
      * ── refunds, one per admin action ────────────────────────────────────
@@ -2203,6 +2366,7 @@ const run = async () => {
       processing,
       failed,
       abandonable,
+      paid,
       brandId: brands[0].brand._id,
       adminApprovable,
       adminRejectable,
@@ -2366,6 +2530,7 @@ const run = async () => {
 
         settlement_id: String(v.settlementA?._id || ""),
         subscription_transaction_id: String(v.subscriptionTxn._id),
+        dispute_id: String(adminMoney?.dispute?.disputeId || ""),
       };
       writeEnvIds("vendor-local.postman_environment.json", seeded);
     }
@@ -2383,6 +2548,7 @@ const run = async () => {
       const a = adminMoney;
       writeEnvIds("admin-local.postman_environment.json", {
         brand_id: String(brands[0].brand._id),
+        other_brand_id: String(brands[1].brand._id),
         category_id: String(category._id),
         draft_version_id: String(draftVersion?._id || ""),
 
@@ -2391,6 +2557,28 @@ const run = async () => {
 
         held_transaction_id: String(a.heldTransaction._id),
         dispute_id: String(a.dispute.disputeId),
+
+        /**
+         * ⚠️ Public route, token-in-path. `GET /settlements/statement/:token`
+         * is the only settlements route with no bearer — the vendor opens it
+         * from an emailed link while signed out. So no request can capture
+         * this; it only exists on the settlement row.
+         */
+        statement_token: String(a.paid?.statementToken || ""),
+
+        admin_user_id: String(admin._id),
+        webhook_event_id: String(webhookEvent?.eventId || ""),
+        system_verify_id: String(systemVerify?._id || ""),
+
+        promo_code_id: String(promoCode?._id || ""),
+        promo_code: String(promoCode?.code || ""),
+        plan_proplus_id: String(subscriptionPlan?._id || ""),
+        subscription_id: String(subscriptionPlan?._id || ""),
+        subscribed_id: String(subscribedRow?._id || ""),
+        legal_id: String(termsRow?._id || ""),
+        terms_id: String(termsRow?._id || ""),
+        voucher_id: String(vouchers[0]?._id || ""),
+        user_id: String(money.primary.user._id),
 
         admin_refund_id: String(a.adminApprovable._id),
         admin_rejectable_refund_id: String(a.adminRejectable._id),

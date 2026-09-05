@@ -46,6 +46,20 @@ const {
   emailVerificationFolder,
   notificationPreferenceRequests,
 } = require("./lib/accountFolders");
+/**
+ * ⚠️ The 32 requests that used to exist only in the three feature-slice
+ * collections. Those are being deleted, and without this they would have gone
+ * with them — see the note at the top of that file.
+ */
+const migrated = require("./lib/adminMigratedFolders");
+const {
+  healthFolder,
+  disputeFolder,
+  bannerListRequest,
+  tickerCreateRequest,
+  settlementExtraRequests,
+  passwordRestoreRequest,
+} = require("./lib/adminOpsFolders");
 
 const ADM = "admin_token";
 
@@ -888,13 +902,41 @@ const items = [
   refundsFolder,
   settlementsFolder,
   emailFolder,
+  migrated.fauthAdminOnlyFlows,
+  migrated.fpromoCodes,
+  migrated.fsubscribedsGrantCancelForfeit,
+  migrated.fplatformSettings,
+  migrated.fwebhooksReplay,
+  migrated.fcurationVerificationQueues,
+  healthFolder,
+  disputeFolder,
   // Last: its negative tests deliberately prove the token does *not* work, so
   // nothing ordered after it can rely on that token still being useful.
   gateFolder,
 ];
 
-// The channel toggles ride along with the admin's own notification folder.
+
+
+/**
+ * Requests that belong in folders built above, appended rather than declared
+ * inline so the folder definitions stay readable.
+ *
+ * ⚠️ Before `countTree` runs — the totals printed at the end are taken from
+ * the assembled tree, and appending after it reported a count the file did
+ * not contain.
+ */
+bannerFolder.item.push(migrated.extras.banners[0], bannerListRequest);
+tickerFolder.item.push(tickerCreateRequest);
+planFolder.item.push(migrated.extras.plans[0]);
+legalFolder.item.push(migrated.extras.legal[0]);
+notificationFolder.item.push(migrated.extras.notifications[0]);
+settlementsFolder.item.push(...settlementExtraRequests);
 notificationFolder.item.push(...notificationPreferenceRequests({ token: ADM }));
+/**
+ * ⚠️ Immediately after `Set Password`, which moved it. See that request's
+ * note — without this the *next* run cannot sign in at all.
+ */
+migrated.fauthAdminOnlyFlows.item.splice(2, 0, passwordRestoreRequest);
 
 const stats = countTree(items);
 
@@ -952,6 +994,19 @@ const envFile = (name, baseUrl) => ({
     { key: "stage_url", value: URLS.staging, type: "default", enabled: true },
     { key: "prod_url", value: URLS.production, type: "default", enabled: true },
 
+    /**
+     * ⚠️ The server root, **without** `/trydood/v1`.
+     *
+     * `index.js` serves `/`, `/my-ip` and `/client-ip` outside the API mount,
+     * so `{{base_url}}` puts them at `/trydood/v1/my-ip` — the router's
+     * catch-all, a `404` that reads as a routing bug rather than a missing
+     * prefix. Every environment carries all three of these too.
+     */
+    { key: "host_url", value: baseUrl.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+    { key: "local_host", value: URLS.local.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+    { key: "stage_host", value: URLS.staging.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+    { key: "prod_host", value: URLS.production.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+
     // ── sign-in. The seeder creates this account *with* a password. ──
     {
       key: "admin_email",
@@ -991,12 +1046,59 @@ const envFile = (name, baseUrl) => ({
      * from — see `lib/adminMoneyFolders.js`.
      */
     { key: "brand_id", value: "", type: "default", enabled: true },
+    /**
+     * ⚠️ Brand B, deliberately not the same brand as `brand_id`.
+     *
+     * The subscription-lifecycle requests (Grant → Resync → Cancel) really do
+     * change subscription state — Cancel really cancels. Pointed at Brand A
+     * that broke the vendor collection's very next assertion elsewhere
+     * ("Get my brand — isSubscribed"), since Brand A is what every other
+     * collection reads. Brand B carries no such assertion anywhere.
+     */
+    { key: "other_brand_id", value: "", type: "default", enabled: true },
     { key: "admin_banner_id", value: "", type: "default", enabled: true },
     { key: "admin_ticker_id", value: "", type: "default", enabled: true },
     { key: "category_id", value: "", type: "default", enabled: true },
     { key: "draft_version_id", value: "", type: "default", enabled: true },
     { key: "held_transaction_id", value: "", type: "default", enabled: true },
     { key: "dispute_id", value: "", type: "default", enabled: true },
+    { key: "statement_token", value: "", type: "default", enabled: true },
+
+    /**
+     * ── referenced by the migrated requests ──
+     *
+     * ⚠️ Declared even where they start empty. An undeclared `{{…}}` is sent
+     * literally, so the request hits the router's catch-all and answers
+     * `404 Invalid API` — a refusal that reads as a routing bug rather than a
+     * missing value.
+     */
+    // Terms/Privacy row the update request edits.
+    { key: "legal_id", value: "", type: "default", enabled: true },
+    // Captured from a dry-run broadcast, replayed by the retry.
+    { key: "broadcast_id", value: "", type: "default", enabled: true },
+    // Reset-password code. Seeded flows accept any 6 digits.
+    { key: "otp", value: "000000", type: "default", enabled: true },
+    // The code string itself, captured on create.
+    { key: "promo_code", value: "", type: "default", enabled: true },
+    // A subscription plan to grant.
+    { key: "plan_proplus_id", value: "", type: "default", enabled: true },
+    // Captured from a grant; the webhook list filters on it.
+    { key: "transaction_id", value: "", type: "default", enabled: true },
+    // Captured from the forfeited worklist.
+    { key: "forfeited_subscribed_id", value: "", type: "default", enabled: true },
+    // Captured from a grant, replayed into the webhook.
+    { key: "razorpay_order_id", value: "", type: "default", enabled: true },
+    // The signed-in admin, for reviewer filters.
+    { key: "admin_user_id", value: "", type: "default", enabled: true },
+    // Captured from the verification queue.
+    { key: "system_verify_id", value: "", type: "default", enabled: true },
+    { key: "promo_code_id", value: "", type: "default", enabled: true },
+    { key: "subscribed_id", value: "", type: "default", enabled: true },
+    { key: "subscription_id", value: "", type: "default", enabled: true },
+    { key: "webhook_event_id", value: "", type: "default", enabled: true },
+    { key: "terms_id", value: "", type: "default", enabled: true },
+    { key: "voucher_id", value: "", type: "default", enabled: true },
+    { key: "user_id", value: "", type: "default", enabled: true },
 
     { key: "admin_refund_id", value: "", type: "default", enabled: true },
     {

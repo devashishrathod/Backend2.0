@@ -3310,6 +3310,18 @@ const envFile = (name, baseUrl) => ({
     { key: "stage_url", value: URLS.staging, type: "default", enabled: true },
     { key: "prod_url", value: URLS.production, type: "default", enabled: true },
 
+    /**
+     * The server root, without the API prefix.
+     *
+     * `index.js` serves `/`, `/my-ip` and `/client-ip` outside the mount, and
+     * every environment carries all three deployments of both forms so a run
+     * can be retargeted by copying one value across.
+     */
+    { key: "host_url", value: baseUrl.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+    { key: "local_host", value: URLS.local.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+    { key: "stage_host", value: URLS.staging.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+    { key: "prod_host", value: URLS.production.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+
     // ── fill this in ──
     /**
      * ⚠️ Defaults to the **seeded** customer, not a random number.
