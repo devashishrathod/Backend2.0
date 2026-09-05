@@ -42,6 +42,7 @@
     "razorpay": "^2.9.6"
   },
   "devDependencies": {
-    "jest": "^30.5.0"
+    "jest": "^30.5.0",
+    "newman": "^6.2.2"
   }
 }

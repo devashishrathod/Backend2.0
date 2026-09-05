@@ -261,6 +261,15 @@ const example = ({ name, code, status, body, req }) => ({
  * @param {Array}    [o.assert]      flattened into the test script
  * @param {Array}    [o.capture]     [[envVar, "d.path"], …]
  * @param {Array}    [o.examples]    saved examples (documentation only)
+ * @param {boolean}  [o.followRedirects]
+ *        Set `false` for an endpoint whose answer **is** the redirect.
+ *        `GET /transactions/invoice/:token` returns a 302 to a CDN, and with
+ *        following left on, the captured "response" was the PDF Cloudinary
+ *        served — non-JSON, so the capture step skipped it and that request
+ *        ended up the only one in the collection with no saved example. Worse,
+ *        had it been saved it would have embedded a binary document. Turning
+ *        following off makes the 302 and its `Location` the documented answer,
+ *        which is what the endpoint actually promises.
  */
 const req = ({
   name,
@@ -276,6 +285,7 @@ const req = ({
   assert = [],
   capture: caps = [],
   examples = [],
+  followRedirects,
 }) => {
   const request = {
     method,
@@ -303,6 +313,9 @@ const req = ({
     name,
     request,
     response: examples.map((ex) => example({ ...ex, req: request })),
+    ...(followRedirects === false
+      ? { protocolProfileBehavior: { followRedirects: false } }
+      : {}),
     ...(script.length
       ? {
           event: [
