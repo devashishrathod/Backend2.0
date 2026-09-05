@@ -161,12 +161,33 @@ node scripts/migrateCustomerClaimFoundation.js          # what would change
 node scripts/migrateCustomerClaimFoundation.js --apply  # change it
 ```
 
-> ⚠️ Postman collections are generated, but `trydood-customer` and `trydood-vendor`
-> also carry **captured** examples from live runs, which the generators do not know
-> about. Re-running a generator rewrites the whole file and deletes them — measured at
-> 15,499 lines across the two, with the command still reporting success. Run only the
-> generator whose source you changed, and check `git diff --stat postman/` afterwards.
+> ⚠️ Postman collections are generated, but all three also carry **captured**
+> examples from live runs, which the generators do not know about. Re-running a
+> generator rewrites the whole file and deletes them — measured at 15,499 lines
+> across two of them, with the command still reporting success. Run only the
+> generator whose source you changed, and check `git diff --stat postman/`
+> afterwards: **more deletions than insertions means stop and look.**
 > See `postman/README.md`.
+>
+> The full cycle, in this order — the generator rewrites the environment with
+> empty values, so seeding after it is not optional:
+>
+> ```bash
+> node postman/generate-<panel>-collection.js
+> node scripts/seedPostmanFixtures.js --db Trydood2_postman --apply
+> MONGO_URL="<...>/Trydood2_postman" ENABLE_JOBS=false npm start   # separate shell
+> node postman/lib/capture-examples.js \
+>   postman/trydood-<panel>.postman_collection.json \
+>   postman/environments/<panel>-local.postman_environment.json
+> node scripts/verifyApiCoverage.js
+> ```
+>
+> ⚠️ **Re-seed between capture runs.** The collections delete rows on purpose —
+> a banner, a ticker, a category — and several walk a settlement or a refund
+> through its state machine. A second capture without a fresh seed fails on
+> fixtures the first one consumed, and the failure surfaces somewhere unrelated:
+> a `Set Password` request left the admin's password changed, so the *next* run
+> answered `401` on login and all 113 requests failed pointing at auth.
 
 > ⚠️ Never fix a schema drift with `syncIndexes()`. It drops **every** index not
 > in the current schema, including any added by hand or by another branch, and it
@@ -290,12 +311,73 @@ Strictly one direction. A controller never imports a model; a service never sees
 4. **Service** — `services/<domain>/<verb>.js`, plain `async`, `throwError` on failure, update the barrel
 5. **Controller** — `controllers/<domain>/<verb>.js`, `asyncWrapper` + `sendSuccess`, update the barrel
 6. **Route** — add to `routes/<domain>.js`; the file auto-mounts at `/trydood/v1/<domain>`
+7. **Endpoint map** — add the row to `docs/endpoints_category.md`
+8. **Role doc** — write it up in the doc(s) its gate lets in (see the table below)
+9. **Collection** — add the request to the matching generator, then **re-seed and
+   re-capture** so it carries a real saved example
+
+**Steps 7-9 are not optional, and they are checked:**
+
+```bash
+node scripts/verifyApiCoverage.js     # exits 1 if anything is uncovered
+```
 
 Order in a route: auth middleware → `validateSchema(...)` → controller.
 
 ```js
 router.put("/update", isVendor, validateSchema(validateUpdateBrand), update);
 ```
+
+### Where a new endpoint has to appear
+
+There are **three** panel docs and **three** collections. Nothing else — no
+fourth collection, no per-feature doc. Which ones an endpoint lands in comes from
+the gate the code actually enforces, never from where it feels like it belongs:
+
+| Gate | Doc | Collection |
+|---|---|---|
+| `isCustomer` | customer | `trydood-customer` |
+| `isVendor` · `isVendorOrSubVendor` | vendor | `trydood-vendor` |
+| `isAdmin` | admin | `trydood-admin` |
+| `isVendorOrAdmin` · `isBrandSideOrAdmin` | **vendor + admin** | vendor only |
+| `PUBLIC` · `optionalAuth` · `verifyJwtToken` | any one | any one |
+
+⚠️ `isVendorOrAdmin` is documented in **both** docs and requested in **one**
+collection. Both roles genuinely can call it, so both docs must say so — but two
+collections holding the same request means maintaining it twice, and the day one
+is updated and the other is not, the collection that was missed starts lying
+with no way to notice. The admin doc's section links to the vendor collection.
+
+> ### 🔴 Three feature-slice collections were deleted, and this is why
+>
+> `trydood-brand-verification`, `trydood-security-changes` and
+> `trydood-subscription` were never panels — each was a slice of work that
+> happened to need a token. Between them they held the **only** request for 32
+> admin routes, so they were load-bearing by accident: deleting them would have
+> taken those endpoints' coverage with them, silently.
+>
+> Everything moved into the three panel collections first
+> (`postman/lib/adminMigratedFolders.js`), and only then were they removed.
+> **Do not add a fourth collection.** An endpoint that does not fit the table
+> above means the gate is wrong, not that the table is.
+
+### `verifyApiCoverage.js` reads the routers, not a list
+
+It walks the **built Express routers** (`postman/lib/routeInventory.js`), so a
+route that exists is in the report whether or not anybody remembered it — which
+is the whole point. Counting by hand drifted every single time: the vendor doc
+claimed 78 endpoints while its collection had 116 requests and its generator
+built 19 folders for a shipped file with 22. Three numbers, three sources, none
+agreeing, and nothing comparing them.
+
+It also catches the two failures that look like success:
+
+- a request with **no saved example** — it was never actually run;
+- a route in the map and the doc but in **no collection** — documented and
+  unverified.
+
+A pre-commit hook runs it (`.githooks/pre-commit`). If it fails, the fix is to
+add the missing piece, never `--no-verify`.
 
 ---
 
