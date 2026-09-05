@@ -63,6 +63,17 @@ const {
   refundsFolder,
   settlementsFolder,
 } = require("./lib/vendorMoneyFolders");
+/**
+ * ⚠️ Shared with the customer collection, not copied into it.
+ *
+ * Email verification and the channel toggles are role-agnostic in the code —
+ * one `User`, no role gate, the id read off the token — so a per-collection
+ * copy would mean the next change to either endpoint had to be made twice.
+ */
+const {
+  emailVerificationFolder,
+  notificationPreferenceRequests,
+} = require("./lib/accountFolders");
 
 const OUT = __dirname;
 const ENV_DIR = path.join(OUT, "environments");
@@ -144,7 +155,7 @@ const authFolder = folder(
     "",
     "⚠️ **Password login vendor ke liye hai hi nahi** — `POST /auth/login` aur poora",
     "set/forgot/reset flow ADMIN-only hai. Isliye is collection me wo endpoints nahi",
-    "hain; `21 — Access control` me unpe `422`/`403` verify hota hai.",
+    "hain; `22 — Access control` me unpe `422`/`403` verify hota hai.",
     "",
     "⚠️ WhatsApp OTP abhi verify nahi hota (deliberate, deferred) — koi bhi 6-digit chalega.",
   ].join("\n"),
@@ -632,8 +643,18 @@ const feedFolder = folder(
         },
       ],
     }),
+
+    ...notificationPreferenceRequests({ token: V }),
   ],
 );
+
+// ===========================================================================
+// 20a — Email Verification (har role ke liye ek hi flow)
+// ===========================================================================
+const emailFolder = emailVerificationFolder({
+  name: "21 — Email Verification",
+  token: V,
+});
 
 // ===========================================================================
 // 04 — Onboarding (fresh vendor)
@@ -2657,10 +2678,10 @@ const legalFolder = folder(
 );
 
 // ===========================================================================
-// 21 — Access control
+// 22 — Access control
 // ===========================================================================
 const gateFolder = folder(
-  "21 — Access control (vendor token refuse hona chahiye)",
+  "22 — Access control (vendor token refuse hona chahiye)",
   [
     "**Negative tests** — har request ka pass hona matlab gate kaam kar raha hai.",
     "Sab vendor ke apne token se chalti hain.",
@@ -2884,6 +2905,7 @@ const items = [
   claimsFolder,
   refundsFolder,
   settlementsFolder,
+  emailFolder,
   // Last, like the customer collection's: its negative tests deliberately call
   // admin surfaces, so anything ordered after it would run against a token that
   // has just been proven not to work there.
@@ -3070,6 +3092,20 @@ const envFile = (name, baseUrl) => ({
     { key: "vendor_email", value: "postman.vendor@example.com", type: "default", enabled: true },
     { key: "vendor_mobile", value: "9700000011", type: "default", enabled: true },
     { key: "otp", value: "000000", type: "default", enabled: true },
+
+    /**
+     * Email verification. `new_email` is the address the change flow claims;
+     * `email_otp` has to be pasted from a real inbox — the collection cannot
+     * read mail, which is why that request's saved example is the refusal an
+     * empty code produces rather than a success.
+     */
+    {
+      key: "new_email",
+      value: "postman.vendor.new@example.com",
+      type: "default",
+      enabled: true,
+    },
+    { key: "email_otp", value: "", type: "default", enabled: true },
 
     // ── captured automatically ──
     { key: "vendor_token", value: "", type: "secret", enabled: true },
