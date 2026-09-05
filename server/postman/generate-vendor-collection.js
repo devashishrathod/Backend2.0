@@ -52,6 +52,17 @@ const { DEVICE_PLATFORMS } = require("../constants/notification");
 const { SUBSCRIBED_STATUS } = require("../constants/subscription");
 
 const { json, ok, err, A, req, folder, countTree } = require("./lib/builders");
+/**
+ * ⚠️ The money folders live in their own file because they did not live here at
+ * all — they existed only inside the shipped JSON, so running this generator
+ * deleted three folders and 17 requests and said "wrote". See the note at the
+ * top of that file.
+ */
+const {
+  claimsFolder,
+  refundsFolder,
+  settlementsFolder,
+} = require("./lib/vendorMoneyFolders");
 
 const OUT = __dirname;
 const ENV_DIR = path.join(OUT, "environments");
@@ -133,7 +144,7 @@ const authFolder = folder(
     "",
     "⚠️ **Password login vendor ke liye hai hi nahi** — `POST /auth/login` aur poora",
     "set/forgot/reset flow ADMIN-only hai. Isliye is collection me wo endpoints nahi",
-    "hain; `18 — Access control` me unpe `422`/`403` verify hota hai.",
+    "hain; `21 — Access control` me unpe `422`/`403` verify hota hai.",
     "",
     "⚠️ WhatsApp OTP abhi verify nahi hota (deliberate, deferred) — koi bhi 6-digit chalega.",
   ].join("\n"),
@@ -2646,10 +2657,10 @@ const legalFolder = folder(
 );
 
 // ===========================================================================
-// 18 — Access control
+// 21 — Access control
 // ===========================================================================
 const gateFolder = folder(
-  "18 — Access control (vendor token refuse hona chahiye)",
+  "21 — Access control (vendor token refuse hona chahiye)",
   [
     "**Negative tests** — har request ka pass hona matlab gate kaam kar raha hai.",
     "Sab vendor ke apne token se chalti hain.",
@@ -2870,6 +2881,12 @@ const items = [
   paymentFolder,
   masterFolder,
   legalFolder,
+  claimsFolder,
+  refundsFolder,
+  settlementsFolder,
+  // Last, like the customer collection's: its negative tests deliberately call
+  // admin surfaces, so anything ordered after it would run against a token that
+  // has just been proven not to work there.
   gateFolder,
 ];
 
