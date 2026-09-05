@@ -375,3 +375,40 @@ exports.validateResetPassword = {
     newPassword: strongPassword,
   }),
 };
+
+/**
+ * ---------------- confirming an email address ----------------
+ *
+ * `email` is **optional on both**, and that is the whole shape of the feature:
+ * omit it to confirm the address already on the account, send one to change to
+ * it. Making it required would force a client to read the profile first just to
+ * echo back a value the server already has.
+ *
+ * ⚠️ No `role` here, unlike the password validators. This endpoint is reached
+ * with a token, so the role is a fact about the caller — accepting one from the
+ * body would be accepting a claim about themselves.
+ */
+const verifiableEmail = Joi.string().trim().lowercase().email().optional().messages({
+  "string.email": "Please enter a valid email address",
+});
+
+exports.validateSendEmailVerification = {
+  body: Joi.object({
+    email: verifiableEmail,
+  }),
+};
+
+exports.validateVerifyEmail = {
+  body: Joi.object({
+    email: verifiableEmail,
+    /**
+     * Length is left to `verifyOtp`, which compares a hash — a code of the wrong
+     * length simply does not match, and stating a length here would tell an
+     * attacker how long it is.
+     */
+    otp: Joi.string().trim().required().messages({
+      "string.empty": "Please enter the code we sent you.",
+      "any.required": "Please enter the code we sent you.",
+    }),
+  }),
+};

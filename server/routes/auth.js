@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const {
   validateSchema,
+  verifyJwtToken,
   verifyJwtTokenEvenIfDeactivated,
   isAdmin,
 } = require("../middlewares");
@@ -18,6 +19,8 @@ const {
   setPasswordHandler,
   forgotPasswordHandler,
   resetPasswordHandler,
+  sendEmailVerificationHandler,
+  verifyEmailHandler,
 } = require("../controllers/auth");
 const {
   validateRegisterUser,
@@ -32,6 +35,8 @@ const {
   validateForgotPassword,
   validateResetPassword,
   validateLogout,
+  validateSendEmailVerification,
+  validateVerifyEmail,
 } = require("../validator/auth");
 
 // Creating an account here is an admin action. It used to be public with `role`
@@ -103,6 +108,34 @@ router.post(
   "/reset-password",
   validateSchema(validateResetPassword),
   resetPasswordHandler,
+);
+
+// ---------------------------------------------------------------------------
+// Email verification — EVERY signed-in role.
+//
+// `verifyJwtToken`, not a role gate: `User.isEmailVerified` exists for
+// customers, vendors, outlet managers and admins alike, and until now **none**
+// of them could set it. Editing an email flipped the flag to `false` with no
+// route back, so the badge could only ever go one way.
+//
+// Two calls, and `email` is optional on both — omit it to confirm the address
+// already on file, send one to change to it.
+//
+// ⚠️ The code always goes to the address **being claimed**, never to the one on
+// file. A code delivered to the old mailbox proves the person still reads the
+// old mailbox, which is not the question being asked.
+// ---------------------------------------------------------------------------
+router.post(
+  "/email/send-verification",
+  verifyJwtToken,
+  validateSchema(validateSendEmailVerification),
+  sendEmailVerificationHandler,
+);
+router.post(
+  "/email/verify",
+  verifyJwtToken,
+  validateSchema(validateVerifyEmail),
+  verifyEmailHandler,
 );
 
 // Deliberately reachable by a deactivated account: every other gate answers a

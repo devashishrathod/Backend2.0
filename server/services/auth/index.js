@@ -14,6 +14,10 @@ const { setPassword } = require("./setPassword");
 const { forgotPassword } = require("./forgotPassword");
 const { resetPassword } = require("./resetPassword");
 const { logout } = require("./logout");
+const {
+  sendEmailVerification,
+  verifyEmail,
+} = require("./emailVerification");
 
 module.exports = {
   registerUser,
@@ -30,4 +34,6 @@ module.exports = {
   forgotPassword,
   resetPassword,
   logout,
+  sendEmailVerification,
+  verifyEmail,
 };
