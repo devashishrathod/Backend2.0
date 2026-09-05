@@ -6319,10 +6319,48 @@ Yahi block **`GET /app-config`** padhta hai — wo public hai, token ke bina, au
 ### 🆕 `admin.notification` — admin audience ke apne channels
 
 ```json
-{ "admin": { "notification": { "isEmailNotificationEnabled": false } } }
+{
+  "admin": {
+    "notification": {
+      "isEmailNotificationEnabled": false,
+      "maxRecipientsPerDispatch": 10000
+    }
+  }
+}
 ```
 
-Merged hai, replaced nahi — ek flag PATCH karne se baaki do waise hi rehte hain.
+Merged hai, replaced nahi — ek flag PATCH karne se baaki waise hi rehte hain.
+
+### 🆕 `maxRecipientsPerDispatch` — ek broadcast kitne logon tak ja sakta hai
+
+Default **5000**. `POST /notifications/broadcast` isse bada audience resolve kare
+to **`422`** deta hai:
+
+> This audience resolves to more than 5000 recipients, which is the limit for a
+> single dispatch. Narrow the target, raise
+> `admin.notification.maxRecipientsPerDispatch` in settings, or send it as a
+> background job.
+
+⚠️ **Ye refusal hai, truncation nahi.** Pehle 5000 ko bhejkar baaki chhod dena
+sabse bura outcome hai: bhejne wale ko lagta hai sab tak pahunch gaya, aur kisi ko
+pata bhi nahi chalta ki nahi pahuncha.
+
+⚠️ **Message me "more than" likha hai, exact ginti nahi** — aur wo jaan-boojh kar
+hai. Audience resolve karte waqt sirf `cap + 1` rows fetch hoti hain, theek isliye
+ki poori ginti karni hi na pade. Exact number likhne par cap `1` set karne wale
+admin ko *"2 recipients"* dikhta tha; wo `2` karta to phir fail hota, ab
+*"3 recipients"* kehkar. Jo pata hai wahi bolna sahi hai.
+
+⚠️ **Number badhana broadcast ko sasta nahi banata.** Har recipient ek row hai jo
+likhi jaati hai aur ek push jo queue hota hai, aur FCM abhi bhi 500 token per
+batch leta hai. Kuch hazaar se upar ye background job ka kaam hai — refusal ka
+message yahi kehta hai.
+
+`min: 1` hai. `0` har broadcast ko rok deta, ek naamzad recipient wale ko bhi.
+
+⚠️ `getAdminConfig` ise `??` se padhta hai, `||` se nahi — warna configured `0`
+chup-chaap `5000` ban jaata, wahi jaal jo `CLAUDE.md` `settlement.delayDays` ke
+liye likhta hai.
 
 ### 🔴 Pehle ye block pahunch me hi nahi tha
 
@@ -7482,114 +7520,163 @@ Full categorization → [endpoints_category.md](./endpoints_category.md)
 
 # Appendix B — Known Issues
 
-**Status 2026-08-22 ko code ke against verify kiya gaya.** Full detail → [security_findings.md](./security_findings.md)
+**Status 2026-09-06 ko code ke against dobara verify kiya gaya.**
 
-## 🔴 Blockers — admin panel ke liye sabse serious
+⚠️ Pichli baar is list me **9 findings aise the jo fix ho chuke the**. Ek fixed
+finding likha rehna khaali shor nahi hai — agla insaan use fix karne baithta hai
+jo pehle se theek hai, aur baaki list par bhi bharosa kam ho jaata hai. Isliye ab
+har entry par wo file aur line likhi hai jisse ye claim verify hota hai.
 
-### 1. Admin banne ke **do** unauthenticated raaste hain
+---
 
-**(a) `POST /auth/register` public hai, default role `ADMIN`** *(finding #2)*
+## 🔴 Blocker
+
+### 1. WhatsApp OTP verify hota hi nahi
+
 ```js
-// routes/auth.js:31 — koi auth middleware nahi
-router.post("/register", validateSchema(validateRegisterUser), register);
-// validator/auth.js:16
-role: Joi.string()....default(ROLES.ADMIN),
+// services/auth/verifyOtpWithWhatsapp.js:22
+//  await verifyOtp(whatsappNumber, otp);
 ```
 
-**(b) `POST /auth/loginOrSignUp-with-whatsapp` `role: "ADMIN"` accept karta hai** *(finding #15)*
-```bash
-POST /auth/loginOrSignUp-with-whatsapp  { "whatsappNumber": "9999999999", "role": "ADMIN" }
-POST /auth/verify-otp-whatsapp          { "whatsappNumber": "9999999999", "otp": "000000", "role": "ADMIN" }
-→ ADMIN JWT
-```
-**(b) zyada aasan hai** — sirf ek phone number chahiye.
+Koi bhi kisi ka number daale aur koi bhi 6-digit code de — **uska account khul
+jaata hai**. Uski claims, refunds, bank accounts, settlements: sab.
 
-**(c) Aur WhatsApp OTP verify hota hi nahi** *(finding #7)* — `verifyOtpWithWhatsapp.js:12` commented hai.
+⚠️ **Ye do-line change hai, ek nahi.** `loginOrSignUpWithWhatsapp.js:224` par
+`sendOtp` bhi commented hai. Sirf verify chaalu karne se OTP kabhi bheja hi nahi
+jaayega aur har login fail hoga.
 
-**Teeno milkar:** koi bhi, kahin se bhi, admin token le sakta hai — aur ab admin ke paas promo codes, subscription grants, webhook replay, platform-wide broadcast, aur settings hain.
+⚠️ Chaalu karte hi throttle live ho jaayega (60s / 5 per hour, target par keyed),
+to Postman collections ke auth folders reseed ke beech `429` khaane lagenge.
 
-**Ye teen sabse pehle fix hone chahiye.** Teeno ke fix chhote hain (kul ~5 lines).
+**Pehle ye do raaste bhi khule the aur ab band hain** — is finding ka daayra utna
+hi hai jitna upar likha hai:
 
-### 2. Role enforcement — 35 endpoints abhi bhi open
-
-Bahut sudhar hua (108/143 gated), par ye modules abhi bhi sirf `verifyJwtToken` pe hain:
-
-| Module | Admin panel pe kya matlab |
+| Tha | Ab |
 |---|---|
-| `banners` (5) | **Customer/vendor bhi app ke home banner bana/badal/delete kar sakte hain** |
-| `promotionalTickers` (5) | Same — app ke tickers |
-| `showcase` (11) | Kisi bhi brand ka content edit ho sakta hai |
-| `locations` (5) | `getAll` se sabke addresses — customers ke ghar ke pate bhi |
-| `brandFeatures` (3 writes) | Kisi bhi brand ke features |
-| `workHours` (1) | Kisi bhi outlet ke hours |
-| `subBrands/get-all` · `vouchers/versions/get-all` · `brands/get` · `brands/update` · `brands/verifications/history` | Platform-wide data sabko khula |
-
-**Admin panel pe impact:** ye endpoints admin ke liye kaam karte hain (isliye documented hain), par **inpe koi bhi authenticated user aa sakta hai**. Content integrity ka risk hai — banner/ticker moderation trail bharosemand nahi hai.
-
-### 3. `?userId` param se kisi bhi user ka data
-`GET /users/get?userId=` aur `PUT /users/update?userId=` — admin ke liye ye support tool hai, par **vendor aur customer bhi kar sakte hain**.
+| `POST /auth/register` public, default role `ADMIN` | `routes/auth.js:46` — `isAdmin` ke peeche |
+| WhatsApp signup se `role: "ADMIN"` | `loginOrSignUpWithWhatsapp.js:29` — `SELF_SIGNUP_ROLES` sirf CUSTOMER aur VENDOR |
 
 ---
 
-## 🟠 Data & correctness
+## 🟠 Feature toota hua hai, chup-chaap
 
-### 4. Legal create endpoints bilkul kaam nahi karte *(finding #16)*
-`POST /terms-and-conditions/create` aur `POST /privacy-and-policies/create` **hamesha `422 "Path \`type\` is required."`** dete hain — model `type` maangta hai, validator use accept nahi karta, service set nahi karti.
+### 2. `DELETE /users/delete` kuch delete nahi karta
 
-Plus `description` sirf 300 chars tak, aur service me lowercase ho jaata hai.
+```js
+// routes/users.js:9 — poora handler yahi hai
+router.delete("/delete", verifyJwtToken, (req, res) => {
+  res.status(200).json({ message: "User deleted successfully" });
+});
+```
 
-**Admin panel pe impact:** legal content management screen abhi ban nahi sakta. Fix ~30 min ka hai.
+App ka "Delete my account" button success dikhata hai aur **kuch nahi hota**.
+Account deletion Play Store aur App Store dono ki requirement hai.
 
-### 5. `showcase/section/get-all` brand-scoped nahi hai *(finding #4)*
-Service me `brandId` filter commented out hai, aur `brandId` query param support hi nahi hota. Response me `brandId` project bhi nahi hota.
+⚠️ Ye envelope bhi todta hai — `success` field hai hi nahi — aur route file me
+business logic hai, jo `CLAUDE.md` ka *"Never"* hai.
 
-**Admin panel pe impact:** **brand-wise showcase moderation abhi possible nahi hai.** Sirf platform-wide list milti hai. Us brand ka content dekhne ke liye `GET /brands/get?brandId=` use karein.
+⚠️ Fix karte waqt: identity index `partialFilterExpression: { isDeleted: false }`
+par hai, to soft delete karte hi wo number free ho jaayega aur wahi insaan dobara
+signup kar sakta hai. Ye **sahi behaviour hai**, par money history ka kya karna
+hai — wo product decision hai.
 
-### 6. `GET /brands/get` PAN/GST/Bank expose karta hai *(finding #3)*
-Admin ko ye data dikhna sahi hai — **problem ye hai ki customer ko bhi yahi milta hai**. Role-based projection chahiye.
+### 3. Avoid kiye brands voucher feed se filter nahi hote
 
-### 7. ✅ *(pehle galat samjha gaya — ab clear)* Approval state brand pe maintained hai
-Ek pichhle scan me lagta tha ki `brand.status` / `brand.isApproved` kabhi likhe hi nahi jaate. **Ye galat tha** — `reviewBrandVerification` aur `acknowledgeBrandApproval` dono inko poori tarah maintain karte hain:
+Customer "Don't show me this brand" dabata hai; brand phir bhi feed me aata hai.
+`BrandAvoidance` row likhi jaati hai aur koi use padhta nahi.
 
-`status` · `isApproved` · `isReviewed` · `isRejected` · `isRevoked` · `rejectionReason` · `revokeReason` · `verifiedBy` · `verifiedAt` · `approvedByAdminId` · `approvedAt` · `rejectedByAdminId` · `rejectedAt` · `revokedByAdminId` · `revokedAt` · `isApprovalAcknowledged` · `approvalAcknowledgedAt`
+⚠️ Fix se pehle `{customerId, brandId}` par index chahiye — feed pipeline pehle
+se bhaari hai (geo distance, offers, promo), aur ek aur lookup bina index ke har
+call par full scan karega.
 
-**Admin panel pe impact:** brand list/detail screens `GET /brands/get` ke top-level fields se hi approval state dikha sakte hain. `systemverifies[0]` sirf **score aur flags** ke liye chahiye.
+### 4. Voucher redemption flow exist hi nahi karta
 
-### 8. Ownership checks kai jagah missing hain
-`showcase/section/*/:sectionId` · media endpoints · `brandFeatures/*/:featureId` · `locations/*/:id` · `vouchers/publish/:versionId`
+Customer counter par pahunchta hai, vendor code verify karta hai
+(`GET /voucher-claims/code/:claimCode`) — aur *"redeem ho gaya"* mark karne ka
+koi endpoint nahi hai. Vendor panel ki redemption screen ban hi nahi sakti.
 
-Admin ke liye ye "feature" hai (sab kuch edit kar sakta hai), par **vendor A bhi vendor B ka data edit kar sakta hai**.
+⚠️ Ye money path hai. Redemption ke baad refund window ka behaviour badalna
+chahiye, aur golden rule
+(`settlementDelayHours >= windowHours + vendorApprovalHours + adminBufferHours`)
+dobara check karna padega.
 
-### 9. Brand verification history customer ko dikhti hai *(finding #13)*
-Route pe role gate nahi, aur service ki scoping sirf `VENDOR` handle karti hai. Customer koi bhi `brandId` bhej kar KYC scores, flags, rejection reasons padh sakta hai.
+### 5. `SUB_VENDOR` sirf chaar endpoints call kar sakta hai
 
-### 10. `FIXED` discount type kaam nahi karta *(finding #12)*
-Enum me hai, calculation me handle nahi. Voucher review karte waqt agar offer `FIXED` type ka ho — **wo customer ko kabhi apply nahi hoga**, par list view me "best offer" dikh sakta hai.
+```
+POST  /disputes/:disputeId/evidence
+POST  /transactions/disputes/:disputeId/evidence
+PATCH /refunds/:requestId/approve
+PATCH /refunds/:requestId/reject
+```
 
-**Admin panel pe impact:** voucher review screen pe `FIXED` type flag karein — wo voucher publish hone layak nahi hai.
+Outlet manager login kar sakta hai, refund decide kar sakta hai — aur apne outlet
+ki claims, vouchers ya timings kuch nahi dekh sakta.
+
+⚠️ Blast radius bada hai: `resolveActorBrand` abhi `brand.userId === actor.userId`
+check karta hai, aur SUB_VENDOR ka `userId` brand par hota hi nahi (uske paas
+`subBrandId` hai). Wo helper **11 services** use karti hain.
 
 ---
 
-## 🟡 Functional gaps
+## ✅ Pehle yahan the, ab fix ho chuke hain
 
-### 11. `SUB_VENDOR` accounts kuch nahi kar sakte
-Outlet signup pe account banta hai, OTP jaata hai, par koi route `SUB_VENDOR` handle nahi karta.
+Har ek code ke against verify kiya gaya — 2026-09-06.
 
-### 12. `DELETE /users/delete` no-op hai
-Kuch delete nahi karta, standard envelope bhi use nahi karta.
+| Purana finding | Ab kya hai |
+|---|---|
+| `POST /auth/register` public, default ADMIN | `routes/auth.js:46` — `isAdmin` |
+| WhatsApp signup se ADMIN ban sakte ho | `loginOrSignUpWithWhatsapp.js:29` — `SELF_SIGNUP_ROLES` |
+| Role enforcement — 35 endpoints open | 81 admin routes sahi gate par; `scripts/verifyApiCoverage.js` naapta hai |
+| `?userId` param se kisi bhi user ka data | Aisa koi param bacha nahi |
+| Legal create endpoints kaam nahi karte | `controllers/termsAndConditions` — `create` maujood aur wired |
+| `showcase/section/get-all` brand-scoped nahi | `services/showcases/getAllSections.js:7` — `resolveActorBrand` |
+| `GET /brands/get` PAN/GST/Bank expose karta hai | Projection me wo fields nahi |
+| Brand verification history customer ko dikhti hai | `routes/brands.js:146` — `isVendorOrAdmin` |
+| `FIXED` discount type kaam nahi karta | `calculateVoucherPricing.js:41` — FLAT ka alias |
+| Email verification ka endpoint nahi | `POST /auth/email/send-verification` + `/verify` |
+| `POST /auth/logout` push unregister nahi karta | Karta hai, aur `allDevices` bhi |
+| `brand.isApproved` kabhi likha nahi jaata | `reviewBrandVerification.js` teeno action par likhta hai |
+| Promo codes off by default | Dono defaults ab `true` |
+| Notification broadcast ka 5000 ka cap fixed hai | `admin.notification.maxRecipientsPerDispatch` — admin panel se badalta hai |
 
-### 13. Voucher redemption flow exist nahi karta
-`VoucherUsage` model bana hai, koi route nahi. `usageType` (`ONCE_PER_USER`) enforce nahi hota. Redemption analytics abhi possible nahi.
+---
 
-### 14. Email verification ka endpoint nahi hai
+# Appendix C — Future Work
 
-### 15. `POST /auth/logout` push unregister nahi karta
+Ye kaam **jaan-boojh kar tala gaya hai**, bhoola nahi. Har ek par alag se approval
+lena hai. Jo abhi live hai wo Appendix B me hai; ye wo hai jo abhi tak socha nahi
+gaya ya shuru nahi hua.
 
-### 16. Promo codes off hain by default
-`isPromoCodeEnabled: false`. Codes banane se pehle `PUT /settings/update` (#100) se enable karein.
+## C1. Auth aur account
 
-### 17. Notification broadcast ka 5000 ka cap hai
-Usse bade audience ke liye job chahiye — request se nahi ho sakta.
+| # | Kya | Use case | Asar agar na kiya | Fix ka shape |
+|---|---|---|---|---|
+| 1 | **OTP verify chaalu karna** | Koi bhi kisi ke account me ghus sakta hai | Poora auth bypass — Appendix B #1 | `verifyOtpWithWhatsapp.js:22` **aur** `loginOrSignUpWithWhatsapp.js:224` dono uncomment; throttle ka asar collections par dekhna padega |
+| 2 | **Account deletion sach me karna** | App ka "Delete my account" jhooth bolta hai | Store policy violation | Service banao: soft-delete User + role profile, sessions khatam, push tokens off, envelope use karo |
+| 3 | **Avoided brands ko feed se hatana** | "Don't show me this brand" kaam nahi karta | UI ka promise poora nahi hota | Feed pipeline me `BrandAvoidance` join + `{customerId, brandId}` index |
+
+## C2. Vendor operations
+
+| # | Kya | Use case | Asar agar na kiya | Fix ka shape |
+|---|---|---|---|---|
+| 4 | **Voucher redemption** | Counter par voucher redeem mark karna | Vendor redemption screen ban hi nahi sakti | `PATCH /voucher-claims/:id/redeem` — status, `redeemedAt`, `redeemedBy`; refund window par asar dekhna |
+| 5 | **SUB_VENDOR ka daayra** | Outlet manager apne outlet ka kaam kare | Account banta hai par lagbhag bekaar | `resolveActorBrand` ko sub-vendor scope dena — **11 services** use karti hain, blast radius bada |
+
+## C3. Postman collection ki teen documented limitations
+
+Ye **bug nahi hain** — ye wo cheezein hain jo ek committed collection kar hi nahi
+sakti. Teeno par request maujood hai aur example refusal ka hai, taaki endpoint
+undocumented na rahe.
+
+| # | Kya | Kyun capture nahi ho sakta | Kya kiya ja sakta hai |
+|---|---|---|---|
+| 6 | `POST /banners/create`, `POST /promotionalTickers/create` | Multipart file chahiye; repo me koi binary fixture nahi | Ek chhoti sample image commit karna, ya capture step me runtime par generate karna |
+| 7 | Razorpay webhooks (`/transactions/webhook/razorpay`, `/customer`) | Raw body par HMAC chahiye; secret ko committed env me daalna credential leak hoga | Pre-request script jo secret ko `pm.environment` se le, aur wo value CI se inject ho — repo me nahi |
+| 8 | `POST /auth/email/verify` ka success | Code asli inbox me jaata hai; collection mail padh nahi sakti | Test-mode par ek fixed OTP, sirf seeded database ke liye |
+
+⚠️ Teeno ka saved example **refusal** hai, aur wo jaan-boojh kar hai. Request
+hataane se `verifyApiCoverage` green dikhta aur endpoint kahin documented na
+hota — jo isse bura hai.
 
 ---
 

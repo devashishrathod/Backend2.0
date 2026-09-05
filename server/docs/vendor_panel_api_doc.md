@@ -6455,13 +6455,27 @@ cross-brand id (galat list se copy-paste, stale cache) **chup-chaap kaam kar jay
 
 ## 🟡 Functional gaps
 
+📋 Scheduled → [super admin doc, Appendix C1 #1](./super_admin_panel_api_doc.md#appendix-c--future-work).
+
 ### 2. `SUB_VENDOR` accounts kuch nahi kar sakte
 Outlet signup pe `SUB_VENDOR` user banta hai aur OTP bhi jaata hai, par **koi route
 `SUB_VENDOR` role handle nahi karta**. `isSubVendor` middleware ab exist karta hai par
 kisi route pe laga nahi hai, aur `verifyJwtToken` un ke liye `req.brandId` set nahi karta.
 
-**Vendor panel pe impact:** outlet-level login screen abhi na banayein. Outlet management
-vendor ke through hi hogi.
+⚠️ Poori tarah sach nahi raha — **chaar** endpoints ab `SUB_VENDOR` lete hain:
+
+```
+POST  /disputes/:disputeId/evidence
+POST  /transactions/disputes/:disputeId/evidence
+PATCH /refunds/:requestId/approve
+PATCH /refunds/:requestId/reject
+```
+
+Yaani outlet manager refund decide kar sakta hai aur dispute par bayaan de sakta hai — **aur bas**. Apne outlet ki claims, vouchers ya timings kuch nahi dekh sakta.
+
+**Vendor panel pe impact:** outlet-level login screen sirf in chaar kaamon ke liye ban sakta hai. Baaki outlet management vendor ke through hi hogi.
+
+📋 Poora daayra dena scheduled hai → [Appendix C2 #5](./super_admin_panel_api_doc.md#appendix-c--future-work). ⚠️ Blast radius bada hai: `resolveActorBrand` abhi `brand.userId === actor.userId` check karta hai aur SUB_VENDOR ka `userId` brand par hota hi nahi — wo helper **11 services** use karti hain.
 
 ### 3. `DELETE /users/delete` no-op hai
 Kuch delete nahi karta, aur standard response envelope bhi use nahi karta (`success`
@@ -6470,15 +6484,20 @@ field hi nahi aati).
 Cascade plan likha hua hai ([account_deletion_plan.md](./account_deletion_plan.md)) —
 implement tab hoga jab poora flow ready ho.
 
-**Vendor panel pe impact:** "Delete account" feature disable rakhein.
+**Vendor panel pe impact:** "Delete account" feature disable rakhein — Play Store aur App Store dono ise maangte hain, to ye compliance risk hai.
+
+📋 Scheduled → [Appendix C1 #2](./super_admin_panel_api_doc.md#appendix-c--future-work).
 
 ### 4. Voucher redemption flow exist nahi karta
 Customer voucher dekh sakta hai aur discount preview kar sakta hai, par redeem nahi kar
 sakta. `VoucherUsage` model bana hai, koi route nahi. `usageType` (`ONCE_PER_USER`)
 enforce nahi hota.
 
-**Vendor panel pe impact:** redemption/scan screen abhi ban nahi sakta. Voucher analytics
-bhi limited rahegi. Ye agle phase ka kaam hai.
+⚠️ Aadha sach hai. Claim **ban** jaata hai aur code se verify bhi hota hai (`GET /voucher-claims/code/:claimCode`) — jo nahi hai wo *"redeem ho gaya"* mark karne ka endpoint hai.
+
+**Vendor panel pe impact:** counter par code verify karke dikhaya ja sakta hai, par redeem mark nahi kiya ja sakta — to wahi code dobara verify hoga.
+
+📋 Scheduled → [Appendix C2 #4](./super_admin_panel_api_doc.md#appendix-c--future-work). ⚠️ Ye money path hai: redemption ke baad refund window ka behaviour badalna chahiye.
 
 ### 5. ✅ RESOLVED — Email verification ab hai
 
@@ -6488,26 +6507,39 @@ bhi limited rahegi. Ye agle phase ka kaam hai.
 
 **Vendor panel pe impact:** verified badge aur email-change flow ab banaya ja sakta hai.
 
-### 6. `POST /auth/logout` push unregister nahi karta
-Aur token blacklist bhi nahi hai — JWT apni expiry tak valid rehta hai.
+### 6. ✅ RESOLVED — logout ab sach me logout karta hai
 
-**Vendor panel pe impact:** logout pe `PUT /deviceTokens/unregister` bhi call karein, aur
-token locally delete karein.
+**Pehle:** endpoint `200` deta tha aur **server par kuch nahi hota tha** — na flags, na push, na token. Ek chori hua JWT apni poori umr chalta rehta, aur notifications us phone par aati rehti jisse user sign out kar chuka tha.
 
-### 7. Promo codes vendor checkout pe abhi off hain
-`isPromoCodeEnabled: false` default hai. Checkout preview `"Promo codes are coming soon"`
-message deta hai.
+**Ab:** flags set hote hain, push deactivate hota hai, aur `allDevices: true` par **har** purana JWT khatam. Response me `sessionsEnded`, `pushDeactivated`, `activeDevices` aate hain.
 
-**Vendor panel pe impact:** promo code field dikhayein par `preview.promo.supported`
-check karein — `false` ho to disable ya hide karein.
+**Vendor panel pe impact:** `PUT /deviceTokens/unregister` alag se call karne ki zarurat nahi — body me `pushToken` bhej dein. Kho gaye laptop ke liye `allDevices: true`.
 
-### 8. `brand.isApproved` aur `brand.status` kabhi likhe nahi jaate
-Dono fields model me hain par koi code inhe set nahi karta — hamesha `false` / `PENDING`.
-Asli verdict `SystemVerify` document me hai.
+### 7. ✅ RESOLVED — promo codes ab default me on hain
 
-**Vendor panel pe impact:** approval status ke liye `GET /brands/verifications/history`
-([#33](#33-get-brandsverificationshistory)) ya `systemVerify.status` dekhein —
-`brand.isApproved` pe kabhi bharosa na karein.
+**Pehle:** `isPromoCodeEnabled: false` default tha aur checkout preview *"Promo codes are coming soon"* deta tha.
+
+**Ab:** dono defaults `true` hain — vendor subscription (`SUBSCRIPTION_DEFAULTS`) aur customer claim (`CUSTOMER_PROMO_DEFAULTS`).
+
+⚠️ **`preview.promo.supported` phir bhi check karein.** Default badla hai, switch nahi hata: `PUT /settings/update` se admin ise ek call me band kar sakta hai agar koi campaign wapas lena ho — bina deploy ke. Field hardcode karke mat dikhayein.
+
+⚠️ `allowWhenNoOffer` alag se **off** hai aur rahega. Jis voucher par vendor ka koi offer hi nahi, us par promo lagana bina supply ke pura giveaway hai — wo alag se on karna padta hai.
+
+### 8. ✅ RESOLVED — `brand.isApproved` likha bhi jaata hai aur ab filter bhi karta hai
+
+**Pehle:** ye finding kehti thi ki dono fields kabhi set nahi hote aur `isApproved` par "kabhi bharosa na karein". **Dono baatein galat thin.** `reviewBrandVerification` teeno action par likhta hai:
+
+| Action | `isApproved` | `status` |
+|---|---|---|
+| APPROVED | `true` | `APPROVED` |
+| REJECTED | `false` | `REJECTED` |
+| REVOKED | `false` | `REVOKED` |
+
+⚠️ Aur ye galti mehngi padi. Do service files me yahi baat **comment me likhi thi**, isliye customer-facing queries `isApproved` par filter karti hi nahi thin — sirf `isActive` par. Nateeja: koi bhi brand jo delete nahi hua tha, customer directory me aa jaata tha, jismein chhe aise bhi the **jinka owner `User` hi maujood nahi tha**.
+
+**Ab:** ek shared filter `customerVisibleBrandFilter` paanchon customer surfaces par lagta hai — directory, brand detail, voucher feed, global search, aur showcase/clips.
+
+**Vendor panel pe impact:** jab tak brand verify nahi hota, uske vouchers **customer ko dikhte hi nahi**. Onboarding screen par ye saaf batayein — vendor ko lagega uska voucher live hai jabki wo feed me hai hi nahi. Approval status ke liye `systemVerify.status` ya `GET /brands/verifications/history` ([#33](#33-get-brandsverificationshistory)) dekhein; `isApproved` ab bharose layak hai par history usme nahi hai.
 
 ---
 

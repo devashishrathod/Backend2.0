@@ -2876,7 +2876,7 @@ Har row me `key` · `label` · `amount` · `display` chaaron hote hain, aur `dis
 
 | Field | Matlab |
 |---|---|
-| `supported` | `Setting.customer.promoCode.isEnabled` — **default `false`** |
+| `supported` | `Setting.customer.promoCode.isEnabled` — **default `true`** 🆕 |
 | `applied` | Laga to `{ code, description, discount, appliesTo }`, warna `null` |
 | `provisional` | **Guest ke liye `true`** — neeche padhein |
 | `message` | Laga to confirmation, warna **wajah** |
@@ -5629,6 +5629,10 @@ Dono OTP lines abhi bhi commented out hain:
 
 **App pe impact:** development me convenient (koi bhi OTP chalega), par live jaane se pehle uncomment hona zaruri hai. Uncomment hone ke baad naye error cases aayenge — endpoint #2 ke note 6 me listed hain, unko app me pehle se handle karke rakhein.
 
+⚠️ **Aur ek: chaalu karte hi throttle live ho jaayega** — 60 second gap, 5 per hour, target number par keyed. App ko `429` handle karna hoga (`retryAfterSeconds` response me aata hai), warna resend button dabate hi user ek aisi error dekhega jiska matlab use samajh nahi aayega.
+
+📋 Scheduled → [super admin doc, Appendix C1 #1](./super_admin_panel_api_doc.md#appendix-c--future-work).
+
 ### 2. ✅ RESOLVED — Role enforcement poora ho gaya
 
 **Pehle:** 108 me se sirf 20 gated the. Phir 143 me se 108. Ye doc **35 endpoints ko
@@ -5724,14 +5728,29 @@ Ab wo endpoint `isVendorOrAdmin` ke peeche hai. Customer ke liye naya [`GET /bra
 ## 🟡 Functional gaps (feature adhoora hai)
 
 ### 8. `DELETE /users/delete` kuch delete nahi karta
-No-op stub. Detail endpoint #6 me.
+No-op stub — poora handler route file me hi hai (`routes/users.js:9`) aur ek hardcoded message lautata hai. Detail endpoint #6 me.
 
-**App pe impact:** "Delete Account" feature ko disable rakhein ya "coming soon" dikhayein. App store compliance risk.
+**App pe impact:** "Delete Account" feature ko disable rakhein ya "coming soon" dikhayein. Store compliance risk hai — Play Store aur App Store dono maangte hain.
+
+📋 Scheduled → [super admin doc, Appendix C1 #2](./super_admin_panel_api_doc.md#appendix-c--future-work).
 
 ### 9. Avoid kiye brands voucher feed se filter nahi hote
-`POST /brandAvoidances/toggle` record banata hai par `GET /vouchers/customer/get-all` usko dekhta nahi.
 
-**App pe impact:** UI me "ye brand ab nahi dikhega" promise na karein. Ya client-side pe avoid list se feed filter karein (avoid list #26 se lein).
+`POST /brandAvoidances/toggle` record banata hai par `GET /vouchers/customer/get-all` usko padhta nahi.
+
+**App pe impact:** UI me "ye brand ab nahi dikhega" promise na karein. Ya client-side par avoid list se feed filter karein (#26 se lein).
+
+📋 Scheduled → [super admin doc, Appendix C1 #3](./super_admin_panel_api_doc.md#appendix-c--future-work).
+
+### 9a. ✅ RESOLVED — ab sirf verified brands dikhte hain
+
+**Pehle:** har customer-facing surface sirf `{isDeleted: false, isActive: true}` par filter karti thi. `Brand.isApproved` par koi nahi — aur do service files me comment likha tha ki wo field "kabhi likhi hi nahi jaati", jo **galat tha**: `reviewBrandVerification` use APPROVED par `true`, REJECTED aur REVOKED par `false` likhta hai.
+
+Nateeja: jo brand kabhi verify hua hi nahi, wo directory me aata tha — jismein chhe aise bhi the jinka owner `User` hi maujood nahi tha (khaali dabbe, na outlet na voucher).
+
+**Ab:** ek hi shared filter `customerVisibleBrandFilter` paanchon jagah lagta hai — brand directory, brand detail, voucher feed, global search, aur showcase/clips (`assertPublicBrand` ke through).
+
+⚠️ **App par asar:** ek unverified brand ka **deep link ab `404` deta hai**, `200` nahi. Jo link pehle share ho chuke hain wo tab tak nahi khulenge jab tak brand verify na ho — ye jaan-boojh kar hai, kyunki URL se khulna aur search me na aana wahi leak hai jo showcase endpoints me tha.
 
 ### 10. ✅ RESOLVED — voucher claim flow ab poora hai
 
