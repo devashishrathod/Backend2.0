@@ -7589,18 +7589,59 @@ Customer "Don't show me this brand" dabata hai; brand phir bhi feed me aata hai.
 se bhaari hai (geo distance, offers, promo), aur ek aur lookup bina index ke har
 call par full scan karega.
 
-### 4. Voucher redemption flow exist hi nahi karta
+### 4. ✅ Redemption — ye bug **nahi** hai, Phase 1 ka design hai
 
-Customer counter par pahunchta hai, vendor code verify karta hai
-(`GET /voucher-claims/code/:claimCode`) — aur *"redeem ho gaya"* mark karne ka
-koi endpoint nahi hai. Vendor panel ki redemption screen ban hi nahi sakti.
+Pehle yahan likha tha *"redemption flow exist hi nahi karta"*. Wo galat padhta
+hai. Code me shuru se **do phase** hain aur Phase 1 hi chaalu hai:
 
-⚠️ Ye money path hai. Redemption ke baad refund window ka behaviour badalna
-chahiye, aur golden rule
-(`settlementDelayHours >= windowHours + vendorApprovalHours + adminBufferHours`)
-dobara check karna padega.
+```js
+// constants/voucherClaim.js:50
+// AUTO is Phase 1: paying at the counter *is* the redemption.
+// OUTLET_SCAN is Phase 2, where the claim code is shown and scanned.
+CLAIM_REDEMPTION_MODE = { AUTO, OUTLET_SCAN, ADMIN }
+```
 
-### 5. `SUB_VENDOR` sirf chaar endpoints call kar sakta hai
+`createVoucherClaimOrder.js:270` par `AUTO` **hardcoded** hai (model ka default
+bhi wahi), aur `settleVoucherClaimPayment.js:312` us par capture ko seedha
+`REDEEMED` likhta hai, `redeemedAt` ke saath.
+
+**To Phase 1 me alag se "redeem" karne ko kuch hai hi nahi — payment hi
+redemption hai.** `GET /voucher-claims/code/:claimCode` ek **read** hai: counter
+par code padh kar dekhna ki kya khareeda gaya. Wo kuch likhta nahi, aur use
+likhna bhi nahi chahiye.
+
+Money path teeno jagah iske saath consistent hai:
+
+| Kya | Kahan | Sthiti |
+|---|---|---|
+| Refund `PAID` **aur** `REDEEMED` dono par milta hai | `requestRefund.js:41` | ✅ Zaroori hai — `REDEEMED` na hota to Phase 1 me koi kabhi refund maang hi nahi sakta |
+| Settlement eligibility claim status par gate karti hi nahi | transactions se chalti hai | ✅ |
+| Golden rule settings se chalta hai, claim clock se nahi | `assertSettlementTimingRule.js` | ✅ |
+
+**Jo aaj declare hai par inert hai** (aur ye theek hai — enum pehle se likh diya
+gaya taaki Phase 2 par shape na badle):
+
+- `PAID` status — koi likhta hi nahi
+- `EXPIRED` — **poore codebase me koi producer nahi**, koi sweep job nahi
+- `expiresAt`, `redeemedBy` — kabhi set nahi hote
+- `{status, expiresAt}` index — dead, par harmless
+
+Phase 2 kya-kya maangega — poora plan **Appendix C · C4** me hai.
+
+### 5. `SUB_VENDOR` ka daayra saankra hai — par utna nahi jitna yahan likha tha
+
+Pehle yahan *"sirf chaar endpoints"* likha tha. Sahi ginti **31** hai.
+
+**Outlet login shipped hai, future ka kaam nahi.** Vendor apna outlet
+`POST /subBrands/signUp-with-whatsapp` se jodta hai (gate `isVendorOrAdmin`,
+plan ka slot consume hota hai), service `role: SUB_VENDOR` ka User banati hai —
+**bina password ke** — aur `signUpSubBrandWithWhatsapp.js:94` par outlet ke
+number par `sendOtp(WHATSAPP, …)` chala jaata hai. **Wahi verify step hai.**
+Uske baad outlet wala `POST /auth/loginOrSignUp-with-whatsapp` se login karta
+hai; `SELF_SIGNUP_ROLES` sirf usse *khud ko banane* se rokta hai, login se
+nahi.
+
+**4 endpoints outlet-specific gate (`isVendorOrSubVendor`) par:**
 
 ```
 POST  /disputes/:disputeId/evidence
@@ -7609,12 +7650,45 @@ PATCH /refunds/:requestId/approve
 PATCH /refunds/:requestId/reject
 ```
 
-Outlet manager login kar sakta hai, refund decide kar sakta hai — aur apne outlet
-ki claims, vouchers ya timings kuch nahi dekh sakta.
+**+ 27 endpoints jo sirf `verifyJwtToken` par hain** — yaani koi bhi logged-in
+role. Outlet ke kaam ke jo hain:
 
-⚠️ Blast radius bada hai: `resolveActorBrand` abhi `brand.userId === actor.userId`
-check karta hai, aur SUB_VENDOR ka `userId` brand par hota hi nahi (uske paas
-`subBrandId` hai). Wo helper **11 services** use karti hain.
+```
+GET /voucher-claims/code/:claimCode     ← counter par code padhna
+GET /voucher-claims · /voucher-claims/:claimId · /voucher-claims/payments
+GET /refunds · /refunds/:requestId
+GET /disputes · /disputes/:disputeId
+GET /settlements · /settlements/:settlementId
+```
+
+To **claim verify karne ka read-half aaj hi kaam karta hai** — Phase 2 ke liye
+sirf likhne wala aadha banana hai.
+
+**Scoping sahi hai, koi leak nahi.** `assertTransactionAccess.js:133` par:
+
+```js
+if (role === SUB_VENDOR && actor.subBrandId && claim.subBrandId &&
+    String(claim.subBrandId) !== String(actor.subBrandId))
+  throwError(403, "This claim was not made at your outlet.");
+```
+
+Aur `VoucherClaim.subBrandId` model me `required: true` hai aur hamesha
+`outlet._id` se bharta hai, to wo null-check kabhi bypass nahi ho sakta. Yahi
+narrowing `buildRefundReadPipeline`, `buildSettlementReadPipeline` aur
+`notificationScope` me bhi hai.
+
+⚠️ **Jo sach me nahi khulta**, aur kyun: `resolveActorBrand` par
+`String(brand.userId) !== String(userId)` → `403`. SUB_VENDOR ka `userId` Brand
+par hota hi nahi (uske paas `subBrandId` hai), to us helper se guzarne wala har
+kaam — vouchers, showcase, subscriptions — outlet ke liye band hai. Wo helper
+**16 files** use karti hain, isliye blast radius bada hai.
+
+⚠️ `GET /settlements` par SUB_VENDOR ko **poora brand** dikhta hai, apna outlet
+nahi — settlement poore brand ke din ka hota hai, ek counter ka nahi. Ye
+`buildSettlementReadPipeline.js:77` par jaan-boojh kar hai.
+
+ℹ️ Do middleware bane hain par koi route inhe use nahi karta: `isSubVendor`
+(`validateRoles.js:19`) aur `isBrandSideOrAdmin` (`validateRoles.js:34`).
 
 ---
 
@@ -7659,8 +7733,252 @@ gaya ya shuru nahi hua.
 
 | # | Kya | Use case | Asar agar na kiya | Fix ka shape |
 |---|---|---|---|---|
-| 4 | **Voucher redemption** | Counter par voucher redeem mark karna | Vendor redemption screen ban hi nahi sakti | `PATCH /voucher-claims/:id/redeem` — status, `redeemedAt`, `redeemedBy`; refund window par asar dekhna |
-| 5 | **SUB_VENDOR ka daayra** | Outlet manager apne outlet ka kaam kare | Account banta hai par lagbhag bekaar | `resolveActorBrand` ko sub-vendor scope dena — **11 services** use karti hain, blast radius bada |
+| 4 | **Phase 2 — outlet scan redemption** | Counter par code scan karke redeem mark karna | Kuch toota nahi rehta; Phase 1 (payment = redemption) chalta rehta hai | Poora plan **C4** me — ek switch nahi, saat jude hue badlaav |
+| 5 | **SUB_VENDOR ka daayra** | Outlet manager apne outlet ke vouchers/claims/timings dekhe | Login aur 31 endpoints aaj bhi kaam karte hain; baaki par `403` | `resolveActorBrand` ko sub-vendor scope dena — **16 files** use karti hain, blast radius bada |
+
+## C4. Phase 2 — outlet scan redemption ka poora plan
+
+> **Status:** 🔴 Sirf plan. Koi code nahi likha gaya. Approval ke baad hi shuru
+> hoga.
+
+Aaj Phase 1 hai: payment hi redemption hai. Phase 2 use do kadam me todta hai —
+customer pay karta hai (`PAID`), phir counter par code scan hota hai
+(`REDEEMED`). Sunne me ek flag ka kaam lagta hai. **Hai nahi** — kyunki beech me
+ek nayi avastha khul jaati hai jo aaj exist hi nahi karti: *paisa liya ja chuka
+hai, par voucher abhi tak use nahi hua*.
+
+Us ek avastha se saara kaam nikalta hai.
+
+### C4.0 ⚠️ Pehle ek product faisla — code se pehle
+
+**Customer ne pay kar diya aur window ke andar kabhi scan nahi karaya. Paisa
+kiska?**
+
+| Option | Kya hota hai | Kya sochna padega |
+|---|---|---|
+| **A — Auto refund** | Window band, paisa wapas | Vendor ko settle ho chuka hoga to wapas lena padega — `taintSettlement` ka raasta |
+| **B — Vendor rakhta hai** | Voucher zaya, paisa vendor ka | Customer ko *pehle* saaf batana padega, warna dispute banega |
+| **C — Platform rakhta hai** | Zaya paisa platform ka | Sabse aasan, par sabse mushkil samjhaana |
+
+**Ye teeno alag settlement code maangte hain.** Isliye ye pehla kadam hai — is
+jawab ke bina C4.5 aur C4.6 likhe hi nahi ja sakte.
+
+### C4.1 Jo pehle se bana hua hai ✅
+
+Phase 2 ke liye scaffolding pehle se padi hai — ye **naya nahi likhna**:
+
+| Kya | Kahan |
+|---|---|
+| `PAID`, `EXPIRED` statuses | `constants/voucherClaim.js:12-21` |
+| `CLAIM_REDEMPTION_MODE.OUTLET_SCAN` | `constants/voucherClaim.js:56` |
+| `CLAIM_HISTORY_ACTION.REDEEMED` / `EXPIRED` | `constants/voucherClaim.js:64-66` |
+| `expiresAt`, `redeemedBy` fields | `models/VoucherClaim.js:100-102` |
+| `{status, expiresAt}` index | `models/VoucherClaim.js:202` |
+| `redemptionWindowHours: 24` | `constants/customer.js:125` default; **`Setting.js:325` par asli setting hai**, `validator/settings.js:132` validate karta hai, aur `getCustomerConfig.js:91` ise customer config me **return** karta hai. Admin ise aaj hi badal sakta hai — bas koi uspar hisaab nahi karta |
+| `VOUCHER_CLAIM_EXPIRED` notification type | `constants/notification.js:150` |
+| `notifyClaimExpired({ claim })` | `voucherClaimNotices.js:223` — likha hua, production me wired nahi. `mailRender.test.js:435` iska template test karta hai, to render toota hua nahi hai |
+| **Redemption ledger — poora bana hua** | `VoucherUsage` har capture par likhi jaati hai (`settleVoucherClaimPayment.js:233-259`), refund par `applyRefundCompletion.js:336` use reverse karta hai, aur `buildClaimPreview.js:156` use padhta hai |
+| Once-per-user — **do parat** | `VoucherClaim` par `{voucherId, customerId, offerId}` + `holdsUsageSlot:true`, aur `VoucherUsage` par wahi keys + `{isOncePerUser:true, isReversed:false}` (`VoucherUsage.js:154`) |
+| Slot conflict ka handling | `settleVoucherClaimPayment.js:253-268` — duplicate par usage bina slot ke likhti hai, `slotConflict: true` flag karti hai aur admin ko batati hai. Paisa liya ja chuka hai, to ye business conflict hai, technical failure nahi |
+| Guessable-proof claim code | `generateClaimCode.js:20` — `crypto.randomInt`, look-alike letters hataye hue |
+| Outlet ka access narrowing | `assertTransactionAccess.js:133` — pehle se sahi |
+| Code se claim padhna | `GET /voucher-claims/code/:claimCode` — read-half already live |
+
+> ⚠️ Isliye Phase 2 me *ledger* nahi banana — wo bana hua hai aur chal raha hai.
+> Banana sirf **do-kadam wali state machine** hai: capture ko `PAID` par rokna,
+> scan par aage badhana, aur na-scan hone par band karna.
+
+### C4.1a Kya ye adhoora scaffolding aaj **error deta hai**? ❌ Nahi
+
+2026-09-06 ko naapa gaya:
+
+| Gate | Natija |
+|---|---|
+| `npm test` | 59 suites · **1256 pass · 0 fail** |
+| `scripts/verifyApiCoverage.js` | 219/219 |
+| `scripts/verifySchemaRelationships.js` | 53 models · 194 paths · 0 tooti hui ref |
+
+Ek-ek tukda:
+
+| Tukda | Aaj kya hota hai | Error? |
+|---|---|---|
+| `PAID` status | Kabhi likha nahi jaata; `REFUNDABLE_CLAIM_STATUSES` me ek extra entry bhar hai | ❌ |
+| `EXPIRED` status | Koi producer nahi. `customerStats.js:140` ka `expiredClaims` **hamesha 0** dikhega — galat nahi, bas hamesha 0 | ❌ |
+| `expiresAt` | Kabhi set nahi. `{status, expiresAt}` index non-unique hai, missing field null index karta hai | ❌ (bas ek dead index ki write cost) |
+| `redeemedBy` | Sirf declare hai — **koi padhta ya populate nahi karta** | ❌ |
+| `redemptionWindowHours` | Admin badal sakta hai, config me dikhta hai, **par koi uspar hisaab nahi karta** | ❌ — par badalna bekaar hai, aur wo confuse kar sakta hai |
+| `notifyClaimExpired` | Production me call nahi hota; template test pass hai | ❌ |
+| `isSubVendor`, `isBrandSideOrAdmin` | Dead exports | ❌ |
+
+### C4.1b ✅ Ek risk tha — ab band hai
+
+Pehle yahan ek asli khatra tha: `redemptionMode` ka enum `OUTLET_SCAN` allow
+karta tha, aur `createVoucherClaimOrder` me `AUTO` **hardcoded** tha. Agar wo
+value kisi bhi tarah kisi claim par pahunch jaati — seedha DB edit, naya seeder,
+ya aage chal kar galti se — to claim capture hoti, `PAID` par ruk jaati, aage
+badhane ka endpoint na hota, band karne ka sweep na hota. **Paisa liya ja chuka,
+claim hamesha ke liye atki — aur chup-chaap**, kyunki na koi exception uthta na
+koi test girta.
+
+Ab teen parat hain:
+
+| Parat | Kahan | Kya karti hai |
+|---|---|---|
+| **Ek jagah sach** | `constants/voucherClaim.js` — `DEFAULT_REDEMPTION_MODE` + `IMPLEMENTED_REDEMPTION_MODES` | Hardcode hata. Enum kehta hai kaun se mode ka *naam* hai; ye list kehti hai kaun se ke peeche **chalta hua code** hai. Aaj sirf `AUTO` |
+| **Paise se pehle mana** | `createVoucherClaimOrder` ka pehla statement | Default aisa mode ho jiske peeche code na ho, to `503` — koi claim banti hi nahi. Pricing aur gateway order se **pehle**, kyunki refuse karna muft hai aur capture karke atkana nahi |
+| **Paise ke baad shor** | `settleVoucherClaimPayment` | Yahan mana nahi kar sakte — paisa ja chuka. To `PAID` par parking hoti hai **aur admin ko `CRITICAL` alert** jaata hai, `dedupeKey` ke saath taaki retry se spam na ho |
+
+⚠️ Settle wala hissa jaan-boojh kar claim ko `REDEEMED` **nahi** likh deta. Scan
+flow asli hone ke baad wo vendor ko us voucher ka paisa de deta jo kabhi redeem
+hi nahi hua — aur atki hui claim se ulta, wo haath se ulta nahi kiya ja sakta.
+Atki hui claim refund ho sakti hai: `PAID` `REFUNDABLE_CLAIM_STATUSES` me hai.
+
+⚠️ **Aur wahi baat jo pehle bhi thi:** `OUTLET_SCAN` ko
+`IMPLEMENTED_REDEMPTION_MODES` me daalna **C4.4 aur C4.5 ke usi commit me** hona
+chahiye, unse pehle kabhi nahi. Test `"creates claims in a mode this build can
+carry to REDEEMED"` isi ko pakadta hai.
+
+### C4.2 Switch — `AUTO` se `OUTLET_SCAN`
+
+Hardcode ja chuka (C4.1b). Ab do constants hain — `DEFAULT_REDEMPTION_MODE` aur
+`IMPLEMENTED_REDEMPTION_MODES` — to Phase 2 ka switch **do line ka badlaav** hai,
+ek code hunt nahi:
+
+```js
+// constants/voucherClaim.js — dono ek saath, ek hi commit me
+const IMPLEMENTED_REDEMPTION_MODES = Object.freeze([AUTO, OUTLET_SCAN]);
+const DEFAULT_REDEMPTION_MODE = CLAIM_REDEMPTION_MODE.OUTLET_SCAN;
+```
+
+⚠️ Par ye **tabhi** jab C4.4 (redeem endpoint) aur C4.5 (sweep) ban chuke hon.
+Test `"creates claims in a mode this build can carry to REDEEMED"` pehle
+badalne par red ho jaayega — wo test badalna galat jawab hai.
+
+⚠️ **Aage chal kar per-brand chahiye hoga, platform-wide nahi.** Ek hi platform
+par kirana (scan chahiye) aur salon (appointment, scan bemaani) dono honge. Us
+waqt constant se nikal kar brand-level setting banegi — aur tab
+`isImplementedRedemptionMode` ka check us setting ke **write path** par bhi
+lagana padega, sirf claim banate waqt nahi.
+
+⚠️ **`redemptionMode` claim par freeze hota hai** — jo claims Phase 1 me bane
+hain wo `AUTO` hi rahenge aur `REDEEMED` hi rahenge. **Koi migration nahi.**
+Yahi wajah hai ki `settleVoucherClaimPayment.js:312` claim ka apna
+`redemptionMode` padhta hai, global setting nahi. Ye pehle se sahi likha hai —
+todna nahi.
+
+### C4.3 `expiresAt` capture par likhna
+
+Aaj kabhi set nahi hota. `OUTLET_SCAN` par capture ke waqt
+`paidAt + redemptionWindowHours` likhna padega.
+
+⚠️ Window **capture se** naapo, claim banne se nahi — customer PENDING me kitni
+der raha wo uski window nahi khaani chahiye.
+
+### C4.4 Redeem endpoint — likhne wala aadha
+
+`PATCH /voucher-claims/:claimId/redeem` · gate `isVendorOrSubVendor`
+
+| Zaroorat | Kyun |
+|---|---|
+| **Conditional update** `{_id, status: PAID}` | Do baar scan karna do baar redeem na kare — read-then-write yahan race hai |
+| Sirf `PAID → REDEEMED` | `EXPIRED` ya `REFUNDED` claim scan par 409 mile, chup-chaap na khule |
+| `redeemedAt` + `redeemedBy` | `redeemedBy` outlet ka user id — kaun sa counter, kis ne |
+| `assertClaimAccess` se guzre | Outlet narrowing already likhi hai, dobara mat likho |
+| `CLAIM_HISTORY_ACTION.REDEEMED` audit row | History append-only hai; scan ka nishaan chahiye |
+| Idempotent jawab | Pehle se `REDEEMED` hai to wahi claim wapas do, error nahi — counter par staff dobara tap karega |
+
+### C4.5 EXPIRED sweep job — sabse aasani se bhoolne wala hissa
+
+**Aaj `EXPIRED` ko koi likhta hi nahi.** `OUTLET_SCAN` chaalu karte hi
+paid-but-never-scanned claims hamesha `PAID` me latke rahenge — matlab customer
+ka paisa gaya, voucher use nahi hua, aur system kabhi maanega hi nahi ki window
+band ho gayi.
+
+`jobs/index.js` me naya job chahiye — `JobLock` ke saath, warna do instance ek hi
+claim ko do baar expire karenge.
+
+⚠️ `EXPIRED` `CLAIM_SLOT_RELEASING_STATUSES` me hai
+(`constants/voucherClaim.js:40-45`), to expire karte waqt **`holdsUsageSlot`
+false karna hi padega** — warna customer ka once-per-user slot hamesha ke liye
+phansa rahega aur wo dobara claim nahi kar payega.
+
+Job ko `notifyClaimExpired` bhi bulana hai — wo function bana hua hai.
+
+### C4.6 ⚠️ Refund window ka clock badalna padega
+
+Aaj refund window payment se naapi jaati hai. Phase 2 me wo **galat** ho jaayegi:
+
+```
+Phase 1:  pay ─────────────────────► refund window band
+Phase 2:  pay ──── 24h window ──── scan ─────► refund window yahan se shuru
+                                                honi chahiye
+```
+
+Agar clock payment par hi raha, to jo customer 23ve ghante me scan karayega
+uski refund window **scan se pehle hi** band ho chuki hogi. Usne kharab khana
+liya aur refund maang hi nahi sakta.
+
+### C4.7 ⚠️ Golden rule dobara nikalna padega
+
+```
+settlementDelayHours >= windowHours + vendorApprovalHours + adminBufferHours
+```
+
+`assertSettlementTimingRule.js:46-52` ye aaj enforce karta hai. Phase 2 me
+refund ka raasta **`redemptionWindowHours` jitna lamba** ho jaata hai, kyunki
+refund scan ke baad shuru hota hai aur scan 24 ghante baad tak ho sakta hai:
+
+```
+refundPathHours = redemptionWindowHours + windowHours
+                  + vendorApprovalHours + adminBufferHours
+```
+
+⚠️ Ye badle bina T+2 settlement us refund se **pehle** paisa bhej dega jo abhi
+aana baaki hai. Wahi wo halat hai jise ye rule rokne ke liye likha gaya tha.
+
+### C4.8 Settlement me unredeemed claim nahi jaani chahiye
+
+Aaj settlement eligibility claim status par gate karti hi nahi — transactions se
+chalti hai, aur Phase 1 me har paid claim redeemed hai, isliye theek hai. Phase
+2 me wo dhaarna toot jaati hai: `PAID`-par-`REDEEMED`-nahi claim settlement me
+chali jaayegi aur **vendor ko us voucher ka paisa mil jaayega jo kabhi use hi
+nahi hua**.
+
+Iska sahi jawab C4.0 ke faisle par tika hai.
+
+### C4.9 Docs, Postman aur tests
+
+`scripts/verifyApiCoverage.js` naya endpoint bina row ke commit nahi hone dega:
+
+- `endpoints_category.md` me category row
+- `vendor_panel_api_doc.md` me section (request + saara enum)
+- `trydood-vendor` collection me request + **saved example**
+- Seeder ko ek `PAID` claim banana padega jise collection scan kar sake
+
+Money suite me kam se kam: double-scan idempotency, `EXPIRED` claim ka scan,
+sweep job ka slot release, aur golden rule ka naya hisaab.
+
+### C4.10 Kaam ka kram
+
+```
+C4.0  product faisla          ← iske bina baaki likha hi nahi ja sakta
+  │
+  ├─ C4.2  per-brand switch
+  ├─ C4.3  expiresAt likhna
+  ├─ C4.4  redeem endpoint
+  ├─ C4.5  sweep job + slot release + notification
+  │
+  ├─ C4.6  refund clock            ┐
+  ├─ C4.7  golden rule ka hisaab   ├─ teeno ek saath, ek hi money change hai
+  ├─ C4.8  settlement eligibility  ┘
+  │
+  └─ C4.9  docs + postman + tests
+```
+
+⚠️ C4.6/4.7/4.8 alag-alag nahi ja sakte. Teeno ek hi baat ke teen chehre hain —
+"paisa kab pakka hota hai". Ek badla aur doosra na badla, to settlement aur
+refund ek doosre se aage-peeche ho jaayenge, aur uska lakshan hai **paisa chup-chaap
+galat jagah ruk jaana**.
 
 ## C3. ✅ Do solve ho gaye, ek bacha
 

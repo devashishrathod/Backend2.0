@@ -2659,9 +2659,9 @@ GET /vouchers/customer/get/68f1a2b3c4d5e6f7a8b9c2a1?latitude=22.7533&longitude=7
 
 **4. `discountApplicableOn`** batata hai discount `SUBTOTAL` pe lagega ya `FINAL_BILL` (tax ke baad) pe. Terms me mention karein.
 
-**5. `usageType`:** `ONCE_PER_USER` = ek baar hi use ho sakta hai, `MULTIPLE` = baar-baar. ⚠️ Enforcement abhi implement nahi hai (redemption tracking hi nahi hai) — ye informational hai.
+**5. `usageType`:** `ONCE_PER_USER` = ek baar hi use ho sakta hai, `MULTIPLE` = baar-baar. ✅ **Enforcement database me hai** — `VoucherClaim` par `{voucherId, customerId, offerId}` ka unique partial index, `partialFilterExpression: {holdsUsageSlot: true}` ([VoucherClaim.js:165](../models/VoucherClaim.js#L165)). Slot **per offer** hai, per voucher nahi: 20%-off use karne se free-dessert offer khatam nahi hota. Failed, cancelled ya refunded claim `holdsUsageSlot: false` ho jaati hai, to slot chhoot jaata hai par row rehti hai — history bani rehti hai.
 
-**6. Redemption flow abhi exist nahi karta.** Customer voucher dekh sakta hai, discount preview kar sakta hai, par actually "redeem" karne ka koi endpoint nahi hai. (`VoucherUsage` model bana hua hai par koi route nahi.)
+**6. Redeem karne ka alag endpoint nahi hai — aur Phase 1 me uski zarurat bhi nahi.** Claim ka `redemptionMode` `AUTO` hai ([createVoucherClaimOrder.js:270](../services/voucherClaims/createVoucherClaimOrder.js#L270)), aur us par payment capture hote hi claim seedhe `REDEEMED` ho jaati hai `redeemedAt` ke saath ([settleVoucherClaimPayment.js:312](../helpers/voucherClaims/settleVoucherClaimPayment.js#L312)) — **paisa dena hi redemption hai**. Counter par `GET /voucher-claims/code/:claimCode` se code padha jaata hai; wo ek **read** hai, kuch likhta nahi. Alag redeem endpoint Phase 2 ka kaam hai, jab `redemptionMode` `OUTLET_SCAN` par jaayega — poora plan [Appendix C4](./super_admin_panel_api_doc.md) me.
 
 ---
 

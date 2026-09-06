@@ -476,7 +476,12 @@ Saare enum values **UPPERCASE** hain (payment gateway values ke alawa).
 
 ### VOUCHER_USAGE_TYPE
 `ONCE_PER_USER` · `MULTIPLE`
-> ⚠️ Enforcement abhi implement nahi hai — redemption tracking hi nahi hai
+> ✅ **Database enforce karta hai** — `VoucherClaim` par `{voucherId, customerId, offerId}`
+> ka unique partial index (`partialFilterExpression: {holdsUsageSlot: true}`,
+> [VoucherClaim.js:165](../models/VoucherClaim.js#L165)). Slot **per offer** hai:
+> customer ne 20%-off liya to free-dessert offer abhi bhi khula hai. Claim fail,
+> cancel ya refund ho to `holdsUsageSlot: false` ho jaata hai — slot chhoot jaata
+> hai, row rehti hai.
 
 ### DISCOUNT_APPLICABLE_ON
 `SUBTOTAL` *(default)* · `FINAL_BILL`
@@ -6488,16 +6493,32 @@ implement tab hoga jab poora flow ready ho.
 
 📋 Scheduled → [Appendix C1 #2](./super_admin_panel_api_doc.md#appendix-c--future-work).
 
-### 4. Voucher redemption flow exist nahi karta
-Customer voucher dekh sakta hai aur discount preview kar sakta hai, par redeem nahi kar
-sakta. `VoucherUsage` model bana hai, koi route nahi. `usageType` (`ONCE_PER_USER`)
-enforce nahi hota.
+### 4. ✅ Redeem endpoint nahi hai — **par ye bug nahi hai**
 
-⚠️ Aadha sach hai. Claim **ban** jaata hai aur code se verify bhi hota hai (`GET /voucher-claims/code/:claimCode`) — jo nahi hai wo *"redeem ho gaya"* mark karne ka endpoint hai.
+Yahan pehle likha tha *"redemption flow exist nahi karta"* aur *"`usageType`
+enforce nahi hota"*. **Dono galat the** — 2026-09-06 ko code ke against verify
+kiya gaya.
 
-**Vendor panel pe impact:** counter par code verify karke dikhaya ja sakta hai, par redeem mark nahi kiya ja sakta — to wahi code dobara verify hoga.
+Phase 1 me claim ka `redemptionMode` `AUTO` hota hai
+([createVoucherClaimOrder.js:270](../services/voucherClaims/createVoucherClaimOrder.js#L270)),
+aur us par payment capture hote hi claim seedhe `REDEEMED` ho jaati hai
+`redeemedAt` ke saath
+([settleVoucherClaimPayment.js:312](../helpers/voucherClaims/settleVoucherClaimPayment.js#L312)).
+**Counter par paisa dena hi redemption hai** — alag se mark karne ko kuch bacha
+hi nahi.
 
-📋 Scheduled → [Appendix C2 #4](./super_admin_panel_api_doc.md#appendix-c--future-work). ⚠️ Ye money path hai: redemption ke baad refund window ka behaviour badalna chahiye.
+`usageType` bhi enforce hota hai, aur database me — upar `VOUCHER_USAGE_TYPE`
+dekhein.
+
+**Vendor panel par iska matlab:** claims screen Phase 1 me **read-only** hai.
+`GET /voucher-claims/code/:claimCode` counter par code padhne ke liye hai — wo
+ek read hai, aur use likhna bhi nahi chahiye. Dobara wahi code padhna koi
+samasya nahi, kyunki padhna kuch badalta nahi.
+
+📋 Phase 2 (outlet scan) ka poora plan →
+[Appendix C4](./super_admin_panel_api_doc.md#appendix-c--future-work).
+⚠️ Wo ek flag ka kaam nahi hai: refund window ka clock, golden rule ka hisaab
+aur settlement eligibility teeno saath badalne padenge.
 
 ### 5. ✅ RESOLVED — Email verification ab hai
 
