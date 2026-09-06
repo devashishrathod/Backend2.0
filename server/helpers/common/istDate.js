@@ -18,7 +18,14 @@
 const IST_OFFSET_MINUTES = 5 * 60 + 30;
 const IST_OFFSET_MS = IST_OFFSET_MINUTES * 60 * 1000;
 
-/** Shift into IST so the UTC getters read out IST parts. */
+/**
+ * Shift into IST so the UTC getters read out IST parts.
+ *
+ * Time-of-day is returned alongside the date because a document prints both —
+ * "Paid: 31 Aug 2026, 11:41 PM IST" — and it must come from the same fixed-offset
+ * arithmetic as the date, not from a second mechanism that could disagree with it
+ * across a midnight boundary.
+ */
 const asIstParts = (date) => {
   const shifted = new Date(new Date(date ?? Date.now()).getTime() + IST_OFFSET_MS);
   return {
@@ -26,6 +33,9 @@ const asIstParts = (date) => {
     // 0-indexed, like the Date API.
     month: shifted.getUTCMonth(),
     day: shifted.getUTCDate(),
+    hour: shifted.getUTCHours(),
+    minute: shifted.getUTCMinutes(),
+    second: shifted.getUTCSeconds(),
   };
 };
 
@@ -65,6 +75,7 @@ const istFinancialYear = (date) => {
 
 module.exports = {
   IST_OFFSET_MINUTES,
+  asIstParts,
   istDayStart,
   istDayEnd,
   istDateKey,

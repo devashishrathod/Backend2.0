@@ -1,5 +1,6 @@
 const {
   IST_OFFSET_MINUTES,
+  asIstParts,
   istDayStart,
   istDayEnd,
   istDateKey,
@@ -9,6 +10,7 @@ const { generateUniqueDisplayId } = require("./generateUniqueDisplayId");
 
 module.exports = {
   IST_OFFSET_MINUTES,
+  asIstParts,
   istDayStart,
   istDayEnd,
   istDateKey,

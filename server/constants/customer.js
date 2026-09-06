@@ -371,6 +371,20 @@ const CHARGEBACK_DEFAULTS = Object.freeze({
 const CUSTOMER_CURRENCY_DEFAULTS = Object.freeze({
   currency: "INR",
   currencySymbol: "₹",
+  /**
+   * What a **PDF** prints instead of `₹`.
+   *
+   * ⚠️ PDFKit's built-in Helvetica is WinAnsi-encoded, and PDFKit encodes an
+   * unmappable character by truncating its codepoint to the low byte. `₹` is
+   * U+20B9, so `0xB9` reaches the page — which in WinAnsi is `¹`. The payout
+   * statement was printing `¹1,000.00` on every amount for exactly this reason:
+   * it passed `currencySymbol` straight into the document.
+   *
+   * Rendering the sign properly would mean embedding a Unicode font in every
+   * document. `Rs.` is unambiguous, costs nothing, and cannot silently degrade.
+   * Screens and emails keep `currencySymbol` — they are not WinAnsi.
+   */
+  pdfCurrencyPrefix: "Rs. ",
 });
 
 /** Enumerations an admin may pick from. Frozen; the validator reads these. */
