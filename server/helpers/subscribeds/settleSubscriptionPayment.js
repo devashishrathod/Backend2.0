@@ -78,11 +78,26 @@ const mapPayment = (payment, expectedTotal) => ({
  * with a conditional update on `verified: false`. Exactly one caller wins and
  * performs the activation; the loser is told the plan is already live.
  *
+ * ### Resuming a settlement that was claimed and then abandoned
+ *
+ * The claim below is terminal: a process that dies after it leaves the payment
+ * captured, `verified: true`, and the work half done, with **no way back in** —
+ * verify and the webhook both answer `alreadySettled`. `resumeIncompleteSettlements`
+ * is the way back in, and it calls this with `resume: true`.
+ *
+ * A resume re-runs everything and lets the finished parts no-op. What it must
+ * *not* do is re-run the money checks, because it has no gateway payload to
+ * check — the payment was recorded on the row long ago and the job passes a
+ * synthetic stand-in. Fed that, the amount check would throw 422 on every sweep
+ * and `!captured` would release a promo code that was already committed.
+ *
  * @param {object} args
  * @param {object} args.transaction  the Transaction being settled
  * @param {object} args.payment      Razorpay payment payload
  * @param {object} [args.actor]      who triggered it; absent for the webhook
  * @param {string} [args.source]     SUBSCRIPTION_SOURCE for the new record
+ * @param {boolean} [args.resume]    skip the money checks and the conditional
+ *                                   claim, and redo the rest
  * @returns {{ subscribed, transaction, action, invoiceId, invoiceDownloadUrl,
  *             invoiceUrl, alreadySettled, limits }}
  */
@@ -91,36 +106,43 @@ exports.settleSubscriptionPayment = async ({
   payment,
   actor = {},
   source = SUBSCRIPTION_SOURCE.PAYMENT,
+  resume = false,
 }) => {
   // ---------------- money checks ----------------
-  // The signature proves the payment is genuine, not that it belongs to this
-  // order or that the right amount arrived.
-  if (payment.order_id && payment.order_id !== transaction.razorpayOrderId) {
-    throwError(422, "This payment belongs to a different order.");
-  }
+  //
+  // Skipped wholesale on a resume: every one of them interrogates a live gateway
+  // payload, and a resume has none. They already passed on the run that claimed
+  // this transaction — that is why it is `verified: true` and has a payment id.
+  if (!resume) {
+    // The signature proves the payment is genuine, not that it belongs to this
+    // order or that the right amount arrived.
+    if (payment.order_id && payment.order_id !== transaction.razorpayOrderId) {
+      throwError(422, "This payment belongs to a different order.");
+    }
 
-  const expectedPaise =
-    transaction.pricing?.amountInPaise ||
-    Math.round((transaction.amount || 0) * 100);
-  if (Number(payment.amount) !== Number(expectedPaise)) {
-    throwError(
-      422,
-      `Payment amount mismatch. Expected ₹${(expectedPaise / 100).toFixed(2)} but received ₹${((payment.amount || 0) / 100).toFixed(2)}. Please contact support.`,
-    );
-  }
+    const expectedPaise =
+      transaction.pricing?.amountInPaise ||
+      Math.round((transaction.amount || 0) * 100);
+    if (Number(payment.amount) !== Number(expectedPaise)) {
+      throwError(
+        422,
+        `Payment amount mismatch. Expected ₹${(expectedPaise / 100).toFixed(2)} but received ₹${((payment.amount || 0) / 100).toFixed(2)}. Please contact support.`,
+      );
+    }
 
-  if (!payment.captured) {
-    // Nothing was taken, so let the promo hold go.
-    await releasePromoCode({
-      transactionId: transaction._id,
-      reason: `Payment not captured (${payment.status || "unknown"})`,
-    });
-    throwError(
-      402,
-      payment.error_description ||
-        payment.error_reason ||
-        `Payment was not captured (status: ${payment.status || "unknown"}). Please try again.`,
-    );
+    if (!payment.captured) {
+      // Nothing was taken, so let the promo hold go.
+      await releasePromoCode({
+        transactionId: transaction._id,
+        reason: `Payment not captured (${payment.status || "unknown"})`,
+      });
+      throwError(
+        402,
+        payment.error_description ||
+          payment.error_reason ||
+          `Payment was not captured (status: ${payment.status || "unknown"}). Please try again.`,
+      );
+    }
   }
 
   // ---------------- claim the transaction ----------------
@@ -128,22 +150,38 @@ exports.settleSubscriptionPayment = async ({
   // proceeds to activate.
   // `let`, because the document stage below re-reads it after stamping the
   // number and the snapshot onto it.
-  let claimed = await Transaction.findOneAndUpdate(
-    { _id: transaction._id, verified: false },
-    {
-      $set: {
-        ...mapPayment(payment, transaction.amount),
-        razorpayPaymentId: payment.id,
-        verified: true,
-        verifiedAt: new Date(),
-        // The claim is terminal — nothing can re-enter through it — but several
-        // dependent writes follow. This is how `resumeIncompleteSettlements`
-        // finds a settlement that was claimed and then abandoned mid-way.
-        settlementStage: SETTLEMENT_STAGE.CLAIMED,
+  let claimed;
+  if (resume) {
+    /**
+     * The claim already happened on the run that stranded this. Taking it again
+     * would find `verified: true`, conclude somebody else won, and return
+     * `alreadySettled` — reporting success while repairing nothing, which is the
+     * exact failure the resume job exists to end.
+     *
+     * `mapPayment` is deliberately not re-applied either: fed the job's
+     * synthetic payload it would overwrite the real `paidAmount`, `fee`, `tax`
+     * and method with zeroes and undefined.
+     */
+    claimed = await Transaction.findById(transaction._id);
+    if (!claimed) throwError(404, "Transaction not found.");
+  } else {
+    claimed = await Transaction.findOneAndUpdate(
+      { _id: transaction._id, verified: false },
+      {
+        $set: {
+          ...mapPayment(payment, transaction.amount),
+          razorpayPaymentId: payment.id,
+          verified: true,
+          verifiedAt: new Date(),
+          // The claim is terminal — nothing can re-enter through it — but several
+          // dependent writes follow. This is how `resumeIncompleteSettlements`
+          // finds a settlement that was claimed and then abandoned mid-way.
+          settlementStage: SETTLEMENT_STAGE.CLAIMED,
+        },
       },
-    },
-    { returnDocument: "after" },
-  );
+      { returnDocument: "after" },
+    );
+  }
 
   if (!claimed) {
     // Someone else settled it first — return what they produced.
@@ -215,6 +253,25 @@ exports.settleSubscriptionPayment = async ({
     paidAmount: claimed.paidAmount,
     dueAmount: claimed.dueAmount,
   });
+
+  /**
+   * ⚠️ The term the document states comes from the **plan**, not from the clock.
+   *
+   * `validity` above is computed from `new Date()` every time this function
+   * runs. On a first settle that is the moment the plan starts, so the two agree.
+   * On a resume days later they do not: the plan still runs from when it was
+   * activated, but `validity` now says today. An invoice numbered on that sweep
+   * would print a start date the subscription never had, and an end date a year
+   * past the one the vendor is actually entitled to.
+   *
+   * `activateSubscription` returns the live record — the one that was created on
+   * the original run — so its dates are the ones that were real. Falling back to
+   * the computed pair keeps a first settle byte-identical to before.
+   */
+  const issuedValidity = {
+    startDate: subscribed?.startDate || validity.startDate,
+    endDate: subscribed?.endDate || validity.endDate,
+  };
 
   // The discount is now final. If the reservation had already been swept as
   // stale, this re-claims it: the money was captured at the discounted amount so
@@ -309,7 +366,7 @@ exports.settleSubscriptionPayment = async ({
         pricing: claimed.pricing,
         config,
         billing,
-        validity,
+        validity: issuedValidity,
         paymentMethod: claimed.paymentMethod,
         documentNumber,
       });
