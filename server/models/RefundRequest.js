@@ -15,6 +15,7 @@ const {
   REFUND_INDEXES,
 } = require("../constants/refund");
 const { REFUND_METHODS } = require("../constants/customer");
+const { documentSnapshotSchema } = require("./documentSnapshotSchema");
 
 /**
  * The money split a refund reverses.
@@ -286,6 +287,31 @@ const refundRequestSchema = new mongoose.Schema(
     writtenOffBy: { ...userField },
     writtenOffReason: { type: String, trim: true, maxlength: 500 },
 
+    /**
+     * ---------- the document the customer gets ----------
+     *
+     * ⚠️ A refund produced **no paper at all** before this. The customer got a
+     * notification saying money was on its way and nothing they could keep, file
+     * or show their bank — while the payment that created the claim had a full
+     * receipt. Under GST a refund against a tax invoice is a credit note, and one
+     * against an untaxed receipt is a refund receipt; `resolveDocumentTitle`
+     * decides which from what was actually charged, so the same code covers both
+     * sides of the GST switch.
+     *
+     * All three are written **only when the money has actually reached the
+     * customer** — `applyRefundCompletion`, not approval. A number burnt on an
+     * approval that then failed at the gateway would leave a hole in a
+     * document-of-record series and put a receipt in a customer's hands for money
+     * they never received.
+     */
+    documentNumber: { type: String, trim: true },
+    /** Unguessable handle for the public link. The number never appears in a URL. */
+    documentToken: { type: String, trim: true },
+    /** Cached storage URL. Null until somebody first downloads it. */
+    documentUrl: { type: String, trim: true },
+    /** Everything the document prints, frozen when it was issued. */
+    documentSnapshot: { type: documentSnapshotSchema },
+
     isDeleted: { type: Boolean, default: false },
   },
   { timestamps: true, versionKey: false },
@@ -337,6 +363,35 @@ refundRequestSchema.index(
     name: REFUND_INDEXES.RAZORPAY_REFUND,
     unique: true,
     partialFilterExpression: { razorpayRefundId: { $type: "string" } },
+  },
+);
+
+/**
+ * The document's number and its link, both unique among the rows that have one.
+ *
+ * Partial for the same reason as the index above: a refund exists long before it
+ * has either — they are issued at completion — and a non-sparse unique index
+ * would store the absent field as `null` and collide on the second such row.
+ *
+ * The number's index is what makes the issuing step safe to run twice: a
+ * redelivered `refund.processed` webhook loses on the index rather than burning a
+ * second number out of a GST-facing sequence.
+ */
+refundRequestSchema.index(
+  { documentToken: 1 },
+  {
+    name: REFUND_INDEXES.DOCUMENT_TOKEN,
+    unique: true,
+    partialFilterExpression: { documentToken: { $type: "string" } },
+  },
+);
+
+refundRequestSchema.index(
+  { documentNumber: 1 },
+  {
+    name: REFUND_INDEXES.DOCUMENT_NUMBER,
+    unique: true,
+    partialFilterExpression: { documentNumber: { $type: "string" } },
   },
 );
 

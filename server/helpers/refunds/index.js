@@ -5,6 +5,12 @@ const {
 } = require("./assertRefundAllowance");
 const { releaseSettlementHold } = require("./releaseSettlementHold");
 const { applyRefundCompletion } = require("./applyRefundCompletion");
+const { issueRefundDocument } = require("./issueRefundDocument");
+const {
+  buildRefundDocumentSnapshot,
+  REFUND_REASON_TEXT,
+  REFUND_METHOD_TEXT,
+} = require("./buildRefundDocumentSnapshot");
 const {
   buildRefundListFilter,
   refundProjection,
@@ -33,6 +39,16 @@ module.exports = {
    * webhook a no-op.
    */
   applyRefundCompletion,
+  /**
+   * The customer's refund document — a REFUND RECEIPT today, a CREDIT NOTE the
+   * day customer GST is switched on, decided from what the original actually
+   * charged. Issued at completion only, so a failed refund cannot burn a number
+   * out of a document-of-record series.
+   */
+  issueRefundDocument,
+  buildRefundDocumentSnapshot,
+  REFUND_REASON_TEXT,
+  REFUND_METHOD_TEXT,
   // One projection per audience, decided once. `split` carries our promo share
   // and the MDR we swallow on the same sub-document the vendor legitimately
   // needs — which is exactly why this is not remembered at each call site.

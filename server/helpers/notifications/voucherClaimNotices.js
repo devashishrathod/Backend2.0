@@ -10,7 +10,7 @@ const {
   deepLink,
   vendorUrl,
   customerUrl,
-  invoiceUrl,
+  documentUrl,
 } = require("./panelLinks");
 const {
   CUSTOMER_CURRENCY_DEFAULTS,
@@ -55,7 +55,7 @@ const onDate = (date) => formatDateTime(date || Date.now());
  */
 exports.notifyClaimPaid = async ({ claim, transaction }) => {
   const brandName = claim.brandSnapshot?.name || "the brand";
-  const download = invoiceUrl(transaction.invoiceToken);
+  const download = documentUrl(transaction.documentToken);
 
   return notify({
     customerId: claim.customerId,
@@ -105,7 +105,7 @@ exports.notifyClaimPaid = async ({ claim, transaction }) => {
     },
     // The WhatsApp template's URL button is approved against a fixed base with
     // only the last segment dynamic — so the token is passed, not a full URL.
-    whatsappUrlParam: transaction.invoiceToken,
+    whatsappUrlParam: transaction.documentToken,
   });
 };
 
@@ -141,8 +141,25 @@ exports.notifyClaimFailed = async ({ claim, reason }) => {
 };
 
 /** Money went back. */
-exports.notifyClaimRefunded = async ({ claim, transaction, amount, reference }) => {
+exports.notifyClaimRefunded = async ({
+  claim,
+  transaction,
+  amount,
+  reference,
+  refundRequest,
+}) => {
   const brandName = claim.brandSnapshot?.name || "the brand";
+
+  /**
+   * The refund document.
+   *
+   * ⚠️ A refund used to produce no paper at all — the customer got this message
+   * and nothing they could keep, file, or show their bank. The document is issued
+   * just before this notification is sent, so by the time the link is rendered it
+   * exists. It is absent only when the issuing step failed, in which case the
+   * button is dropped rather than rendered dead.
+   */
+  const download = documentUrl(refundRequest?.documentToken);
 
   return notify({
     customerId: claim.customerId,
@@ -159,6 +176,8 @@ exports.notifyClaimRefunded = async ({ claim, transaction, amount, reference }) 
       transactionId: transaction?._id,
       amount,
       reference,
+      refundRequestId: refundRequest?._id,
+      documentNumber: refundRequest?.documentNumber,
     },
     deepLink: deepLink(CUSTOMER_PATHS.transaction(transaction?._id)),
     // One message per refund, not per retry of the job that sends it.
@@ -168,11 +187,28 @@ exports.notifyClaimRefunded = async ({ claim, transaction, amount, reference }) 
         ["Brand", brandName],
         ["Refund amount", money(amount)],
         ["Claim code", claim.claimCode],
+        ...(refundRequest?.documentNumber
+          ? [["Refund No", refundRequest.documentNumber]]
+          : []),
         ...(reference ? [["Reference", reference]] : []),
       ],
-      ctaLabel: "View refund",
-      ctaUrl: customerUrl(CUSTOMER_PATHS.transaction(transaction?._id)),
+      /**
+       * The document first, then the screen — the same order the payment receipt
+       * uses, and for the same reason: the paper is what this email is worth
+       * keeping for. Each button is dropped independently when its base is
+       * unconfigured, rather than the pair being all-or-nothing.
+       */
+      actions: [
+        ...(download ? [{ label: "Download Refund Receipt", url: download }] : []),
+        {
+          label: "View refund",
+          url: customerUrl(CUSTOMER_PATHS.transaction(transaction?._id)),
+        },
+      ],
     },
+    // The WhatsApp template's URL button is approved against a fixed base with
+    // only the last segment dynamic — so the token is passed, not a full URL.
+    whatsappUrlParam: refundRequest?.documentToken,
   });
 };
 
