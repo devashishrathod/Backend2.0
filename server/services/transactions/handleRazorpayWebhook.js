@@ -37,7 +37,11 @@ const {
   postChargebackReversal,
 } = require("../../helpers/ledger");
 const { taintSettlement } = require("../../helpers/settlements");
-const { recordDispute, summariseDisputes } = require("../../helpers/disputes");
+const {
+  recordDispute,
+  summariseDisputes,
+  issueChargebackDocument,
+} = require("../../helpers/disputes");
 const { getRazorpayAccount } = require("../../configs/razorpay");
 const {
   notifyAdmins,
@@ -483,7 +487,7 @@ const processWebhookEvent = async ({
      * `recordDispute` also settles out-of-order delivery, which the ledger's own
      * notes warn about: a late `lost` after a `won` must not win.
      */
-    await recordDispute({
+    const recorded = await recordDispute({
       transaction,
       dispute,
       status: disputeStatus,
@@ -555,6 +559,34 @@ const processWebhookEvent = async ({
         disputeId: dispute.id,
         amount: amount || undefined,
       });
+
+      /**
+       * ---------------- the vendor's advice ----------------
+       *
+       * ⚠️ A lost dispute produced no paper at all. The vendor's next payout
+       * simply came out lower, with a "chargebacks recovered" line and nothing
+       * behind it — no claim code, no date, no reason. The first they knew was
+       * money missing.
+       *
+       * Issued here, at the loss, rather than when the recovery lands one or more
+       * cycles later — so they hear about the deduction before it happens, and
+       * the settlement statement can name this advice.
+       *
+       * ⚠️ Only when `recordDispute` actually applied this event. A **stale**
+       * delivery — a late `lost` arriving after a `won` — is refused by the
+       * event-time filter precisely so it cannot flip a won dispute into a lost
+       * one; issuing an advice off it would tell a vendor money is being taken
+       * for a loss that never happened.
+       *
+       * `issueChargebackDocument` never throws and is idempotent: a redelivery
+       * neither fails the webhook nor burns a second number.
+       */
+      if (recorded?.applied && recorded.dispute) {
+        await issueChargebackDocument({
+          dispute: recorded.dispute,
+          transaction,
+        });
+      }
     } else if (disputeStatus === DISPUTE_STATUS.WON) {
       /**
        * Only reverses a loss that was actually booked. A `won` arriving with no

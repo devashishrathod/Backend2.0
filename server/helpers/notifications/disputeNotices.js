@@ -9,6 +9,7 @@ const {
   deepLink,
   adminUrl,
   vendorUrl,
+  documentUrl,
   ADMIN_PATHS,
   PANEL_PATHS,
 } = require("./panelLinks");
@@ -229,6 +230,15 @@ exports.notifyVendorDisputeResolved = async ({
   const reference = claimCode || transaction?.invoiceId || dispute?.disputeId;
   const amount = dispute?.amount || transaction?.paidAmount;
 
+  /**
+   * The chargeback advice — the paper that says what is being taken and why.
+   *
+   * ⚠️ Only on a loss. A won dispute takes nothing from the vendor, so there is
+   * no advice and no button; offering a "Download Advice" there would tell them
+   * money is going when it is not.
+   */
+  const advice = won ? undefined : documentUrl(dispute?.documentToken);
+
   return notify({
     brandId: transaction?.brandId || dispute?.brandId,
     audience: NOTIFICATION_AUDIENCE.VENDOR,
@@ -258,6 +268,7 @@ exports.notifyVendorDisputeResolved = async ({
       amount,
       won,
       recoverable,
+      documentNumber: dispute?.documentNumber,
     },
     deepLink: deepLink(PANEL_PATHS.dispute(dispute?._id)),
     dedupeKey: `DISPUTE_RESOLVED_VENDOR:${dispute?.disputeId}:${won ? "WON" : "LOST"}`,
@@ -266,6 +277,7 @@ exports.notifyVendorDisputeResolved = async ({
         ["Claim", reference || "-"],
         ["Amount", money(amount)],
         ["Outcome", won ? "Decided in your favour" : "Upheld for the customer"],
+        ...(advice ? [["Advice No", dispute.documentNumber]] : []),
         [
           "What happens next",
           won
@@ -275,8 +287,20 @@ exports.notifyVendorDisputeResolved = async ({
               : "Nothing to deduct — it was never paid out",
         ],
       ],
-      ctaLabel: "Open dispute",
-      ctaUrl: vendorUrl(PANEL_PATHS.dispute(dispute?._id)),
+      /**
+       * The advice only exists on a loss, and only once it has been issued — a
+       * won dispute takes nothing, so there is nothing to advise. Dropped rather
+       * than rendered dead when the issuing step failed or `PUBLIC_API_URL` is
+       * unset.
+       */
+      actions: [
+        ...(advice ? [{ label: "Download Advice", url: advice }] : []),
+        {
+          label: "Open dispute",
+          url: vendorUrl(PANEL_PATHS.dispute(dispute?._id)),
+        },
+      ],
     },
+    whatsappUrlParam: dispute?.documentToken,
   });
 };
