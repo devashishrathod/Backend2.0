@@ -14,7 +14,7 @@ const {
   subscribedField,
 } = require("./validObjectId");
 const { pricingSchema } = require("./pricingSchema");
-const { invoiceSnapshotSchema } = require("./invoiceSnapshotSchema");
+const { documentSnapshotSchema } = require("./documentSnapshotSchema");
 const {
   PAYMENT_STATUS,
   PAYMENT_METHODS,
@@ -216,15 +216,15 @@ const transactionSchema = new mongoose.Schema(
     invoiceUrl: { type: String },
     // Unguessable handle for the public invoice download link. The sequential
     // invoice number is a document-of-record and must never appear in a URL.
-    invoiceToken: { type: String },
+    documentToken: { type: String },
     // Client-supplied, so a retried create-order returns the same transaction
     // instead of opening a second Razorpay order. Scoped per customer.
     idempotencyKey: { type: String },
-    // Everything the invoice prints, frozen when it is issued. The generator
+    // Everything the document prints, frozen when it is issued. The renderer
     // reads only this and performs no live lookups, so a re-issue reproduces the
     // original exactly — even after the plan is renamed or the seller's GSTIN
-    // changes. See models/invoiceSnapshotSchema.js.
-    invoiceSnapshot: { type: invoiceSnapshotSchema },
+    // changes. See models/documentSnapshotSchema.js.
+    invoiceSnapshot: { type: documentSnapshotSchema },
     receipt: { type: String, maxlength: 40 },
     amountRefunded: { type: Number, default: 0 },
     verified: { type: Boolean, default: false },
@@ -442,11 +442,11 @@ transactionSchema.index(
 );
 
 transactionSchema.index(
-  { invoiceToken: 1 },
+  { documentToken: 1 },
   {
     unique: true,
-    partialFilterExpression: { invoiceToken: { $type: "string" } },
-    name: TRANSACTION_INDEXES.INVOICE_TOKEN,
+    partialFilterExpression: { documentToken: { $type: "string" } },
+    name: TRANSACTION_INDEXES.DOCUMENT_TOKEN,
   },
 );
 

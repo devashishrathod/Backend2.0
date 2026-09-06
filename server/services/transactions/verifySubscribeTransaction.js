@@ -1,5 +1,6 @@
 const Transaction = require("../../models/Transaction");
 const Subscribed = require("../../models/Subscribed");
+const { invoiceUrl } = require("../../helpers/notifications/panelLinks");
 const { ROLES } = require("../../constants");
 const {
   PAYMENT_GATEWAYS,
@@ -75,7 +76,15 @@ exports.verifySubscribeTransaction = async (actor, payload) => {
       subscribed: existing,
       transaction,
       alreadyVerified: true,
+      /**
+       * `invoiceUrl` is the cached storage URL and is null until somebody has
+       * actually downloaded the invoice — the PDF is rendered on first request
+       * now, not at settle. `invoiceDownloadUrl` is the link to hand the vendor:
+       * it renders the document on demand and caches it afterwards.
+       */
       invoiceUrl: transaction.invoiceUrl || null,
+      invoiceDownloadUrl: invoiceUrl(transaction.documentToken),
+      invoiceId: transaction.invoiceId || null,
     };
   }
 

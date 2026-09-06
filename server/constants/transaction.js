@@ -85,18 +85,9 @@ const GATEWAY_FEE_BEARER = Object.freeze({
   SHARED: "SHARED",
 });
 
-/**
- * Invoice / statement number series. Each gets its own `Counter` document per
- * financial year, so the numbers stay monotonic within a series — which is what
- * GST expects of a document-of-record sequence.
- *
- *   INVOICE:VCH:25-26  ->  TD/VCH/25-26/000001
- */
-const INVOICE_SERIES = Object.freeze({
-  [TRANSACTION_PURPOSE.SUBSCRIPTION]: "SUB",
-  [TRANSACTION_PURPOSE.VOUCHER_CLAIM]: "VCH",
-  SETTLEMENT: "STL",
-});
+// Document numbering now lives in `constants/document.js` — `DOCUMENT_SERIES`
+// covers claims, subscriptions, grants, payouts, commission, refunds and
+// chargebacks, which is more than a transaction-scoped constant should describe.
 
 /**
  * Index names, declared once.
@@ -116,7 +107,7 @@ const INVOICE_SERIES = Object.freeze({
 const TRANSACTION_INDEXES = Object.freeze({
   INVOICE_ID: "invoiceId_unique_partial",
   RAZORPAY_ORDER_ID: "razorpayOrderId_unique_partial",
-  INVOICE_TOKEN: "invoiceToken_unique_partial",
+  DOCUMENT_TOKEN: "documentToken_unique_partial",
   IDEMPOTENCY_KEY: "customer_idempotencyKey_unique_partial",
   VOUCHER_CLAIM_ID: "voucherClaimId_unique_partial",
 });
@@ -127,30 +118,11 @@ const LEGACY_TRANSACTION_INDEXES = Object.freeze({
   RAZORPAY_ORDER_ID: "razorpayOrderId_1",
 });
 
-/**
- * Which document an invoice snapshot describes, and the renderer's branch key.
- *
- * The two layouts share a header and a total and nothing else. A subscription
- * invoice prints a plan name, a duration and a validity range; a voucher claim
- * has none of those and instead has a bill, an offer, an outlet and a claim
- * code. Running one through the other's layout produces a document with empty
- * fields and `Validity: - to -` where a date belongs.
- */
-const INVOICE_KIND = Object.freeze({
-  SUBSCRIPTION: "SUBSCRIPTION",
-  VOUCHER_CLAIM: "VOUCHER_CLAIM",
-});
-
-/**
- * What the document calls itself.
- *
- * ⚠️ "TAX INVOICE" on a document carrying no tax is wrong. Customer GST is off
- * by default, so a claim prints **PAYMENT RECEIPT** until it is switched on.
- */
-const INVOICE_TITLE = Object.freeze({
-  TAX_INVOICE: "TAX INVOICE",
-  RECEIPT: "PAYMENT RECEIPT",
-});
+// `INVOICE_KIND` and `INVOICE_TITLE` are gone. They existed because the renderer
+// branched on which of two layouts to print, and that branch is what produced a
+// claim with an empty plan name and `Validity: - to -`. There is one renderer
+// now and it branches on nothing — see `constants/document.js` for the kinds and
+// the titles they resolve to.
 
 /**
  * The one colour an admin dashboard paints the money page.
@@ -171,14 +143,11 @@ const PAYMENT_HEALTH_STATUS = Object.freeze({
 
 module.exports = {
   PAYMENT_HEALTH_STATUS,
-  INVOICE_KIND,
-  INVOICE_TITLE,
   RAZORPAY_ACCOUNTS,
   TRANSACTION_PURPOSE,
   ACCOUNT_FOR_PURPOSE,
   SETTLEMENT_STAGE,
   GATEWAY_FEE_BEARER,
-  INVOICE_SERIES,
   TRANSACTION_INDEXES,
   LEGACY_TRANSACTION_INDEXES,
 };

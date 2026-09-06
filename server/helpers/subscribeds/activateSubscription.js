@@ -10,9 +10,6 @@ const { getActiveSubscription } = require("./getActiveSubscription");
 const { syncBrandSubscriptionState } = require("./syncBrandSubscriptionState");
 const { recordSubscribedHistory } = require("./recordSubscribedHistory");
 const { round2 } = require("./calculatePricing");
-const {
-  notifySubscriptionActivated,
-} = require("../notifications/subscriptionNotices");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -216,16 +213,32 @@ exports.activateSubscription = async ({
     },
   });
 
-  // Fire-and-forget: notify() never throws, and a notification must not be able
-  // to undo a paid activation.
-  await notifySubscriptionActivated({
-    brand,
-    subscription,
+  /**
+   * ⚠️ The activation notice is **not** sent here any more.
+   *
+   * It carries the vendor's invoice number and their Download Invoice link, and
+   * neither exists yet at this point in a paid settlement: the number is allotted
+   * after activation, once the payment is known to be captured. Sent from here it
+   * went out with a blank invoice number and no button — which is how vendors
+   * ended up with no route to their own invoice at all.
+   *
+   * Both callers now send it after their document stage, which is also the order
+   * the claim flow follows and for the same reason: notifications are the one
+   * step whose failure costs nothing but a message, so they go last.
+   */
+  return {
     subscribed,
-    action,
-    isAdminGrant: source === SUBSCRIPTION_SOURCE.ADMIN_MANUAL,
-    forfeitedDays: forfeit.forfeitedDays,
-  });
-
-  return { subscribed, previous, sync, forfeit };
+    previous,
+    sync,
+    forfeit,
+    // What the caller needs to send that notice itself.
+    notice: {
+      brand,
+      subscription,
+      subscribed,
+      action,
+      isAdminGrant: source === SUBSCRIPTION_SOURCE.ADMIN_MANUAL,
+      forfeitedDays: forfeit.forfeitedDays,
+    },
+  };
 };

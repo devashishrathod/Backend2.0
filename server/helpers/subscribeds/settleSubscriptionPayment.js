@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const Brand = require("../../models/Brand");
 const Subscription = require("../../models/Subscription");
 const Transaction = require("../../models/Transaction");
@@ -11,6 +12,7 @@ const { summarizeUsage } = require("../brands");
 const { commitPromoCode, releasePromoCode } = require("../promoCodes");
 const {
   notifyAdmins,
+  notifySubscriptionActivated,
   ADMIN_PATHS,
   adminUrl,
   deepLink,
@@ -20,10 +22,12 @@ const {
   NOTIFICATION_SEVERITY,
 } = require("../../constants/notification");
 const {
-  generateAndUploadInvoice,
   buildInvoiceSnapshot,
   detectDoubleCapture,
 } = require("../transactions");
+const { generateDocumentNumber } = require("../documents");
+const { invoiceUrl } = require("../notifications/panelLinks");
+const { DOCUMENT_KIND, DOCUMENT_SERIES } = require("../../constants/document");
 const { SETTLEMENT_STAGE } = require("../../constants/transaction");
 const { calculateEndDate } = require("./calculateEndDate");
 const { getActiveSubscription } = require("./getActiveSubscription");
@@ -79,7 +83,8 @@ const mapPayment = (payment, expectedTotal) => ({
  * @param {object} args.payment      Razorpay payment payload
  * @param {object} [args.actor]      who triggered it; absent for the webhook
  * @param {string} [args.source]     SUBSCRIPTION_SOURCE for the new record
- * @returns {{ subscribed, transaction, action, invoiceUrl, alreadySettled, limits }}
+ * @returns {{ subscribed, transaction, action, invoiceId, invoiceDownloadUrl,
+ *             invoiceUrl, alreadySettled, limits }}
  */
 exports.settleSubscriptionPayment = async ({
   transaction,
@@ -121,7 +126,9 @@ exports.settleSubscriptionPayment = async ({
   // ---------------- claim the transaction ----------------
   // Conditional on `verified: false`, so only one of the two racing callers
   // proceeds to activate.
-  const claimed = await Transaction.findOneAndUpdate(
+  // `let`, because the document stage below re-reads it after stamping the
+  // number and the snapshot onto it.
+  let claimed = await Transaction.findOneAndUpdate(
     { _id: transaction._id, verified: false },
     {
       $set: {
@@ -159,6 +166,7 @@ exports.settleSubscriptionPayment = async ({
       transaction: settled,
       action: null,
       invoiceUrl: settled?.invoiceUrl || null,
+      invoiceDownloadUrl: invoiceUrl(settled?.documentToken),
       alreadySettled: true,
       doubleCapture: double.isDouble,
     };
@@ -194,7 +202,7 @@ exports.settleSubscriptionPayment = async ({
     ),
   };
 
-  const { subscribed, sync } = await activateSubscription({
+  const { subscribed, sync, notice } = await activateSubscription({
     brand,
     subscription,
     // The webhook has no user behind it; fall back to whoever opened the order.
@@ -262,53 +270,157 @@ exports.settleSubscriptionPayment = async ({
     });
   }
 
-  // ---------------- invoice (never blocks activation) ----------------
-  let invoiceUrl = null;
+  /**
+   * ---------------- the invoice (never blocks activation) ----------------
+   *
+   * **Only the number and the snapshot.** The PDF renders on the first download
+   * request instead — the same rule the claim side already follows. Rendering and
+   * uploading one on every subscription does not survive scale, and most invoices
+   * are never opened.
+   *
+   * ### ⚠️ Why the number is allotted *here* and not at order time
+   *
+   * It used to be minted inside `createSubscribeOrder`, beside the Razorpay
+   * order. So a vendor who opened checkout and walked away **burned an invoice
+   * number** — and an abandoned cart is the common case, not the rare one. The
+   * series ended up with more holes than entries, which is precisely what a
+   * GST document-of-record sequence may not have.
+   *
+   * Allotted at settle, the series only advances when money actually moves.
+   *
+   * Idempotent through the `$exists: false` guard, so a resume cannot burn a
+   * second number on a transaction that already has one — which would leave the
+   * gap this ordering exists to prevent.
+   */
   try {
-    const [config, billing] = await Promise.all([
-      getSubscriptionConfig(),
-      buildBillingDetails(brand),
-    ]);
+    if (!claimed.invoiceId) {
+      const [config, billing] = await Promise.all([
+        getSubscriptionConfig(),
+        buildBillingDetails(brand),
+      ]);
 
-    // Frozen first, then rendered from that snapshot alone. Stored even if the
-    // upload then fails, so a re-issue reproduces this exact invoice rather than
-    // rebuilding it from whatever is current at that later time.
-    const invoiceSnapshot = buildInvoiceSnapshot({
-      transaction: claimed,
-      subscription,
-      pricing: claimed.pricing,
-      config,
-      billing,
-      validity,
-      paymentMethod: claimed.paymentMethod,
-    });
-    await Transaction.updateOne(
-      { _id: claimed._id },
-      { $set: { invoiceSnapshot } },
-    );
+      const documentNumber = await generateDocumentNumber({
+        series: DOCUMENT_SERIES[DOCUMENT_KIND.SUBSCRIPTION],
+      });
 
-    invoiceUrl = await generateAndUploadInvoice(invoiceSnapshot);
-    if (invoiceUrl) {
-      await Transaction.updateOne(
-        { _id: claimed._id },
-        { $set: { invoiceUrl } },
+      const invoiceSnapshot = buildInvoiceSnapshot({
+        transaction: claimed,
+        subscription,
+        pricing: claimed.pricing,
+        config,
+        billing,
+        validity,
+        paymentMethod: claimed.paymentMethod,
+        documentNumber,
+      });
+
+      // Conditional on the number still being absent, so two racing writers
+      // cannot both allot one.
+      const numbered = await Transaction.findOneAndUpdate(
+        { _id: claimed._id, invoiceId: { $exists: false } },
+        {
+          $set: {
+            invoiceId: documentNumber,
+            invoiceSnapshot,
+            /**
+             * The unguessable handle for the public download link.
+             *
+             * ⚠️ Vendors never had one. The customer side has minted a token
+             * since it was written, so a claim receipt could be opened from an
+             * email or a WhatsApp message; a subscription invoice could only be
+             * reached through a raw storage URL that could not be revoked and was
+             * never sent anywhere. `GET /transactions/invoice/:token` served both
+             * kinds all along — nothing was ever putting a token on this half.
+             */
+            documentToken: crypto.randomBytes(32).toString("hex"),
+          },
+        },
+        { returnDocument: "after" },
       );
+      if (numbered) claimed = numbered;
     }
   } catch (error) {
-    // The money is captured and the plan is live. A missing PDF is a
-    // regenerate-later problem — see POST /transactions/invoice/regenerate.
+    /**
+     * The money is captured and the plan is live, so this must not throw — but it
+     * must not be swallowed either.
+     *
+     * It used to be a bare `console.error`, which meant a vendor with a paid
+     * subscription and no invoice was a fact nobody learned until they asked.
+     * The alert is deduped, so a retry storm does not become a mail storm.
+     */
     console.error(
       `[settleSubscriptionPayment] invoice failed for transaction ${claimed._id}:`,
       error?.message,
     );
+
+    /**
+     * ⚠️ Nested `try`, and it is load-bearing.
+     *
+     * `notifyAdmins` goes through `notifyAudience`, which never throws for a
+     * delivery failure but **does** propagate an invalid or oversized audience —
+     * deliberately, so a caller's mistake is not swallowed. Here that guarantee
+     * points the wrong way: this runs after the money is captured and the plan is
+     * live, so an exception escaping would fail a settlement that actually
+     * succeeded, and the client would be told the payment failed.
+     *
+     * Losing the alert is bad. Failing the settlement to deliver it is worse.
+     */
+    try {
+      await notifyAdmins({
+        type: NOTIFICATION_TYPES.WEBHOOK_FAILED,
+        severity: NOTIFICATION_SEVERITY.WARNING,
+        title: `Invoice could not be issued for ${brand.brandName || brand.legalBusinessName || "a vendor"}`,
+        body:
+          `The payment settled and the plan is live, but the invoice number or snapshot could not be written. ` +
+          `The vendor has a paid subscription with no invoice. Re-issue it from the transaction.`,
+        meta: {
+          transactionId: claimed._id,
+          brandId: brand._id,
+          subscriptionId: subscription._id,
+          reason: error?.message,
+        },
+        dedupeKey: `INVOICE_FAILED:${claimed._id}`,
+        deepLink: deepLink(ADMIN_PATHS.transaction(claimed._id)),
+        mail: {
+          lines: [
+            ["Brand", brand.brandName || brand.legalBusinessName || "-"],
+            ["Plan", subscription.name || "-"],
+            ["Amount", String(claimed.paidAmount ?? "-")],
+            ["Reason", error?.message || "-"],
+          ],
+          ctaLabel: "Open transaction",
+          ctaUrl: adminUrl(ADMIN_PATHS.transaction(claimed._id)),
+          footnote:
+            "Nothing is broken for the vendor — the plan is active. They simply have no invoice until it is re-issued.",
+        },
+      });
+    } catch (alertError) {
+      console.error(
+        `[settleSubscriptionPayment] could not raise the invoice-failure alert for ${claimed._id}:`,
+        alertError?.message,
+      );
+    }
   }
 
-  // The invoice snapshot is frozen (or its failure logged and moved past —
-  // a missing PDF is a regenerate-later problem, not a settlement failure).
+  // The invoice number and snapshot are frozen (or the failure raised and moved
+  // past — a missing document is a re-issue problem, not a settlement failure).
   await Transaction.updateOne(
     { _id: claimed._id },
     { $set: { settlementStage: SETTLEMENT_STAGE.INVOICED } },
   );
+
+  /**
+   * ---------------- tell the vendor ----------------
+   *
+   * After the document stage, deliberately: the notice carries the invoice number
+   * and the Download Invoice button, and neither exists until the block above has
+   * run. Sent from inside `activateSubscription` — where it used to live — it went
+   * out with a blank number and no link.
+   *
+   * `notify` never throws, so a mail outage cannot leave a settled payment marked
+   * incomplete and retried forever.
+   */
+  await notifySubscriptionActivated({ ...notice, transaction: claimed });
 
   // Only nudge the vendor forward if they are still on the subscribe step.
   await User.updateOne(
@@ -324,9 +436,17 @@ exports.settleSubscriptionPayment = async ({
 
   return {
     subscribed,
-    transaction: { ...claimed.toObject(), invoiceUrl },
+    transaction: claimed.toObject(),
     action,
-    invoiceUrl,
+    /**
+     * ⚠️ `null` at settle time now, and that is the point: the PDF is rendered
+     * on the first download rather than eagerly here. `invoiceDownloadUrl` is
+     * what a caller should hand the vendor — the token link, which renders the
+     * document on demand and caches it afterwards.
+     */
+    invoiceUrl: claimed.invoiceUrl || null,
+    invoiceDownloadUrl: invoiceUrl(claimed.documentToken),
+    invoiceId: claimed.invoiceId || null,
     limits: summarizeUsage(
       await Brand.findById(brand._id).lean(),
       sync.entitlements,
