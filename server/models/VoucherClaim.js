@@ -59,6 +59,17 @@ const voucherClaimSchema = new mongoose.Schema(
     voucherSnapshot: { type: claimSnapshotSchema, default: undefined },
     brandSnapshot: { type: claimSnapshotSchema, default: undefined },
     outletSnapshot: { type: claimSnapshotSchema, default: undefined },
+    /**
+     * Who paid, as they were when they paid.
+     *
+     * ⚠️ The invoice builder has read `claim.customerSnapshot?.name` since it was
+     * written, and this field did not exist — so **every** customer receipt
+     * printed `Bill To: -`. It is added here rather than joined at render time
+     * for the same reason as its four siblings: a customer can rename themselves
+     * or change their number, and a receipt from September has to still name the
+     * person it named in September.
+     */
+    customerSnapshot: { type: claimSnapshotSchema, default: undefined },
 
     // ---------- money ----------
     billAmount: { type: Number, required: true },

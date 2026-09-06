@@ -57,6 +57,38 @@ const CLAIM_REDEMPTION_MODE = Object.freeze({
   ADMIN: "ADMIN",
 });
 
+/**
+ * The modes the running code can actually carry to a finished state.
+ *
+ * ⚠️ **This is the enum's safety catch, and it is deliberately smaller than the
+ * enum.** `CLAIM_REDEMPTION_MODE` describes every mode the design has a name
+ * for; this describes the ones that have working code behind them *today*.
+ *
+ * Anything outside `AUTO` needs two things that do not exist yet: an endpoint
+ * that moves a scanned claim from `PAID` to `REDEEMED`, and a sweep that closes
+ * one nobody scanned. Without them a claim in such a mode is captured — the
+ * money is taken — and then sits at `PAID` for ever, with nothing to move it and
+ * nothing to complain. Money quietly stuck is the worst shape a bug can take
+ * here, because nothing surfaces it.
+ *
+ * When Phase 2 lands (Appendix C4), add `OUTLET_SCAN` here **in the same commit**
+ * as the redeem endpoint and the expiry sweep — never before.
+ */
+const IMPLEMENTED_REDEMPTION_MODES = Object.freeze([CLAIM_REDEMPTION_MODE.AUTO]);
+
+/**
+ * The mode every claim is created in.
+ *
+ * A named constant rather than a literal at the creation site, so the choice
+ * lives with the list that says which choices are safe. `assertRedemptionMode`
+ * is what keeps the two honest.
+ */
+const DEFAULT_REDEMPTION_MODE = CLAIM_REDEMPTION_MODE.AUTO;
+
+/** Whether the running code can finish a claim in this mode. */
+const isImplementedRedemptionMode = (mode) =>
+  IMPLEMENTED_REDEMPTION_MODES.includes(mode);
+
 /** Append-only audit actions. Mirrors `SUBSCRIPTION_HISTORY_ACTION`. */
 const CLAIM_HISTORY_ACTION = Object.freeze({
   CLAIM_CREATED: "CLAIM_CREATED",
@@ -191,6 +223,9 @@ module.exports = {
   CLAIM_SLOT_HOLDING_STATUSES,
   CLAIM_SLOT_RELEASING_STATUSES,
   CLAIM_REDEMPTION_MODE,
+  IMPLEMENTED_REDEMPTION_MODES,
+  DEFAULT_REDEMPTION_MODE,
+  isImplementedRedemptionMode,
   CLAIM_HISTORY_ACTION,
   CLAIM_PERFORMED_BY,
   CLAIM_CODE,
