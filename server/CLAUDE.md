@@ -544,8 +544,36 @@ COMPLETE` — and `resumeIncompleteSettlements` re-runs the whole thing with
 `resume: true`. Because every step is idempotent, **resume does not need to know
 where it stopped**.
 
+It sweeps **both** flows and dispatches through `resolveSettler(purpose)` — the
+same registry the webhook receiver uses, so a resume and a live delivery can
+never disagree about which settler owns a row. An unknown purpose is a hard stop
+for that row, not a fallthrough.
+
 If you add a step to a settle, it must be safe to run twice, and it must sit
 before the `COMPLETE` stage marker.
+
+#### ⚠️ `resume: true` is what makes the claim non-load-bearing
+
+The conditional claim is not just a race guard — it is the only thing stopping
+the rest of the settle from running twice. A resume skips it deliberately, so
+anything the claim was protecting has to protect itself:
+
+- **`activateSubscription`** checks for an existing `Subscribed` on the
+  transaction and returns it. Without that, a resume creates a second ACTIVE plan
+  and then feeds the vendor's just-purchased one to the supersede block, which
+  retires it and books the whole unused term as forfeited — a fabricated debt
+  that surfaces in `GET /subscribeds/admin/forfeited`.
+- The real enforcement is the **unique partial index** on
+  `Subscribed.transactionId`; the in-code check only saves a failed insert. Two
+  resumes running together both find nothing, and the index picks the winner —
+  the loser catches `11000` and adopts the winner's row.
+- **Dates come from the record, never from `new Date()`.** `validity` is
+  recomputed on every call, so an invoice numbered during a resume would print a
+  term the plan never had. `settleSubscriptionPayment` takes them off the
+  returned `Subscribed`.
+- **Every notice needs a `dedupeKey`**, or each sweep tells the vendor again.
+
+Before making anything resumable, ask what the conditional claim was hiding.
 
 ### Locks are taken when a record is created, not when it is paid
 
