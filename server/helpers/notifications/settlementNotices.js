@@ -28,6 +28,7 @@ const {
   deepLink,
   vendorUrl,
   adminUrl,
+  documentUrl,
   PANEL_PATHS,
   ADMIN_PATHS,
 } = require("./panelLinks");
@@ -95,6 +96,20 @@ const forPeriod = (settlement) =>
  * every query becomes a phone call.
  */
 exports.notifyVendorSettlementPaid = async ({ settlement, utr }) => {
+  /**
+   * The payout statement, with the commission tax invoice inside it.
+   *
+   * ⚠️ This email had no link to it. The token is minted and the statement
+   * frozen the moment the settlement becomes `PAID` — which is exactly when this
+   * message goes out — and the vendor was still sent only to a panel screen. The
+   * one document that explains why ₹10,000 of sales paid out ₹8,820 was reachable
+   * only by someone who already knew to go looking for it.
+   *
+   * Dropped rather than rendered dead when the statement could not be frozen or
+   * `PUBLIC_API_URL` is unset.
+   */
+  const download = documentUrl(settlement.documentToken);
+
   return notify({
     brandId: settlement.brandId,
     audience: NOTIFICATION_AUDIENCE.VENDOR,
@@ -108,6 +123,7 @@ exports.notifyVendorSettlementPaid = async ({ settlement, utr }) => {
     meta: {
       settlementId: settlement._id,
       settlementNumber: settlement.settlementNumber,
+      commissionInvoiceNumber: settlement.commissionInvoiceNumber,
       amount: settlement.netPayable,
       utr,
     },
@@ -119,10 +135,32 @@ exports.notifyVendorSettlementPaid = async ({ settlement, utr }) => {
         ["Period", forPeriod(settlement)],
         ["Amount", money(settlement.netPayable)],
         ["Bank reference (UTR)", utr || "-"],
+        /**
+         * Only when commission was actually charged. The rate is zero today, so
+         * a line naming an invoice number that does not exist would be worse
+         * than no line.
+         */
+        ...(settlement.commissionInvoiceNumber
+          ? [["Commission invoice", settlement.commissionInvoiceNumber]]
+          : []),
       ],
-      ctaLabel: "View settlement",
-      ctaUrl: vendorUrl(PANEL_PATHS.settlement(settlement._id)),
+      /**
+       * The statement first, then the panel — the same order every other
+       * document email uses, and for the same reason: the paper is what this
+       * email is worth keeping for. Each is dropped independently when its base
+       * is unconfigured.
+       */
+      actions: [
+        ...(download ? [{ label: "Download Statement", url: download }] : []),
+        {
+          label: "View settlement",
+          url: vendorUrl(PANEL_PATHS.settlement(settlement._id)),
+        },
+      ],
     },
+    // The WhatsApp template's URL button is approved against a fixed base with
+    // only the last segment dynamic — so the token is passed, not a full URL.
+    whatsappUrlParam: settlement.documentToken,
   });
 };
 

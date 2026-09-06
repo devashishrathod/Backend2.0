@@ -163,7 +163,7 @@ exports.settlementProjection = (role) => {
     netPayable: 1,
     transactionCount: 1,
 
-    statementUrl: 1,
+    documentUrl: 1,
   };
 
   if (role === ROLES.ADMIN) {
@@ -187,7 +187,7 @@ exports.settlementProjection = (role) => {
       failureReason: 1,
       failureNote: 1,
       attemptCount: 1,
-      statementToken: 1,
+      documentToken: 1,
     };
   }
 

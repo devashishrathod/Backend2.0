@@ -9,6 +9,8 @@ const {
   SETTLEMENT_ACTOR,
 } = require("../../constants/settlement");
 const { releaseSettlementClaims } = require("./settlementClaims");
+// Sibling, not the barrel: the barrel re-exports this file too.
+const { issueSettlementDocument } = require("./issueSettlementDocument");
 
 const readable = (status) => String(status).toLowerCase().replace(/_/g, " ");
 
@@ -99,7 +101,7 @@ exports.transitionSettlement = async ({
    * a link already sitting in somebody's inbox.
    */
   const becomingPaid = to === SETTLEMENT_STATUS.PAID;
-  const mintStatementToken = becomingPaid && !settlement.statementToken;
+  const mintStatementToken = becomingPaid && !settlement.documentToken;
 
   /**
    * ⚠️ Stamped here for the same reason the token is: `PAID` is reached from two
@@ -120,7 +122,7 @@ exports.transitionSettlement = async ({
         status: to,
         isOpen: SETTLEMENT_OPEN_STATUSES.includes(to),
         ...(mintStatementToken
-          ? { statementToken: crypto.randomBytes(32).toString("hex") }
+          ? { documentToken: crypto.randomBytes(32).toString("hex") }
           : {}),
         ...(stampPaidAt ? { paidAt: new Date() } : {}),
       },
@@ -156,9 +158,36 @@ exports.transitionSettlement = async ({
     released = await releaseSettlementClaims(updated._id);
   }
 
-  await recordHistory({ settlement: updated, from, to, actor, reason, released });
+  /**
+   * ---------------- freeze the statement ----------------
+   *
+   * Only on the way into `PAID`, and only after the ledger and the row release
+   * above — the statement quotes both, so building it earlier would freeze
+   * figures that the next two lines could still change.
+   *
+   * `PAID` is also the first state nothing behind it can move out of: a rebuild
+   * releases tainted rows, `CARRIED_FORWARD` hands them to the next cycle, a
+   * bounced payout retries with a new leg. A statement frozen from any of those
+   * would state figures that later changed, on paper with our name on it.
+   *
+   * `issueSettlementDocument` never throws and is idempotent, so a re-entry
+   * neither fails the transition nor allots a second commission number.
+   */
+  const documented = becomingPaid
+    ? await issueSettlementDocument(updated)
+    : null;
+  const finalSettlement = documented || updated;
 
-  return { settlement: updated, released };
+  await recordHistory({
+    settlement: finalSettlement,
+    from,
+    to,
+    actor,
+    reason,
+    released,
+  });
+
+  return { settlement: finalSettlement, released };
 };
 
 /**
