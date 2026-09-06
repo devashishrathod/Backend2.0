@@ -10,6 +10,14 @@ const {
   settleVoucherClaimPayment,
   recordClaimHistory,
 } = require("../../helpers/voucherClaims");
+/**
+ * The same map the webhook receiver dispatches on, so a resume and a live
+ * delivery can never disagree about which settler owns a money flow.
+ */
+const {
+  resolveSettler,
+  SETTLER_PURPOSES,
+} = require("../transactions/webhookSettlers");
 const {
   notifyAdmins,
   ADMIN_PATHS,
@@ -32,6 +40,12 @@ const {
 } = require("../../constants/voucherClaim");
 
 const MINUTE_MS = 60 * 1000;
+
+/** "2 voucher claim, 1 subscription" — for an alert that now spans both flows. */
+const describeFlows = (byPurpose = {}) =>
+  Object.entries(byPurpose)
+    .map(([purpose, count]) => `${count} ${String(purpose).toLowerCase().replace(/_/g, " ")}`)
+    .join(", ") || "none";
 
 /**
  * Reclaim the once-per-user slots held by checkouts that were never completed.
@@ -169,6 +183,21 @@ exports.releaseStaleClaimHolds = async () => {
  * Every step of the settle is idempotent, so this does not need to know where it
  * stopped. It runs the whole thing again and the finished parts are no-ops.
  *
+ * ### Both money flows, dispatched rather than branched
+ *
+ * This swept voucher claims only, so a subscription payment that stranded
+ * half-settled stayed stranded forever — the vendor's money was taken and
+ * nothing ever went back to finish the job. The two flows share the staged
+ * design and the `resume: true` contract, so the sweep is shared; what differs
+ * is which settler runs, and that is already answered by the same registry the
+ * webhook receiver uses.
+ *
+ * `resolveSettler` returning null is a **hard stop** for that row, not a
+ * fallthrough — running a claim settler against a subscription payment is how a
+ * customer's ₹760 gets settled against a vendor's ₹4,999 plan. The query only
+ * selects purposes the registry knows, so a null here means the two disagree,
+ * which is worth failing loudly over.
+ *
  * ### ⚠️ Scoped by BOTH purpose and the stage existing
  *
  * `settlementStage != "COMPLETE"` is true of a **missing** field, and every
@@ -176,7 +205,9 @@ exports.releaseStaleClaimHolds = async () => {
  * guard this job's first run would try to re-settle the entire subscription
  * history. The M10 migration marked those `COMPLETE`, so the data is clean too —
  * but a query that only works because of a migration someone remembered to run
- * is not a query worth relying on.
+ * is not a query worth relying on. That guard matters more now than it did when
+ * this was claims-only: admin grants never enter the staged pipeline at all and
+ * carry no stage, and this is what keeps the sweep from adopting them.
  */
 exports.resumeIncompleteSettlements = async ({ olderThanMinutes = 5 } = {}) => {
   const cutoff = new Date(Date.now() - olderThanMinutes * MINUTE_MS);
@@ -198,10 +229,10 @@ exports.resumeIncompleteSettlements = async ({ olderThanMinutes = 5 } = {}) => {
    * of a payment nobody has tried yet.
    */
   const stranded = await Transaction.find({
-    ...buildTransactionFilter({
-      purpose: TRANSACTION_PURPOSE.VOUCHER_CLAIM,
-      verified: true,
-    }),
+    // `purpose: null` is this builder's deliberate "span both" escape hatch; the
+    // registry then narrows it back to exactly the purposes that can be settled.
+    ...buildTransactionFilter({ purpose: null, verified: true }),
+    purpose: { $in: SETTLER_PURPOSES },
     settlementStage: { $exists: true, $ne: SETTLEMENT_STAGE.COMPLETE },
     verifiedAt: { $lte: cutoff },
     $or: [
@@ -217,10 +248,23 @@ exports.resumeIncompleteSettlements = async ({ olderThanMinutes = 5 } = {}) => {
 
   let resumed = 0;
   let failed = 0;
+  // Which flow broke, not just how many rows. A claim failure and a subscription
+  // failure are investigated in completely different places, and the alert used
+  // to name only one of them.
+  const failedByPurpose = {};
 
   for (const transaction of stranded) {
     try {
-      await settleVoucherClaimPayment({
+      const settle = resolveSettler(transaction.purpose);
+      if (!settle) {
+        // The query and the registry have gone out of step. Better to record it
+        // against this row than to guess which settler a money flow wants.
+        throw new Error(
+          `No settler registered for purpose "${transaction.purpose}".`,
+        );
+      }
+
+      await settle({
         transaction,
         // The payment is already recorded on the row; resume does not re-read
         // the gateway and does not re-take the conditional claim.
@@ -230,6 +274,8 @@ exports.resumeIncompleteSettlements = async ({ olderThanMinutes = 5 } = {}) => {
       resumed++;
     } catch (error) {
       failed++;
+      failedByPurpose[transaction.purpose] =
+        (failedByPurpose[transaction.purpose] || 0) + 1;
 
       /**
        * Back off, so this row stops blocking the ones behind it.
@@ -265,11 +311,13 @@ exports.resumeIncompleteSettlements = async ({ olderThanMinutes = 5 } = {}) => {
     await notifyAdmins({
       type: NOTIFICATION_TYPES.WEBHOOK_FAILED,
       severity: NOTIFICATION_SEVERITY.CRITICAL,
-      title: `${failed} voucher settlement(s) could not be resumed`,
+      title: `${failed} settlement(s) could not be resumed`,
       body:
-        `Money was captured and the settlement never finished. Each of these has a ` +
-        `customer who paid and a vendor who has not been credited.`,
-      meta: { failed, found: stranded.length },
+        `Money was captured and the settlement never finished. A voucher claim ` +
+        `left this way has a customer who paid and a vendor who has not been ` +
+        `credited; a subscription has a vendor who paid and may be missing their ` +
+        `plan, their invoice or both. Broken down by flow: ${describeFlows(failedByPurpose)}.`,
+      meta: { failed, found: stranded.length, failedByPurpose },
       dedupeKey: `RESUME_FAILED:${new Date().toISOString().slice(0, 13)}`,
       /**
        * The **list**, not a record: this alert is about a batch, and the
@@ -280,6 +328,7 @@ exports.resumeIncompleteSettlements = async ({ olderThanMinutes = 5 } = {}) => {
       mail: {
         lines: [
           ["Could not resume", String(failed)],
+          ["By flow", describeFlows(failedByPurpose)],
           ["Stranded settlements found", String(stranded.length)],
           ["Checked at", formatDateTime(new Date())],
         ],
