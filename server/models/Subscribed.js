@@ -123,4 +123,34 @@ subscribedSchema.index({ status: 1, endDate: 1, remindersSent: 1 });
 // The goodwill-credit worklist: forfeits not yet compensated.
 subscribedSchema.index({ forfeitedDays: 1, forfeitCompensatedAt: 1 });
 
+/**
+ * One subscription per transaction — enforced by the database, not by hope.
+ *
+ * `activateSubscription` checks for an existing row before creating one, but a
+ * check-then-write is not atomic: two settlement attempts running together can
+ * both find nothing and both insert. This index is what makes the loser fail
+ * with a duplicate-key error instead, which that helper catches and turns into
+ * "somebody else already activated it".
+ *
+ * ### ⚠️ Partial, and it has to be
+ *
+ * A plain unique index would treat every missing `transactionId` as the same
+ * value `null` and reject all but one of them. Rows legitimately have no
+ * transaction — an admin plan change writes one, and so does the Postman seeder
+ * — and they are the majority. `$type: "objectId"` indexes only the rows that
+ * actually carry one, which is the same shape the nullable-until-issued document
+ * numbers use.
+ *
+ * Nothing runs `syncIndexes()` in this codebase, so on an existing deployment
+ * this is created by the migration that ships with it rather than by Mongoose.
+ */
+subscribedSchema.index(
+  { transactionId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { transactionId: { $type: "objectId" } },
+    name: "uniq_subscribed_transactionId",
+  },
+);
+
 module.exports = mongoose.model("Subscribed", subscribedSchema);

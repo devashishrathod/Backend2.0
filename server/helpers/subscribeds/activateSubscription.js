@@ -75,6 +75,11 @@ const HISTORY_ACTION = Object.freeze({
   [SUBSCRIPTION_ACTION.DOWNGRADE]: SUBSCRIPTION_HISTORY_ACTION.DOWNGRADED,
 });
 
+/** Did this insert lose the race for `uniq_subscribed_transactionId`? */
+const isDuplicateTransaction = (error) =>
+  error?.code === 11000 &&
+  Object.prototype.hasOwnProperty.call(error?.keyPattern || {}, "transactionId");
+
 /**
  * Put a plan live on a brand.
  *
@@ -88,7 +93,25 @@ const HISTORY_ACTION = Object.freeze({
  * a valid plan rather than none at all. `syncBrandSubscriptionState` then
  * reconciles the cache and re-applies limits, and is idempotent.
  *
- * @returns {{ subscribed, previous, sync }}
+ * ### ⚠️ Activating twice for one transaction is the thing to prevent
+ *
+ * Until `resumeIncompleteSettlements` learned about subscriptions this could not
+ * happen: `settleSubscriptionPayment` claims the transaction with a conditional
+ * update on `verified: false`, and a replay never got as far as calling this.
+ * A **resume deliberately skips that claim** — that is what resuming is — so the
+ * guard has to live here instead.
+ *
+ * Without it a resume would create a second ACTIVE document, then hand it to the
+ * supersede block as the plan to retire. The vendor's just-purchased plan would
+ * be marked UPGRADED with its end date moved to now, and `measureForfeit` would
+ * bill the whole unused term as forfeited — a fabricated debt that lands in the
+ * goodwill-credit worklist behind `GET /subscribeds/admin/forfeited`.
+ *
+ * So a transaction that already has a subscription returns that one, untouched:
+ * no create, no supersede, no forfeit, no second audit row. Only the entitlement
+ * sync runs again, because it is idempotent and may well be the step that failed.
+ *
+ * @returns {{ subscribed, previous, sync, forfeit, notice, resumed }}
  */
 exports.activateSubscription = async ({
   brand,
@@ -107,42 +130,110 @@ exports.activateSubscription = async ({
   isFreeGrant = false,
 }) => {
   const now = new Date();
+
+  /**
+   * What to hand back when the plan is already live for this transaction.
+   *
+   * `previous` and `forfeit` are read off what the first run recorded rather
+   * than recomputed — recomputing `forfeit` against a plan already retired would
+   * measure zero remaining days and quietly overwrite a real number with 0.
+   */
+  const alreadyActive = async (existing) => {
+    const previousRow = existing.previousSubscribedId
+      ? await Subscribed.findById(existing.previousSubscribedId).lean()
+      : null;
+
+    return {
+      subscribed: existing,
+      previous: previousRow,
+      // Idempotent, and the likeliest step to have been interrupted: it is what
+      // flips Brand.isSubscribed and re-applies the plan's limits.
+      sync: await syncBrandSubscriptionState(brand._id),
+      forfeit: {
+        forfeitedDays: previousRow?.forfeitedDays || 0,
+        forfeitedValue: previousRow?.forfeitedValue || 0,
+      },
+      notice: {
+        brand,
+        subscription,
+        subscribed: existing,
+        action,
+        isAdminGrant: source === SUBSCRIPTION_SOURCE.ADMIN_MANUAL,
+        forfeitedDays: previousRow?.forfeitedDays || 0,
+      },
+      // The caller's signal that nothing new was created, so it can skip the
+      // writes that are only correct the first time.
+      resumed: true,
+    };
+  };
+
+  if (transaction?._id) {
+    const existing = await Subscribed.findOne({
+      transactionId: transaction._id,
+      isDeleted: false,
+    });
+    if (existing) return alreadyActive(existing);
+  }
+
   const previous = await getActiveSubscription(brand._id);
 
-  const subscribed = await Subscribed.create({
-    userId: brand.userId,
-    brandId: brand._id,
-    subscribedBy: actor.userId,
-    grantedByAdminId:
-      source === SUBSCRIPTION_SOURCE.ADMIN_MANUAL ? actor.userId : undefined,
-    upgradedBy:
-      action === SUBSCRIPTION_ACTION.UPGRADE ||
-      action === SUBSCRIPTION_ACTION.DOWNGRADE
-        ? actor.userId
-        : undefined,
-    transactionId: transaction?._id,
-    subscriptionId: subscription._id,
-    previousSubscribedId: previous?._id,
-    durationInDays: subscription.durationInDays,
-    durationInYears: subscription.durationInYears,
-    startDate: validity.startDate,
-    endDate: validity.endDate,
-    price: subscription.price,
-    discount: pricing.discountAmount,
-    paidAmount,
-    dueAmount,
-    pricing,
-    status: SUBSCRIBED_STATUS.ACTIVE,
-    source,
-    paymentMode,
-    referenceNumber,
-    adminNote,
-    isFreeGrant,
-    activatedAt: now,
-    // Legacy mirrors of `status` — kept in step for older readers.
-    isActive: true,
-    isExpired: false,
-  });
+  let subscribed;
+  try {
+    subscribed = await Subscribed.create({
+      userId: brand.userId,
+      brandId: brand._id,
+      subscribedBy: actor.userId,
+      grantedByAdminId:
+        source === SUBSCRIPTION_SOURCE.ADMIN_MANUAL ? actor.userId : undefined,
+      upgradedBy:
+        action === SUBSCRIPTION_ACTION.UPGRADE ||
+        action === SUBSCRIPTION_ACTION.DOWNGRADE
+          ? actor.userId
+          : undefined,
+      transactionId: transaction?._id,
+      subscriptionId: subscription._id,
+      previousSubscribedId: previous?._id,
+      durationInDays: subscription.durationInDays,
+      durationInYears: subscription.durationInYears,
+      startDate: validity.startDate,
+      endDate: validity.endDate,
+      price: subscription.price,
+      discount: pricing.discountAmount,
+      paidAmount,
+      dueAmount,
+      pricing,
+      status: SUBSCRIBED_STATUS.ACTIVE,
+      source,
+      paymentMode,
+      referenceNumber,
+      adminNote,
+      isFreeGrant,
+      activatedAt: now,
+      // Legacy mirrors of `status` — kept in step for older readers.
+      isActive: true,
+      isExpired: false,
+    });
+  } catch (error) {
+    /**
+     * Lost the race, not a failure.
+     *
+     * The read above and this insert are two operations, so two settlement
+     * attempts can both find nothing and both try to create. The unique partial
+     * index picks a winner; the loser lands here and adopts what the winner
+     * made, which is exactly what the guard above would have returned had it run
+     * a moment later.
+     */
+    if (!isDuplicateTransaction(error) || !transaction?._id) throw error;
+
+    const winner = await Subscribed.findOne({
+      transactionId: transaction._id,
+      isDeleted: false,
+    });
+    // A duplicate key with nothing behind it would mean the winning row is
+    // soft-deleted. Nothing sensible to adopt, so let the error stand.
+    if (!winner) throw error;
+    return alreadyActive(winner);
+  }
 
   let forfeit = { forfeitedDays: 0, forfeitedValue: 0 };
 
@@ -231,6 +322,9 @@ exports.activateSubscription = async ({
     previous,
     sync,
     forfeit,
+    // Symmetrical with the replay path above, so a caller can branch on it
+    // without having to test for `undefined`.
+    resumed: false,
     // What the caller needs to send that notice itself.
     notice: {
       brand,
