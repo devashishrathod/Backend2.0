@@ -20,6 +20,7 @@
     "node": ">=24.19.0"
   },
   "dependencies": {
+    "2factor": "^1.0.6",
     "axios": "^1.18.0",
     "bcrypt": "^6.0.0",
     "cloudinary": "^2.10.0",
