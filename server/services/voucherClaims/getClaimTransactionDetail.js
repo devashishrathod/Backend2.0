@@ -64,12 +64,12 @@ exports.getClaimTransactionDetail = async (actor, transactionId) => {
   /**
    * The token is pulled out rather than blanked afterwards.
    *
-   * `{ ...payment, invoiceToken: undefined }` still **creates** the key —
+   * `{ ...payment, documentToken: undefined }` still **creates** the key —
    * `JSON.stringify` drops it on the way out, but anything that inspects the
    * object sees a field this audience's projection never named. Destructuring
    * leaves no key at all.
    */
-  const { invoiceToken, ...payment } = pickByProjection(
+  const { documentToken, ...payment } = pickByProjection(
     transaction,
     claimProjection(access.role),
   );
@@ -113,10 +113,10 @@ exports.getClaimTransactionDetail = async (actor, transactionId) => {
    * rendering a dead one.
    *
    * Gated on the projection, not re-decided here: a vendor's projection carries
-   * no `invoiceToken`, so they get no link — the customer's tax invoice carries
+   * no `documentToken`, so they get no link — the customer's tax invoice carries
    * the customer's own details.
    */
-  const invoiceDownloadUrl = invoiceToken ? invoiceUrl(invoiceToken) : undefined;
+  const invoiceDownloadUrl = documentToken ? invoiceUrl(documentToken) : undefined;
 
   return {
     // The raw token is an unauthenticated bearer credential for the PDF. The

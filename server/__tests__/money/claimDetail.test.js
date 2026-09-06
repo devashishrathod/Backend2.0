@@ -62,7 +62,7 @@ const seed = async ({ customerId, brandId, subBrandId }) => {
     email: "customer@example.com",
     contact: "9700000001",
     invoiceId: `TD/VCH/26-27/${Math.floor(Math.random() * 1e6)}`,
-    invoiceToken: "a".repeat(64),
+    documentToken: "a".repeat(64),
     voucher: {
       claimId,
       billAmount: 1000,
@@ -323,9 +323,9 @@ describe("what the page needs to render", () => {
         txn._id,
       );
       expect(payment.invoiceDownloadUrl).toBe(
-        `https://backend2-0-4v4i.onrender.com/trydood/v1/transactions/invoice/${"a".repeat(64)}`,
+        `https://backend2-0-4v4i.onrender.com/trydood/v1/documents/${"a".repeat(64)}`,
       );
-      expect(payment.invoiceToken).toBeUndefined();
+      expect(payment.documentToken).toBeUndefined();
     } finally {
       if (previous === undefined) delete process.env.PUBLIC_API_URL;
       else process.env.PUBLIC_API_URL = previous;

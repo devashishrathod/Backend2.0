@@ -648,8 +648,14 @@ describe("the routes", () => {
        */
       ["GET", "/admin/debt/:brandId"],
       ["PATCH", "/admin/debt/:brandId/write-off"],
-      // The vendor's payout statement. Public on purpose — see below.
-      ["GET", "/statement/:token"],
+      /**
+       * ⚠️ No public route here any more.
+       *
+       * The payout statement was `GET /statement/:token`, and it is now served
+       * by the generic `GET /documents/:token` alongside the other five document
+       * kinds. Its absence from this list is the assertion: this surface has no
+       * unauthenticated endpoint at all.
+       */
     ];
 
     for (const [method, path] of expected) {
@@ -678,8 +684,15 @@ describe("the routes", () => {
    * projection are derived from the token inside instead — and a CUSTOMER is
    * refused there, by `scopeFor`.
    */
-  /** The one route with no session behind it, and the reason it is allowed. */
-  const PUBLIC_PATH = "/statement/:token";
+  /**
+   * ⚠️ There is no public path on this surface any more.
+   *
+   * It used to be `/statement/:token`, declared above every `:settlementId`
+   * route because a literal second segment has to be matched before a parameter
+   * can swallow it — and `/statement/:token` differed from
+   * `/:settlementId/transactions` only by `transactions` being a literal. Moving
+   * it to `/documents/:token` removed a routing trap as well as a gate exception.
+   */
 
   /**
    * ⚠️ The one **read** that is deliberately `isAdmin` instead.
@@ -697,10 +710,7 @@ describe("the routes", () => {
 
   it("gates the reads on the token, not on a role", () => {
     const reads = routes().filter(
-      (r) =>
-        r.method === "GET" &&
-        r.path !== PUBLIC_PATH &&
-        !ADMIN_ONLY_READS.includes(r.path),
+      (r) => r.method === "GET" && !ADMIN_ONLY_READS.includes(r.path),
     );
 
     expect(reads).toHaveLength(3);
@@ -721,34 +731,32 @@ describe("the routes", () => {
   });
 
   /**
-   * ⚠️ Exactly one public route, and it is named here.
+   * ⚠️ **No** unauthenticated route on this surface, and that is the assertion.
    *
-   * A stronger check than the old one, not a weaker one: before, *every* route
-   * carried a guard and nothing said what would happen if one stopped. Now the
-   * single exception is pinned by path, so a second unauthenticated endpoint
-   * appearing on the settlement surface fails this test rather than shipping.
+   * It used to be exactly one — the payout statement link, public because it
+   * arrives in a notification and an email where the vendor has no session. That
+   * link now lives at `GET /documents/:token` with the other five document kinds,
+   * so the settlement surface has no gate exception left to argue about.
    *
-   * The statement link is public for the reason the invoice link is: it arrives
-   * in a payout notification and an email, and the vendor opening it on their
-   * phone has no session in that browser. A Download button that needs a login is
-   * a Download button that does not work. The 64-character token is the
-   * credential — which is why it is still **validated**, below.
+   * Kept as a test rather than deleted: an unauthenticated endpoint appearing
+   * here has to fail this file rather than ship. Every route on a surface that
+   * moves money should have to justify itself in writing, and an empty list is
+   * the easiest thing to keep true.
    */
-  it("has exactly one unauthenticated route, and it is the statement link", () => {
+  it("has no unauthenticated route at all", () => {
     const open = routes().filter(
       (r) => !r.handlers.includes(verifyJwtToken) && !r.handlers.includes(isAdmin),
     );
 
-    expect(open.map((r) => r.path)).toEqual([PUBLIC_PATH]);
+    expect(open.map((r) => r.path)).toEqual([]);
   });
 
   it("validates every route", () => {
     for (const route of routes()) {
-      // A guarded route is auth + validateSchema + controller; the public one
-      // has no guard, so validateSchema + controller. Neither may skip the
-      // validator — on the public route it is the only thing standing between a
-      // raw path segment and a database lookup.
-      expect(route.handlers).toHaveLength(route.path === PUBLIC_PATH ? 2 : 3);
+      // Every route here is auth + validateSchema + controller. None may skip
+      // the validator, and none may skip its gate — there is no public route on
+      // this surface to make an exception for any more.
+      expect(route.handlers).toHaveLength(3);
     }
   });
 

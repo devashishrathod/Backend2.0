@@ -404,7 +404,7 @@ const withButtons = [
     () =>
       notices.notifyClaimPaid({
         claim: claim(),
-        transaction: { _id: oid(), invoiceId: "INV-1", invoiceToken: "tok123" },
+        transaction: { _id: oid(), invoiceId: "INV-1", documentToken: "tok123" },
       }),
     ["Download Invoice", "View your order"],
   ],

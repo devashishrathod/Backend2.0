@@ -107,7 +107,7 @@ beforeEach(async () => {
     netReceived: 792.06,
     email: "customer@example.com",
     contact: "9700000001",
-    invoiceToken: "b".repeat(64),
+    documentToken: "b".repeat(64),
     voucher: {
       claimId,
       billAmount: 1000,
@@ -433,8 +433,8 @@ describe("the claim page carries its payment, narrowed the same way", () => {
       const { payment } = await getClaimDetail(customer(CUSTOMER_A), {
         claimId: claim._id,
       });
-      expect(payment.invoiceDownloadUrl).toContain("/transactions/invoice/");
-      expect(payment.invoiceToken).toBeUndefined();
+      expect(payment.invoiceDownloadUrl).toContain("/documents/");
+      expect(payment.documentToken).toBeUndefined();
     } finally {
       if (previous === undefined) delete process.env.PUBLIC_API_URL;
       else process.env.PUBLIC_API_URL = previous;

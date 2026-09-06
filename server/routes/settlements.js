@@ -20,7 +20,6 @@ const {
   fail,
   retry,
   reverse,
-  statementByToken,
   vendorDebt,
   vendorDebtWriteOff,
 } = require("../controllers/settlements");
@@ -38,7 +37,6 @@ const {
   validateFailPayout,
   validateRetryPayout,
   validateReversePayout,
-  validateStatementByToken,
   validateVendorDebt,
   validateWriteOffVendorDebt,
 } = require("../validator/settlements");
@@ -59,19 +57,15 @@ const {
  * fill in.
  */
 /**
- * The public payout statement. **No JWT** — see the controller.
+ * The public payout statement lives at `GET /documents/:token` now — see
+ * `routes/documents.js`.
  *
- * ⚠️ Declared first, above every `:settlementId` route, for the reason the
- * transactions router declares its invoice link first: a literal second segment
- * must be matched before a parameter can swallow it. `/statement/:token` and
- * `/:settlementId/transactions` differ today only because `transactions` is a
- * literal, and that is too thin a margin to rely on the next route not closing.
+ * Removing it from here also removes a latent routing trap: it sat above every
+ * `:settlementId` route because a literal second segment has to be matched before
+ * a parameter can swallow it, and `/statement/:token` differed from
+ * `/:settlementId/transactions` only by `transactions` being a literal. That is
+ * far too thin a margin to rely on the next route not closing.
  */
-router.get(
-  "/statement/:token",
-  validateSchema(validateStatementByToken),
-  statementByToken,
-);
 
 router.patch(
   "/admin/:settlementId/approve",

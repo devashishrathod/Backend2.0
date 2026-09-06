@@ -255,13 +255,33 @@ const publicUrl = (path) => {
   return `${base}/trydood/v1/${trimPath(path)}`;
 };
 
-/** The public invoice link, by token. */
-const invoiceUrl = (token) =>
-  token ? publicUrl(`transactions/invoice/${token}`) : undefined;
+/**
+ * The public link to **any** Trydood document, by token.
+ *
+ * One route for all six kinds — a claim receipt, a subscription invoice, a grant
+ * advice, a payout statement, a refund receipt, a chargeback advice. The resolver
+ * behind it works out which collection the token belongs to.
+ *
+ * ⚠️ There used to be two routes — `/transactions/invoice/:token` and
+ * `/settlements/statement/:token` — and a refund or a dispute would have needed a
+ * third and a fourth. Worse, each carried its own token field name, so nothing
+ * could resolve a token without first knowing what kind of document it was, which
+ * is the one thing a bare token cannot tell you.
+ */
+const documentUrl = (token) =>
+  token ? publicUrl(`documents/${token}`) : undefined;
+
+/**
+ * @deprecated Use `documentUrl`. Kept as an alias so a link already sent in an
+ * email or a WhatsApp message resolves to the same place; both produce the new
+ * route.
+ */
+const invoiceUrl = documentUrl;
 
 module.exports = {
   CUSTOMER_PATHS,
   publicUrl,
+  documentUrl,
   invoiceUrl,
   PANEL_PATHS,
   ADMIN_PATHS,

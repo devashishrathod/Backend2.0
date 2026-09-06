@@ -46,7 +46,7 @@ const claimFixture = (overrides = {}) => ({
 const txnFixture = () => ({
   _id: oid(),
   invoiceId: "TD/VCH/26-27/000001",
-  invoiceToken: "a".repeat(64),
+  documentToken: "a".repeat(64),
 });
 
 let savedPublicUrl;
@@ -176,7 +176,7 @@ describe("the Download Invoice button", () => {
   it("points at this API, not at the CDN, once configured", () => {
     process.env.PUBLIC_API_URL = "https://api.trydood.com";
     expect(invoiceUrl("abc123")).toBe(
-      "https://api.trydood.com/trydood/v1/transactions/invoice/abc123",
+      "https://api.trydood.com/trydood/v1/documents/abc123",
     );
     delete process.env.PUBLIC_API_URL;
   });
