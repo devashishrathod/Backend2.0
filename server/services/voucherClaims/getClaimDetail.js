@@ -64,11 +64,11 @@ exports.getClaimDetail = async (actor, { claimId, claimCode }) => {
     if (transaction) {
       // Destructured out rather than blanked: assigning `undefined` still
       // creates the key, and a vendor's projection never named it.
-      const { invoiceToken, ...fields } = pickByProjection(
+      const { documentToken, ...fields } = pickByProjection(
         transaction,
         claimProjection(access.role),
       );
-      invoiceDownloadUrl = invoiceToken ? invoiceUrl(invoiceToken) : undefined;
+      invoiceDownloadUrl = documentToken ? invoiceUrl(documentToken) : undefined;
       payment = { ...fields, invoiceDownloadUrl };
     }
   }

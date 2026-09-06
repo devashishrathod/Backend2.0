@@ -77,6 +77,16 @@ const ACCOUNT_FIELDS = [
   "image",
   "dob",
   "currentScreen",
+  /**
+   * The channel toggles behind the profile card's switches.
+   *
+   * ⚠️ Raw, and usually **absent** — the field only exists once somebody has
+   * changed a setting, and absent means all three are on. Nothing should read
+   * these booleans directly; `GET /notifications/admin/preferences?customerId=…`
+   * returns the resolved answer, and says when a platform-wide switch is what is
+   * actually holding a channel shut.
+   */
+  "notificationPreferences",
   "walletBalance",
   "tCoinsBalance",
   "referralCode",

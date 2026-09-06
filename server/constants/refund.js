@@ -192,6 +192,17 @@ const REFUND_CUSTOMER_LABEL = Object.freeze({
 const REFUND_INDEXES = Object.freeze({
   ONE_OPEN_PER_TRANSACTION: "refund_open_per_transaction_unique",
   RAZORPAY_REFUND: "refund_razorpayRefundId_unique",
+  /**
+   * The public download link's handle.
+   *
+   * Partial on `$type: "string"` for the same reason every other token index in
+   * this codebase is: a refund is inserted **without** one — the number and the
+   * token are only issued once the money has actually reached the customer — and
+   * in a non-sparse unique index a missing field is stored as `null`, so the
+   * second such row would collide.
+   */
+  DOCUMENT_TOKEN: "refund_documentToken_unique",
+  DOCUMENT_NUMBER: "refund_documentNumber_unique",
 });
 
 module.exports = {

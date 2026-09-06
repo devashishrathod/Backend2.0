@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const { VOUCHER_SORT_BY } = require("../../constants/voucher");
 const { buildAggregateLookup } = require("../../database");
 const { pickVoucherBanner } = require("./pickVoucherBanner");
+const { escapeRegex } = require("../../validator/common");
 
 exports.buildCustomerVoucherPipeline = ({
   latitude,
@@ -133,6 +134,11 @@ exports.buildCustomerVoucherPipeline = ({
             description: 1,
             startAt: 1,
             endAt: 1,
+            // ⚠️ The taxonomy lives HERE, on the version — `Voucher` has no
+            // `categoryId` field at all. See the note on the category filter
+            // below for what reading it off the master silently did.
+            categoryId: 1,
+            subCategoryId: 1,
           },
         },
       ],
@@ -223,11 +229,40 @@ exports.buildCustomerVoucherPipeline = ({
         uniqueId: 1,
         isActive: 1,
         isApproved: 1,
+        // Read by the verification match below, not returned to the client.
+        isRejected: 1,
+        isRevoked: 1,
         joinedDate: 1,
         subscribedId: 1,
       },
     }),
   );
+
+  /**
+   * ⚠️ Only a verified brand's vouchers reach a customer.
+   *
+   * The join above already pulled `isApproved` — but only to render the
+   * verified badge, never to decide whether the row should be here at all. So
+   * an unverified brand's vouchers sat in the feed with the badge simply
+   * switched off, which reads to a customer as "not verified yet" rather than
+   * "should not be on your screen".
+   *
+   * `isRejected` and `isRevoked` are **absent** on brands written before those
+   * flags existed, and in an aggregation expression absent is not false — hence
+   * `$ifNull` on each. `CLAUDE.md` records this trap costing two shipped bugs.
+   */
+  pipeline.push({
+    $match: {
+      $expr: {
+        $and: [
+          { $eq: [{ $ifNull: ["$brand.isActive", false] }, true] },
+          { $eq: [{ $ifNull: ["$brand.isApproved", false] }, true] },
+          { $ne: [{ $ifNull: ["$brand.isRejected", false] }, true] },
+          { $ne: [{ $ifNull: ["$brand.isRevoked", false] }, true] },
+        ],
+      },
+    },
+  });
 
   // Brand -> Subscribed (the brand's purchased subscription instance)
   pipeline.push(
@@ -261,10 +296,25 @@ exports.buildCustomerVoucherPipeline = ({
     pipeline.push({ $match: { "voucher.isSuggested": true } });
   }
 
+  /**
+   * ⚠️ `version`, not `voucher`.
+   *
+   * A voucher's category is set per **version** — `VoucherVersion.categoryId`
+   * is `required: true`, and the master `Voucher` schema has no such field at
+   * all. These two filters used to match `voucher.categoryId`, a path that is
+   * missing on every document in the collection, so **every** category-filtered
+   * request matched nothing and the endpoint answered 404 "No any voucher
+   * found".
+   *
+   * Nothing reported it as a fault: to the client an empty category is
+   * indistinguishable from a category with no live offers, and the 404 is the
+   * same one a genuinely empty listing returns. The projected `categoryId` and
+   * `subCategoryId` on every row were `undefined` for the same reason.
+   */
   if (query.categoryId) {
     pipeline.push({
       $match: {
-        "voucher.categoryId": new mongoose.Types.ObjectId(query.categoryId),
+        "version.categoryId": new mongoose.Types.ObjectId(query.categoryId),
       },
     });
   }
@@ -272,7 +322,7 @@ exports.buildCustomerVoucherPipeline = ({
   if (query.subCategoryId) {
     pipeline.push({
       $match: {
-        "voucher.subCategoryId": new mongoose.Types.ObjectId(
+        "version.subCategoryId": new mongoose.Types.ObjectId(
           query.subCategoryId,
         ),
       },
@@ -286,12 +336,28 @@ exports.buildCustomerVoucherPipeline = ({
    */
 
   if (query.search && !useRelevance) {
+    /**
+     * ⚠️ Escaped. This term comes straight from a search box, and `(` alone is
+     * an invalid pattern — Mongo throws and the customer gets a 500 for typing
+     * a bracket. `.` and `*` are worse: they parse fine and match everything.
+     * Before this it was interpolated raw.
+     */
+    const term = escapeRegex(String(query.search).trim());
+
+    /**
+     * Offer titles count too.
+     *
+     * "buy 1 get 1" is almost never in a voucher's name — it is the offer, and
+     * lives on `version.offers[].title`. Matching only the name meant the
+     * phrase customers actually type found nothing. `offers` is an array, so
+     * the dotted path matches if any one offer does.
+     */
     pipeline.push({
       $match: {
-        "voucher.name": {
-          $regex: query.search,
-          $options: "i",
-        },
+        $or: [
+          { "voucher.name": { $regex: term, $options: "i" } },
+          { "version.offers.title": { $regex: term, $options: "i" } },
+        ],
       },
     });
   }
@@ -470,9 +536,9 @@ exports.buildCustomerVoucherPipeline = ({
 
       name: "$voucher.name",
 
-      categoryId: "$voucher.categoryId",
+      categoryId: "$version.categoryId",
 
-      subCategoryId: "$voucher.subCategoryId",
+      subCategoryId: "$version.subCategoryId",
 
       createdAt: "$voucher.createdAt",
 

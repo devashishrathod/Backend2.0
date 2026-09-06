@@ -40,4 +40,28 @@ const OTP_DEFAULTS = Object.freeze({
  */
 const OTP_THROTTLE_TTL_SECONDS = 2 * 60 * 60;
 
-module.exports = { OTP_DEFAULTS, OTP_THROTTLE_TTL_SECONDS };
+/**
+ * Confirming an email address — for **any** role.
+ *
+ * ### Why the purpose is a separate value at all
+ *
+ * `hashOtp(code, target, purpose)` folds this string into the stored hash, so a
+ * code issued for one purpose cannot be presented for another. Without it, the
+ * six-digit code emailed to verify an address would also open the login that
+ * accepts a code for the same address — the address is the only other input.
+ *
+ * It also gives this flow its **own** throttle bucket. Sharing `"auth"` would
+ * mean a customer who is mid-signup and then verifies their email burns one
+ * pool, and the second action fails for a reason that has nothing to do with it.
+ *
+ * ⚠️ Deliberately not under `constants/customer.js` next to
+ * `BANK_ATTACH_OTP_PURPOSE`: that one is a customer-only flow, this one is
+ * reached by customers, vendors, outlet managers and admins alike.
+ */
+const EMAIL_VERIFY_OTP_PURPOSE = "email-verify";
+
+module.exports = {
+  OTP_DEFAULTS,
+  OTP_THROTTLE_TTL_SECONDS,
+  EMAIL_VERIFY_OTP_PURPOSE,
+};

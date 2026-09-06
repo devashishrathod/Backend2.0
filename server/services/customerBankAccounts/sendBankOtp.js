@@ -4,6 +4,7 @@ const { throwError } = require("../../utils");
 const { LOGIN_TYPES } = require("../../constants");
 const { BANK_ATTACH_OTP_PURPOSE } = require("../../constants/customer");
 const { resolveCustomerId } = require("../../helpers/customers");
+const { maskEmail, maskPhone } = require("../../helpers/users");
 
 /**
  * Where a bank-attach code is sent, and how.
@@ -24,14 +25,9 @@ const channelFor = (customer) => {
   return null;
 };
 
-/** Everything but the last two characters of the local part, and the domain. */
-const maskEmail = (email) => {
-  const [local = "", domain = ""] = String(email).split("@");
-  const shown = local.slice(0, 2);
-  return `${shown}${"*".repeat(Math.max(0, local.length - 2))}@${domain}`;
-};
-
-const maskPhone = (phone) => String(phone).replace(/\d(?=\d{4})/g, "*");
+// Moved to `helpers/users/maskContact.js` — the email-verification flow needs
+// the same two, and a second copy is how two surfaces quietly start disagreeing
+// about how much of an address is safe to show.
 
 /**
  * Send the one-time code that gates attaching a bank account.

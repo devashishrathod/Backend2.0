@@ -87,6 +87,11 @@ locationSchema.index({ customerId: 1, isActive: 1, isDeleted: 1 });
 
 locationSchema.index({ subBrandId: 1, isActive: 1, isDeleted: 1 });
 
+// The AREA section of the global customer search, which only ever looks at
+// outlet addresses. Without this every area search scans the whole
+// collection — customers' home addresses included.
+locationSchema.index({ subBrandId: 1, city: 1 });
+
 // locationSchema.index(
 //   { userId: 1, isDefault: 1 },
 //   {

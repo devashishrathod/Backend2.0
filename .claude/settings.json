@@ -1,4 +1,19 @@
 {
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/verify-api-sync.js\"",
+            "timeout": 120,
+            "statusMessage": "Checking routes/docs/Postman are in sync…"
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Bash(node -e ' *)",
@@ -148,7 +163,75 @@
       "Bash(node --trace-warnings -e \"require\\('dotenv'\\).config\\(\\); require\\('./routes'\\); console.log\\('ALL ROUTES LOADED'\\);\")",
       "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/71ba6725-28d1-4bef-8e6e-c47b86b6d111/scratchpad/smokeCustomerDetail.js\")",
       "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/71ba6725-28d1-4bef-8e6e-c47b86b6d111/scratchpad/verifyControllers.js\")",
-      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/71ba6725-28d1-4bef-8e6e-c47b86b6d111/scratchpad/probeValidateSchema.js\")"
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/71ba6725-28d1-4bef-8e6e-c47b86b6d111/scratchpad/probeValidateSchema.js\")",
+      "Bash(rm \"C:/Users/acar/.claude/projects/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/memory/never-touch-legacy-server-folder.md\")",
+      "Bash(grep -n \"Otp\\\\|isFirst\\\\|throwError\\\\|findOne\\\\|verified\\\\|commented\\\\|//\" services/auth/verifyOtpWithWhatsapp.js)",
+      "Bash(timeout 180 node scripts/seedPostmanFixtures.js)",
+      "Bash(awk 'NR<540 && /^  [a-zA-Z]+: *\\\\{|^    [a-zA-Z]+: *\\\\{/ {print NR\": \"$0}' models/Setting.js)",
+      "Bash(awk 'NR>=480 && NR<=495' models/Setting.js)",
+      "Bash(awk 'NR>=640 && NR<=660' models/Setting.js)",
+      "Bash(awk '/^## Enums Reference/,/^## |^# [A-Z]/' docs/customer_mobile_api_doc.md)",
+      "Bash(grep -E \"^\\\\| *\\\\`|^### |^\\\\*\\\\*\")",
+      "Bash(grep -nE \"^###|^\\\\| \\\\`|^\\\\*\\\\*[A-Z]\")",
+      "Bash(node \"C:\\\\Users\\\\acar\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-acar-OneDrive-Documents-GitHub-Backend2-0\\\\3f5cbb04-9cde-4b99-a692-f5a1c6f1304d\\\\scratchpad\\\\docEnums.js\")",
+      "Bash(timeout 300 node scripts/seedPostmanFixtures.js --apply)",
+      "Bash(node -p \"JSON.parse\\(require\\('fs'\\).readFileSync\\('postman/environments/customer-local.postman_environment.json','utf8'\\)\\).values.filter\\(v=>/refundable_claim|spare_bank|bank_account_id|awaiting/.test\\(v.key\\)\\).map\\(v=>'  '+v.key+' = '+v.value\\).join\\('\\\\n'\\)\")",
+      "PowerShell(npx jest __tests__/money/mailRender.test.js --runInBand 2>&1)",
+      "Bash(node -c scripts/seedPostmanFixtures.js)",
+      "Bash(node -p \"JSON.parse\\(require\\('fs'\\).readFileSync\\('postman/environments/customer-local.postman_environment.json','utf8'\\)\\).values.filter\\(v=>/refundable_claim|spare_bank|^bank_account_id|awaiting/.test\\(v.key\\)\\).map\\(v=>'  '+v.key+' = '+v.value\\).join\\('\\\\n'\\)\")",
+      "PowerShell(npm --prefix server test -- __tests__/money/mailRender.test.js 2>&1)",
+      "Bash(cp /tmp/idx.cjs ./idx-tmp.cjs)",
+      "Bash(node idx-tmp.cjs)",
+      "Bash(grep -E \"^\\\\s*[0-9]+[:-]\\\\s*\\(exports|const|\\\\s+[a-zA-Z]+:|\\\\s+\\\\$\\)\")",
+      "Bash(node -e \"const r=require\\('./constants/refund'\\);console.log\\('REFUND_REQUEST_STATUS:',Object.values\\(r.REFUND_REQUEST_STATUS\\).join\\(', '\\)\\)\")",
+      "Bash(awk 'NR>=1032 && NR<=1200 && /ctx\\\\.|voucher\\\\.|voucher_|version\\\\.|version\\\\._id|versionNumber/ {printf \"%d: %s\\\\n\", NR, $0}' scripts/seedPostmanFixtures.js)",
+      "Bash(node -e \"const s=require\\('./services/settlements'\\);console.log\\('buildSettlements:',typeof s.buildSettlements\\)\")",
+      "Bash(node postman/lib/capture-examples.js postman/trydood-vendor.postman_collection.json postman/environments/vendor-local.postman_environment.json)",
+      "Bash(node postman/lib/validate-collection.js postman/trydood-vendor.postman_collection.json postman/trydood-customer.postman_collection.json)",
+      "Bash(grep -vE \"^\\\\s*\\\\*|^\\\\s*/\\\\*\")",
+      "Bash(node postman/generate-admin-collection.js)",
+      "Bash(grep -n 'noun} banao\\\\|noun} badlo\\\\|noun} mitao\\\\|Ek ${noun}\\\\|Sabhi ${noun}' postman/generate-admin-collection.js)",
+      "Bash(node postman/lib/capture-examples.js postman/trydood-admin.postman_collection.json postman/environments/admin-local.postman_environment.json)",
+      "Bash(curl -s -X POST http://localhost:8080/trydood/v1/auth/login -H 'Content-Type: application/json' -d '{\"type\":\"EMAIL\",\"email\":\"seed.admin.pmfx@trydood.test\",\"password\":\"PostmanSeed@2026\",\"role\":\"ADMIN\"}')",
+      "Bash(curl -s -X POST http://localhost:8080/trydood/v1/auth/login -H 'Content-Type: application/json' -d '{\"type\":\"EMAIL\",\"email\":\"seed.admin.pmfx@example.com\",\"password\":\"PostmanSeed@2026\",\"role\":\"ADMIN\"}')",
+      "Bash(grep -n \"return \\\\`1 banner + 2 tickers\\\\`\\\\|1 banner + 2 tickers\" scripts/seedPostmanFixtures.js)",
+      "Bash(node \"C:\\\\Users\\\\acar\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-acar-OneDrive-Documents-GitHub-Backend2-0\\\\3f5cbb04-9cde-4b99-a692-f5a1c6f1304d\\\\scratchpad\\\\patchBrandStatus.js\")",
+      "Bash(node postman/lib/validate-collection.js postman/trydood-admin.postman_collection.json postman/environments/admin-local.postman_environment.json)",
+      "Bash(node scripts/auditOrphans.js --detail --show 10)",
+      "Bash(node orph2-tmp.js)",
+      "Bash(node -e \"const m=require\\('./postman/lib/routeGates'\\);console.log\\(Object.keys\\(m\\).join\\(', '\\)\\)\")",
+      "Bash(node scripts/verifyApiCoverage.js)",
+      "Bash(node scripts/verifyApiCoverage.js --json)",
+      "Bash(awk '{print $5\"  \"$9}')",
+      "Bash(grep -v \"^  $\")",
+      "Bash(node \"C:\\\\Users\\\\acar\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-acar-OneDrive-Documents-GitHub-Backend2-0\\\\3f5cbb04-9cde-4b99-a692-f5a1c6f1304d\\\\scratchpad\\\\portAdminFolders.js\")",
+      "Bash(node \"C:\\\\Users\\\\acar\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-acar-OneDrive-Documents-GitHub-Backend2-0\\\\3f5cbb04-9cde-4b99-a692-f5a1c6f1304d\\\\scratchpad\\\\wireAdmin.js\")",
+      "Bash(node -e \"const m=require\\('./postman/lib/adminMigratedFolders.js'\\);console.log\\(Object.keys\\(m\\).join\\('\\\\n'\\)\\)\")",
+      "Bash(node \"C:\\\\Users\\\\acar\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-acar-OneDrive-Documents-GitHub-Backend2-0\\\\3f5cbb04-9cde-4b99-a692-f5a1c6f1304d\\\\scratchpad\\\\wireVendorDisputes.js\")",
+      "Bash(node C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/3f5cbb04-9cde-4b99-a692-f5a1c6f1304d/scratchpad/portAdminFolders.js)",
+      "Bash(node C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/3f5cbb04-9cde-4b99-a692-f5a1c6f1304d/scratchpad/hoistFixtures.js)",
+      "Bash(node C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/3f5cbb04-9cde-4b99-a692-f5a1c6f1304d/scratchpad/seedAdminIds.js)",
+      "Bash(grep -n \"subscriptionId: plan._id\\\\|price: plan.price\\\\|\\\\${plan.name}\" scripts/seedPostmanFixtures.js)",
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/3f5cbb04-9cde-4b99-a692-f5a1c6f1304d/scratchpad/seedWebhookAndVerify.js\")",
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/3f5cbb04-9cde-4b99-a692-f5a1c6f1304d/scratchpad/seedEmailOtp.js\")",
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/3f5cbb04-9cde-4b99-a692-f5a1c6f1304d/scratchpad/wireEmailVerify.js\")",
+      "Bash(node --check postman/lib/accountFolders.js)",
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/3f5cbb04-9cde-4b99-a692-f5a1c6f1304d/scratchpad/perRoleVerifyEmail.js\")",
+      "Read(//tmp/**)",
+      "Bash(npm test *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(grep -cE \"^\\(PASS|FAIL\\)\" /tmp/jest-full.log 2>/dev/null | sed 's/^/suites finished: /' || echo \"\\(log not written yet — jest buffers\\)\")",
+      "Bash(node --check __tests__/money/claimTimeline.test.js)",
+      "Bash(node -e \"const p=require\\('./package.json'\\);console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")",
+      "Bash([ -f \"$L\" ])",
+      "Bash(grep -nE \"^\\\\s*\\(const|//|\\\\*|[a-zA-Z]+:\\)\" jobs/index.js)",
+      "Bash(awk -F: '$1>7300')",
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/f08cb959-50a7-4617-bfc2-c543c2c7a6f6/scratchpad/ovl.js\")",
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/f08cb959-50a7-4617-bfc2-c543c2c7a6f6/scratchpad/patchCollections.js\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\acar\\OneDrive\\Documents\\GitHub\\Backend2.0\\server",
+      "C:\\Users\\acar\\AppData\\Local\\Temp\\claude\\c--Users-acar-OneDrive-Documents-GitHub-Backend2-0\\3f5cbb04-9cde-4b99-a692-f5a1c6f1304d"
     ]
   }
 }

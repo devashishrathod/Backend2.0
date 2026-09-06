@@ -1,6 +1,7 @@
 const User = require("../../models/User");
 const { throwError } = require("../../utils");
-const { assertAccountAccess } = require("../../helpers/auth");
+const { assertAccountAccess, markSignedIn } = require("../../helpers/auth");
+const { sanitizeUser } = require("../../helpers/users");
 
 exports.loginWithUsernameAndPassword = async (payload) => {
   let { username, password } = payload;
@@ -21,5 +22,9 @@ exports.loginWithUsernameAndPassword = async (payload) => {
   const matchedPass = await user.matchPassword(password);
   if (!matchedPass) throwError(401, "Invalid credentials! Password mismatch");
   const token = user.getSignedJwtToken();
-  return { user, token };
+  // The admin directory filters on these, and this path never set them.
+  await markSignedIn(user._id);
+  // See loginWithEmailAndPassword: this document carries the bcrypt hash because
+  // the password had to be compared against it.
+  return { user: sanitizeUser(user), token };
 };

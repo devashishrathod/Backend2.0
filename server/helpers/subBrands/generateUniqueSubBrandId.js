@@ -1,11 +1,6 @@
 const SubBrand = require("../../models/SubBrand");
+const { generateUniqueDisplayId } = require("../common");
 
-exports.generateUniqueSubBrandId = async () => {
-  const prefix = "#TS";
-  while (true) {
-    const randomNumber = Math.floor(10000 + Math.random() * 90000);
-    const uniqueId = `${prefix}${randomNumber}`;
-    const existing = await SubBrand.findOne({ uniqueId });
-    if (!existing) return uniqueId;
-  }
-};
+/** `#TS123456` — see `helpers/common/generateUniqueDisplayId.js`. */
+exports.generateUniqueSubBrandId = async () =>
+  generateUniqueDisplayId(SubBrand, { prefix: "#TS" });

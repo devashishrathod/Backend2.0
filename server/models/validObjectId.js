@@ -40,7 +40,16 @@ module.exports = Object.freeze({
   voucherVersionField: refField("VoucherVersion"),
   voucherClaimField: refField("VoucherClaim"),
   promoCodeField: refField("PromoCode"),
-  billField: refField("Bill"),
+  /*
+   * ⚠️ `billField: refField("Bill")` used to sit here, and there is no `Bill`
+   * model — there never was. Removed along with its only consumer,
+   * `Transaction.billId`, which nothing in the codebase wrote or read.
+   *
+   * Exactly the same fault as `refundRequestField` below. Mongoose raises a
+   * dangling ref only at `populate()` time, so both looked valid for as long as
+   * nothing populated them — which for a field nobody used meant for ever.
+   * `scripts/verifySchemaRelationships.js` now catches this shape at once.
+   */
   settlementField: refField("Settlement"),
   /**
    * The refund record is `RefundRequest`; there is no `Refund` model and there
@@ -52,10 +61,18 @@ module.exports = Object.freeze({
    */
   refundRequestField: refField("RefundRequest"),
 
-  // Array of ObjectIds with validation
+  /**
+   * Array of location ids, validated element by element.
+   *
+   * ⚠️ The ref was `"location"` — **lowercase**. Mongoose model names are
+   * case-sensitive, so that resolved to nothing and `populate()` on it would
+   * have thrown `MissingSchemaError`. Nothing uses this descriptor today,
+   * which is the only reason it never fired: a broken ref waiting for its
+   * first consumer.
+   */
   locationsField: Object.freeze({
     type: [ObjectId],
-    ref: "location",
+    ref: "Location",
     validate: {
       validator: (arr) => Array.isArray(arr) && arr.every(isValidId),
       message: (props) =>

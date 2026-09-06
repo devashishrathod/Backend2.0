@@ -9,7 +9,8 @@ const {
   PANEL_PATHS,
   deepLink,
   vendorUrl,
-  invoiceUrl,
+  customerUrl,
+  documentUrl,
 } = require("./panelLinks");
 const {
   CUSTOMER_CURRENCY_DEFAULTS,
@@ -21,12 +22,17 @@ const money = (amount) =>
     { minimumFractionDigits: 2, maximumFractionDigits: 2 },
   )}`;
 
-const onDate = (date) =>
-  new Date(date || Date.now()).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+/**
+ * ⚠️ `formatDateTime`, and the time is the point.
+ *
+ * These are payment moments. A customer checking a receipt against a bank SMS,
+ * or asking why a claim expired, is matching to the minute — and the old local
+ * helper printed the **date only**, in the server's timezone. See
+ * `formatDateTime.js`.
+ */
+const { formatDateTime } = require("./formatDateTime");
+
+const onDate = (date) => formatDateTime(date || Date.now());
 
 /**
  * Everything a voucher claim tells someone.
@@ -49,7 +55,7 @@ const onDate = (date) =>
  */
 exports.notifyClaimPaid = async ({ claim, transaction }) => {
   const brandName = claim.brandSnapshot?.name || "the brand";
-  const download = invoiceUrl(transaction.invoiceToken);
+  const download = documentUrl(transaction.documentToken);
 
   return notify({
     customerId: claim.customerId,
@@ -80,13 +86,26 @@ exports.notifyClaimPaid = async ({ claim, transaction }) => {
         ["Date", onDate(claim.paidAt)],
         ["Claim code", claim.claimCode],
       ],
-      ...(download
-        ? { buttonText: "Download Invoice", buttonUrl: download }
-        : {}),
+      /**
+       * Two buttons, and the order is deliberate: the invoice is what this email
+       * exists for, and the order screen is where everything else about the claim
+       * lives — the code to show at the counter, the window it is valid in.
+       *
+       * Each is dropped independently when its base is unconfigured
+       * (`PUBLIC_API_URL`, `CUSTOMER_APP_URL`), rather than the pair being
+       * all-or-nothing.
+       */
+      actions: [
+        ...(download ? [{ label: "Download Invoice", url: download }] : []),
+        {
+          label: "View your order",
+          url: customerUrl(CUSTOMER_PATHS.order(claim._id)),
+        },
+      ],
     },
     // The WhatsApp template's URL button is approved against a fixed base with
     // only the last segment dynamic — so the token is passed, not a full URL.
-    whatsappUrlParam: transaction.invoiceToken,
+    whatsappUrlParam: transaction.documentToken,
   });
 };
 
@@ -113,13 +132,34 @@ exports.notifyClaimFailed = async ({ claim, reason }) => {
         ["Amount", money(claim.pricing?.totalPayable)],
         ["Reason", reason || "The payment was not completed"],
       ],
+      // Back to the voucher, matching the deep link — so they can try again
+      // rather than hunt for the offer a second time.
+      ctaLabel: "Try again",
+      ctaUrl: customerUrl(CUSTOMER_PATHS.voucher(claim.voucherId)),
     },
   });
 };
 
 /** Money went back. */
-exports.notifyClaimRefunded = async ({ claim, transaction, amount, reference }) => {
+exports.notifyClaimRefunded = async ({
+  claim,
+  transaction,
+  amount,
+  reference,
+  refundRequest,
+}) => {
   const brandName = claim.brandSnapshot?.name || "the brand";
+
+  /**
+   * The refund document.
+   *
+   * ⚠️ A refund used to produce no paper at all — the customer got this message
+   * and nothing they could keep, file, or show their bank. The document is issued
+   * just before this notification is sent, so by the time the link is rendered it
+   * exists. It is absent only when the issuing step failed, in which case the
+   * button is dropped rather than rendered dead.
+   */
+  const download = documentUrl(refundRequest?.documentToken);
 
   return notify({
     customerId: claim.customerId,
@@ -136,6 +176,8 @@ exports.notifyClaimRefunded = async ({ claim, transaction, amount, reference }) 
       transactionId: transaction?._id,
       amount,
       reference,
+      refundRequestId: refundRequest?._id,
+      documentNumber: refundRequest?.documentNumber,
     },
     deepLink: deepLink(CUSTOMER_PATHS.transaction(transaction?._id)),
     // One message per refund, not per retry of the job that sends it.
@@ -145,9 +187,28 @@ exports.notifyClaimRefunded = async ({ claim, transaction, amount, reference }) 
         ["Brand", brandName],
         ["Refund amount", money(amount)],
         ["Claim code", claim.claimCode],
+        ...(refundRequest?.documentNumber
+          ? [["Refund No", refundRequest.documentNumber]]
+          : []),
         ...(reference ? [["Reference", reference]] : []),
       ],
+      /**
+       * The document first, then the screen — the same order the payment receipt
+       * uses, and for the same reason: the paper is what this email is worth
+       * keeping for. Each button is dropped independently when its base is
+       * unconfigured, rather than the pair being all-or-nothing.
+       */
+      actions: [
+        ...(download ? [{ label: "Download Refund Receipt", url: download }] : []),
+        {
+          label: "View refund",
+          url: customerUrl(CUSTOMER_PATHS.transaction(transaction?._id)),
+        },
+      ],
     },
+    // The WhatsApp template's URL button is approved against a fixed base with
+    // only the last segment dynamic — so the token is passed, not a full URL.
+    whatsappUrlParam: refundRequest?.documentToken,
   });
 };
 
@@ -188,8 +249,8 @@ exports.notifyVendorClaimReceived = async ({ claim }) => {
         ["Your payable", money(claim.pricing?.vendorPayable)],
         ["Date", onDate(claim.paidAt)],
       ],
-      buttonText: "Open Dashboard",
-      buttonUrl: vendorUrl(PANEL_PATHS.DASHBOARD),
+      ctaLabel: "Open Dashboard",
+      ctaUrl: vendorUrl(PANEL_PATHS.DASHBOARD),
     },
   });
 };
@@ -216,6 +277,8 @@ exports.notifyClaimExpired = async ({ claim }) => {
         ["Claim code", claim.claimCode],
         ["Expired on", onDate(claim.expiresAt)],
       ],
+      ctaLabel: "View your order",
+      ctaUrl: customerUrl(CUSTOMER_PATHS.order(claim._id)),
     },
   });
 };

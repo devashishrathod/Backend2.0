@@ -262,7 +262,10 @@ const SUBSCRIPTION_DEFAULTS = Object.freeze({
   allowAdminDowngrade: true, // admins can, and may grandfather overflow
   allowAdminFreeGrant: true,
   gracePeriodDays: 0,
-  isPromoCodeEnabled: false,
+  // On by default. `PUT /settings/update` still turns it off per-platform if a
+  // campaign has to be pulled, which is the switch that matters — an admin can
+  // stop codes in one call without a deploy.
+  isPromoCodeEnabled: true,
   // Reuse of a still-open Razorpay order instead of creating a duplicate.
   pendingOrderReuseMinutes: 15,
   expiryJobIntervalMinutes: 60,

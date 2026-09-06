@@ -2,6 +2,7 @@ const User = require("../../models/User");
 const Brand = require("../../models/Brand");
 const SubBrand = require("../../models/SubBrand");
 const { ROLES, LOGIN_TYPES, OUTLET_TYPES } = require("../../constants");
+const { DUPLICATE_KEY } = require("../../constants/mongo");
 const { throwError } = require("../../utils");
 const { sendOtp } = require("../../services/otps");
 const {
@@ -99,6 +100,24 @@ exports.signUpSubBrandWithWhatsapp = async (actor, payload) => {
       await SubBrand.deleteOne({ _id: subBrand._id }).catch(() => {});
     }
     if (user?._id) await User.deleteOne({ _id: user._id }).catch(() => {});
+
+    /**
+     * ⚠️ The `findOne` above is the polite refusal; `user_whatsappNumber_role_unique`
+     * is the guard.
+     *
+     * That check and this `User.create` are separated by two generator round
+     * trips, so two vendors adding the same outlet number at once both read
+     * "not registered" and both reach here — the same ~200ms window that put
+     * four accounts on one customer's phone number.
+     *
+     * The index refuses the second insert. Without this branch that surfaced as
+     * a generic `422` naming an index, so the vendor was told their input was
+     * invalid when the real answer is the one the check above already had a
+     * sentence for.
+     */
+    if (error?.code === DUPLICATE_KEY) {
+      throwError(403, "Outlet/Sub-Brand is already registered with this number");
+    }
     throw error;
   }
 

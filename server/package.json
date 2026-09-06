@@ -1,5 +1,5 @@
 {
-  "name": "trydood2.0",
+  "name": "trydood",
   "version": "1.0.0",
   "description": "",
   "main": "index",
@@ -20,6 +20,7 @@
     "node": ">=24.19.0"
   },
   "dependencies": {
+    "2factor": "^1.0.6",
     "axios": "^1.18.0",
     "bcrypt": "^6.0.0",
     "cloudinary": "^2.10.0",
@@ -42,6 +43,7 @@
     "razorpay": "^2.9.6"
   },
   "devDependencies": {
-    "jest": "^30.5.0"
+    "jest": "^30.5.0",
+    "newman": "^6.2.2"
   }
 }

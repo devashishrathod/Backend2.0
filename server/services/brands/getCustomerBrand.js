@@ -6,6 +6,7 @@ const SubBrand = require("../../models/SubBrand");
 const { buildAggregateLookup } = require("../../database");
 const { SYSTEM_VERIFICATION_STATUS } = require("../../constants");
 const { throwError } = require("../../utils");
+const { customerVisibleBrandFilter } = require("../../helpers/brands");
 const {
   customerSectionMatch,
   sortedVisibleMedias,
@@ -60,7 +61,12 @@ const LOCATION_FIELDS = {
  * Every lookup carries an explicit projection so nothing extra rides along.
  */
 const brandPipeline = (_id) => [
-  { $match: { _id, isDeleted: false, isActive: true } },
+  /**
+   * ⚠️ Verified only, so a deep link to an unverified brand answers 404 rather
+   * than opening a page the directory deliberately hides. A brand visible by
+   * URL but not by search is the same leak the showcase endpoints had.
+   */
+  { $match: customerVisibleBrandFilter({ _id }) },
   {
     $project: {
       brandName: 1,
@@ -122,8 +128,16 @@ const brandPipeline = (_id) => [
       subCategory: 1,
       location: 1,
       workHours: 1,
-      // `Brand.isApproved` is never written anywhere in the codebase, so it is
-      // permanently false. The real verdict lives on the SystemVerify document.
+      /**
+       * ⚠️ That comment said `isApproved` is "never written anywhere ... so it
+       * is permanently false". Both halves were wrong:
+       * `reviewBrandVerification` writes it on APPROVED, REJECTED and REVOKED.
+       * Believing it left this endpoint serving any brand that merely was not
+       * deleted — the `$match` above now requires verification.
+       *
+       * The badge still reads `SystemVerify`, which is where the verdict's
+       * history lives.
+       */
       isVerified: {
         $eq: ["$verification.status", SYSTEM_VERIFICATION_STATUS.APPROVED],
       },

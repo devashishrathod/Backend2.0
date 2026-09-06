@@ -4,78 +4,12 @@ const { buildAggregateLookup } = require("../../database");
 const { SYSTEM_VERIFICATION_STATUS } = require("../../constants");
 const { pagination } = require("../../utils");
 const { escapeRegex } = require("../../validator/common");
-
-const EARTH_RADIUS_METERS = 6371000;
-
-const toRadians = (degrees) => (degrees * Math.PI) / 180;
-
-/**
- * Straight-line distance from the caller to one outlet, as an aggregation
- * expression.
- *
- * `$geoNear` is not available here: it has to be the first stage of a pipeline,
- * and this one starts from Brand so that brands — not outlets — stay the rows.
- * So the distance is computed inline instead, using the equirectangular
- * approximation. Over the tens of kilometres a city directory spans its error
- * is a fraction of a percent, which is far below what "sorted by nearest"
- * needs. Exact distances still come from `$geoNear` in the voucher pipeline.
- *
- * `cos(latitude)` is a constant for a given caller, so it is folded in here in
- * JS rather than recomputed per document.
- */
-const distanceExpression = (latitude, longitude) => ({
-  $let: {
-    vars: {
-      lat: { $arrayElemAt: ["$geo.coordinates", 1] },
-      lng: { $arrayElemAt: ["$geo.coordinates", 0] },
-    },
-    in: {
-      $cond: [
-        {
-          $and: [
-            { $eq: [{ $type: "$$lat" }, "double"] },
-            { $eq: [{ $type: "$$lng" }, "double"] },
-          ],
-        },
-        {
-          $multiply: [
-            EARTH_RADIUS_METERS,
-            {
-              $sqrt: {
-                $add: [
-                  {
-                    $pow: [
-                      {
-                        $degreesToRadians: { $subtract: ["$$lat", latitude] },
-                      },
-                      2,
-                    ],
-                  },
-                  {
-                    $pow: [
-                      {
-                        $multiply: [
-                          {
-                            $degreesToRadians: {
-                              $subtract: ["$$lng", longitude],
-                            },
-                          },
-                          Math.cos(toRadians(latitude)),
-                        ],
-                      },
-                      2,
-                    ],
-                  },
-                ],
-              },
-            },
-          ],
-        },
-        null,
-      ],
-    },
-  },
-});
+// Shared with the global search's brand section — see the note in that file
+// for why the formula lives in one place.
+const {
+  outletDistanceExpression,
+  customerVisibleBrandFilter,
+} = require("../../helpers/brands");
 
 /**
  * The customer-facing brand directory, and the "Top Brands" tab.
@@ -113,7 +47,15 @@ exports.getAllCustomerBrands = async (query) => {
   const pipeline = [];
 
   // ── Match ─────────────────────────────────────────────────────────────────
-  const match = { isDeleted: false, isActive: true };
+  /**
+   * ⚠️ Verified only.
+   *
+   * This was `{isDeleted: false, isActive: true}` and nothing else, so any
+   * brand that was merely not deleted appeared here — including six whose
+   * owning `User` no longer existed, with no outlets and no vouchers. That is
+   * 6 of the 29 rows this returned.
+   */
+  const match = customerVisibleBrandFilter();
   if (topOnly) match.isTopBrand = true;
   if (categoryId) match.categoryId = new mongoose.Types.ObjectId(categoryId);
   if (subCategoryId) {
@@ -187,7 +129,7 @@ exports.getAllCustomerBrands = async (query) => {
           $project: {
             _id: 1,
             ...(hasGeo
-              ? { distance: distanceExpression(latitude, longitude) }
+              ? { distance: outletDistanceExpression(latitude, longitude) }
               : {}),
           },
         },
@@ -199,8 +141,19 @@ exports.getAllCustomerBrands = async (query) => {
   pipeline.push({
     $addFields: {
       outletCount: { $size: "$outlets" },
-      // `Brand.isApproved` is never written anywhere in the codebase, so the
-      // real verdict lives on the SystemVerify document.
+      /**
+       * ⚠️ This comment used to say `Brand.isApproved` is never written
+       * anywhere. It was wrong — `reviewBrandVerification` writes it on all
+       * three actions (APPROVED → true, REJECTED and REVOKED → false) — and
+       * being wrong here is what left this listing filtering on nothing but
+       * `isActive`, so six brands whose owner no longer existed sat in the
+       * customer directory as empty shells.
+       *
+       * The **filter** is now `customerVisibleBrandFilter` at the top. This
+       * field stays derived from `SystemVerify` because it is the badge shown
+       * to the customer, and the audit document is where the verdict's history
+       * lives; the two now agree by construction rather than by luck.
+       */
       isVerified: {
         $eq: ["$verification.status", SYSTEM_VERIFICATION_STATUS.APPROVED],
       },

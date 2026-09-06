@@ -144,7 +144,7 @@ exports.buildEvidencePack = async (disputeId) => {
        */
       signatureVerified: Boolean(transaction.razorpaySignature),
       invoiceId: transaction.invoiceId,
-      invoiceUrl: transaction.invoiceUrl || invoiceUrl(transaction.invoiceToken),
+      invoiceUrl: transaction.invoiceUrl || invoiceUrl(transaction.documentToken),
     },
 
     customer: {

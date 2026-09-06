@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const { SUBSCRIPTION_DEFAULTS } = require("../constants/subscription");
 const { OTP_DEFAULTS } = require("../constants/otp");
+const { APP_CONFIG_DEFAULTS } = require("../constants/app");
 const {
   CONVENIENCE_FEE_DEFAULTS,
   CUSTOMER_TAX_DEFAULTS,
@@ -15,8 +16,13 @@ const {
   PAYOUT_PROVIDERS,
   REFUND_METHODS,
   VENDOR_TIMEOUT_ACTIONS,
+  CUSTOMER_SEARCH_DEFAULTS,
 } = require("../constants/customer");
+const { SEARCH_LIMITS } = require("../constants/search");
 const { GATEWAY_FEE_BEARER } = require("../constants/transaction");
+const {
+  ADMIN_NOTIFICATION_DEFAULTS,
+} = require("../constants/notification");
 
 const voucherSettingSchema = new mongoose.Schema(
   {
@@ -350,6 +356,73 @@ const customerNotificationSchema = new mongoose.Schema(
   { _id: false },
 );
 
+/**
+ * Admin outbound channels.
+ *
+ * ### ⚠️ Why this block had to exist
+ *
+ * `getNotificationConfig(audience)` returned `getSubscriptionConfig()` — the
+ * **vendor** block — for anything that was not a customer. So the admin feed's
+ * email was governed by the vendor's toggle: switching off vendor renewal
+ * reminders also switched off `SETTLEMENT_LEDGER_DRIFT`, `REFUND_FAILED` and
+ * every other alert whose whole job is to reach a person when money has gone
+ * wrong. Nothing said so, and the admin who flipped it had no reason to think
+ * they had touched their own alerts.
+ *
+ * Three audiences, three blocks, no sharing — the same reasoning the customer
+ * block above is written against.
+ *
+ * ⚠️ Defaults are **on** and should stay on. This is a kill switch for an
+ * outage, not a preference; an admin who wants fewer emails has their own
+ * `User.notificationPreferences`, which silences them alone rather than the
+ * whole team.
+ */
+const adminNotificationSchema = new mongoose.Schema(
+  {
+    isEmailNotificationEnabled: {
+      type: Boolean,
+      default: ADMIN_NOTIFICATION_DEFAULTS.isEmailNotificationEnabled,
+    },
+    isPushNotificationEnabled: {
+      type: Boolean,
+      default: ADMIN_NOTIFICATION_DEFAULTS.isPushNotificationEnabled,
+    },
+    isWhatsAppNotificationEnabled: {
+      type: Boolean,
+      default: ADMIN_NOTIFICATION_DEFAULTS.isWhatsAppNotificationEnabled,
+    },
+    /**
+     * The ceiling on one broadcast, settable without a deploy.
+     *
+     * ⚠️ A **refusal**, not a truncation — `resolveAudience` throws `422` above
+     * it rather than sending to the first N. Silently reaching some of the
+     * audience is the failure this number exists to prevent.
+     *
+     * ⚠️ Raising it does not make a broadcast free: every recipient is one row
+     * written and one push queued, and FCM still takes 500 tokens per batch.
+     * Past a few thousand this belongs in a background job, which is what the
+     * refusal message says.
+     */
+    maxRecipientsPerDispatch: {
+      type: Number,
+      min: 1,
+      default: ADMIN_NOTIFICATION_DEFAULTS.maxRecipientsPerDispatch,
+    },
+  },
+  { _id: false },
+);
+
+/** Everything admin-audience. One block today; a namespace for later. */
+const adminSettingSchema = new mongoose.Schema(
+  {
+    notification: {
+      type: adminNotificationSchema,
+      default: () => ({}),
+    },
+  },
+  { _id: false },
+);
+
 /** Invoice numbering. Changing the prefix starts a new counter. */
 const customerInvoiceSchema = new mongoose.Schema(
   {
@@ -592,6 +665,53 @@ const chargebackSettingSchema = new mongoose.Schema(
   { _id: false },
 );
 
+/**
+ * The customer home screen's search box.
+ *
+ * ⚠️ `isEnabled: false` empties the results, it does not remove the endpoint.
+ * `GET /search` keeps answering 200 with a plain "search is unavailable" so the
+ * app can say so; a 404 or 500 would reach the client's generic error handler
+ * and show a broken-app screen for what was a deliberate switch.
+ */
+const searchSettingSchema = new mongoose.Schema(
+  {
+    isEnabled: { type: Boolean, default: CUSTOMER_SEARCH_DEFAULTS.isEnabled },
+    // ⚠️ At least 1. A zero would let an empty query through to a match that
+    // scans brands, vouchers, categories and every outlet address at once.
+    minQueryLength: {
+      type: Number,
+      default: CUSTOMER_SEARCH_DEFAULTS.minQueryLength,
+      min: 1,
+      max: 10,
+    },
+    sectionLimit: {
+      type: Number,
+      default: CUSTOMER_SEARCH_DEFAULTS.sectionLimit,
+      min: 1,
+      max: SEARCH_LIMITS.MAX_SECTION_LIMIT,
+    },
+    historyLimit: {
+      type: Number,
+      default: CUSTOMER_SEARCH_DEFAULTS.historyLimit,
+      min: 1,
+      max: 100,
+    },
+    /**
+     * Admin-curated chips for the empty search box. Nothing derives these from
+     * traffic — no query a customer types is logged anywhere.
+     *
+     * ⚠️ An unset array of strings arrives as `[]`, not `undefined`, so
+     * `getCustomerConfig` cannot use `??` here. Clearing the list in the admin
+     * panel is a legitimate choice and must survive the read.
+     */
+    popularQueries: {
+      type: [String],
+      default: () => [...CUSTOMER_SEARCH_DEFAULTS.popularQueries],
+    },
+  },
+  { _id: false },
+);
+
 const customerSettingSchema = new mongoose.Schema(
   {
     convenienceFee: { type: convenienceFeeSchema, default: () => ({}) },
@@ -603,6 +723,7 @@ const customerSettingSchema = new mongoose.Schema(
     settlement: { type: settlementSettingSchema, default: () => ({}) },
     refund: { type: refundSettingSchema, default: () => ({}) },
     chargeback: { type: chargebackSettingSchema, default: () => ({}) },
+    search: { type: searchSettingSchema, default: () => ({}) },
   },
   { _id: false },
 );
@@ -638,6 +759,70 @@ const securitySettingSchema = new mongoose.Schema(
   { _id: false },
 );
 
+/**
+ * The only block that is readable **without a token**.
+ *
+ * ⚠️ Everything in here reaches `GET /app-config`, which is public. Nothing
+ * about money, commission, reserve or settlement timing belongs in this schema —
+ * not because the endpoint filters it out, but because the endpoint builds its
+ * answer from a whitelist and a field added here is a field somebody intended to
+ * publish. Keep it that way: the moment a rate lands in this block it is one
+ * mistake away from being public.
+ *
+ * Defaults live in `constants/app.js`, like every other block.
+ */
+const appVersionSchema = new mongoose.Schema(
+  {
+    android: { type: String, default: APP_CONFIG_DEFAULTS.minVersion.android },
+    ios: { type: String, default: APP_CONFIG_DEFAULTS.minVersion.ios },
+  },
+  { _id: false },
+);
+
+const appSupportSchema = new mongoose.Schema(
+  {
+    email: { type: String, default: APP_CONFIG_DEFAULTS.support.email },
+    phone: { type: String, default: APP_CONFIG_DEFAULTS.support.phone },
+    whatsapp: { type: String, default: APP_CONFIG_DEFAULTS.support.whatsapp },
+  },
+  { _id: false },
+);
+
+const appFeatureSchema = new mongoose.Schema(
+  {
+    promoCodes: { type: Boolean, default: APP_CONFIG_DEFAULTS.features.promoCodes },
+    refunds: { type: Boolean, default: APP_CONFIG_DEFAULTS.features.refunds },
+    voucherClaims: {
+      type: Boolean,
+      default: APP_CONFIG_DEFAULTS.features.voucherClaims,
+    },
+    search: { type: Boolean, default: APP_CONFIG_DEFAULTS.features.search },
+  },
+  { _id: false },
+);
+
+const appSettingSchema = new mongoose.Schema(
+  {
+    minVersion: { type: appVersionSchema, default: () => ({}) },
+    latestVersion: { type: appVersionSchema, default: () => ({}) },
+    forceUpdate: { type: Boolean, default: APP_CONFIG_DEFAULTS.forceUpdate },
+    updateMessage: { type: String, default: APP_CONFIG_DEFAULTS.updateMessage },
+    storeUrl: {
+      type: new mongoose.Schema(
+        {
+          android: { type: String, default: APP_CONFIG_DEFAULTS.storeUrl.android },
+          ios: { type: String, default: APP_CONFIG_DEFAULTS.storeUrl.ios },
+        },
+        { _id: false },
+      ),
+      default: () => ({}),
+    },
+    support: { type: appSupportSchema, default: () => ({}) },
+    features: { type: appFeatureSchema, default: () => ({}) },
+  },
+  { _id: false },
+);
+
 const settingSchema = new mongoose.Schema(
   {
     vendor: {
@@ -650,6 +835,20 @@ const settingSchema = new mongoose.Schema(
     },
     security: {
       type: securitySettingSchema,
+      default: () => ({}),
+    },
+    /**
+     * ⚠️ Its own top-level block, beside `vendor` and `customer`, rather than a
+     * corner of one of them — because the whole point is that the three cannot
+     * silence each other.
+     */
+    admin: {
+      type: adminSettingSchema,
+      default: () => ({}),
+    },
+    // ⚠️ The only block `GET /app-config` may read — and it is public.
+    app: {
+      type: appSettingSchema,
       default: () => ({}),
     },
     isActive: { type: Boolean, default: true },

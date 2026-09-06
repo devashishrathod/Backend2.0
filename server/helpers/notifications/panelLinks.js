@@ -75,6 +75,31 @@ const ADMIN_PATHS = Object.freeze({
    */
   DISPUTES: "disputes",
   dispute: (transactionId) => `disputes/${transactionId}`,
+  /**
+   * ---------- the screens behind the inline alerts ----------
+   *
+   * ⚠️ These exist because eleven admin alerts had **no button and no detail
+   * table at all**: `WEBHOOK_FAILED` (nine separate faults sharing one type),
+   * `PAYMENT_DISPUTED` and `PROMO_LIMIT_EXCEEDED` are raised inline from the
+   * services rather than from a notice helper, and were sent as a bare heading
+   * and paragraph. Each one names a record — a payment charged twice, an offer
+   * redeemed twice, a code past its cap — and gave no way to open it.
+   *
+   * Same warning as every path above: a missing key here does not throw, it
+   * produces a link ending in the word "undefined", and nobody finds out until
+   * an admin taps one.
+   */
+  TRANSACTIONS: "transactions",
+  transaction: (transactionId) => `transactions/${transactionId}`,
+  CLAIMS: "voucherclaims",
+  claim: (claimId) => `voucherclaims/${claimId}`,
+  // Keyed on the **code**, not an id: every alert about a promo knows the code,
+  // and it is what an admin searches by.
+  PROMOS: "promos",
+  promo: (code) => `promos/${code}`,
+  // The stored webhook payloads, which is where a failed delivery is replayed from.
+  WEBHOOKS: "webhooks",
+  webhook: (webhookEventId) => `webhooks/${webhookEventId}`,
 });
 
 /**
@@ -111,10 +136,87 @@ const deepLink = (path) => `/${trimPath(path)}`;
 const whatsappUrlParam = (path) => trimPath(path);
 
 /**
+ * An absolute link into the customer app, for an email button.
+ *
+ * ### Why this is not just another panel URL
+ *
+ * A vendor and an admin read their notice in a browser, so `vendorUrl` and
+ * `adminUrl` point at a web app. A customer's destination is a **mobile app
+ * screen**, and an email cannot open one directly — so `CUSTOMER_APP_URL` is
+ * expected to be a **universal / app link** host (`https://app.trydood.com`)
+ * verified for both platforms:
+ *
+ * - Android — `/.well-known/assetlinks.json` served at that host
+ * - iOS — `/.well-known/apple-app-site-association` served at that host
+ *
+ * With those in place the tap opens the app at the matching route, and the app's
+ * own auth guard decides whether that is the screen or the login screen. Nothing
+ * here needs to know: the URL is the destination, not the flow. ⚠️ Which is also
+ * why no `?next=` is appended — the route *is* the next.
+ *
+ * ### ⚠️ What this cannot do
+ *
+ * If the app is **not installed**, the tap opens that https URL in a browser —
+ * so sending the reader on to the Play Store or the App Store has to be done by
+ * whatever is served at `CUSTOMER_APP_URL`, by sniffing the user agent. The
+ * backend only emits the address. There is no way to express "…and if it is not
+ * installed, go to the store" inside a link.
+ *
+ * Unset, this returns `undefined` and the button is omitted — the same contract
+ * `vendorUrl` follows, and the reason is the same: a customer tapping a link
+ * that goes nowhere is worse than an email with no button. The boot log names it
+ * when it is missing.
+ */
+const customerUrl = (path) => {
+  const base = trimBase(process.env.CUSTOMER_APP_URL);
+  if (!base) return undefined;
+
+  /**
+   * ⚠️ A store link is not a base, and this is the mistake it is here to catch.
+   *
+   * "If the app is not installed, send them to the Play Store" reads like an
+   * instruction about *this* variable, and the obvious thing to put in it is the
+   * store URL. Joining a route onto one produces:
+   *
+   *     https://play.google.com/store/apps/details?id=com.trydood/orders/<id>
+   *                                                             └── after the query string
+   *
+   * which reaches neither the app screen nor the store listing. It is a link that
+   * looks configured and goes nowhere — the exact failure the rest of this file
+   * exists to avoid, so the button is dropped and the reason is named.
+   *
+   * The store fallback belongs to whatever is *served at* the universal-link
+   * host, decided there from the user agent. It cannot be expressed in a URL.
+   */
+  if (base.includes("?") || base.includes("#")) {
+    warnBaseOnce(
+      `CUSTOMER_APP_URL carries a query string (${base}). It must be a bare universal-link host such as https://app.trydood.com — a route is appended to it, so a store or tracking URL produces a broken link. Customer email buttons are omitted.`,
+    );
+    return undefined;
+  }
+
+  return `${base}/${trimPath(path)}`;
+};
+
+/**
+ * A misconfigured base is one fact about the environment, not one per email.
+ *
+ * Every customer notice calls `customerUrl`, so an unguarded warning would print
+ * once per message and bury everything else in the log.
+ */
+const warnedBases = new Set();
+const warnBaseOnce = (message) => {
+  if (warnedBases.has(message)) return;
+  warnedBases.add(message);
+  console.warn(`[panelLinks] ${message}`);
+};
+
+/**
  * Customer-app screens.
  *
- * The customer app resolves its own routes, so these are bare paths — there is
- * no customer web panel to build an absolute URL against.
+ * Bare paths, because the app resolves its own routes — `deepLink` uses them as
+ * they are, and `customerUrl` above joins them onto the universal-link host for
+ * an email button.
  */
 const CUSTOMER_PATHS = Object.freeze({
   ORDERS: "orders",
@@ -153,18 +255,39 @@ const publicUrl = (path) => {
   return `${base}/trydood/v1/${trimPath(path)}`;
 };
 
-/** The public invoice link, by token. */
-const invoiceUrl = (token) =>
-  token ? publicUrl(`transactions/invoice/${token}`) : undefined;
+/**
+ * The public link to **any** Trydood document, by token.
+ *
+ * One route for all six kinds — a claim receipt, a subscription invoice, a grant
+ * advice, a payout statement, a refund receipt, a chargeback advice. The resolver
+ * behind it works out which collection the token belongs to.
+ *
+ * ⚠️ There used to be two routes — `/transactions/invoice/:token` and
+ * `/settlements/statement/:token` — and a refund or a dispute would have needed a
+ * third and a fourth. Worse, each carried its own token field name, so nothing
+ * could resolve a token without first knowing what kind of document it was, which
+ * is the one thing a bare token cannot tell you.
+ */
+const documentUrl = (token) =>
+  token ? publicUrl(`documents/${token}`) : undefined;
+
+/**
+ * @deprecated Use `documentUrl`. Kept as an alias so a link already sent in an
+ * email or a WhatsApp message resolves to the same place; both produce the new
+ * route.
+ */
+const invoiceUrl = documentUrl;
 
 module.exports = {
   CUSTOMER_PATHS,
   publicUrl,
+  documentUrl,
   invoiceUrl,
   PANEL_PATHS,
   ADMIN_PATHS,
   vendorUrl,
   adminUrl,
+  customerUrl,
   deepLink,
   whatsappUrlParam,
 };

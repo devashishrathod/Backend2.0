@@ -15,7 +15,7 @@ Chaar cheezein aisi hain jo **mita hi nahi sakte**, chahe user kuch bhi kahe:
 
 | Kya | Kyun nahi mita sakte |
 |---|---|
-| **GST invoices** | `models/invoiceSnapshotSchema.js` banaya hi isliye gaya hai ki ek issue ho chuka invoice saalon baad bhi *bilkul waisa hi* reproduce ho. Usme brand ka GSTIN, PAN aur address **freeze** hain |
+| **GST invoices** | `models/documentSnapshotSchema.js` banaya hi isliye gaya hai ki ek issue ho chuka invoice saalon baad bhi *bilkul waisa hi* reproduce ho. Usme brand ka GSTIN, PAN aur address **freeze** hain |
 | **Open chargebacks** | `Transaction.isDisputed` — deadline **Razorpay ki taraf se** hoti hai, hamari nahi. Miss kiya to paisa automatically chala jaata hai |
 | **`VoucherUsage`** | Iska unique `{voucherId, customerId}` index hi `ONCE_PER_USER` guarantee deta hai. Is model me **`isDeleted` field hai hi nahi** — delete karna matlab hard delete, aur customer dobara redeem kar lega |
 | **`WebhookEvent`** | `eventId` hi Razorpay retry ka idempotency guard hai. Delete kiya to duplicate settlement ho sakta hai |

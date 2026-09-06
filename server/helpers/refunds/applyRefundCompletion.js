@@ -13,8 +13,9 @@ const { recordClaimHistory } = require("../voucherClaims");
 const { sendQuietly, notifyClaimRefunded } = require("../notifications");
 const { releaseConsumedPromoOnRefund } = require("../promoCodes");
 const { getCustomerConfig } = require("../settings");
-// Sibling, not the barrel: the barrel re-exports this file too.
+// Siblings, not the barrel: the barrel re-exports this file too.
 const { releaseSettlementHold } = require("./releaseSettlementHold");
+const { issueRefundDocument } = require("./issueRefundDocument");
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -397,8 +398,29 @@ exports.applyRefundCompletion = async ({
   });
 
   /**
+   * ---------------- the document ----------------
+   *
+   * Issued here and nowhere earlier: the number is allotted when the money has
+   * actually reached the customer, so a refund that failed at the gateway cannot
+   * burn one out of a document-of-record series.
+   *
+   * Before the notification, deliberately — the email carries the download link,
+   * and a link to a document that does not exist yet is worse than no link.
+   * `issueRefundDocument` never throws and is idempotent, so a redelivered
+   * webhook neither fails the completion nor allots a second number.
+   */
+  const documented = await issueRefundDocument({
+    refundRequest: claimed,
+    claim,
+    transaction,
+    utr: utr || claimed.utr,
+  });
+  const withDocument = documented || claimed;
+
+  /**
    * The one the customer is actually waiting for, and it carries the UTR —
-   * the reference they quote to their own bank when the money has not landed.
+   * the reference they quote to their own bank when the money has not landed —
+   * plus the refund document itself.
    */
   if (claim) {
     await sendQuietly(
@@ -408,6 +430,7 @@ exports.applyRefundCompletion = async ({
           transaction,
           amount: split.totalRefund,
           reference: utr || claimed.utr,
+          refundRequest: withDocument,
         }),
       "customer claim refunded",
     );
@@ -418,6 +441,6 @@ exports.applyRefundCompletion = async ({
     isFullyRefunded,
     cumulative,
     ledger,
-    request: claimed,
+    request: withDocument,
   };
 };

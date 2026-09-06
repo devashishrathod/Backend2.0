@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const Brand = require("../../models/Brand");
 const Subscription = require("../../models/Subscription");
 const Transaction = require("../../models/Transaction");
@@ -11,8 +12,11 @@ const {
 const {
   TRANSACTION_PURPOSE,
   ACCOUNT_FOR_PURPOSE,
-  INVOICE_SERIES,
 } = require("../../constants/transaction");
+const {
+  DOCUMENT_KIND,
+  DOCUMENT_SERIES,
+} = require("../../constants/document");
 const { throwError } = require("../../utils");
 const { getSubscriptionConfig } = require("../../helpers/settings");
 const { summarizeUsage } = require("../../helpers/brands");
@@ -25,11 +29,12 @@ const {
   resolveSubscriptionAction,
   activateSubscription,
 } = require("../../helpers/subscribeds");
+const { buildInvoiceSnapshot } = require("../../helpers/transactions");
+const { generateDocumentNumber } = require("../../helpers/documents");
+const { invoiceUrl } = require("../../helpers/notifications/panelLinks");
 const {
-  generateInvoiceNumber,
-  generateAndUploadInvoice,
-  buildInvoiceSnapshot,
-} = require("../../helpers/transactions");
+  notifySubscriptionActivated,
+} = require("../../helpers/notifications");
 
 /**
  * Admin grants a subscription with no online payment.
@@ -151,8 +156,17 @@ exports.adminGrantSubscription = async (actor, payload) => {
     );
   }
 
-  const invoiceId = await generateInvoiceNumber({
-    series: INVOICE_SERIES[TRANSACTION_PURPOSE.SUBSCRIPTION],
+  /**
+   * A grant draws from its **own** series.
+   *
+   * `TD/GRT/26-27/000001`, not `TD/SUB/...`. A grant and a sale are different
+   * events — one collected money through the gateway and one did not — and mixing
+   * them into a single sequence makes the subscription series unreadable as a
+   * record of what was actually sold. The document says so on its face too; this
+   * makes the number say it as well.
+   */
+  const invoiceId = await generateDocumentNumber({
+    series: DOCUMENT_SERIES[DOCUMENT_KIND.SUBSCRIPTION_GRANT],
   });
 
   const transaction = await Transaction.create({
@@ -186,9 +200,13 @@ exports.adminGrantSubscription = async (actor, payload) => {
     paidAmount,
     dueAmount: Math.max(0, pricing.totalPayable - paidAmount),
     invoiceId,
+    // The vendor's download link. A grant is captured the moment it is created,
+    // so unlike a paid order there is nothing to wait for — the token can be
+    // minted here.
+    documentToken: crypto.randomBytes(32).toString("hex"),
   });
 
-  const { subscribed, sync } = await activateSubscription({
+  const { subscribed, sync, notice } = await activateSubscription({
     brand,
     subscription,
     actor,
@@ -205,10 +223,16 @@ exports.adminGrantSubscription = async (actor, payload) => {
     isFreeGrant: isFree,
   });
 
-  let invoiceUrl = null;
   try {
-    // Same snapshot-then-render path as the paid flow, so a manual grant's
-    // invoice is shaped identically and is equally reproducible.
+    /**
+     * Same snapshot path as the paid flow, so a grant's document is shaped
+     * identically and is equally reproducible — and, like the paid flow, only the
+     * snapshot is written here. The PDF renders on the first download.
+     *
+     * `isManual` is what makes the document say what it is: a GRANT ADVICE rather
+     * than a receipt, naming the payment mode, the reference and the admin's note,
+     * and stating plainly that nothing was collected through the gateway.
+     */
     const invoiceSnapshot = buildInvoiceSnapshot({
       transaction,
       subscription,
@@ -218,30 +242,38 @@ exports.adminGrantSubscription = async (actor, payload) => {
       validity,
       isManual: true,
       paymentMethod: paymentMode,
+      documentNumber: invoiceId,
     });
     await Transaction.updateOne(
       { _id: transaction._id },
       { $set: { invoiceSnapshot } },
     );
-
-    invoiceUrl = await generateAndUploadInvoice(invoiceSnapshot);
-    if (invoiceUrl) {
-      await Transaction.updateOne(
-        { _id: transaction._id },
-        { $set: { invoiceUrl } },
-      );
-    }
   } catch (error) {
-    // The grant is already live; a missing PDF must not undo it.
+    // The grant is already live; a missing document must not undo it.
     console.error(
       `[adminGrantSubscription] invoice failed for transaction ${transaction._id}:`,
       error?.message,
     );
   }
 
+  /**
+   * Re-read, for the snapshot the block above wrote.
+   *
+   * Falls back to the in-memory document rather than being trusted to exist: the
+   * grant is already live at this point, and a null here would turn a successful
+   * grant into a 500 on `.toObject()`.
+   */
+  const granted = (await Transaction.findById(transaction._id)) || transaction;
+
+  // After the document stage, so the vendor's email carries the grant reference
+  // and the Download Advice button. See the note in `activateSubscription`.
+  await notifySubscriptionActivated({ ...notice, transaction: granted });
+
   return {
     subscribed,
-    transaction: { ...transaction.toObject(), invoiceUrl },
+    transaction: granted.toObject(),
+    invoiceId,
+    invoiceDownloadUrl: invoiceUrl(granted.documentToken),
     action,
     pricing,
     orderSummary: buildOrderSummary(pricing, config),

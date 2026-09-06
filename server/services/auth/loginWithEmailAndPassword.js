@@ -1,7 +1,8 @@
 const User = require("../../models/User");
 const { ROLES } = require("../../constants");
 const { throwError } = require("../../utils");
-const { assertAccountAccess } = require("../../helpers/auth");
+const { assertAccountAccess, markSignedIn } = require("../../helpers/auth");
+const { sanitizeUser } = require("../../helpers/users");
 
 exports.loginWithEmailAndPassword = async (payload) => {
   let { email, password, role } = payload;
@@ -28,5 +29,17 @@ exports.loginWithEmailAndPassword = async (payload) => {
   const matchedPass = await user.matchPassword(password);
   if (!matchedPass) throwError(401, "Invalid credentials! Password mismatch");
   const token = user.getSignedJwtToken();
-  return { user, token };
+  // The admin directory filters on these, and this path never set them.
+  await markSignedIn(user._id);
+  /**
+   * ⚠️ Sanitized because this path loads the document **with** its password —
+   * it has to, in order to compare one. Returning `user` raw therefore handed
+   * the bcrypt hash back on every successful admin login, where it landed in
+   * client logs, crash reports and analytics payloads.
+   *
+   * The OTP paths projected `-password` at the query and so only leaked `__v`;
+   * this one could not, which is exactly why it needed the helper rather than a
+   * projection.
+   */
+  return { user: sanitizeUser(user), token };
 };

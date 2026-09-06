@@ -234,7 +234,7 @@ const SETTLEMENT_FAILURE_REASON = Object.freeze({
 const SETTLEMENT_INDEXES = Object.freeze({
   IDEMPOTENCY: "settlement_idempotency_unique",
   NUMBER: "settlement_number_unique",
-  STATEMENT_TOKEN: "settlement_statementToken_unique",
+  DOCUMENT_TOKEN: "settlement_documentToken_unique",
 });
 
 /** `TD/STL/26-27/000123`. The `Counter` pattern, same as invoices. */

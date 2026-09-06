@@ -1,5 +1,6 @@
 const SubCategory = require("../../models/SubCategory");
 const { throwError, validateObjectId } = require("../../utils");
+const { assertSubCategoryDeletable } = require("../../helpers/taxonomy");
 const { deleteImage } = require("../uploads");
 
 exports.deleteSubCategoryById = async (id) => {
@@ -8,6 +9,8 @@ exports.deleteSubCategoryById = async (id) => {
   if (!subCategory || subCategory.isDeleted) {
     throwError(404, "subCategory not found");
   }
+  // Refuse before touching Cloudinary — see deleteCategoryById.
+  await assertSubCategoryDeletable(subCategory._id);
   await deleteImage(subCategory?.image);
   subCategory.image = null;
   subCategory.isDeleted = true;

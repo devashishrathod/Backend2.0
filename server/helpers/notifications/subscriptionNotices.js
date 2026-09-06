@@ -6,8 +6,20 @@ const { SUBSCRIPTION_ACTION } = require("../../constants/subscription");
 const { notify } = require("./notify");
 const { formatMoney } = require("../subscribeds/buildOrderSummary");
 
-const asDate = (value) =>
-  value ? new Date(value).toLocaleDateString("en-IN") : "-";
+/**
+ * ⚠️ `formatDate`, not a local helper.
+ *
+ * This file used to print `29/8/2027` while the claim notices printed
+ * `1 Sept 2026` and the settlement notices `2 Sept 2026, 4:00 pm` — three formats
+ * to the same vendor. Worse, none of them named a timezone, so every one rendered
+ * in the server's (UTC in production). See `formatDateTime.js`.
+ *
+ * A plan boundary is a **day**, so no time: "Valid till 29 Aug 2027 11:59 PM" is
+ * a longer way of saying the same date.
+ */
+const { formatDate } = require("./formatDateTime");
+
+const asDate = formatDate;
 
 /**
  * WhatsApp template variables, per notification type.
@@ -48,6 +60,7 @@ const {
   vendorUrl,
   deepLink,
   whatsappUrlParam,
+  invoiceUrl,
 } = require("./panelLinks");
 
 const ACTION_COPY = Object.freeze({
@@ -87,14 +100,33 @@ exports.notifySubscriptionActivated = ({
   isAdminGrant = false,
   forfeitedDays = 0,
   awaitDelivery = false,
+  transaction,
 }) => {
   const copy = ACTION_COPY[action] || ACTION_COPY[SUBSCRIPTION_ACTION.NEW];
+
+  /**
+   * The vendor's copy of their invoice.
+   *
+   * ⚠️ Vendors never had one. A customer has had a "Download Invoice" button on
+   * their receipt email and a WhatsApp link since the claim flow was written; a
+   * vendor who paid for a plan got neither, and the only way to their invoice was
+   * a raw storage URL that was never sent anywhere. `GET /transactions/invoice/:token`
+   * has served both kinds all along — nothing was putting a token on this half.
+   *
+   * Dropped rather than rendered dead when `PUBLIC_API_URL` is unset, exactly as
+   * the customer side does.
+   */
+  const download = invoiceUrl(transaction?.documentToken);
+
   const lines = [
     ["Plan", subscription.name],
     ["Valid till", asDate(subscribed.endDate)],
   ];
   if (subscribed.paidAmount > 0) {
     lines.push(["Amount paid", formatMoney(subscribed.paidAmount)]);
+  }
+  if (transaction?.invoiceId) {
+    lines.push([isAdminGrant ? "Reference No" : "Invoice No", transaction.invoiceId]);
   }
   if (forfeitedDays > 0) {
     lines.push(["Days forfeited from previous plan", String(forfeitedDays)]);
@@ -119,19 +151,54 @@ exports.notifySubscriptionActivated = ({
       endDate: subscribed.endDate,
       action,
       forfeitedDays,
+      transactionId: transaction?._id,
+      invoiceId: transaction?.invoiceId,
     },
     deepLink: deepLink(PANEL_PATHS.SUBSCRIPTION),
     mail: {
       lines,
-      ctaLabel: "View your subscription",
-      ctaUrl: vendorUrl(PANEL_PATHS.SUBSCRIPTION),
+      /**
+       * Two buttons, and the order matches the customer receipt: the document is
+       * what this email is worth keeping for, and the panel is where everything
+       * else about the plan lives.
+       *
+       * Each is dropped independently when its base is unconfigured
+       * (`PUBLIC_API_URL`, `VENDOR_PANEL_URL`) rather than the pair being
+       * all-or-nothing.
+       */
+      actions: [
+        ...(download
+          ? [
+              {
+                label: isAdminGrant ? "Download Advice" : "Download Invoice",
+                url: download,
+              },
+            ]
+          : []),
+        {
+          label: "View your subscription",
+          url: vendorUrl(PANEL_PATHS.SUBSCRIPTION),
+        },
+      ],
     },
     // 2 vars: plan, valid till. Same shape for activated / renewed / upgraded /
     // downgraded / granted, so one template body serves all five if desired.
     awaitDelivery,
     whatsapp: {
       params: [subscription.name, asDate(subscribed.endDate)],
-      urlParam: whatsappUrlParam(PANEL_PATHS.SUBSCRIPTION),
+      /**
+       * ⚠️ The document token when there is one, so the WhatsApp button opens the
+       * invoice rather than the panel — the same thing the customer's template
+       * does.
+       *
+       * A template's URL button is approved by Meta against a fixed base with only
+       * the last segment dynamic, so these two are **different templates**: one
+       * ending `/transactions/invoice/{{1}}`, one ending at a panel route. Until a
+       * vendor invoice template is approved, this falls back to the panel link and
+       * the button still works.
+       */
+      urlParam:
+        transaction?.documentToken || whatsappUrlParam(PANEL_PATHS.SUBSCRIPTION),
     },
   });
 };
@@ -209,6 +276,17 @@ exports.notifySubscriptionExpired = ({
     dedupeKey: `SUBSCRIPTION_EXPIRED:${subscribed._id}`,
     deepLink: deepLink(PANEL_PATHS.SUBSCRIPTION_PLANS),
     mail: {
+      /**
+       * ⚠️ This notice and the cancellation below had **no detail table** while
+       * every other subscription notice did — so the two messages a vendor is
+       * most likely to query were the two that named neither the plan nor the
+       * date. "Which plan?" and "expired when?" are the first two questions.
+       */
+      lines: [
+        ["Plan", subscription?.name || "-"],
+        ["Ended on", asDate(subscribed.endDate)],
+        ["Status", "Expired"],
+      ],
       ctaLabel: "Renew now",
       ctaUrl: vendorUrl(PANEL_PATHS.SUBSCRIPTION_PLANS),
     },
@@ -242,6 +320,16 @@ exports.notifySubscriptionCancelled = ({
     dedupeKey: `SUBSCRIPTION_CANCELLED:${subscribed._id}`,
     deepLink: deepLink(PANEL_PATHS.SUBSCRIPTION_PLANS),
     mail: {
+      /**
+       * ⚠️ The internal `reason` is **not** a row here, the same way it is not in
+       * the body. It is an admin's note to other admins; the vendor gets the fact
+       * and a way to act on it. See `brandStatusNotices.js` for the same rule.
+       */
+      lines: [
+        ["Plan", subscription?.name || "-"],
+        ["Cancelled on", asDate(new Date())],
+        ["Status", "Cancelled"],
+      ],
       ctaLabel: "Subscribe again",
       ctaUrl: vendorUrl(PANEL_PATHS.SUBSCRIPTION_PLANS),
     },

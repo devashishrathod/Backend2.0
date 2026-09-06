@@ -17,15 +17,18 @@ const {
   buildVoucherInvoiceSnapshot,
   settleVoucherClaimPayment,
 } = require("../../helpers/voucherClaims");
-const { renderInvoicePdf } = require("../../helpers/transactions");
+const { buildInvoiceSnapshot } = require("../../helpers/transactions");
+const { renderDocumentPdf } = require("../../helpers/documents");
 const {
-  INVOICE_KIND,
-  INVOICE_TITLE,
   TRANSACTION_PURPOSE,
   RAZORPAY_ACCOUNTS,
   SETTLEMENT_STAGE,
   GATEWAY_FEE_BEARER,
 } = require("../../constants/transaction");
+const {
+  DOCUMENT_KIND,
+  DOCUMENT_TITLE,
+} = require("../../constants/document");
 const { VOUCHER_CLAIM_STATUS } = require("../../constants/voucherClaim");
 
 const oid = () => new mongoose.Types.ObjectId();
@@ -95,6 +98,9 @@ const claimFixture = (pricing = PRICING) => ({
   voucherSnapshot: { name: "Luxury Stay Special" },
   brandSnapshot: { name: "postman cafe mocha" },
   outletSnapshot: { storeId: "MOCHA-VN-01", state: "Madhya Pradesh" },
+  customerSnapshot: { name: "Devashish Rathod", whatsappNumber: "+919876543210" },
+  createdAt: new Date("2026-08-30T09:00:00Z"),
+  paidAt: new Date("2026-08-30T09:05:00Z"),
   redeemedAt: new Date("2026-08-30T10:00:00Z"),
 });
 
@@ -149,7 +155,7 @@ describe("a document with no tax does not call itself a tax invoice", () => {
     });
 
     expect(snapshot.isTaxInvoice).toBe(false);
-    expect(snapshot.kind).toBe(INVOICE_KIND.VOUCHER_CLAIM);
+    expect(snapshot.kind).toBe(DOCUMENT_KIND.VOUCHER_CLAIM);
     // No SAC on a document that states no tax.
     expect(snapshot.hsnSacCode).toBeUndefined();
   });
@@ -179,11 +185,11 @@ describe("a document with no tax does not call itself a tax invoice", () => {
     });
 
     // Config changes afterwards — the snapshot does not.
-    const { filePath } = await renderInvoicePdf(snapshot, { compress: false });
+    const { filePath } = await renderDocumentPdf(snapshot, { compress: false });
     const pdf = pdfText(filePath);
 
-    expect(pdf).toContain(INVOICE_TITLE.RECEIPT);
-    expect(pdf).not.toContain(INVOICE_TITLE.TAX_INVOICE);
+    expect(pdf).toContain(DOCUMENT_TITLE.PAYMENT_RECEIPT);
+    expect(pdf).not.toContain(DOCUMENT_TITLE.TAX_INVOICE);
   });
 
   /**
@@ -197,7 +203,7 @@ describe("a document with no tax does not call itself a tax invoice", () => {
       claim: claimFixture(),
       seller: SELLER,
     });
-    const { filePath } = await renderInvoicePdf(snapshot, { compress: false });
+    const { filePath } = await renderDocumentPdf(snapshot, { compress: false });
     const pdf = pdfText(filePath);
 
     expect(pdf).not.toContain("plan price");
@@ -211,11 +217,91 @@ describe("a document with no tax does not call itself a tax invoice", () => {
       claim: claimFixture(TAXED),
       seller: SELLER,
     });
-    const { filePath } = await renderInvoicePdf(snapshot, { compress: false });
+    const { filePath } = await renderDocumentPdf(snapshot, { compress: false });
     const pdf = pdfText(filePath);
 
     // Tax is on our fee, never on the restaurant's bill.
     expect(pdf).toContain("convenience fee only");
+  });
+});
+
+describe("the receipt names the customer who paid", () => {
+  /**
+   * ⚠️ Every customer receipt ever issued printed `Bill To: -`.
+   *
+   * The builder read `claim.customerSnapshot?.name`, and `customerSnapshot` was
+   * not a field on `VoucherClaim` — the model had `offerSnapshot`,
+   * `voucherSnapshot`, `brandSnapshot` and `outletSnapshot` and nothing else. So
+   * the read was `undefined` on every claim, and the one line naming the person
+   * who paid was a dash.
+   */
+  it("prints the name, tagged so it cannot be read as a vendor", async () => {
+    const snapshot = buildVoucherInvoiceSnapshot({
+      transaction: txnFixture(),
+      claim: claimFixture(),
+      seller: SELLER,
+    });
+
+    expect(snapshot.billTo.name).toBe("Devashish Rathod (Customer)");
+
+    const { filePath } = await renderDocumentPdf(snapshot, { compress: false });
+    const pdf = pdfText(filePath);
+    expect(pdf).toContain("Devashish Rathod (Customer)");
+  });
+
+  /**
+   * `Customer.fullName` is not required — somebody can pay before they have ever
+   * set a name. A document of record must still name a party.
+   */
+  it("falls back to the number rather than printing a dash", () => {
+    const claim = claimFixture();
+    claim.customerSnapshot = { whatsappNumber: "+919876543210" };
+
+    const snapshot = buildVoucherInvoiceSnapshot({
+      transaction: txnFixture(),
+      claim,
+      seller: SELLER,
+    });
+
+    expect(snapshot.billTo.name).toBe("+919876543210 (Customer)");
+    expect(snapshot.billTo.name).not.toBe("-");
+  });
+
+  it("still names them when nothing at all is known", () => {
+    const claim = claimFixture();
+    delete claim.customerSnapshot;
+
+    const snapshot = buildVoucherInvoiceSnapshot({
+      transaction: txnFixture(),
+      claim,
+      seller: SELLER,
+    });
+
+    expect(snapshot.billTo.name).toBe("Customer");
+  });
+
+  /**
+   * The three instants a customer actually asks about, kept as real dates so they
+   * render in IST and read the same in two years on any server.
+   */
+  it("records when it was claimed, paid and redeemed", async () => {
+    const snapshot = buildVoucherInvoiceSnapshot({
+      transaction: txnFixture(),
+      claim: claimFixture(),
+      seller: SELLER,
+    });
+
+    const labels = snapshot.timeline.map((entry) => entry.label);
+    expect(labels).toEqual(["Claimed", "Paid", "Redeemed"]);
+    for (const entry of snapshot.timeline) {
+      expect(entry.at).toBeInstanceOf(Date);
+    }
+
+    const { filePath } = await renderDocumentPdf(snapshot, { compress: false });
+    const pdf = pdfText(filePath);
+    // 09:00 UTC === 14:30 IST, 10:00 UTC === 3:30 PM IST.
+    expect(pdf).toContain("30 Aug 2026, 2:30 PM IST");
+    expect(pdf).toContain("30 Aug 2026, 3:30 PM IST");
   });
 });
 
@@ -277,7 +363,7 @@ describe("the invoice says who actually sold the meal", () => {
   });
 });
 
-describe("the renderer branches, and the subscription layout is untouched", () => {
+describe("one renderer, two very different documents", () => {
   it("prints the claim block, not a plan and a validity range", async () => {
     const snapshot = buildVoucherInvoiceSnapshot({
       transaction: txnFixture(),
@@ -285,7 +371,7 @@ describe("the renderer branches, and the subscription layout is untouched", () =
       seller: SELLER,
     });
 
-    const { filePath } = await renderInvoicePdf(snapshot, { compress: false });
+    const { filePath } = await renderDocumentPdf(snapshot, { compress: false });
     const pdf = pdfText(filePath);
 
     expect(pdf).toContain("Luxury Stay Special");
@@ -300,41 +386,63 @@ describe("the renderer branches, and the subscription layout is untouched", () =
     expect(pdf).not.toContain("CGST");
   });
 
-  it("still renders a subscription invoice exactly as before", async () => {
-    // No `kind` at all — an invoice issued before this branch existed.
-    const legacy = {
-      invoiceId: "TD/SUB/26-27/000009",
-      issuedAt: new Date(),
-      planName: "Pro Plus",
-      planType: "YEARLY",
-      durationLabel: "12 months",
-      planStart: new Date("2026-01-01"),
-      planEnd: new Date("2026-12-31"),
-      hsnSacCode: "998315",
-      seller: { name: "Trydood" },
-      billTo: { name: "A Brand" },
+  /**
+   * The other half of the same renderer.
+   *
+   * Built through the real subscription builder rather than a hand-written
+   * snapshot, so this fails if the two builders ever stop agreeing on the block
+   * shape the single renderer reads.
+   */
+  it("renders a subscription through the same renderer", async () => {
+    const snapshot = buildInvoiceSnapshot({
+      transaction: {
+        _id: oid(),
+        status: "captured",
+        paymentMethod: "card",
+        createdAt: new Date("2026-01-01T05:00:00Z"),
+        verifiedAt: new Date("2026-01-01T05:02:00Z"),
+      },
+      subscription: {
+        name: "Pro Plus",
+        type: "YEARLY",
+        durationInYears: 1,
+      },
       pricing: {
         listPrice: 4999,
+        discountPercent: 0,
         discountAmount: 0,
         promoDiscount: 0,
         taxableValue: 4999,
         gstPercentage: 18,
         taxType: "IGST",
         igst: 899.82,
+        gstAmount: 899.82,
+        hsnSacCode: "998315",
         totalPayable: 5898.82,
       },
-    };
+      config: { companyName: "Trydood" },
+      billing: { brandName: "A Brand" },
+      validity: {
+        startDate: new Date("2026-01-01T05:02:00Z"),
+        endDate: new Date("2026-12-31T18:29:00Z"),
+      },
+    });
 
-    const { filePath } = await renderInvoicePdf(legacy, { compress: false });
+    const { filePath } = await renderDocumentPdf(snapshot, { compress: false });
     const pdf = pdfText(filePath);
 
-    // Everything the subscription layout has always printed.
-    expect(pdf).toContain(INVOICE_TITLE.TAX_INVOICE);
+    expect(pdf).toContain(DOCUMENT_TITLE.TAX_INVOICE);
     expect(pdf).toContain("Original Price");
-    expect(pdf).toContain("Validity:");
     expect(pdf).toContain("Pro Plus");
     expect(pdf).toContain("IGST");
     expect(pdf).toContain("Total Payable");
+    expect(pdf).toContain("998315");
+    // The vendor tag, so a brand named after a person is not read as a customer.
+    expect(pdf).toContain("A Brand (Vendor)");
+    // Real dates, in IST, instead of the `Validity: - to -` the old layout gave
+    // any snapshot that could not reach the Subscribed record.
+    expect(pdf).toContain("Plan ends");
+    expect(pdf).not.toContain("- to -");
   });
 
   it("prints tax rows on a claim once GST is on", async () => {
@@ -344,10 +452,10 @@ describe("the renderer branches, and the subscription layout is untouched", () =
       seller: SELLER,
     });
 
-    const { filePath } = await renderInvoicePdf(snapshot, { compress: false });
+    const { filePath } = await renderDocumentPdf(snapshot, { compress: false });
     const pdf = pdfText(filePath);
 
-    expect(pdf).toContain(INVOICE_TITLE.TAX_INVOICE);
+    expect(pdf).toContain(DOCUMENT_TITLE.TAX_INVOICE);
     expect(pdf).toContain("IGST");
     expect(pdf).toContain("998599");
   });
@@ -403,11 +511,11 @@ describe("the number is allotted at settle, the PDF is not", () => {
     const settled = await Transaction.findById(transaction._id);
     expect(settled.invoiceId).toMatch(/^TD\/VCH\/\d{2}-\d{2}\/\d{6}$/);
     expect(settled.invoiceSnapshot).toBeTruthy();
-    expect(settled.invoiceSnapshot.kind).toBe(INVOICE_KIND.VOUCHER_CLAIM);
+    expect(settled.invoiceSnapshot.kind).toBe(DOCUMENT_KIND.VOUCHER_CLAIM);
     // Rendering one per claim does not survive scale, and most are never opened.
     expect(settled.invoiceUrl).toBeFalsy();
     // The token the public link is addressed by.
-    expect(settled.invoiceToken).toHaveLength(64);
+    expect(settled.documentToken).toHaveLength(64);
     expect(settled.settlementStage).toBe(SETTLEMENT_STAGE.COMPLETE);
   });
 
@@ -430,7 +538,7 @@ describe("the number is allotted at settle, the PDF is not", () => {
 
     const after = await Transaction.findById(transaction._id);
     expect(after.invoiceId).toBe(first.invoiceId);
-    expect(after.invoiceToken).toBe(first.invoiceToken);
+    expect(after.documentToken).toBe(first.documentToken);
   });
 
   it("numbers two claims in sequence with no gap", async () => {
@@ -463,6 +571,6 @@ describe("the number is allotted at settle, the PDF is not", () => {
       Transaction.findById(a.transaction._id),
       Transaction.findById(b.transaction._id),
     ]);
-    expect(one.invoiceToken).not.toBe(two.invoiceToken);
+    expect(one.documentToken).not.toBe(two.documentToken);
   });
 });

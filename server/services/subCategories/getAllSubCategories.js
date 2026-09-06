@@ -1,6 +1,10 @@
 const mongoose = require("mongoose");
 const SubCategory = require("../../models/SubCategory");
 const { pagination } = require("../../utils");
+const {
+  attachStats,
+  buildSubCategoryStats,
+} = require("../../helpers/taxonomy");
 
 exports.getAllSubCategories = async (query) => {
   let {
@@ -54,5 +58,8 @@ exports.getAllSubCategories = async (query) => {
   const sortStage = {};
   sortStage[sortBy] = sortOrder === "asc" ? 1 : -1;
   pipeline.push({ $sort: sortStage });
-  return await pagination(SubCategory, pipeline, page, limit);
+  const result = await pagination(SubCategory, pipeline, page, limit);
+  // See getAllCategories — the counts run against the returned page only.
+  result.data = await attachStats(result.data, buildSubCategoryStats);
+  return result;
 };

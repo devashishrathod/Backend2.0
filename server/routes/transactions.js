@@ -28,7 +28,6 @@ const {
   invoiceRegenerate,
   razorpayWebhook,
   razorpayCustomerWebhook,
-  invoiceByToken,
   webhookEventList,
   webhookEventGet,
   webhookReplay,
@@ -65,13 +64,15 @@ const {
 //     CUSTOMER account → {PUBLIC_API_URL}/trydood/v1/transactions/webhook/razorpay/customer
 // ---------------------------------------------------------------------------
 /**
- * The public invoice link. **No JWT** — see the controller.
+ * The public invoice link lives at `GET /documents/:token` now — see
+ * `routes/documents.js`.
  *
- * Declared beside the webhooks, before any auth middleware, for the same reason
- * they are: everything below `router.use(verifyJwtToken)` would reject a browser
- * arriving from a WhatsApp message.
+ * It was here, and `/settlements/statement/:token` was the other half. Between
+ * them they served two of the six document kinds and each carried its own token
+ * field name, so a refund receipt and a chargeback advice would have made it four
+ * routes and four field names — and a bare token still could not be resolved
+ * without already knowing which kind it was.
  */
-router.get("/invoice/:token", invoiceByToken);
 
 router.post("/webhook/razorpay/customer", razorpayCustomerWebhook);
 router.post("/webhook/razorpay", razorpayWebhook);

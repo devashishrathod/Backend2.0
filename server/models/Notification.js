@@ -89,6 +89,34 @@ const notificationSchema = new mongoose.Schema(
 notificationSchema.index({ brandId: 1, isDeleted: 1, createdAt: -1 });
 notificationSchema.index({ userId: 1, isRead: 1, isDeleted: 1, createdAt: -1 });
 
+/**
+ * The customer bell.
+ *
+ * ⚠️ Customer notifications are written with `customerId`, **not** `userId` —
+ * `refundNotices` and `voucherClaimNotices` both key on the customer, because a
+ * claim and a refund belong to the customer record rather than to the login. So
+ * neither index above covers a customer feed: without these it is a collection
+ * scan over every notification on the platform, growing with total volume rather
+ * than with one person's history.
+ *
+ * Two, not one. The first serves the list (`{customerId, isDeleted}` sorted by
+ * `createdAt`); the second serves the unread badge, which runs on **every**
+ * feed open and filters on `isRead` before it ever sorts.
+ *
+ * ⚠️ These are new indexes on an existing collection. With
+ * `MONGO_AUTO_INDEX=false` in production they will not appear on their own —
+ * `node scripts/ensureIndexes.js --apply` has to run, or the customer feed is
+ * correct and slow, which is the failure mode nobody notices until the
+ * collection is large.
+ */
+notificationSchema.index({ customerId: 1, isDeleted: 1, createdAt: -1 });
+notificationSchema.index({
+  customerId: 1,
+  isRead: 1,
+  isDeleted: 1,
+  createdAt: -1,
+});
+
 // Sparse so the many rows without a dedupeKey do not collide on null.
 notificationSchema.index({ dedupeKey: 1 }, { unique: true, sparse: true });
 

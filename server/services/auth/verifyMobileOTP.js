@@ -3,6 +3,7 @@ const { LOGIN_TYPES, ROLES } = require("../../constants");
 const { throwError } = require("../../utils");
 const { assertAccountAccess } = require("../../helpers/auth");
 const { verifyOtpToMobile } = require("../../helpers/twoFactor");
+const { sanitizeUser } = require("../../helpers/users");
 
 exports.verifyMobileOTP = async (body) => {
   let { sessionId, otp, mobile, role, currentScreen } = body;
@@ -22,6 +23,7 @@ exports.verifyMobileOTP = async (body) => {
     if (currentScreen) user.currentScreen = currentScreen.toUpperCase().trim();
     user = await user.save();
     const token = user.getSignedJwtToken();
-    return { user, token };
+    // See verifyEmailOTP — same shape for every token-issuing path.
+    return { user: sanitizeUser(user), token };
   } else throwError(401, "Invalid OTP");
 };

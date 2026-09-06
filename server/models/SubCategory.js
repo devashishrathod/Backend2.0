@@ -14,4 +14,8 @@ const subCategorySchema = new mongoose.Schema(
   { timestamps: true, versionKey: false }
 );
 
+// Powers the `stats.subCategories` count on the category listing, and the
+// filter behind `GET /subCategories/getAll?categoryId=`.
+subCategorySchema.index({ categoryId: 1, isDeleted: 1 });
+
 module.exports = mongoose.model("SubCategory", subCategorySchema);

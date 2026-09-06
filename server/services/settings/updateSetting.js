@@ -20,6 +20,7 @@ const CUSTOMER_BLOCKS = Object.freeze([
   "settlement",
   "refund",
   "chargeback",
+  "search",
 ]);
 
 /**
@@ -113,6 +114,57 @@ exports.updateSetting = async (userId, payload = {}) => {
     if (!setting.security) setting.security = {};
     if (!setting.security.otp) setting.security.otp = {};
     Object.assign(setting.security.otp, payload.security.otp);
+  }
+
+  /**
+   * The admin audience's outbound channels.
+   *
+   * ⚠️ Merged, and the "sub-document does not exist yet" case is the **normal**
+   * one here: `Setting.admin` was added long after these documents were written,
+   * so the live row has no `admin` key at all. Mongoose hydrates the defaults on
+   * read — which is why `GET /settings` already shows the block and
+   * `getAdminConfig()` already returns the right values — but nothing is stored
+   * until the first write lands here.
+   *
+   * ⚠️ Three audiences, three blocks, none able to silence another. Putting these
+   * flags anywhere near `vendor.subscription` is what made switching off renewal
+   * reminders also switch off every admin money alert.
+   */
+  if (payload.admin?.notification) {
+    if (!setting.admin) setting.admin = {};
+    if (!setting.admin.notification) setting.admin.notification = {};
+    Object.assign(setting.admin.notification, payload.admin.notification);
+  }
+
+  /**
+   * The public block.
+   *
+   * ⚠️ Merged nested-block-by-nested-block for the same reason as the others: an
+   * `Object.assign` on `setting.app` would drop `support` the moment somebody
+   * PATCHed only `features` — and the support number vanishing is exactly the
+   * kind of loss nobody notices until a stuck customer has nowhere to write.
+   *
+   * `mergeBlock` handles the "sub-document does not exist yet" case, which is
+   * the normal state here: `Setting.app` was added after these documents were
+   * written, so every existing row has no `app` at all.
+   */
+  if (payload.app) {
+    if (!setting.app) setting.app = {};
+    for (const key of [
+      "minVersion",
+      "latestVersion",
+      "storeUrl",
+      "support",
+      "features",
+    ]) {
+      if (payload.app[key]) mergeBlock(setting.app, key, payload.app[key]);
+    }
+    if (typeof payload.app.forceUpdate === "boolean") {
+      setting.app.forceUpdate = payload.app.forceUpdate;
+    }
+    if (typeof payload.app.updateMessage === "string") {
+      setting.app.updateMessage = payload.app.updateMessage;
+    }
   }
 
   if (typeof payload.isActive === "boolean") {

@@ -50,5 +50,4 @@ module.exports = {
    * job for why this is hourly and not only a boot check.
    */
   reapShadowIndexesJob,
-  getInvoiceByToken: require("./getInvoiceByToken").getInvoiceByToken,
 };

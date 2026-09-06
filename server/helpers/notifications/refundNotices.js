@@ -1,4 +1,19 @@
 const { notify } = require("./notify");
+/**
+ * ⚠️ The three admin notices below use `notifyAdmins`, not `notify`.
+ *
+ * A comment here previously said the opposite — that `notify({ audience: ADMIN })`
+ * matched the rest of the file and that reaching for `notifyAdmins` *"would have
+ * thrown on the first real alert and nowhere before"*. The reasoning was about an
+ * import that did not exist; the consequence was worse than a throw.
+ *
+ * `notify` addresses whoever `brandId` / `customerId` / `userId` resolves to, and
+ * an admin notice passes none of them — so `recipient.email` is `null`, the email
+ * block returns early, and push finds no devices. `REFUND_FAILED` is CRITICAL, it
+ * means a customer was told their money was coming and it did not arrive, and it
+ * reached nobody outside the panel.
+ */
+const { notifyAdmins } = require("./notifyAdmins");
 const {
   NOTIFICATION_AUDIENCE,
   NOTIFICATION_TYPES,
@@ -8,6 +23,7 @@ const {
   deepLink,
   vendorUrl,
   adminUrl,
+  customerUrl,
   CUSTOMER_PATHS,
   PANEL_PATHS,
   ADMIN_PATHS,
@@ -29,13 +45,19 @@ const money = (amount) =>
     { minimumFractionDigits: 2, maximumFractionDigits: 2 },
   )}`;
 
-const onDate = (date) =>
-  date
-    ? new Date(date).toLocaleString("en-IN", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    : "-";
+/**
+ * ⚠️ `formatDateTime`, and the timezone is the fix.
+ *
+ * The local helper this replaces called `toLocaleString("en-IN", …)` with **no
+ * `timeZone`**, so it formatted in the server's zone — UTC in production. A
+ * vendor response deadline stored at 21:30 IST printed as *"4:00 pm"*: five and a
+ * half hours early, on the exact line that tells them when the decision stops
+ * being theirs. Nothing looked wrong, and on an IST developer machine it was even
+ * right. See `formatDateTime.js`.
+ */
+const { formatDateTime } = require("./formatDateTime");
+
+const onDate = formatDateTime;
 
 /**
  * Refund notices.
@@ -92,8 +114,8 @@ exports.notifyVendorRefundRequested = async ({ request, claim }) => {
         ["Customer's reason", request.reasonNote || request.reason],
         ["Respond by", onDate(request.vendorRespondBy)],
       ],
-      buttonText: "Review Refund",
-      buttonUrl: vendorUrl(PANEL_PATHS.DASHBOARD),
+      ctaLabel: "Review Refund",
+      ctaUrl: vendorUrl(PANEL_PATHS.DASHBOARD),
     },
   });
 };
@@ -126,8 +148,8 @@ exports.notifyVendorRefundReminder = async ({ request }) => {
         ["Amount", money(request.requestedAmount)],
         ["Respond by", onDate(request.vendorRespondBy)],
       ],
-      buttonText: "Review Refund",
-      buttonUrl: vendorUrl(PANEL_PATHS.DASHBOARD),
+      ctaLabel: "Review Refund",
+      ctaUrl: vendorUrl(PANEL_PATHS.DASHBOARD),
     },
   });
 };
@@ -166,6 +188,8 @@ exports.notifyCustomerRefundRequested = async ({ request }) => {
         ["Amount", money(request.requestedAmount)],
         ["Status", REFUND_CUSTOMER_LABEL[request.status]],
       ],
+      ctaLabel: "Track your refund",
+      ctaUrl: customerUrl(CUSTOMER_PATHS.transaction(request.transactionId)),
     },
   });
 };
@@ -203,6 +227,8 @@ exports.notifyCustomerRefundApproved = async ({ request }) => {
         ["Amount requested", money(request.requestedAmount)],
         ["Amount approved", money(amount)],
       ],
+      ctaLabel: "Track your refund",
+      ctaUrl: customerUrl(CUSTOMER_PATHS.transaction(request.transactionId)),
     },
   });
 };
@@ -260,6 +286,24 @@ exports.notifyRefundBankDetailsRequested = async ({ request }) => {
         ["Amount", money(request.approvedAmount ?? request.requestedAmount)],
         ["What to do", "Open the Trydood app and add your bank account"],
       ],
+      /**
+       * ⚠️ The one button on this platform that needs reading twice.
+       *
+       * `customerUrl` is a universal link, so a tap opens the **app** at the
+       * refunds screen — not a web form. That is the whole reason the copy can
+       * promise we never ask for details over a message and still give them
+       * somewhere to tap.
+       *
+       * ⚠️ Which puts a requirement on `CUSTOMER_APP_URL`: whatever is served at
+       * that host when the app is *not* installed must only send the reader to
+       * the Play Store or the App Store. **It must never render a form that
+       * collects bank details.** If it ever does, this email becomes
+       * indistinguishable from the phishing message it is written to not
+       * resemble — and the fallback URL printed under the button is a web
+       * address, so a customer with no app installed lands there.
+       */
+      ctaLabel: "Add your bank account",
+      ctaUrl: customerUrl(CUSTOMER_PATHS.REFUNDS),
     },
   });
 };
@@ -299,6 +343,24 @@ exports.notifyRefundBankDetailsReminder = async ({ request, stage }) => {
         ["Amount", money(request.approvedAmount ?? request.requestedAmount)],
         ["What to do", "Open the Trydood app and add your bank account"],
       ],
+      /**
+       * ⚠️ The one button on this platform that needs reading twice.
+       *
+       * `customerUrl` is a universal link, so a tap opens the **app** at the
+       * refunds screen — not a web form. That is the whole reason the copy can
+       * promise we never ask for details over a message and still give them
+       * somewhere to tap.
+       *
+       * ⚠️ Which puts a requirement on `CUSTOMER_APP_URL`: whatever is served at
+       * that host when the app is *not* installed must only send the reader to
+       * the Play Store or the App Store. **It must never render a form that
+       * collects bank details.** If it ever does, this email becomes
+       * indistinguishable from the phishing message it is written to not
+       * resemble — and the fallback URL printed under the button is a web
+       * address, so a customer with no app installed lands there.
+       */
+      ctaLabel: "Add your bank account",
+      ctaUrl: customerUrl(CUSTOMER_PATHS.REFUNDS),
     },
   });
 };
@@ -316,11 +378,7 @@ exports.notifyRefundBankDetailsReminder = async ({ request, stage }) => {
  * answer, `claimRefundAdjustments` recovers the clawback from a later cycle.
  */
 exports.notifyAdminBankDetailsStale = async ({ request, daysWaiting }) => {
-  return notify({
-    // ⚠️ `notify({ audience: ADMIN })`, matching every other admin notice in this
-    // file — `notifyAdmins` is not imported here, and reaching for it would have
-    // thrown on the first real alert and nowhere before.
-    audience: NOTIFICATION_AUDIENCE.ADMIN,
+  return notifyAdmins({
     type: NOTIFICATION_TYPES.REFUND_BANK_DETAILS_STALE,
     severity: NOTIFICATION_SEVERITY.WARNING,
     title: `No bank details after ${daysWaiting} days — ${request.claimCode}`,
@@ -346,8 +404,8 @@ exports.notifyAdminBankDetailsStale = async ({ request, daysWaiting }) => {
         ["Asked on", onDate(request.bankDetailsRequestedAt)],
         ["Waiting", `${daysWaiting} days`],
       ],
-      buttonText: "Open refund",
-      buttonUrl: adminUrl(ADMIN_PATHS.refund(request._id)),
+      ctaLabel: "Open refund",
+      ctaUrl: adminUrl(ADMIN_PATHS.refund(request._id)),
     },
   });
 };
@@ -376,6 +434,10 @@ exports.notifyCustomerRefundRejected = async ({ request }) => {
         ["Amount requested", money(request.requestedAmount)],
         ["Status", REFUND_CUSTOMER_LABEL[request.status]],
       ],
+      // Support, matching the deep link — this is the one refund ending where
+      // the next step is a person, not a screen.
+      ctaLabel: "Contact support",
+      ctaUrl: customerUrl(CUSTOMER_PATHS.SUPPORT),
     },
   });
 };
@@ -387,8 +449,7 @@ exports.notifyCustomerRefundRejected = async ({ request }) => {
  * with nobody answering, and the only person who can move it is reading this.
  */
 exports.notifyAdminRefundEscalated = async ({ request }) => {
-  return notify({
-    audience: NOTIFICATION_AUDIENCE.ADMIN,
+  return notifyAdmins({
     type: NOTIFICATION_TYPES.REFUND_ESCALATED,
     severity: NOTIFICATION_SEVERITY.WARNING,
     title: `Refund escalated — ${request.claimCode}`,
@@ -410,8 +471,8 @@ exports.notifyAdminRefundEscalated = async ({ request }) => {
         ["Amount", money(request.requestedAmount)],
         ["Vendor deadline", onDate(request.vendorRespondBy)],
       ],
-      buttonText: "Open Refunds",
-      buttonUrl: adminUrl(ADMIN_PATHS.refund(request._id)),
+      ctaLabel: "Open Refunds",
+      ctaUrl: adminUrl(ADMIN_PATHS.refund(request._id)),
     },
   });
 };
@@ -424,8 +485,7 @@ exports.notifyAdminRefundEscalated = async ({ request }) => {
  * only a person retrying or switching to a bank transfer.
  */
 exports.notifyAdminRefundFailed = async ({ request, reason }) => {
-  return notify({
-    audience: NOTIFICATION_AUDIENCE.ADMIN,
+  return notifyAdmins({
     type: NOTIFICATION_TYPES.REFUND_FAILED,
     severity: NOTIFICATION_SEVERITY.CRITICAL,
     title: `Refund FAILED — ${request.claimCode}`,
@@ -454,8 +514,8 @@ exports.notifyAdminRefundFailed = async ({ request, reason }) => {
         ["Reason", reason || "-"],
         ["Attempt", String(request.attemptCount || 1)],
       ],
-      buttonText: "Open Refunds",
-      buttonUrl: adminUrl(ADMIN_PATHS.refund(request._id)),
+      ctaLabel: "Open Refunds",
+      ctaUrl: adminUrl(ADMIN_PATHS.refund(request._id)),
     },
   });
 };

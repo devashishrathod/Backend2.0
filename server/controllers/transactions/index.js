@@ -39,5 +39,4 @@ module.exports = {
   disputeDetail,
   disputeAddEvidence,
   disputeEvidencePack,
-  invoiceByToken: require("./invoiceByToken").invoiceByToken,
 };

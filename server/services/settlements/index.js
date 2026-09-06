@@ -17,7 +17,6 @@ const {
   retryPayout,
   reversePayout,
 } = require("./paySettlement");
-const { getStatementByToken } = require("./getStatementByToken");
 const {
   getSettlements,
   getSettlementDetail,
@@ -84,7 +83,6 @@ module.exports = {
    * needs a login is a Download button that does not work. Only a `PAID`
    * settlement has one: every earlier state can still move.
    */
-  getStatementByToken,
   /**
    * The sweeps. A settlement is the one money path here that fails by *not*
    * happening, so each of these looks for an absence rather than an error.
