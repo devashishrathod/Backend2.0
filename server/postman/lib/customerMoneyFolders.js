@@ -280,7 +280,7 @@ const claimsFolder = folder(
         ...A.fields({ payment: "object", claim: "object", viewer: "object" }),
         ...A.custom("invoice link haan, token kabhi nahi", [
           "const d = pm.response.json().data;",
-          'pm.expect(d.payment, "invoiceToken").to.not.have.property("invoiceToken");',
+          'pm.expect(d.payment, "documentToken").to.not.have.property("documentToken");',
         ]),
       ],
     }),
@@ -370,7 +370,7 @@ const claimsFolder = folder(
     req({
       name: "Invoice PDF kholo (WhatsApp/email ka link)",
       method: "GET",
-      segments: ["transactions", "invoice", "{{invoice_token}}"],
+      segments: ["documents", "{{invoice_token}}"],
       /**
        * ⚠️ The 302 **is** the answer, so do not follow it.
        *

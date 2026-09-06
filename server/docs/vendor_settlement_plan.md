@@ -206,7 +206,7 @@ MDR model karte hi ek baat saaf ho jaati hai jo pehle chhupi hui thi. Method ke 
 > `approveSettlement` · `paySettlement` · `payoutLedger` · `settlementListings` ·
 > `settlementJobs`.
 >
-> **Abhi nahi bana:** statement PDF (`statementUrl` / `statementToken` model me
+> **Abhi nahi bana:** statement PDF (`documentUrl` / `documentToken` model me
 > hain, generator nahi) · reserve release job (`reserveHeld` bookta hai,
 > `holdDays` ke baad chhodne wala kuchh nahi — reserve default me off hai) ·
 > RazorpayX / Route adapter.
@@ -237,7 +237,7 @@ MDR model karte hi ek baat saaf ho jaati hai jo pehle chhupi hui thi. Method ke 
   approvedBy, approvedAt,
   needsRevalidation,       // §3.6
   taintedTransactionIds,   // §3.6
-  statementUrl, statementToken,
+  documentUrl, documentToken,
   idempotencyKey,          // STL:<brandId>:<periodEnd> — unique
   isDeleted,
 }
@@ -251,7 +251,7 @@ MDR model karte hi ek baat saaf ho jaati hai jo pehle chhupi hui thi. Method ke 
 | `{ settlementNumber }` | unique | Statement identity |
 | `{ brandId, periodEnd:-1 }` | — | Vendor history |
 | `{ status, createdAt:-1 }` | — | Admin worklist, stuck detection |
-| `{ statementToken }` | unique, partial `$type:string` | Public statement link |
+| `{ documentToken }` | unique, partial `$type:string` | Public statement link |
 
 ### 3.2 `PayoutLeg` — ek hi model, settlement aur refund dono ke liye ⚠️
 

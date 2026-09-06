@@ -379,6 +379,28 @@ It also catches the two failures that look like success:
 A pre-commit hook runs it (`.githooks/pre-commit`). If it fails, the fix is to
 add the missing piece, never `--no-verify`.
 
+### ⚠️ It also checks the totals the doc states about itself
+
+Everything above asks whether a route is **mentioned**. Nothing read the summary
+tables — so when two download routes were replaced by one `GET /documents/:token`,
+`endpoints_category.md` went on claiming *"Total endpoints: 216"* after the count
+became 215, and all four checks stayed green. A reader got a wrong total and
+nothing anywhere said so.
+
+The same number is restated in four places (the header, the `## Summary — N`
+heading, the `**TOTAL**` row, the doc-build-status table), and four places only
+ever updated by somebody remembering is three places that will drift. The
+verifier now compares all four against the router count and exits 1 on a
+mismatch. When you add or remove a route, also fix the module row, the
+`**TOTAL**` row's per-category columns and the arithmetic note under it — the
+verifier cannot check those, and they have to add up.
+
+**Two hooks, two moments.** `.claude/hooks/verify-api-sync.js` runs the same
+check on every `Edit`/`Write` to `routes/`, `index.js`, `postman/` or one of the
+four docs — so a gap surfaces while the change is still being made rather than at
+commit time. It never blocks; it reports the verifier's output back. The
+pre-commit hook remains the gate.
+
 ---
 
 ## Response Envelope

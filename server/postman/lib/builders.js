@@ -272,7 +272,7 @@ const example = ({ name, code, status, body, req }) => ({
  * @param {Array}    [o.examples]    saved examples (documentation only)
  * @param {boolean}  [o.followRedirects]
  *        Set `false` for an endpoint whose answer **is** the redirect.
- *        `GET /transactions/invoice/:token` returns a 302 to a CDN, and with
+ *        `GET /documents/:token` returns a 302 to a CDN, and with
  *        following left on, the captured "response" was the PDF Cloudinary
  *        served — non-JSON, so the capture step skipped it and that request
  *        ended up the only one in the collection with no saved example. Worse,

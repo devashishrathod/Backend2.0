@@ -10262,13 +10262,12 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/settlements/statement/{{statement_token}}",
+              "raw": "{{base_url}}/documents/{{statement_token}}",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
-                "settlements",
-                "statement",
+                "documents",
                 "{{statement_token}}"
               ]
             },
@@ -10313,15 +10312,14 @@
                   }
                 ],
                 "url": {
-                  "raw": "http://localhost:8080/trydood/v1/settlements/statement/845b96b3d7b70d5328e3d0231240b99deeebe9dd19db4b2e297c3dac43b7b97f",
+                  "raw": "http://localhost:8080/trydood/v1/documents/845b96b3d7b70d5328e3d0231240b99deeebe9dd19db4b2e297c3dac43b7b97f",
                   "host": [
                     "{{base_url}}"
                   ],
                   "path": [
                     "trydood",
                     "v1",
-                    "settlements",
-                    "statement",
+                    "documents",
                     "845b96b3d7b70d5328e3d0231240b99deeebe9dd19db4b2e297c3dac43b7b97f"
                   ]
                 }

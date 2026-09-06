@@ -99,7 +99,7 @@ hote hain.
 | Kya | Kahan |
 |---|---|
 | `POST /voucher-claims/create-order` **reuse path** — pehle se order ho to `200` + `reused: true`, `201` nahi. Response nested hai (`data.claim.id`, `data.transaction.id`, `data.razorpay.orderId`) | [17a](#17a-post-voucher-claimscreate-order) |
-| `GET /transactions/invoice/:token` **`409`** deta hai jab `invoiceSnapshot` na ho — sirf token kaafi nahi | [17c](#17c-get-transactionsinvoicetoken) |
+| `GET /documents/:token` **`409`** deta hai jab snapshot na ho — sirf token kaafi nahi | [17c](#17c-get-documentstoken) |
 | Search sections me rows `items` me hain, `results` me nahi; single-type mode ka shape **poora alag** hai | [14a](#14a-get-search) · [14b](#14b-get-searchqtype--ek-type-paginated) |
 | `GET /bank-accounts` **plain array** deta hai — koi pagination envelope nahi, khaali par `[]` aur `404` nahi | [17o](#17o-get-bank-accounts--mere-accounts-) |
 
@@ -199,7 +199,7 @@ Ye **live verification round** tha. Teen jagah doc code se match nahi kar raha t
 13a. [**Voucher Claim APIs** 🆕](#voucher-claim-apis-)
     - [POST /voucher-claims/create-order](#17a-post-voucher-claimscreate-order)
     - [POST /voucher-claims/verify](#17b-post-voucher-claimsverify)
-    - [GET /transactions/invoice/:token](#17c-get-transactionsinvoicetoken)
+    - [GET /documents/:token](#17c-get-documentstoken)
     - [GET /voucher-claims — meri claims](#17d-get-voucher-claims--meri-claims)
     - [GET /voucher-claims/payments](#17e-get-voucher-claimspayments--mere-payments)
     - [GET /voucher-claims/payments/:transactionId](#17f-get-voucher-claimspaymentstransactionid--ek-payment)
@@ -330,7 +330,7 @@ Ye ginti [`postman/lib/routeGates.js`](../postman/lib/routeGates.js) se nikli ha
 | 🔒 **`isCustomer`** | Sirf customer — engagement, location, claims ke writes, bank accounts, refunds ke writes, search history | 17 |
 | 🔒 **`verifyJwtTokenEvenIfDeactivated`** | Signed in, suspended account bhi — logout, push unregister aur **notification feed**, warna suspended user phasa reh jaata aur suspension samjhane wala notice bhi na padh paata | 3 |
 
-> ⚠️ **18 Public me `GET /transactions/invoice/:token` bhi hai**, par wo guest surface
+> ⚠️ **18 Public me `GET /documents/:token` bhi hai**, par wo guest surface
 > nahi hai: uska 32-byte token hi credential hai. Wo link WhatsApp/email se aata hai,
 > jahan browser me koi session hota hi nahi.
 >
@@ -3183,9 +3183,24 @@ Webhook aur ye callback **har payment par** milliseconds ke faasle par chalte ha
 
 ---
 
-## 17c. GET /transactions/invoice/:token
+## 17c. GET /documents/:token
 
-Invoice download. **Public — koi JWT nahi.**
+Kisi bhi Trydood document ka download. **Public — koi JWT nahi.**
+
+### Ek route, chhe kism ke document
+
+| Kya | Kahan se |
+|---|---|
+| Claim receipt / tax invoice | `Transaction` |
+| Subscription invoice · grant advice | `Transaction` |
+| Refund receipt / credit note | `RefundRequest` |
+| Chargeback advice / debit note | `Dispute` |
+| Payout statement (+ commission tax invoice) | `Settlement` |
+
+Token khud nahi batata ki wo kis kism ka document hai, isliye resolver chaaron
+collection me dhoondhta hai. Pehle `transactions/invoice/:token` aur
+`settlements/statement/:token` do alag route the aur dono ka apna token field naam
+tha — refund aur dispute ke liye teesra aur chautha banana padta.
 
 Link WhatsApp message aur email se khulta hai, jahan browser me koi session hota hi nahi. Login maangna matlab Download button kaam na kare, jo uska ekmatra kaam hai. **32-byte random token hi credential hai.**
 

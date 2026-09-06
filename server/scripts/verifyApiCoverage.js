@@ -247,6 +247,73 @@ if (broken.length) {
   log("\n✅ every route is categorised, documented, requested and exemplified.\n");
 }
 
+/**
+ * The counts `endpoints_category.md` states about itself.
+ *
+ * ### ⚠️ Why this check exists
+ *
+ * Everything above asks whether a route is **mentioned**. None of it reads the
+ * summary tables, so the document went on claiming *"Total endpoints: 216"* after
+ * two routes were replaced by one — and every check above stayed green. A reader
+ * opening the doc got a total that was simply wrong, and nothing anywhere said so.
+ *
+ * The header, the summary heading, the `**TOTAL**` row and the doc-build-status
+ * table all restate the same number in four places. Four places that are only
+ * ever updated by somebody remembering is three places that will drift.
+ *
+ * `+3 utility/non-versioned` are the `index.js` routes, which the doc counts
+ * separately — so the number it should state is the router count alone.
+ */
+const routerRouteCount = routes.filter((r) => r.mount !== "index.js").length;
+
+const STATED_COUNTS = [
+  {
+    label: "header",
+    re: /\*\*Total endpoints: (\d+)\*\*/,
+  },
+  {
+    label: "summary heading",
+    re: /^## Summary — (\d+) endpoints$/m,
+  },
+  {
+    label: "TOTAL row",
+    re: /\|\s*\|\s*\*\*TOTAL\*\*\s*\|\s*\|\s*\*\*(\d+)\*\*/,
+  },
+  {
+    label: "doc build status",
+    re: /\|\s*`endpoints_category\.md`\s*\|\s*\*\*(\d+)\*\*/,
+  },
+];
+
+const countProblems = [];
+for (const { label, re } of STATED_COUNTS) {
+  const match = categoryDoc.match(re);
+  if (!match) {
+    countProblems.push(`${label}: no count found — the line was reworded`);
+    continue;
+  }
+  if (Number(match[1]) !== routerRouteCount) {
+    countProblems.push(
+      `${label}: says ${match[1]}, routers serve ${routerRouteCount}`,
+    );
+  }
+}
+
+if (countProblems.length) {
+  log(
+    `\n❌ endpoints_category.md states the wrong total (${countProblems.length} place(s)):\n`,
+  );
+  for (const problem of countProblems) log(`     → ${problem}`);
+  log(
+    "\n  Update the header, the `## Summary — N` heading, the module row, the\n" +
+      "  **TOTAL** row and its arithmetic note, the category-count table, and the\n" +
+      "  doc-build-status table. Removing two routes and adding one is a net −1\n" +
+      "  in every one of them.\n",
+  );
+} else if (!ONLY_MISSING) {
+  log(`  ✅ stated totals          all 4 say ${routerRouteCount}`);
+}
+
 if (!ONLY_MISSING && !broken.length) {
   for (const [name, s] of Object.entries(SURFACES)) {
     const col = JSON.parse(read(s.collection));
@@ -264,4 +331,4 @@ if (!ONLY_MISSING && !broken.length) {
   log("");
 }
 
-process.exitCode = broken.length ? 1 : 0;
+process.exitCode = broken.length || countProblems.length ? 1 : 0;

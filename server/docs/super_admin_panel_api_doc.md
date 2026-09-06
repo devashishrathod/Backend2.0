@@ -7321,7 +7321,7 @@ aise settlement se bandha chhod dega jo kabhi pay nahi hogi.
 
 ## Abhi nahi bana
 
-- **Statement PDF** — `statementUrl` / `statementToken` model me hain, generator nahi.
+- **Statement PDF** — `documentUrl` / `documentToken` model me hain, generator nahi.
   Vendor abhi `GET /settlements/:id/transactions` se lines padh sakta hai.
 - **RazorpayX / Route** — `payoutProvider` aur `PayoutLeg` isi ke liye bane hain.
 - **Reserve release** — `reserveHeld` bookta hai, `holdDays` ke baad chhodne wali job
@@ -7448,11 +7448,30 @@ Ye aath endpoints `isVendorOrAdmin` hain, yaani admin bhi kisi brand ka showcase
 
 ## Public / role-agnostic
 
-### `GET /settlements/statement/:token`
+### `GET /documents/:token`
 
-⚠️ **Poore settlements module ka ekmatra public route.** Koi bearer nahi — path ka token hi credential hai. Wahi token vendor ke email/WhatsApp me jaane wale statement link me hota hai, isliye ye us aadmi ke liye kaam karta hai jo abhi login nahi hai.
+⚠️ **Ek hi public document route, chhe kism ke document ke liye** — claim receipt,
+subscription invoice, grant advice, payout statement, refund receipt, chargeback
+advice. Koi bearer nahi; path ka token hi credential hai. Wahi token vendor aur
+customer ke email/WhatsApp link me hota hai, isliye ye us aadmi ke liye kaam karta
+hai jo abhi login nahi hai.
 
-⚠️ Token **sirf tab mint hota hai jab settlement `PAID` bane** (`transitionSettlement`: `becomingPaid && !statementToken`). Isliye galat token par `404` aata hai, `401` nahi — `401` ye bata deta ki token maujood hai par aapka nahi.
+⚠️ Pehle `settlements/statement/:token` aur `transactions/invoice/:token` do alag
+route the, aur dono ka apna token field naam tha — to bare token se ye pata hi nahi
+chalta tha ki wo kis kism ka document hai. Refund aur dispute ke liye teesra aur
+chautha route banana padta. Ab chaaron collection par field ka naam `documentToken`
+hai aur resolver khud dhoondhta hai.
+
+⚠️ Payout statement ka token **sirf tab mint hota hai jab settlement `PAID` bane**
+(`transitionSettlement`: `becomingPaid && !documentToken`), aur snapshot bhi wahin
+freeze hota hai — usse pehle har figure abhi bhi hil sakta hai. Galat token par
+`404` aata hai, `401` nahi — `401` ye bata deta ki token maujood hai par aapka nahi.
+
+⚠️ Payout statement ke andar **commission ka tax invoice** bhi chhapta hai, apne
+alag number ke saath (`TD/CMN/…`). Do document, ek kaagaz: statement batata hai
+bank me kya pahuncha, aur commission Trydood ki taraf se vendor ko di gayi taxable
+supply hai — GST me wo apna document hai. Commission zero ho to wo section aur uska
+number, dono nahi bante.
 
 ### `GET /disputes` · `GET /disputes/:disputeId`
 

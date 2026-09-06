@@ -128,8 +128,10 @@ ruk jaana theek hai; sab ka ruk jaana nahi.
 
 ### 2.2b `settlementNumber` counter se aata hai, timestamp se nahi
 
-`generateInvoiceNumber({ series: INVOICE_SERIES.SETTLEMENT })` — wahi Counter-based
-helper jo invoice numbers deta hai.
+`generateDocumentNumber({ series: DOCUMENT_SERIES[PAYOUT_STATEMENT] })` — wahi
+Counter-based helper jo baaki saare document numbers deta hai. Series `STL` hai, wahi
+jo payout statement khud chhapta hai, to settlement aur usko describe karne wala
+document ek hi number rakhte hain — do nahi.
 
 Timestamp ya random se banane par do settlement ka number ek jaisa ho sakta tha, aur wahi
 number vendor ko email me jaata hai aur support par bola jaata hai. Counter atomic hai,
@@ -1094,7 +1096,7 @@ Ye override nahi karta jo abhi zinda hai:
 
 ## 12. ✅ Statement PDF
 
-`statementUrl` aur `statementToken` model par shuru se the aur read pipeline unhe
+`documentUrl` aur `documentToken` model par shuru se the aur read pipeline unhe
 project bhi karta tha — par **unhe koi bharta nahi tha**. Vendor lines API se padh
 sakta tha, par accountant ko bhejne layak koi kaagaz nahi tha.
 

@@ -1385,6 +1385,18 @@ const run = async () => {
           storeId: ctx.outlet.storeId,
           state: ctx.location?.state || null,
         },
+        /**
+         * ⚠️ Seeded because the receipt's "Bill To" reads it, and without it the
+         * fixture reproduces the very bug this field was added to fix: the
+         * builder read `claim.customerSnapshot?.name` when no such field existed,
+         * so every invoice printed `Bill To: -`.
+         */
+        customerSnapshot: {
+          name: owner.customer.fullName,
+          whatsappNumber: owner.customer.whatsappNumber,
+          mobile: owner.customer.mobile,
+          email: owner.customer.email,
+        },
 
         billAmount,
         offerApplied: preview.offerApplied,
@@ -1443,7 +1455,7 @@ const run = async () => {
          */
         ...(settled
           ? {
-              invoiceToken: `${MARK.toLowerCase()}invoicetoken${suffix}0000000000000000`,
+              documentToken: `${MARK.toLowerCase()}invoicetoken${suffix}0000000000000000`,
               /**
                * ⚠️ Numbered by `claimSeq`, like `razorpayOrderId` above.
                *
@@ -1466,7 +1478,7 @@ const run = async () => {
       );
 
       /**
-       * ⚠️ `invoiceSnapshot`, not just `invoiceToken`.
+       * ⚠️ `invoiceSnapshot`, not just `documentToken`.
        *
        * `getInvoiceByToken` refuses with **409 "This invoice is not ready yet"**
        * when the snapshot is absent, and it is right to: a settled transaction
@@ -2115,8 +2127,8 @@ const run = async () => {
      * ⚠️ Four rounds, not three — the fourth exists only to be walked all the
      * way to PAID.
      *
-     * `statementToken` is minted at that transition and nowhere else
-     * (`transitionSettlement`: `becomingPaid && !settlement.statementToken`),
+     * `documentToken` is minted at that transition and nowhere else
+     * (`transitionSettlement`: `becomingPaid && !settlement.documentToken`),
      * and `GET /settlements/statement/:token` is the one **public** settlement
      * route. With no PAID settlement there is no token, the path segment is
      * empty, and the request answers `401` — which names authentication for
@@ -2250,7 +2262,7 @@ const run = async () => {
     ]);
 
     /**
-     * Walked all the way to PAID, purely so it carries a `statementToken`.
+     * Walked all the way to PAID, purely so it carries a `documentToken`.
      *
      * ⚠️ Nothing in the collection acts on this one. It exists because the
      * token is minted at that transition and nowhere else, and the public
@@ -2559,7 +2571,7 @@ const run = async () => {
         other_customer_notification_id: String(
           money.notifications[money.notifications.length - 1]._id,
         ),
-        invoice_token: String(money.paid.transaction.invoiceToken),
+        invoice_token: String(money.paid.transaction.documentToken),
         awaiting_bank_refund_id: String(money.awaitingBank._id),
         other_customer_claim_id: String(money.otherPaid.claim._id),
         other_customer_transaction_id: String(money.otherPaid.transaction._id),
@@ -2641,7 +2653,7 @@ const run = async () => {
          * from an emailed link while signed out. So no request can capture
          * this; it only exists on the settlement row.
          */
-        statement_token: String(a.paid?.statementToken || ""),
+        statement_token: String(a.paid?.documentToken || ""),
 
         admin_user_id: String(admin._id),
         email_otp: EMAIL_VERIFY_OTP,
@@ -2692,7 +2704,7 @@ Ye teen ids environment me pehle se bhar di jaati hain (collection inhe khud
 capture nahi kar sakti — inke liye admin ya live penny drop chahiye):
 
   bank_account_id               ${money ? money.account._id : "—"}
-  invoice_token                 ${money ? money.paid.transaction.invoiceToken : "—"}
+  invoice_token                 ${money ? money.paid.transaction.documentToken : "—"}
   awaiting_bank_refund_id       ${money ? money.awaitingBank._id : "—"}
   other_customer_claim_id       ${money ? money.otherPaid.claim._id : "—"}
   other_customer_transaction_id ${money ? money.otherPaid.transaction._id : "—"}

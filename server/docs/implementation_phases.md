@@ -376,7 +376,7 @@ is baat par hai ki hold failure se lekar paisa pahunchne tak har kadam par laga 
 | ✅ **S2-2** | Claim/release engine | `helpers/settlements/`: `settlementClaims.js` · `transitionSettlement.js` · `taintSettlement.js` | Sweeps ke naam badle — neeche |
 | ✅ **S2-3** | `buildSettlements` | Canonical IST period, receipt gate, totals, gateway fee | `services/settlements/buildSettlements.js` · `helpers/dates/istDate.js` |
 | ✅ **S2-4** | Payout + admin API | `startPayout` · `confirmPayout` · `failPayout` · `retryPayout` · `reversePayout`, aur **`requiresAdminApproval` ab kaam karta hai** | 12 admin endpoints. ⚠️ Wo setting dono taraf wired thi aur **koi padhta hi nahi tha** — `false` karne par kuch nahi hota tha, bina error ke. Ab build seedha `APPROVED` par jaata hai; `pay` ab bhi aadmi ka kaam hai aur `paySettlement` taint dobara check karta hai. `settlement_flow.md` §3.0 |
-| ✅ **S2-5** | Statement + vendor screens | Frozen `bankSnapshot` ✅, per-leg UTR ✅, 3 read endpoints ✅, **statement PDF** ✅ | `helpers/settlements/generateAndUploadStatement.js` · `GET /settlements/statement/:token` |
+| ✅ **S2-5** | Statement + vendor screens | Frozen `bankSnapshot` ✅, per-leg UTR ✅, 3 read endpoints ✅, **statement PDF** ✅ | **superseded:** ab `helpers/settlements/buildSettlementDocumentSnapshot.js` + `helpers/documents/renderDocument.js` · `GET /documents/:token` |
 | ✅ **S2-6** | Docs + Postman + tests | | 10 settlement test suites · `settlement_flow.md` · census |
 
 ### ✅ Phase S2 ho gaya — poora paisa nikalne ka rasta
@@ -413,7 +413,7 @@ Screens frontend ki ginti thi, endpoints ki nahi.
 
 ### ✅ Statement PDF ban gaya
 
-`statementUrl` aur `statementToken` model par shuru se the aur read pipeline unhe
+`documentUrl` aur `documentToken` model par shuru se the aur read pipeline unhe
 project bhi karta tha — par **unhe koi bharta nahi tha**. Ab:
 
 ```
@@ -1121,7 +1121,7 @@ Purani saari transactions me `settlementStage` hai hi nahi (`!= "COMPLETE"` sab 
 
 ### 9.10 Postman ka example capture secrets commit kar dega
 
-`lib/capture-examples.js` response bodies ko jaisa hai waisa save karta hai — usme `invoiceToken`, `statementToken`, UTR, account last-4 sab aa jayenge, aur wo **git me** chala jayega. Redaction pehle chahiye.
+`lib/capture-examples.js` response bodies ko jaisa hai waisa save karta hai — usme `invoiceToken`, `documentToken`, UTR, account last-4 sab aa jayenge, aur wo **git me** chala jayega. Redaction pehle chahiye.
 
 ### 9.11 Do assertions Phase 1A ke din se fail karengi
 

@@ -11,7 +11,7 @@
 **Framework:** Express.js (CommonJS) · **DB:** MongoDB (Mongoose)
 **Route mounting:** `routes/index.js` auto-mounts har file ko uske filename se → `routes/subBrands.js` = `/trydood/v1/subBrands` (camelCase preserved). Do file `routePrefix` override karti hain — `voucherClaims.js` → `/voucher-claims`, `customerBankAccounts.js` → `/bank-accounts`.
 
-**Scanned:** 2026-09-05 · **Total endpoints: 216** (+3 utility/non-versioned)
+**Scanned:** 2026-09-05 · **Total endpoints: 215** (+3 utility/non-versioned)
 
 > ### ⚠️ Ye ginti pichhli baar 53 endpoint peeche reh gayi thi
 >
@@ -75,7 +75,7 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 |---|---:|---|---|
 | **Guest browse** — bina login app dekhna | **22** | 🟠 GUEST | Yahi asli guest mode hai: brand profile, voucher listing, home banners, legal pages, search |
 | **Auth entry** — login / OTP / password | 9 | 🟣 ya ⚪ | Public hona **majboori** hai, warna koi login hi na kar paaye. Ye "browsing" nahi hai — inhe GUEST me daalna guest surface ko 9 endpoint bada dikhata jo asal me sirf darwaza hain |
-| **Machine / signed link** | 4 | 🤖 MACHINE | Razorpay webhooks (HMAC) aur do signed-link download. Koi insaan-role nahi — inhe guest doc me daalna galat audience ko dikhana hai |
+| **Machine / signed link** | 3 | 🤖 MACHINE | Do Razorpay webhook (HMAC) aur **ek** signed-link download — `GET /documents/:token`, jo chhe kism ke document serve karta hai. Pehle do alag download route the. Koi insaan-role nahi — inhe guest doc me daalna galat audience ko dikhana hai |
 
 > ### ⚠️ 4 guest endpoint `optionalAuth` par hain, `Public` par nahi — ye farq load-bearing hai
 >
@@ -105,7 +105,7 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 
 ---
 
-## Summary — 216 endpoints
+## Summary — 215 endpoints
 
 | # | Module | Base path | Total | 🟠 | 🟢 | 🔵 | 🟣 | ⚪ | 🤖 |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
@@ -132,22 +132,23 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | 21 | Subscriptions (Plans) | `/subscriptions` | 5 | – | – | – | 3 | 2 | – |
 | 22 | Subscribeds | `/subscribeds` | 8 | – | – | – | 6 | 2 | – |
 | 23 | Promo Codes | `/promoCodes` | 6 | – | – | – | 6 | – | – |
-| 24 | Transactions | `/transactions` | 15 | – | – | 1 | 6 | 5 | 3 |
+| 24 | Transactions | `/transactions` | 14 | – | – | 1 | 6 | 5 | 2 |
 | 25 | Voucher Claims | `/voucher-claims` | 7 | – | 2 | – | – | 5 | – |
 | 26 | Customer Bank Accounts 🆕 | `/bank-accounts` | 4 | – | 4 | – | – | – | – |
 | 27 | Refunds | `/refunds` | 14 | – | 3 | 2 | 7 | 2 | – |
 | 28 | Disputes | `/disputes` | 4 | – | – | 1 | 1 | 2 | – |
-| 29 | Settlements | `/settlements` | 16 | – | – | – | 12 | 3 | 1 |
+| 29 | Settlements | `/settlements` | 15 | – | – | – | 12 | 3 | – |
 | 30 | Settings | `/settings` | 2 | – | – | – | 2 | – | – |
 | 31 | Terms & Conditions | `/terms-and-conditions` | 5 | 2 | – | – | 3 | – | – |
 | 32 | Privacy & Policies | `/privacy-and-policies` | 5 | 2 | – | – | 3 | – | – |
-| 33 | App Config 🆕 | `/app-config` | 1 | 1 | – | – | – | – | – |
-| | **TOTAL** | | **216** | **22** | **17** | **15** | **84** | **74** | **4** |
+| 33 | App Config | `/app-config` | 1 | 1 | – | – | – | – | – |
+| 34 | Documents 🆕 | `/documents` | 1 | – | – | – | – | – | 1 |
+| | **TOTAL** | | **215** | **22** | **17** | **15** | **84** | **74** | **3** |
 
 > \* **4 endpoints do category me hain** (`optionalAuth`) — teen `/vouchers/customer/*`
 > aur `GET /search`. Wo 🟠 aur 🟢 dono column me ginne gaye hain, isliye
-> `22 + 17 + 15 + 84 + 74 + 4 = 216` **tabhi** milta hai jab un chaar ko ek baar
-> hi gina jaaye: distinct = `18 (pure guest) + 4 (dual) + 17 (customer) + 15 + 84 + 74 + 4 = 216` ✓
+> `22 + 17 + 15 + 84 + 74 + 3 = 215` **tabhi** milta hai jab un chaar ko ek baar
+> hi gina jaaye: distinct = `18 (pure guest) + 4 (dual) + 17 (customer) + 15 + 84 + 74 + 3 = 215` ✓
 >
 > **Round 6 me kya juda:** `/auth` me do (email verification, ⚪ — har role),
 > naya `/app-config` (🟠 public), aur `/notifications` ke do endpoints ab customer
@@ -162,7 +163,7 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | 🏪 `vendor_panel_api_doc.md` | **97** | 15 exclusive + 70 shared global + 10 guest reads + 2 🤖 links | ⚠️ v1.2.1 me 78 the — 19 naye jodne hain |
 | 🛡️ `super_admin_panel_api_doc.md` | **170** | 82 exclusive + 70 shared global + 14 guest reads + 4 🤖 reference | ⬜ Baaki |
 
-> Sum > 216 kyunki shared endpoints kai docs me aate hain.
+> Sum > 215 kyunki shared endpoints kai docs me aate hain.
 >
 > **Cross-check:** har endpoint kam se kam ek doc me hai —
 > 🟠 21 (customer doc me saare 21) · 🟢 17 (customer) · 🔵 15 (vendor) ·
@@ -227,8 +228,7 @@ kyunki brand browse karne wala customer abhi tak sign-in kiya bhi nahi hota.
 
 ### 🤖 Naya MACHINE category — 4 endpoints
 
-`webhook/razorpay` · `webhook/razorpay/customer` · `transactions/invoice/:token` ·
-`settlements/statement/:token`. Pehle ye 🟣 ADMIN me pade the, jo padhne me lagta
+`webhook/razorpay` · `webhook/razorpay/customer` · `documents/:token`. Pehle ye 🟣 ADMIN me pade the, jo padhne me lagta
 tha ki admin panel inhe call karta hai. Karta nahi — pehle do Razorpay call karta
 hai, baaki do wo link hain jo WhatsApp/email se seedha browser me khulte hain.
 
@@ -865,7 +865,7 @@ Razorpay subscription payments + webhook operations + payment health.
 
 | # | Method | Endpoint | Access | Cat | Notes |
 |---|---|---|---|---|---|
-| 138 | GET | `/transactions/invoice/:token` | Intended: Customer + Vendor · Enforced: **Public (token)** | 🤖 | ⚠️ **Deliberately unauthenticated.** Link WhatsApp message aur email se khulta hai, jahan browser me koi session hota hi nahi — login maangne ka matlab hai Download button kaam na kare, jo uska ekmatra kaam hai. 32-byte random token hi credential hai; galat token par wahi `404` jo na-maujood token par. PDF **pehli request par** banti hai aur uske baad cache hoti hai — har claim par render + upload scale par nahi chalega, aur zyadatar invoice kabhi khulti hi nahi. Invoice **number** phir bhi settle par milta hai, taaki series me gap na aaye |
+| 138 | GET | `/documents/:token` | Intended: Customer + Vendor · Enforced: **Public (token)** | 🤖 | ⚠️ **Deliberately unauthenticated.** Link WhatsApp message aur email se khulta hai, jahan browser me koi session hota hi nahi — login maangne ka matlab hai Download button kaam na kare, jo uska ekmatra kaam hai. 32-byte random token hi credential hai; galat token par wahi `404` jo na-maujood token par. **Chhe kism ke document ek hi route se**: claim receipt, subscription invoice, grant advice, payout statement, refund receipt, chargeback advice — resolver khud pata karta hai token kis collection ka hai. Pehle `transactions/invoice/:token` aur `settlements/statement/:token` do alag route the, aur dono ka apna token field naam tha, to bare token se ye pata hi nahi chalta tha ki wo kis kism ka document hai. PDF **pehli request par** banti hai aur uske baad cache hoti hai; **number** phir bhi issue par milta hai, taaki series me gap na aaye |
 | 139 | POST | `/transactions/webhook/razorpay/customer` | Intended: Razorpay · Enforced: **Public (HMAC)** | 🤖 | **CUSTOMER account** (voucher claims); secrets `RAZORPAY_CUSTOMER_WEBHOOK_SECRETS`. Account **route se** aata hai, signature se nahi — signature sirf authenticate karta hai. Galat endpoint par aayi delivery phir bhi process hoti hai, par WARNING alert ke saath |
 | 140 | POST | `/transactions/webhook/razorpay` | Intended: Razorpay · Enforced: **Public (HMAC)** | 🤖 | **VENDOR account** (subscriptions); secrets `RAZORPAY_WEBHOOK_SECRETS` (comma-separated, rotation-safe). Isse activation browser se independent hai — jo customer tab band kar de use bhi apna claim milta hai |
 | 141 | POST | `/transactions/subscribe/preview` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | Price + promo code preview, order banane se pehle |
@@ -1147,14 +1147,14 @@ Din band ho → kabza ho → admin manzoori de → NEFT jaaye → UTR record ho.
 >
 > Isi ek line se teen design faisle nikalte hain: (1) payout se pehle live bank aur frozen `bankSnapshot` compare hote hain aur farq par settlement `ON_HOLD` jaata hai — warning nahi, **rok**; (2) `sweepStalePayouts` sirf **batata** hai, apne aap `FAILED` nahi karta, warna kaamyaab transfer ke upar "bank ne mana kiya" likh kar vendor ko dobara paisa chala jaata; (3) bounce hui leg **mitayi nahi jaati** — retry nayi leg banati hai, taaki record me dono koshishen bachein, apne UTR aur apne payee ke saath.
 
-> ⚠️ **Declaration order:** `/statement/:token` aur saare `/admin/...` routes reads se
+> ⚠️ **Declaration order:** saare `/admin/...` routes reads se
 > **upar** hain. Aaj `/statement/:token` aur `/:settlementId/transactions` sirf isliye
 > alag hain ki `transactions` ek literal hai — **aur wo margin agla route judne tak hi
 > hai.** Safe order me declare karna sasta hai, baad me yaad rakhne se.
 
 | # | Method | Endpoint | Access | Cat | Notes |
 |---|---|---|---|---|---|
-| 182 🆕 | GET | `/settlements/statement/:token` | Intended: VENDOR · Enforced: **Public (token)** | 🤖 | **Public payout statement. Koi JWT nahi.** Link payout notification aur email me aata hai, aur us browser me vendor ka koi session nahi hota — session maangne ka matlab hai Download button kaam na kare, jo uska ekmatra kaam hai. 32-byte token hi credential hai, aur ek ko revoke karna ek field update hai. **File stream nahi karta, redirect karta hai** — PDF pehle se CDN par hai, aur har download ko is service se proxy karne se kuch nahi milta |
+| 182 | — | *(moved)* | — | — | ⚠️ **`/settlements/statement/:token` ab nahi hai.** Payout statement `GET /documents/:token` (#138) se milta hai — ek hi route jo chhe kism ke document serve karta hai. Isse ek routing trap bhi hata: wo route har `:settlementId` route se **upar** rakhna padta tha, kyunki literal second segment ko parameter se pehle match hona chahiye, aur `/statement/:token` `/:settlementId/transactions` se sirf isliye alag tha ki `transactions` ek literal hai — agle route ke bharose rehne ke liye ye margin bahut patla tha |
 | 183 | PATCH | `/settlements/admin/:settlementId/approve` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | `needsRevalidation: {$ne: true}` **update ke filter me**, `if` me nahi — read aur write ke beech webhook aa sakta hai. Mana karne par `refuseAndHold` **kaunse invoice** kharaab hue wo naam se ginta hai; wo naam vendor ko kabhi nahi jaate |
 | 184 | PATCH | `/settlements/admin/:settlementId/rebuild` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Sirf `ON_HOLD` par. **Sirf tainted rows** chhoote hain — saaf rows claim me hi rehti hain, warna agli build unhe rebuild ke beech me utha leti aur wahi rows do settlement me aa jaate. Rebuild ke baad kuchh na bache to `CARRIED_FORWARD` |
 | 185 | PATCH | `/settlements/admin/:settlementId/hold` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Vendor ko *"on hold — being checked"* jaata hai, **bina tafseel ke**: `reason` aksar kisi disputed payment ka naam leta hai, aur wo batana do din ki der ko ek aise chargeback par behes bana deta hai jispar abhi faisla hua hi nahi |
@@ -1549,7 +1549,7 @@ koi error nahi hota.
 
 | Doc | Endpoints | Status |
 |---|---:|---|
-| `endpoints_category.md` | **216** | ✅ **Round 6 — ye file.** Live routers ke against introspection se verify |
+| `endpoints_category.md` | **215** | ✅ **Round 6 — ye file.** Live routers ke against introspection se verify. `scripts/verifyApiCoverage.js` isi ko enforce karta hai |
 | 🟠 Guest surface | 21 | 🆕 Round 5 — naya category, poori list is file me |
 | `customer_mobile_api_doc.md` | 62 | ✅ **v1.7.0** — live verified, 135 requests · 473 assertions · 0 failed · 198 captured examples (135/135 requests) |
 | `vendor_panel_api_doc.md` | 97 | ⚠️ **v1.2.1 me 78 hain** — 19 jodne hain (voucher claims reads, refunds, disputes, settlements, legacy mounts) |

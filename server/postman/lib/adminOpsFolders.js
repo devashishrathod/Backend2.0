@@ -10,7 +10,7 @@
  *    needed a second variable before they could even be written down.
  *  - the dispute worklist sits behind a plain `verifyJwtToken`, so it belongs
  *    to no single role and every role-shaped collection skipped it.
- *  - `GET /settlements/statement/:token` is **public** and authenticates on the
+ *  - `GET /documents/:token` is **public** and authenticates on the
  *    token in the path — the one settlement route with no bearer at all.
  *  - `POST /promotionalTickers/create` takes a file, and there is no binary
  *    fixture in this repo.
@@ -324,9 +324,9 @@ const settlementExtraRequests = [
   req({
     name: "Statement — token se, bina login",
     method: "GET",
-    segments: ["settlements", "statement", "{{statement_token}}"],
+    segments: ["documents", "{{statement_token}}"],
     description: [
-      "⚠️ **Poori settlements module me ekmatra public route.** Koi bearer",
+      "⚠️ **Public document route.** Koi bearer",
       "nahi — path ka token hi credential hai.",
       "",
       "Wahi token vendor ke email/WhatsApp me jaane wale statement link me hota",

@@ -240,7 +240,7 @@ node postman/lib/capture-examples.js \
 > ### Non-JSON jawab bhi example banta hai
 >
 > `capture-examples.js` pehle non-JSON body ko `continue` kar deta tha, is bharose par ki
-> har endpoint envelope deta hai. **Ek nahi deta:** `GET /transactions/invoice/:token`
+> har endpoint envelope deta hai. **Ek nahi deta:** `GET /documents/:token`
 > `302` + `Location` deta hai. To wo request chup-chaap collection ki **ekmatra** request
 > thi jiska koi example nahi tha — aur summary line phir bhi kehti thi ki sab covered hai.
 >
@@ -382,7 +382,7 @@ Kya banta hai — sab Indore (`[75.8937, 22.7533]`) me:
 | 1 banner + 2 tickers | home screen |
 | 1 terms + 1 privacy | legal |
 | **1 customer** (`9700000021`) 🆕 | Jispar poori money history baithi hai. `customer_whatsapp` isi par default hai |
-| **1 paid + settled claim** 🆕 | Claims list, claim detail, payments, aur `invoiceToken` + `invoiceSnapshot` — dono, warna invoice link `409` deta hai |
+| **1 paid + settled claim** 🆕 | Claims list, claim detail, payments, aur `documentToken` + `invoiceSnapshot` — dono, warna invoice link `409` deta hai |
 | **1 verified bank account** 🆕 | List, delete aur refund ka bank-account choose — teeno ke asli examples, **bina penny drop ka paisa kharch kiye** |
 | **1 refund `AWAITING_BANK_DETAILS`** 🆕 | `PATCH /refunds/:id/bank-account` ka **ekmatra** valid status |
 | **1 doosra customer + uski claim** 🆕 | Cross-customer `403` tests — inke bina wo `422` dete the |

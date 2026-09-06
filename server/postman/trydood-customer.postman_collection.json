@@ -15414,7 +15414,7 @@
                   "",
                   "pm.test(\"invoice link haan, token kabhi nahi\", function () {",
                   "  const d = pm.response.json().data;",
-                  "  pm.expect(d.payment, \"invoiceToken\").to.not.have.property(\"invoiceToken\");",
+                  "  pm.expect(d.payment, \"documentToken\").to.not.have.property(\"documentToken\");",
                   "});",
                   ""
                 ]
@@ -15676,13 +15676,12 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/transactions/invoice/{{invoice_token}}",
+              "raw": "{{base_url}}/documents/{{invoice_token}}",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
-                "transactions",
-                "invoice",
+                "documents",
                 "{{invoice_token}}"
               ]
             },
@@ -15727,15 +15726,14 @@
                   }
                 ],
                 "url": {
-                  "raw": "http://localhost:8080/trydood/v1/transactions/invoice/pmfxinvoicetokencust10000000000000000",
+                  "raw": "http://localhost:8080/trydood/v1/documents/pmfxinvoicetokencust10000000000000000",
                   "host": [
                     "{{base_url}}"
                   ],
                   "path": [
                     "trydood",
                     "v1",
-                    "transactions",
-                    "invoice",
+                    "documents",
                     "pmfxinvoicetokencust10000000000000000"
                   ]
                 }

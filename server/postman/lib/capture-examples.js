@@ -197,7 +197,7 @@ newman.run(
        * A non-JSON answer is still an answer.
        *
        * ⚠️ This used to `continue`, on the reasoning that every endpoint returns
-       * the JSON envelope. One does not: `GET /transactions/invoice/:token`
+       * the JSON envelope. One does not: `GET /documents/:token`
        * answers **302** with a `Location`, and Express writes a short HTML body
        * with it. So that request was silently the only one in the collection
        * with no saved example — and silence is the whole problem, because the
