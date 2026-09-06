@@ -1431,8 +1431,17 @@ koi error nahi hota.
 
 > ### 🔵 Outlet / SUB_VENDOR token se kya khulta hai
 >
-> Alag doc **nahi** hai — vendor ye chaar bhi kar sakta hai, isliye ye vendor doc me
-> hi hain, "outlet manager bhi" note ke saath:
+> Alag doc **nahi** hai — vendor ye sab bhi kar sakta hai, isliye ye vendor doc me
+> hi hain, "outlet manager bhi" note ke saath.
+>
+> **Outlet ka account kaise banta hai:** vendor `POST /subBrands/signUp-with-whatsapp`
+> (#47) call karta hai; service `role: SUB_VENDOR` ka User banati hai **bina
+> password ke**, aur outlet ke number par `sendOtp(WHATSAPP, …)` bhejti hai
+> (`signUpSubBrandWithWhatsapp.js:94`) — **wahi verify step hai**. Uske baad
+> outlet wala `POST /auth/loginOrSignUp-with-whatsapp` se login karta hai;
+> `SELF_SIGNUP_ROLES` sirf usse *khud ko banane* se rokta hai, login se nahi.
+>
+> **4 — outlet-specific gate (`isVendorOrSubVendor`):**
 >
 > | # | Endpoint | Kya |
 > |---|---|---|
@@ -1441,11 +1450,27 @@ koi error nahi hota.
 > | 179 | `POST /disputes/:disputeId/evidence` | KOT/bill number, camera timestamp, staff ko kya yaad hai |
 > | 149 | `POST /transactions/disputes/:disputeId/evidence` | Wahi, legacy mount |
 >
+> **+ 27 — sirf `verifyJwtToken` par**, yaani koi bhi logged-in role. Outlet ke
+> kaam ke jo hain: `GET /voucher-claims/code/:claimCode` (counter par code
+> padhna), `/voucher-claims`, `/voucher-claims/:claimId`,
+> `/voucher-claims/payments`, `/refunds`, `/refunds/:requestId`, `/disputes`,
+> `/disputes/:disputeId`, `/settlements`, `/settlements/:settlementId`.
+>
+> **Kul 31.** Har ek par scope service ke andar kata jaata hai —
+> `assertClaimAccess` outlet ka `subBrandId` match karta hai warna `403`, aur
+> `VoucherClaim.subBrandId` `required: true` hai to wo check kabhi skip nahi hota.
+>
 > ⚠️ `GET /settlements` (#195) par `SUB_VENDOR` ko **poora brand** dikhta hai, apna
 > outlet nahi — settlement poore brand ke din ka hai, ek counter ka nahi.
 >
-> ⚠️ `isSubVendor` (sirf SUB_VENDOR) middleware **exist karta hai par koi route use
-> nahi karta**. Har outlet-facing route `isVendorOrSubVendor` par hai.
+> ⚠️ **Baaki sab par `403`**, aur wajah ek hi hai: `resolveActorBrand` par
+> `String(brand.userId) !== String(userId)`. SUB_VENDOR ka `userId` Brand par
+> hota hi nahi (uske paas `subBrandId` hai), to us helper se guzarne wala har
+> kaam — vouchers, showcase, subscriptions — outlet ke liye band hai. Wo helper
+> **16 files** use karti hain.
+>
+> ℹ️ Do middleware bane hain par **koi route inhe use nahi karta**: `isSubVendor`
+> (`validateRoles.js:19`) aur `isBrandSideOrAdmin` (`validateRoles.js:34`).
 
 > **Vendor ko ye nahi milte:** 17 customer-exclusive + 82 admin-exclusive +
 > 11 guest reads jo panel use nahi karta (#40, #41, #68, #69, #85–#87, #93, #99,
