@@ -6,6 +6,12 @@ const {
   VENDOR_TIMEOUT_ACTIONS,
 } = require("../constants/customer");
 const { GATEWAY_FEE_BEARER } = require("../constants/transaction");
+const {
+  DOCUMENT_SERIES_PATTERN,
+  DOCUMENT_SERIES_MIN,
+  DOCUMENT_SERIES_MAX,
+  RESERVED_DOCUMENT_SERIES,
+} = require("../constants/document");
 const { SEARCH_LIMITS } = require("../constants/search");
 
 const voucherSettingSchema = Joi.object({
@@ -183,18 +189,36 @@ const adminSettingSchema = Joi.object({
 });
 
 const customerInvoiceSchema = Joi.object({
-  // ⚠️ Changing this starts a NEW counter. Numbers already issued keep the old
-  // prefix, which is correct — an invoice number is a permanent legal reference.
+  /**
+   * ⚠️ Changing this starts a NEW counter. Numbers already issued keep the old
+   * prefix, which is correct — an invoice number is a permanent legal reference.
+   *
+   * `invalid` rejects a prefix already owned by another document kind. Two kinds
+   * sharing a counter still produce unique numbers, so this is not a correctness
+   * rule — it is a legibility one: a voucher receipt numbered `TD/SUB/...` lands
+   * in the middle of the subscription series, and nobody reading the books
+   * afterwards can tell the two apart.
+   *
+   * The runtime no longer *depends* on this check. `generateDocumentNumber` used
+   * to accept only three hardcoded series and threw a 500 on anything else —
+   * after the payment was captured — so a prefix this validator allowed could
+   * break every voucher claim until somebody changed it back. It now validates
+   * shape rather than membership, and this rule only stops a human choosing a
+   * confusing prefix.
+   */
   seriesPrefix: Joi.string()
     .trim()
     .uppercase()
-    .min(2)
-    .max(6)
-    .pattern(/^[A-Z]+$/)
+    .min(DOCUMENT_SERIES_MIN)
+    .max(DOCUMENT_SERIES_MAX)
+    .pattern(DOCUMENT_SERIES_PATTERN)
+    .invalid(...RESERVED_DOCUMENT_SERIES)
     .optional()
     .messages({
-      "string.pattern.base": "seriesPrefix may only contain letters",
+      "string.pattern.base": "seriesPrefix may only contain capital letters",
+      "string.min": "seriesPrefix must be at least {#limit} letters",
       "string.max": "seriesPrefix cannot exceed {#limit} characters",
+      "any.invalid": `seriesPrefix cannot be one of ${RESERVED_DOCUMENT_SERIES.join(", ")} — those series belong to other Trydood documents.`,
     }),
 });
 

@@ -15,7 +15,7 @@
  * | `requestRefund` | a refund is already open on this payment — hand it back |
  * | `acquireJobLock` | another instance is running this job — stand down |
  * | `recordLedgerEntry` | this entry is already booked — do not book it twice |
- * | `generateInvoiceNumber` | the number was taken between read and write — retry |
+ * | `generateDocumentNumber` | the number was taken between read and write — retry |
  * | `generateClaimCode` | code collision — retry with a new one |
  * | `notify` / `notifyAudience` | this notification was already sent |
  *
