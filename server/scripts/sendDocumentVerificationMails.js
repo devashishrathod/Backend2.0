@@ -741,10 +741,19 @@ const buildCases = async () => {
 // ---------------------------------------------------------------- cleanup
 
 const cleanup = async () => {
+  /**
+   * ⚠️ Each filter matches a field the model **actually declares**.
+   *
+   * The settlement's marker was first written to `note`, which `Settlement` does
+   * not have — Mongoose drops an unknown key in strict mode without a word, so
+   * the row was created with no marker at all and cleanup reported success while
+   * leaving it behind. `idempotencyKey` is a declared field and already carries
+   * the run id, so it is the one to match on.
+   */
   const plans = [
     [Transaction, { note: { $regex: `^${MARK}` } }],
     [Transaction, { razorpayOrderId: { $regex: MARK } }],
-    [Settlement, { note: { $regex: `^${MARK}` } }],
+    [Settlement, { idempotencyKey: { $regex: MARK } }],
     [RefundRequest, { adminNote: { $regex: `^${MARK}` } }],
     [Dispute, { vendorEvidenceNote: { $regex: `^${MARK}` } }],
     [Dispute, { disputeId: { $regex: `^disp_${MARK}` } }],
