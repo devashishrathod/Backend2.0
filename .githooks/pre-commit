@@ -1,0 +1,58 @@
+#!/bin/sh
+#
+# Refuse a commit that leaves an endpoint undocumented or unexercised.
+#
+# ⚠️ Only runs when the commit touches something that can move coverage —
+# `server/routes/`, the docs, or the Postman collections. Editing a service or a
+# test does not pay for a check that reads three 250KB documents.
+#
+# The check itself is `scripts/verifyApiCoverage.js`, which walks the **built
+# Express routers** rather than any list, so a route that exists is always in
+# the report. See the "Adding an Endpoint" section of server/CLAUDE.md.
+#
+# Install once:
+#   git config core.hooksPath .githooks
+#
+# If this fails, add the missing piece. `--no-verify` gets the commit in and
+# leaves the endpoint invisible to everyone who reads the docs afterwards —
+# which is the exact state this repo just spent a long time climbing out of.
+
+set -e
+
+CHANGED=$(git diff --cached --name-only --diff-filter=ACMR)
+
+echo "$CHANGED" | grep -qE '^server/(routes/|index\.js|docs/(endpoints_category|customer_mobile_api_doc|vendor_panel_api_doc|super_admin_panel_api_doc)\.md|postman/)' || exit 0
+
+echo "→ endpoints changed, checking doc + collection coverage…"
+
+cd server
+
+if ! node scripts/verifyApiCoverage.js --missing; then
+  cat <<'MSG'
+
+────────────────────────────────────────────────────────────────
+  Commit refused: at least one endpoint is not fully covered.
+
+  Every route needs four things (server/CLAUDE.md → Adding an Endpoint):
+
+    1. a row in docs/endpoints_category.md
+    2. a section in the doc(s) its gate lets in
+    3. a request in the matching collection
+    4. a saved example on that request — captured from a live run,
+       not hand-written
+
+  For 3 and 4:
+
+    node postman/generate-<panel>-collection.js
+    node scripts/seedPostmanFixtures.js --db Trydood2_postman --apply
+    MONGO_URL="<...>/Trydood2_postman" ENABLE_JOBS=false npm start
+    node postman/lib/capture-examples.js \
+      postman/trydood-<panel>.postman_collection.json \
+      postman/environments/<panel>-local.postman_environment.json
+────────────────────────────────────────────────────────────────
+
+MSG
+  exit 1
+fi
+
+echo "✅ every route is categorised, documented, requested and exemplified."

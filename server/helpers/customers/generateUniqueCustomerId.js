@@ -1,11 +1,12 @@
 const Customer = require("../../models/Customer");
+const { generateUniqueDisplayId } = require("../common");
 
-exports.generateUniqueCustomerId = async () => {
-  const prefix = "#TC";
-  while (true) {
-    const randomNumber = Math.floor(10000 + Math.random() * 90000);
-    const uniqueId = `${prefix}${randomNumber}`;
-    const existing = await Customer.findOne({ uniqueId });
-    if (!existing) return uniqueId;
-  }
-};
+/**
+ * `#TC123456` — the number a customer reads out to support.
+ *
+ * ⚠️ Six digits now, not five. `validateGetAdminCustomer` matches `#?TC\d+`, so
+ * nothing pins the length; the doc's `#TC64840` example is simply an older,
+ * shorter one and both keep working.
+ */
+exports.generateUniqueCustomerId = async () =>
+  generateUniqueDisplayId(Customer, { prefix: "#TC" });

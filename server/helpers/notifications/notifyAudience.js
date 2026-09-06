@@ -7,6 +7,7 @@ const {
 } = require("../../constants/notification");
 const { resolveAudience } = require("./resolveAudience");
 const { dispatchPush } = require("../push");
+const { isChannelAllowed } = require("./channelPreferences");
 
 /**
  * Which feed a row belongs in, from the recipient's role.
@@ -129,26 +130,80 @@ exports.notifyAudience = async ({
   // payment path. dispatchPush never throws.
   let pushResult = null;
   if (push && created > 0) {
-    const pushedTo = [...new Set(insertedRows.map((r) => String(r.userId)))];
+    /**
+     * ⚠️ Filtered by each recipient's own push preference.
+     *
+     * This path never touches `notify()` — it writes rows with `insertMany` and
+     * pushes once in bulk — so the check that governs every single-recipient
+     * send does not reach it. Without this, a broadcast would be the one message
+     * that ignored a person's toggle, and it is the message that reaches
+     * everyone at once.
+     *
+     * The **row is still written** for them, exactly as for everybody else: the
+     * in-app feed is the record, and the preference governs delivery only.
+     *
+     * ⚠️ No `ALWAYS_DELIVER_TYPES` exemption here on purpose. This path carries
+     * `ANNOUNCEMENT` — an admin-composed broadcast — and nothing on that list
+     * can be raised through it. A future caller that needs one should go through
+     * `notify()`, which is where that decision lives.
+     */
+    const wantsPush = new Set(
+      users
+        .filter(
+          (u) =>
+            isChannelAllowed({
+              channel: "push",
+              preferences: u.notificationPreferences,
+            }).allowed,
+        )
+        .map((u) => String(u.userId)),
+    );
 
-    pushResult = await dispatchPush(pushedTo, {
-      title,
-      body,
-      imageUrl,
-      data: {
-        type,
-        ...(deepLink ? { deepLink } : {}),
-        ...(meta?.brandId ? { brandId: String(meta.brandId) } : {}),
-        ...(meta?.broadcastId ? { broadcastId: String(meta.broadcastId) } : {}),
-      },
-    });
+    const pushedTo = [
+      ...new Set(insertedRows.map((r) => String(r.userId))),
+    ].filter((id) => wantsPush.has(id));
+
+    pushResult = pushedTo.length
+      ? await dispatchPush(pushedTo, {
+          title,
+          body,
+          imageUrl,
+          data: {
+            type,
+            ...(deepLink ? { deepLink } : {}),
+            ...(meta?.brandId ? { brandId: String(meta.brandId) } : {}),
+            ...(meta?.broadcastId
+              ? { broadcastId: String(meta.broadcastId) }
+              : {}),
+          },
+        })
+      : {
+          sent: 0,
+          failed: 0,
+          devices: 0,
+          skipped: true,
+          reason: "every recipient has push switched off",
+        };
 
     if (pushResult.sent > 0) {
-      // Scoped to the ids just written. Filtering on `type` and `userId` instead
-      // would mark every past notification of this type for those users as
-      // pushed, which is a delivery claim that never happened.
+      /**
+       * Scoped to the ids just written **and** to the people actually pushed.
+       *
+       * ⚠️ It used to mark every inserted row, which was harmless while everyone
+       * was pushed and is a false claim now: a recipient who switched push off
+       * would carry `channels: [IN_APP, PUSH]` for a push that was deliberately
+       * never attempted. `channels` is read as the delivery record — an admin
+       * opens it to answer "was this person told?" — so a wrong entry there is
+       * worse than a missing one.
+       */
       await Notification.updateMany(
-        { _id: { $in: insertedRows.map((r) => r._id) } },
+        {
+          _id: {
+            $in: insertedRows
+              .filter((r) => wantsPush.has(String(r.userId)))
+              .map((r) => r._id),
+          },
+        },
         { $addToSet: { channels: NOTIFICATION_CHANNELS.PUSH } },
       );
     }

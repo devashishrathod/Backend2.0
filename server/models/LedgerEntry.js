@@ -4,6 +4,7 @@ const {
   transactionField,
   voucherClaimField,
   settlementField,
+  refundRequestField,
   userField,
 } = require("./validObjectId");
 const {
@@ -69,9 +70,17 @@ const ledgerEntrySchema = new mongoose.Schema(
     transactionId: transactionField,
     voucherClaimId: voucherClaimField,
     settlementId: settlementField,
-    // Phase S1 / S3. Declared now so the shape does not change under a
-    // collection that is append-only.
-    refundRequestId: { type: mongoose.Schema.Types.ObjectId },
+    /**
+     * Phase S1 / S3. Declared early so the shape does not change under a
+     * collection that is append-only.
+     *
+     * ⚠️ Written inline it carried **no `ref`**, so `populate()` could not
+     * follow it and nothing verified what it pointed at — on a collection where
+     * a row is never updated and never deleted, which makes a wrong pointer
+     * permanent. `refundRequestField` names `RefundRequest`; there is no
+     * `Refund` model and there will not be one.
+     */
+    refundRequestId: refundRequestField,
     /**
      * ⚠️ Razorpay's own dispute id (`disp_…`), so a **string**.
      *

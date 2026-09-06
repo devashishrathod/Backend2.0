@@ -1,14 +1,9 @@
 const { getPaymentDetails } = require("./getPaymentDetails");
 const { generateRazorpaySignature } = require("./generateRazorpaySignature");
-const {
-  generateAndUploadInvoice,
-  renderInvoicePdf,
-} = require("./generateAndUploadInvoice");
 // const {
 //   generateAndUploadBillInvoice,
 // } = require("./generateAndUploadBillInvoice");
 // const { isSameDay } = require("./isSameDay");
-const { generateInvoiceNumber } = require("./generateInvoiceNumber");
 const { verifyRazorpayWebhook } = require("./verifyRazorpayWebhook");
 const { buildInvoiceSnapshot } = require("./buildInvoiceSnapshot");
 const { buildTransactionFilter } = require("./buildTransactionFilter");
@@ -33,7 +28,6 @@ const {
 } = require("./buildClaimReadPipeline");
 
 module.exports = {
-  generateInvoiceNumber,
   verifyRazorpayWebhook,
   buildInvoiceSnapshot,
   buildTransactionFilter,
@@ -68,8 +62,6 @@ module.exports = {
   pickByProjection,
   getPaymentDetails,
   generateRazorpaySignature,
-  generateAndUploadInvoice,
-  renderInvoicePdf,
   // generateAndUploadBillInvoice,
   // isSameDay,
 };

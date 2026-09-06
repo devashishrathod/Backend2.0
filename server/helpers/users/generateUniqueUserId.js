@@ -1,11 +1,6 @@
 const User = require("../../models/User");
+const { generateUniqueDisplayId } = require("../common");
 
-exports.generateUniqueUserId = async () => {
-  const prefix = "#TU";
-  while (true) {
-    const randomNumber = Math.floor(10000 + Math.random() * 90000);
-    const uniqueId = `${prefix}${randomNumber}`;
-    const existingUser = await User.findOne({ uniqueId });
-    if (!existingUser) return uniqueId;
-  }
-};
+/** `#TU123456` — see `helpers/common/generateUniqueDisplayId.js` for the why. */
+exports.generateUniqueUserId = async () =>
+  generateUniqueDisplayId(User, { prefix: "#TU" });

@@ -1,3 +1,4 @@
+const Customer = require("../../models/Customer");
 const Transaction = require("../../models/Transaction");
 const VoucherClaim = require("../../models/VoucherClaim");
 
@@ -21,7 +22,8 @@ const {
 const {
   VOUCHER_CLAIM_STATUS,
   CLAIM_HISTORY_ACTION,
-  CLAIM_REDEMPTION_MODE,
+  DEFAULT_REDEMPTION_MODE,
+  isImplementedRedemptionMode,
 } = require("../../constants/voucherClaim");
 const { VOUCHER_USAGE_TYPE } = require("../../constants/voucher");
 const { PROMO_CODE_LIMITS } = require("../../constants/promoCode");
@@ -118,6 +120,24 @@ const respond = ({ claim, transaction, preview, keyId, reused }) => ({
  * @param {string} [idempotencyKey] the `Idempotency-Key` header
  */
 exports.createVoucherClaimOrder = async (actor, payload, idempotencyKey) => {
+  /**
+   * ⚠️ Refuse before anything costs anyone money.
+   *
+   * `DEFAULT_REDEMPTION_MODE` decides how every claim finishes, so if it names a
+   * mode the code cannot carry to `REDEEMED` the right answer is to create no
+   * claim at all. The alternative is worse and silent: the claim is created, the
+   * customer pays, capture parks it at `PAID`, and nothing exists to move it on
+   * or close it out — money taken, with no error anywhere.
+   *
+   * First statement in the function, ahead of the pricing and the gateway order.
+   */
+  if (!isImplementedRedemptionMode(DEFAULT_REDEMPTION_MODE)) {
+    throwError(
+      503,
+      "Voucher claims are temporarily unavailable. Please try again later.",
+    );
+  }
+
   const customerId = resolveCustomerId(actor);
   // The route is behind `isCustomer`, so this is a guard against a mis-wired
   // route rather than a user-facing case.
@@ -232,6 +252,24 @@ exports.createVoucherClaimOrder = async (actor, payload, idempotencyKey) => {
   const isOncePerUser =
     Boolean(offer) && offer.usageType === VOUCHER_USAGE_TYPE.ONCE_PER_USER;
 
+  /**
+   * Who is paying, and the code they will quote.
+   *
+   * In parallel because neither depends on the other, and this sits on the
+   * checkout path — the customer is waiting on it.
+   *
+   * The customer read is new. It exists because the receipt has to name the
+   * person who paid, and until now nothing on the claim did: the invoice builder
+   * read a `customerSnapshot` that was never a field, so every receipt printed
+   * `Bill To: -`.
+   */
+  const [customer, claimCode] = await Promise.all([
+    Customer.findById(customerId)
+      .select("fullName whatsappNumber mobile email")
+      .lean(),
+    generateClaimCode(),
+  ]);
+
   let claim;
   try {
     claim = await VoucherClaim.create({
@@ -258,16 +296,42 @@ exports.createVoucherClaimOrder = async (actor, payload, idempotencyKey) => {
         storeId: outlet.storeId,
         state: outlet.locationId?.state || null,
       },
+      /**
+       * The name and contact the receipt prints under "Bill To".
+       *
+       * All three are kept rather than just the name, because `fullName` is not a
+       * required field — a customer can pay before they have ever set one, and
+       * the document then falls back to the number we reach them on. Deciding
+       * that at render time would mean looking the customer up live, which is
+       * exactly what the snapshot design exists to avoid.
+       */
+      customerSnapshot: customer
+        ? {
+            name: customer.fullName,
+            whatsappNumber: customer.whatsappNumber,
+            mobile: customer.mobile,
+            email: customer.email,
+          }
+        : undefined,
 
       billAmount,
       offerApplied: preview.offerApplied,
       pricing,
 
       status: VOUCHER_CLAIM_STATUS.PENDING,
-      claimCode: await generateClaimCode(),
-      // Phase 1: paying at the counter is the redemption. Phase 2 flips this to
-      // OUTLET_SCAN without a migration.
-      redemptionMode: CLAIM_REDEMPTION_MODE.AUTO,
+      claimCode,
+      /**
+       * Phase 1: paying at the counter is the redemption. Phase 2 flips this to
+       * `OUTLET_SCAN` without a migration — the mode is frozen onto the claim,
+       * so claims made before the flip keep finishing the way they started.
+       *
+       * ⚠️ The value comes from `DEFAULT_REDEMPTION_MODE`, and the assert above
+       * this function refuses to create a claim in a mode the code cannot
+       * finish. Checked **here**, before the gateway order exists: a claim
+       * refused now costs nobody anything, while one captured in an unfinishable
+       * mode is money taken with no way to complete or close it.
+       */
+      redemptionMode: DEFAULT_REDEMPTION_MODE,
 
       holdsUsageSlot: isOncePerUser,
       isOncePerUser,

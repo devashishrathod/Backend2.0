@@ -1,6 +1,14 @@
-const { notify } = require("./notify");
+/**
+ * ⚠️ `notifyAdmins`, not `notify({ audience: ADMIN })`.
+ *
+ * The latter addresses nobody — it builds its destination from `brandId` /
+ * `customerId` / `userId`, and this notice passes none — so the row appeared in
+ * the admin feed and no email or push was ever sent. On a CRITICAL alert whose
+ * subject is that **roughly every second voucher claim is failing right now**,
+ * in-app-only is not a delivery.
+ */
+const { notifyAdmins } = require("./notifyAdmins");
 const {
-  NOTIFICATION_AUDIENCE,
   NOTIFICATION_TYPES,
   NOTIFICATION_SEVERITY,
 } = require("../../constants/notification");
@@ -56,8 +64,7 @@ exports.notifyAdminShadowIndexReaped = async ({ reaped = [], blocked = [] }) => 
     .filter((b) => b.reason !== "DRY_RUN")
     .map((b) => `${b.collection}.${b.index}: ${b.reason}`);
 
-  return notify({
-    audience: NOTIFICATION_AUDIENCE.ADMIN,
+  return notifyAdmins({
     severity: NOTIFICATION_SEVERITY.CRITICAL,
     type: NOTIFICATION_TYPES.SHADOW_INDEX_REAPED,
     title: stuck.length
@@ -99,8 +106,8 @@ exports.notifyAdminShadowIndexReaped = async ({ reaped = [], blocked = [] }) => 
         ["Indexes", list || "-"],
         ["Detected at", at.toISOString()],
       ],
-      buttonText: "Open admin panel",
-      buttonUrl: adminUrl(ADMIN_PATHS.SETTLEMENTS),
+      ctaLabel: "Open admin panel",
+      ctaUrl: adminUrl(ADMIN_PATHS.SETTLEMENTS),
     },
   });
 };

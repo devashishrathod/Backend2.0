@@ -1,5 +1,10 @@
 const Transaction = require("../../models/Transaction");
-const { notifyAdmins } = require("../notifications");
+const {
+  notifyAdmins,
+  ADMIN_PATHS,
+  adminUrl,
+  deepLink,
+} = require("../notifications");
 const {
   NOTIFICATION_TYPES,
   NOTIFICATION_SEVERITY,
@@ -70,6 +75,7 @@ exports.detectDoubleCapture = async ({ transaction, payment }) => {
       },
       // One alert per duplicate payment, however many times it is redelivered.
       dedupeKey: `DOUBLE_CAPTURE:${incomingId}`,
+      deepLink: deepLink(ADMIN_PATHS.transaction(transaction._id)),
       mail: {
         lines: [
           ["Order", transaction.razorpayOrderId || "-"],
@@ -78,6 +84,8 @@ exports.detectDoubleCapture = async ({ transaction, payment }) => {
           ["Amount", String(amount)],
           ["Account", transaction.gatewayAccount || "-"],
         ],
+        ctaLabel: "Open transaction",
+        ctaUrl: adminUrl(ADMIN_PATHS.transaction(transaction._id)),
         footnote:
           "Refund the duplicate payment from the Razorpay dashboard for that account.",
       },

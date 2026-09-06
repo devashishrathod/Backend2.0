@@ -12,6 +12,8 @@ const VoucherUsage = require("../../models/VoucherUsage");
 const LedgerEntry = require("../../models/LedgerEntry");
 const PromoCode = require("../../models/PromoCode");
 const PromoCodeUsage = require("../../models/PromoCodeUsage");
+const Notification = require("../../models/Notification");
+const User = require("../../models/User");
 
 const {
   settleVoucherClaimPayment,
@@ -27,7 +29,11 @@ const {
   VOUCHER_CLAIM_STATUS,
   CLAIM_HISTORY_ACTION,
   CLAIM_REDEMPTION_MODE,
+  DEFAULT_REDEMPTION_MODE,
+  isImplementedRedemptionMode,
 } = require("../../constants/voucherClaim");
+const { NOTIFICATION_SEVERITY } = require("../../constants/notification");
+const { ROLES } = require("../../constants");
 const { LEDGER_ENTRY_TYPE } = require("../../constants/ledger");
 
 const oid = () => new mongoose.Types.ObjectId();
@@ -116,7 +122,27 @@ const COLLECTIONS = [
   LedgerEntry,
   PromoCode,
   PromoCodeUsage,
+  // Cleared because the unsupported-mode alert below counts rows.
+  Notification,
+  User,
 ];
+
+/**
+ * An admin to receive the alert.
+ *
+ * ⚠️ `notifyAdmins` fans out to one row per active admin, and with **no admin on
+ * the database it writes nothing and returns quietly** — so a test that forgets
+ * this seeds no rows and passes only because it found none.
+ */
+const seedAdmin = () =>
+  User.create({
+    uniqueId: `USR-ADMIN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    name: "test admin",
+    email: `admin${Date.now()}@example.com`,
+    mobile: "9700000099",
+    role: ROLES.ADMIN,
+    isActive: true,
+  });
 
 beforeAll(async () => {
   await connectTestDb();
@@ -197,6 +223,81 @@ describe("a captured payment settles the whole claim", () => {
     const after = await VoucherClaim.findById(claim._id);
     expect(after.status).toBe(VOUCHER_CLAIM_STATUS.PAID);
     expect(after.redeemedAt).toBeFalsy();
+  });
+
+  /**
+   * ⚠️ The point of this one is that parking at `PAID` is only safe once
+   * something can move a claim off it. Until the scan endpoint and the expiry
+   * sweep exist, a claim that lands there has taken the customer's money and has
+   * no way forward and no way out — and it does that without throwing, so
+   * nothing else in the system would ever mention it.
+   */
+  it("raises a critical alert when the mode has no way to finish", async () => {
+    await seedAdmin();
+    const { transaction, claim } = await seedClaim({
+      redemptionMode: CLAIM_REDEMPTION_MODE.OUTLET_SCAN,
+    });
+
+    await settleVoucherClaimPayment({ transaction, payment: capturedPayment() });
+
+    const alert = await Notification.findOne({
+      "meta.claimId": claim._id,
+      severity: NOTIFICATION_SEVERITY.CRITICAL,
+    });
+
+    expect(alert).toBeTruthy();
+    expect(alert.meta.redemptionMode).toBe(CLAIM_REDEMPTION_MODE.OUTLET_SCAN);
+    // Says the money moved, so nobody reads it as a harmless config warning.
+    expect(alert.body).toMatch(/charged/i);
+  });
+
+  it("stays quiet on the mode the build actually supports", async () => {
+    await seedAdmin();
+    const { transaction } = await seedClaim();
+
+    await settleVoucherClaimPayment({ transaction, payment: capturedPayment() });
+
+    // Without this the alert above passes for a build that shouts on every
+    // single capture, which is the same as not alerting at all.
+    expect(
+      await Notification.countDocuments({
+        severity: NOTIFICATION_SEVERITY.CRITICAL,
+      }),
+    ).toBe(0);
+  });
+});
+
+/**
+ * The enum names three modes; the code can finish one. That gap is deliberate —
+ * `OUTLET_SCAN` is Phase 2 — but it is only safe while the two lists agree about
+ * which mode new claims are created in.
+ */
+describe("the redemption mode a claim is created in is one the code can finish", () => {
+  it("creates claims in a mode this build can carry to REDEEMED", () => {
+    /**
+     * ⚠️ If this fails, someone has pointed `DEFAULT_REDEMPTION_MODE` at a mode
+     * with no redeem endpoint and no expiry sweep behind it. Every claim created
+     * after that captures the customer's money and parks at `PAID` for ever.
+     *
+     * The fix is not to change this test. It is to ship the flow first — the
+     * redeem endpoint and the sweep — and add the mode to
+     * `IMPLEMENTED_REDEMPTION_MODES` in that same commit.
+     */
+    expect(isImplementedRedemptionMode(DEFAULT_REDEMPTION_MODE)).toBe(true);
+  });
+
+  it("does not count the Phase 2 modes as finishable yet", () => {
+    expect(isImplementedRedemptionMode(CLAIM_REDEMPTION_MODE.OUTLET_SCAN)).toBe(
+      false,
+    );
+    // `ADMIN` sits in the same boat: settle parks it at PAID too.
+    expect(isImplementedRedemptionMode(CLAIM_REDEMPTION_MODE.ADMIN)).toBe(false);
+  });
+
+  it("treats an unknown value as unfinishable rather than as AUTO", () => {
+    // A junk mode from a hand-edited row must not fall through to "redeem it".
+    expect(isImplementedRedemptionMode(undefined)).toBe(false);
+    expect(isImplementedRedemptionMode("SCAN")).toBe(false);
   });
 });
 

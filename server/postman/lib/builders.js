@@ -24,16 +24,25 @@ const bearer = (varName) => ({
   bearer: [{ key: "token", value: `{{${varName}}}`, type: "string" }],
 });
 
-const url = (segments, query) => {
+/**
+ * @param {string} [host="{{base_url}}"] which variable the path hangs off.
+ *
+ * ⚠️ Three routes live **outside** the API mount. `index.js` serves `/`,
+ * `/my-ip` and `/client-ip` directly, so `{{base_url}}` — which ends in
+ * `/trydood/v1` — would put them at `/trydood/v1/my-ip`, which is a 404. They
+ * need `{{host_url}}`, and until this parameter existed they simply could not
+ * be expressed, which is why all three were missing from every collection.
+ */
+const url = (segments, query, host = "{{base_url}}") => {
   const enabled = (query || []).filter((p) => !p.disabled);
   return {
     raw:
-      "{{base_url}}/" +
+      `${host}/` +
       segments.join("/") +
       (enabled.length
         ? "?" + enabled.map((p) => `${p.key}=${p.value}`).join("&")
         : ""),
-    host: ["{{base_url}}"],
+    host: [host],
     path: segments,
     ...(query && query.length ? { query } : {}),
   };
@@ -261,6 +270,15 @@ const example = ({ name, code, status, body, req }) => ({
  * @param {Array}    [o.assert]      flattened into the test script
  * @param {Array}    [o.capture]     [[envVar, "d.path"], …]
  * @param {Array}    [o.examples]    saved examples (documentation only)
+ * @param {boolean}  [o.followRedirects]
+ *        Set `false` for an endpoint whose answer **is** the redirect.
+ *        `GET /documents/:token` returns a 302 to a CDN, and with
+ *        following left on, the captured "response" was the PDF Cloudinary
+ *        served — non-JSON, so the capture step skipped it and that request
+ *        ended up the only one in the collection with no saved example. Worse,
+ *        had it been saved it would have embedded a binary document. Turning
+ *        following off makes the 302 and its `Location` the documented answer,
+ *        which is what the endpoint actually promises.
  */
 const req = ({
   name,
@@ -276,6 +294,8 @@ const req = ({
   assert = [],
   capture: caps = [],
   examples = [],
+  followRedirects,
+  host,
 }) => {
   const request = {
     method,
@@ -285,7 +305,7 @@ const req = ({
     ],
     ...(body ? { body: jsonBody(body) } : {}),
     ...(form ? { body: formBody(form) } : {}),
-    url: url(segments, query),
+    url: url(segments, query, host),
     ...(token ? { auth: bearer(token) } : { auth: { type: "noauth" } }),
     // Derived wins over anything passed in: a hand-written label is a fact
     // about the code kept in prose, and prose does not move when the code does.
@@ -303,6 +323,9 @@ const req = ({
     name,
     request,
     response: examples.map((ex) => example({ ...ex, req: request })),
+    ...(followRedirects === false
+      ? { protocolProfileBehavior: { followRedirects: false } }
+      : {}),
     ...(script.length
       ? {
           event: [

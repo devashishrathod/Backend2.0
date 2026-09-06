@@ -12,6 +12,18 @@ jest.mock("../../helpers/notifications/notify", () => ({
   notify: (...args) => mockNotify(...args),
 }));
 
+/**
+ * ⚠️ The three admin refund notices go through `notifyAdmins`, not `notify`.
+ *
+ * `notify({ audience: ADMIN })` addressed nobody — no `brandId`, `customerId` or
+ * `userId` means no email address and no device — so `REFUND_FAILED`, which is
+ * CRITICAL, reached only the panel. Forwarded to the same spy: the payload the
+ * notice builds is what this file asserts on.
+ */
+jest.mock("../../helpers/notifications/notifyAdmins", () => ({
+  notifyAdmins: (args) => mockNotify({ ...args, audience: "ADMIN" }),
+}));
+
 const {
   notifyVendorRefundRequested,
   notifyVendorRefundReminder,

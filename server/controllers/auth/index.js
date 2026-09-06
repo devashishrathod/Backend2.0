@@ -10,6 +10,10 @@ const { logout } = require("./logout");
 const { setPasswordHandler } = require("./setPassword");
 const { forgotPasswordHandler } = require("./forgotPassword");
 const { resetPasswordHandler } = require("./resetPassword");
+const {
+  sendEmailVerificationHandler,
+  verifyEmailHandler,
+} = require("./emailVerification");
 
 module.exports = {
   register,
@@ -24,4 +28,6 @@ module.exports = {
   setPasswordHandler,
   forgotPasswordHandler,
   resetPasswordHandler,
+  sendEmailVerificationHandler,
+  verifyEmailHandler,
 };

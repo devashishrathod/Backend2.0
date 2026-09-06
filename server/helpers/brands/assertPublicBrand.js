@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Brand = require("../../models/Brand");
 const { throwError } = require("../../utils");
+const { customerVisibleBrandFilter } = require("./customerVisibleBrand");
 
 /**
  * Assert that a brand is one a customer is allowed to read, and return its id.
@@ -22,7 +23,19 @@ exports.assertPublicBrand = async (brandId) => {
   }
 
   const _id = new mongoose.Types.ObjectId(brandId);
-  const exists = await Brand.exists({ _id, isActive: true, isDeleted: false });
+  /**
+   * ⚠️ Now includes **verified**, not only live.
+   *
+   * This checked `isActive` and `isDeleted` and stopped there, so a brand that
+   * had never been through verification — or one whose approval was revoked —
+   * kept serving its gallery and its video clips to customers. Same shape as
+   * the bug this helper was written for: switched off in one place, still
+   * public in another.
+   *
+   * `customerVisibleBrandFilter` is the single definition; every customer
+   * surface reads it, so they cannot drift apart again.
+   */
+  const exists = await Brand.exists(customerVisibleBrandFilter({ _id }));
   if (!exists) throwError(404, "Brand not found");
 
   return _id;

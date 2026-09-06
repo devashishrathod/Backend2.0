@@ -81,19 +81,35 @@ Matlab agar gate `Subscribed.isActive === true` check karega to **koi bhi vendor
 
 ---
 
-### 2.3 🟠 `SUB_VENDOR` role ka koi handling nahi hai
+### 2.3 ✅ `SUB_VENDOR` role ka handling — **ye ho chuka hai**
 
-`ROLES.SUB_VENDOR` constants me hai, aur [signUpSubBrandWithWhatsapp.js:24](../services/subBrands/signUpSubBrandWithWhatsapp.js#L24) me outlet users isi role pe bante hain. Lekin:
+> **Ye section 2026-08-22 ki halat likhta tha. Neeche ke teeno bullets ab galat
+> hain** — 2026-09-06 ko code ke against verify kiya gaya. Original text
+> historical record ke liye rakha hai, sudhaar ke saath.
 
-- `verifyJwtToken` sirf `CUSTOMER` ke liye `req.customerId` aur `VENDOR` ke liye `req.brandId` set karta hai — **SUB_VENDOR ke liye kuch nahi**
-- `validateRoles` me `isSubVendor` preset nahi hai
-- **Koi route SUB_VENDOR ko handle nahi karta**
+`ROLES.SUB_VENDOR` constants me hai, aur [signUpSubBrandWithWhatsapp.js](../services/subBrands/signUpSubBrandWithWhatsapp.js#L51) me outlet users isi role pe bante hain.
 
-To ye accounts ban rahe hain (default password ke saath — [security finding #6](./security_findings.md)) par login karke kuch kar hi nahi sakte.
+| Tab likha tha | Ab kya hai |
+|---|---|
+| *"`verifyJwtToken` SUB_VENDOR ke liye kuch nahi set karta"* | [authenticate.js:102](../middlewares/authenticate.js#L102) — `req.subBrandId = user.subBrandId` set hota hai |
+| *"`validateRoles` me `isSubVendor` preset nahi hai"* | [validateRoles.js:19](../middlewares/validateRoles.js#L19) — hai, aur export bhi hota hai. ⚠️ Par **koi route use nahi karta** — har outlet-facing route `isVendorOrSubVendor` par hai |
+| *"Koi route SUB_VENDOR ko handle nahi karta"* | **31 endpoints** khulte hain: 4 `isVendorOrSubVendor` par + 27 `verifyJwtToken` par (koi bhi logged-in role) |
+| *"accounts default password ke saath ban rahe hain"* | ❌ Ab nahi. [signUpSubBrandWithWhatsapp.js:72-75](../services/subBrands/signUpSubBrandWithWhatsapp.js#L72-L75) — koi password set hi nahi hota; account OTP se authenticate karta hai, aur password tabhi banta hai jab user khud `POST /auth/set-password` se chune |
 
-`SubBrand` model me `brandId` hai, aur `User` model me `subBrandId` — to resolution possible hai: `user.subBrandId → SubBrand.brandId`.
+**Outlet ka verify step:** signup par outlet ke WhatsApp number par
+`sendOtp(WHATSAPP, …)` jaata hai ([:94](../services/subBrands/signUpSubBrandWithWhatsapp.js#L94)).
+Uske baad outlet wala `POST /auth/loginOrSignUp-with-whatsapp` se login karta
+hai — `SELF_SIGNUP_ROLES` sirf usse *khud ko banane* se rokta hai, login se nahi.
 
-**→ Q3 me decide karna hai**
+`SubBrand` model me `brandId` hai, aur `User` model me `subBrandId` — resolution
+wahi hai jo yahan socha gaya tha: `user.subBrandId → SubBrand.brandId`.
+
+⚠️ **Jo abhi bhi baaki hai** — daayre ka sawaal, handling ka nahi:
+`resolveActorBrand` par `String(brand.userId) !== String(userId)` → `403`, aur
+SUB_VENDOR ka `userId` Brand par hota hi nahi. To us helper se guzarne wala har
+kaam (vouchers, showcase, subscriptions) outlet ke liye band hai. Wo helper
+**16 files** use karti hain. Poora vivaran
+[super_admin_panel_api_doc.md · Appendix B #5](./super_admin_panel_api_doc.md) me.
 
 ---
 
@@ -360,13 +376,24 @@ Affected: `showcase/section/update|delete` · 5 media routes · `vouchers/update
 
 ---
 
-## Q3. `SUB_VENDOR` (outlet users) ko access dena hai? 🟠
+## Q3. `SUB_VENDOR` (outlet users) ko access dena hai? ✅ **Ho chuka — Option C**
 
-Abhi ye role banta hai par koi route handle nahi karta (section 2.3).
+> Ye sawaal 2026-08-22 ko khula tha. Jawab shipped hai; verify 2026-09-06.
 
 - **Option A — Abhi skip.** `SUB_VENDOR` ko koi route access na do. Middleware me support code likh dunga (future-ready) par kisi route pe apply nahi hoga.
 - **Option B — Vendor jaisa treat karo.** `req.brandId` = parent brand. Vendor ke saare routes pe allow. ⚠️ Iska matlab outlet user parent brand ka poora data edit kar sakta hai
-- **Option C — Limited access.** Sirf apne outlet ke routes (`workHours/upsert`, `subBrands/update` apna wala) + read-only baaki. Isme naya preset `isSubVendor` + ownership check chahiye. Zyada kaam.
+- **✅ Option C — Limited access.** Sirf apne outlet ke routes + read-only baaki. Isme naya preset `isSubVendor` + ownership check chahiye. Zyada kaam.
+
+**Answer: C.** Jo bana:
+
+- `req.subBrandId` set hota hai ([authenticate.js:102](../middlewares/authenticate.js#L102)); `req.brandId` parent brand ka
+- `isSubVendor` aur `isVendorOrSubVendor` presets ([validateRoles.js:19,31](../middlewares/validateRoles.js#L19))
+- **31 endpoints** khulte hain — 4 `isVendorOrSubVendor` par, 27 `verifyJwtToken` par
+- Ownership check har service ke andar: `assertClaimAccess` outlet ke `subBrandId` par 403 deta hai; wahi narrowing refunds, settlements aur notifications ke pipelines me
+
+⚠️ Option C ka wo hissa jo **nahi** bana: outlet ke apne write routes
+(`workHours/upsert`, apna `subBrands/update`). Wo `resolveActorBrand` ke peeche
+hain, jo SUB_VENDOR ko 403 deta hai. Baaki details section 2.3 me.
 
 **Answer:**
 

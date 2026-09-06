@@ -52,6 +52,34 @@ const { DEVICE_PLATFORMS } = require("../constants/notification");
 const { SUBSCRIBED_STATUS } = require("../constants/subscription");
 
 const { json, ok, err, A, req, folder, countTree } = require("./lib/builders");
+/**
+ * ⚠️ The money folders live in their own file because they did not live here at
+ * all — they existed only inside the shipped JSON, so running this generator
+ * deleted three folders and 17 requests and said "wrote". See the note at the
+ * top of that file.
+ */
+const {
+  claimsFolder,
+  refundsFolder,
+  settlementsFolder,
+} = require("./lib/vendorMoneyFolders");
+/**
+ * ⚠️ Shared with the customer collection, not copied into it.
+ *
+ * Email verification and the channel toggles are role-agnostic in the code —
+ * one `User`, no role gate, the id read off the token — so a per-collection
+ * copy would mean the next change to either endpoint had to be made twice.
+ */
+const {
+  emailVerificationFolder,
+  notificationPreferenceRequests,
+} = require("./lib/accountFolders");
+/**
+ * ⚠️ `isVendorOrSubVendor`, so these belong here and not in the admin
+ * collection: an outlet manager who actually served the customer is often
+ * the only person who knows what happened at the counter.
+ */
+const { vendorDisputeRequests } = require("./lib/adminOpsFolders");
 
 const OUT = __dirname;
 const ENV_DIR = path.join(OUT, "environments");
@@ -133,7 +161,7 @@ const authFolder = folder(
     "",
     "⚠️ **Password login vendor ke liye hai hi nahi** — `POST /auth/login` aur poora",
     "set/forgot/reset flow ADMIN-only hai. Isliye is collection me wo endpoints nahi",
-    "hain; `18 — Access control` me unpe `422`/`403` verify hota hai.",
+    "hain; `22 — Access control` me unpe `422`/`403` verify hota hai.",
     "",
     "⚠️ WhatsApp OTP abhi verify nahi hota (deliberate, deferred) — koi bhi 6-digit chalega.",
   ].join("\n"),
@@ -621,8 +649,33 @@ const feedFolder = folder(
         },
       ],
     }),
+
+    ...notificationPreferenceRequests({ token: V }),
   ],
 );
+
+// ===========================================================================
+// 20a — Email Verification (har role ke liye ek hi flow)
+// ===========================================================================
+const disputeEvidenceFolder = folder(
+  "21 — Dispute evidence",
+  [
+    "Bank ne ek payment wapas maanga. Yahan vendor apna bayaan deta hai.",
+    "",
+    "⚠️ Gate `isVendorOrSubVendor` hai — outlet manager tak. Wahi insaan aksar",
+    "jaanta hai ki counter par kya hua, aur use bahar rakhne ka matlab hota",
+    "sabse achhi gawahi ka na aana.",
+    "",
+    "Worklist khud admin collection me hai (`GET /disputes`), kyunki uska gate",
+    "koi role nahi maangta — scope token se aata hai, isliye wo kisi ek role ki",
+    "collection me fit nahi hoti.",
+  ].join("\n"),
+  vendorDisputeRequests({ token: V }),
+);
+const emailFolder = emailVerificationFolder({
+  name: "21 — Email Verification",
+  token: V,
+});
 
 // ===========================================================================
 // 04 — Onboarding (fresh vendor)
@@ -2646,10 +2699,10 @@ const legalFolder = folder(
 );
 
 // ===========================================================================
-// 18 — Access control
+// 22 — Access control
 // ===========================================================================
 const gateFolder = folder(
-  "18 — Access control (vendor token refuse hona chahiye)",
+  "22 — Access control (vendor token refuse hona chahiye)",
   [
     "**Negative tests** — har request ka pass hona matlab gate kaam kar raha hai.",
     "Sab vendor ke apne token se chalti hain.",
@@ -2870,6 +2923,14 @@ const items = [
   paymentFolder,
   masterFolder,
   legalFolder,
+  claimsFolder,
+  refundsFolder,
+  settlementsFolder,
+  disputeEvidenceFolder,
+  emailFolder,
+  // Last, like the customer collection's: its negative tests deliberately call
+  // admin surfaces, so anything ordered after it would run against a token that
+  // has just been proven not to work there.
   gateFolder,
 ];
 
@@ -3020,17 +3081,67 @@ const collection = {
 };
 
 // ---------------------------------------------------------------- env
+/**
+ * Every environment carries **all three** URLs, not just its own.
+ *
+ * `base_url` is what the requests use; the other three sit beside it so a run
+ * can be retargeted by copying one value across — no re-import, and no editing
+ * 116 requests.
+ *
+ * ⚠️ Changing `base_url` mid-run does not re-authenticate. The captured
+ * `vendor_token` belongs to whichever deployment issued it, so switching means
+ * re-running `00 — Setup & Auth` first.
+ */
+const URLS = {
+  local: "http://localhost:8080/trydood/v1",
+  staging: "https://backend2-0-4v4i.onrender.com/trydood/v1",
+  production: "https://api.trydood.com/trydood/v1",
+};
+
 const envFile = (name, baseUrl) => ({
   id: `trydood-vendor-${name}`,
   name: `Trydood Vendor — ${name}`,
   values: [
     { key: "base_url", value: baseUrl, type: "default", enabled: true },
 
+    // ── the other deployments, for retargeting without a re-import ──
+    { key: "local_url", value: URLS.local, type: "default", enabled: true },
+    { key: "stage_url", value: URLS.staging, type: "default", enabled: true },
+    { key: "prod_url", value: URLS.production, type: "default", enabled: true },
+
     // ── fill this in — seeder isko print karta hai ──
     { key: "vendor_whatsapp", value: "9700000011", type: "default", enabled: true },
     { key: "vendor_email", value: "postman.vendor@example.com", type: "default", enabled: true },
     { key: "vendor_mobile", value: "9700000011", type: "default", enabled: true },
     { key: "otp", value: "000000", type: "default", enabled: true },
+
+    /**
+     * Email verification. `new_email` is the address the change flow claims;
+     * `email_otp` has to be pasted from a real inbox — the collection cannot
+     * read mail, which is why that request's saved example is the refusal an
+     * empty code produces rather than a success.
+     */
+    {
+      key: "new_email",
+      value: "postman.vendor.new@example.com",
+      type: "default",
+      enabled: true,
+    },
+    { key: "email_otp", value: "", type: "default", enabled: true },
+    /** The address the verify request switches **to**. Seeder writes its OTP. */
+    { key: "verify_email", value: "", type: "default", enabled: true },
+    /** What the account started with, for the restore. Empty where there was none. */
+    { key: "account_email", value: "", type: "default", enabled: true },
+    { key: "dispute_id", value: "", type: "default", enabled: true },
+
+    /**
+     * The server root, without the API prefix — see the admin collection's
+     * Health & Ops folder for why three routes need it.
+     */
+    { key: "host_url", value: baseUrl.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+    { key: "local_host", value: URLS.local.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+    { key: "stage_host", value: URLS.staging.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+    { key: "prod_host", value: URLS.production.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
 
     // ── captured automatically ──
     { key: "vendor_token", value: "", type: "secret", enabled: true },
@@ -3061,6 +3172,53 @@ const envFile = (name, baseUrl) => ({
     // ── the seeder creates this one; publish needs an APPROVED version ──
     {
       key: "approved_version_id",
+      value: "",
+      type: "default",
+      enabled: true,
+    },
+
+    /**
+     * ── the money folders (18-20) — all seeded ──
+     *
+     * ⚠️ These were **not declared at all**, which is why 17 requests across
+     * Voucher Claims, Refunds and Settlements have never carried a captured
+     * example. An undeclared `{{…}}` is not an empty string: it is sent
+     * literally, so `/refunds/{{refund_request_id}}/approve` hits the
+     * catch-all and answers `404 Invalid API` — a refusal that looks like a
+     * routing bug and has nothing to do with refunds.
+     *
+     * None of them can be captured from an earlier request: a vendor cannot
+     * create a claim (a customer does), cannot open a refund (a customer
+     * does), and cannot build a settlement (a nightly job does). The
+     * cross-brand ids exist so the 403s are proven against a **real** row
+     * belonging to somebody else — a fabricated id returns 404 whether the
+     * ownership check works or not, which is a test that passes for the wrong
+     * reason.
+     */
+    { key: "claim_id", value: "", type: "default", enabled: true },
+    { key: "claim_code", value: "", type: "default", enabled: true },
+    { key: "claim_transaction_id", value: "", type: "default", enabled: true },
+    { key: "other_brand_claim_id", value: "", type: "default", enabled: true },
+    {
+      key: "subscription_transaction_id",
+      value: "",
+      type: "default",
+      enabled: true,
+    },
+    /**
+     * ⚠️ Three refunds, not one shared between approve, reject and the raised
+     * amount. They ran in that order against a single id, so approve decided
+     * the refund and the other two then acted on a decided row — the 422
+     * arrived for "already decided" rather than for the raised amount, which is
+     * a test passing for a reason unrelated to its name.
+     */
+    { key: "refund_request_id", value: "", type: "default", enabled: true },
+    { key: "rejectable_refund_id", value: "", type: "default", enabled: true },
+    { key: "raise_refund_id", value: "", type: "default", enabled: true },
+    { key: "other_brand_refund_id", value: "", type: "default", enabled: true },
+    { key: "settlement_id", value: "", type: "default", enabled: true },
+    {
+      key: "other_brand_settlement_id",
       value: "",
       type: "default",
       enabled: true,

@@ -4,46 +4,209 @@ Ek collection per panel. Har collection **generate hoti hai**, hand-likhi nahi �
 limits aur defaults `constants/` se seedhe padhe jaate hain, to collection API ke baare me
 jhooth nahi bol sakti.
 
-| Collection | Endpoints | Status |
+**Teen collections. Teen docs. Aur koi nahi.**
+
+| Collection | Requests | Status |
 |---|---:|---|
-| `trydood-customer.postman_collection.json` | 48 | ⚠️ 105 requests · **132 captured examples** — 17 naye (Voucher Claims + Refunds) **abhi capture nahi hue** |
-| `trydood-vendor.postman_collection.json` | 92 | ⚠️ 116 requests · **105 captured examples** — 17 naye (Voucher Claims + Refunds + Settlements) **abhi capture nahi hue** |
-| `trydood-admin.postman_collection.json` | 114 | ⬜ Phase 3 |
-| `trydood-security-changes.postman_collection.json` | – | ⏳ Teeno panel collections ready hone par retire hogi |
+| `trydood-customer.postman_collection.json` | 140 | ✅ 492 assertions · **0 failed** · 206 examples, **140/140 requests par** |
+| `trydood-vendor.postman_collection.json` | 127 | ✅ 294 assertions · **0 failed** · 143 examples, **127/127 requests par** |
+| `trydood-admin.postman_collection.json` | 113 | ✅ 258 assertions · **0 failed** · 124 examples, **113/113 requests par** |
+
+> ### ✅ 219/219 — aur ye ab naapa jaata hai, gina nahi jaata
+>
+> ```bash
+> node scripts/verifyApiCoverage.js
+> ```
+>
+> ```
+> Routes served: 219  (216 in routes/, 3 in index.js)
+>   ✅ endpoints_category.md    219/219 categorised
+>   ✅ role docs                219/219 documented
+>   ✅ collections              219/219 have a request
+>   ✅ saved examples           219/219 have an example
+> ```
+>
+> Ye routes **built Express routers** se padhta hai (`lib/routeInventory.js`),
+> kisi list se nahi — to jo route maujood hai wo report me hai, chahe kisi ko
+> yaad ho ya na ho.
+>
+> ⚠️ Pehle ye haath se gina jaata tha aur **har baar** drift karta tha: vendor
+> doc 78 endpoints kehti thi, uski collection me 116 requests thin, aur uska
+> generator 19 folders banata tha ek aisi file ke liye jisme 22 the. Teen number,
+> teen source, koi milaane wala nahi.
+
+> ### 🔴 Teen collections delete ki gayin — aur kyun
+>
+> `trydood-brand-verification`, `trydood-security-changes` aur
+> `trydood-subscription` kabhi panel nahi thin — har ek kaam ka ek tukda thi
+> jise kisi aur cheez ke liye token chahiye tha. Par unme **32 admin routes ki
+> ekmatra request** thi, yaani wo galti se load-bearing ban chuki thin: unhe
+> delete karna un endpoints ki coverage bhi le jaata, chup-chaap.
+>
+> Pehle sab kuch teen panel collections me migrate hua
+> (`lib/adminMigratedFolders.js`, script se — haath se nahi, aur field-by-field
+> diff karke), **tab** wo hataayi gayin.
+>
+> **Chauthi collection mat banao.** Jo endpoint upar wali table me fit na ho,
+> uska matlab gate galat hai — table nahi.
+
+### Kaunsa endpoint kahan jaata hai
+
+Gate se tay hota hai, isse nahi ki kahan achha lagta hai:
+
+| Gate | Doc | Collection |
+|---|---|---|
+| `isCustomer` | customer | `trydood-customer` |
+| `isVendor` · `isVendorOrSubVendor` | vendor | `trydood-vendor` |
+| `isAdmin` | admin | `trydood-admin` |
+| `isVendorOrAdmin` · `isBrandSideOrAdmin` | **vendor + admin** | vendor only |
+| `PUBLIC` · `optionalAuth` · `verifyJwtToken` | koi ek | koi ek |
+
+⚠️ `isVendorOrAdmin` **dono docs** me likha jaata hai par **ek** collection me
+request hoti hai. Dono role sach me call kar sakte hain, to dono docs ko bolna
+chahiye — par do collections me ek hi request rakhna matlab do jagah maintain
+karna, aur jis din ek badli aur doosri reh gayi, jo reh gayi wo chup-chaap jhooth
+bolne lagti hai.
 
 Companion docs: [`../docs/customer_mobile_api_doc.md`](../docs/customer_mobile_api_doc.md) ·
 [`../docs/vendor_panel_api_doc.md`](../docs/vendor_panel_api_doc.md) ·
+[`../docs/super_admin_panel_api_doc.md`](../docs/super_admin_panel_api_doc.md) ·
 [`../docs/endpoints_category.md`](../docs/endpoints_category.md)
 
 ---
 
-## Naye endpoints haath se jode jaate hain, generate nahi
+## 🔴 Customer generator dead tha — ab zinda hai
 
-Voucher-claim ke 18 aur refund ke 12 requests do scripts ne **jode** — generator kabhi
-nahi chalaya gaya:
+**`generate-customer-collection.js` chal hi nahi sakta tha**, aur ye baat is README ki
+apni hidayat ko ek jaal bana rahi thi.
+
+`lib/routeGates.js` `router.stack is not iterable` throw karta tha us din se jab
+`routes/voucherClaims.js` ne `{ router, routePrefix }` export karna shuru kiya — wo
+`.stack` seedhe module object par padh raha tha, aur mount bhi **filename** se banata tha
+(`/voucherClaims`, jabki asli mount `/voucher-claims` hai).
+
+Isi wajah se claims/refunds/search/logout ke 30 requests `scripts/add*ToPostman.js` se
+seedhe JSON me daale gaye the. Generator un 30 ke baare me **kuch nahi jaanta tha**.
+
+> ⚠️ Aur ye README neeche keh raha tha *"JSON hand-edit mat karein — generator me add
+> karke re-run karein"*. Jo bhi us hidayat ko maanta, wo **teen folders aur 96 captured
+> examples delete** kar deta — aur command `✅ 88 requests` bolkar **safal** ho jaati.
+> Naapa gaya: 118 requests → 88, 132 examples → 36.
+
+Ab dono theek hain:
+
+| Kya | Kahan |
+|---|---|
+| `routePrefix` + `extraRoutes` handle hote hain | `lib/routeGates.js` → `build()` |
+| Malformed id wale requests ka gate bhi derive hota hai | `lib/routeGates.js` → `gateNameFor()` — trailing segments ko `:x` maan kar retry karta hai. Pehle inhe hand-written `gate:` chahiye tha, aur unme se ek **galat** tha (`/vouchers/customer/get/:id` ko `verifyJwtToken` likha tha jabki wo `optionalAuth` ho chuka hai) |
+| Comment ke peeche chhupe gates | `stripComments()` — `routes/disputes.js` aur `transactions.js` `router.get(` aur path ke **beech** JSDoc rakhte hain, jisse wo routes chup-chaap `PUBLIC` report ho rahe the |
+| Claims / Refunds / Bank Accounts folders | `lib/customerMoneyFolders.js` |
+| Search folder | `lib/customerSearchFolder.js` |
+
+`scripts/addClaimRequestsToPostman.js`, `addRefundRequestsToPostman.js`,
+`addSearchRequestsToPostman.js` aur `addLogoutRequestsToPostman.js` ab **customer ke liye
+zaroori nahi** hain — unka content generator me hai. (Vendor ke liye wo abhi bhi use hote
+hain; vendor generator port hona baaki hai.)
+
+---
+
+## ⚠️ Do cheezein jo order par nirbhar hain
+
+### 1. Generate → seed → capture. Isi kram me.
+
+`generate-customer-collection.js` environment file **dobara likhta hai**, khaali values
+ke saath. Seeder usme das ids bharta hai. Ulta chalane par capture khaali `{{…}}`
+bhejta hai.
 
 ```bash
-node scripts/addClaimRequestsToPostman.js           # kya badlega
-node scripts/addClaimRequestsToPostman.js --apply   # badlo
-
-node scripts/addRefundRequestsToPostman.js
-node scripts/addRefundRequestsToPostman.js --apply
+node postman/generate-customer-collection.js                          # 1
+node scripts/seedPostmanFixtures.js --db Trydood2_postman --apply     # 2 — ids likhta hai
+node postman/lib/capture-examples.js \                                # 3
+  postman/trydood-customer.postman_collection.json \
+  postman/environments/customer-local.postman_environment.json
 ```
 
-Script sirf **insert** karti hai aur teen guard rakhti hai:
+### 2. `19 — Logout: sab devices se` poore run ke aakhir me hai
 
-1. **Byte-exact round-trip** — likhne se pehle jaanchti hai ki `JSON.stringify(…, 2)` + CRLF
-   file ko hu-ba-hu dobara banata hai. Na bane to likhti hi nahi. Warna har line reformat
-   hoti aur asli badlaav 20,000-line diff me dab jaata (in files me **CRLF** line endings hain)
-2. **Captured example count** — insert se pehle aur baad me ginti karti hai; badal jaye to
-   likhne se mana kar deti hai. Insert karne me ek bhi example nahi jaana chahiye
-3. **Folder number** — naya folder access-control wale ka number **le leta hai** aur wo ek
-   aage badh jaata hai. Pehli koshish me dono collections me do-do folder `12` / `19` ban
-   gaye the: Postman array order me dikhata hai, isliye kuch error nahi hota aur kisi ko
-   pata nahi chalta
+`allDevices: true` `sessionInvalidatedAt` stamp karta hai, jo **us waqt se pehle bana har
+JWT** mar deta hai — apna wala bhi.
 
-⚠️ **In 30 requests ke examples abhi capture nahi hue.** Neeche wala capture step chalana
-baaki hai — usme `newman` chahiye, jo is machine par install nahi hai.
+> ⚠️ Ye request pehle `00 — Setup & Auth` ke aakhir me thi. Padhne me theek lagta hai aur
+> galat hai: folder `00` **sabse pehle** chalta hai. Ek request ne baaki pandrah folders
+> ke **206 assertions** gira diye, aur capture ne 125 asli responses save kar liye — sab
+> ek **mare hue token** ke. Isliye ab uska apna folder hai, sabse aakhir me.
+
+---
+
+## Seeded ids — jo collection khud capture nahi kar sakti
+
+**Das** variables seeder likhta hai, kyunki inhe paane ka koi customer-facing raasta nahi:
+
+| Variable | Kyun seeded |
+|---|---|
+| `customer_whatsapp` | Seeded customer ka number — money folders usi ki history padhte hain |
+| `bank_account_id` | Ek **paid CGPey penny drop** chahiye. Seeder pehle-se-verified row rakhta hai |
+| `spare_bank_account_id` | Doosra verified account **jispar koi refund point nahi karta**. Folder 12 `bank_account_id` ko parked refund se jod deta hai, to uspar `DELETE` sahi tarah `409` deta hai — aur success kabhi dikhta hi nahi |
+| `invoice_token` | Koi endpoint ise **jaan-boojh kar** return nahi karta — `payments/:id` `invoiceDownloadUrl` deta hai, token nahi |
+| `awaiting_bank_refund_id` | `AWAITING_BANK_DETAILS` par pahunchne ke liye admin ko `SOURCE` fail dekhna aur bank details maangni padti hai — teen actor ka sequence |
+| `refundable_claim_id` | Ek **doosri** paid claim jispar koi refund nahi. Pehli claim parked refund rakhti hai, to `POST /refunds` uspar hamesha *"You already have a refund in progress"* deta |
+| `other_customer_claim_id` · `other_customer_transaction_id` | **Doosra** customer aur uski claim — cross-customer `403` tests ke liye |
+| `offer_id` | Offers published `VoucherVersion` par hain, aur koi customer endpoint unhe id se nahi deta |
+| `other_customer_notification_id` 🆕 | **Doosre** customer ki ek asli notification. Scope test ko ek valid id chahiye jise chhoona mana ho — banaya hua id bhi `matched: 0` deta, aur scope hata dene par bhi deta rehta: test pass hota aur kuch check na karta |
+
+### Teen fixture traps jo ek-doosre me chhupe the
+
+Ye teeno **ek hi wajah** se the — ek seeded open refund — aur teen alag shaklon me dikhe:
+
+| Dikha | Asli wajah |
+|---|---|
+| `POST /refunds` → `422` *"You already have a refund in progress"* | `maxOpenRequests` default **1** hai, aur parked refund poori allowance kha gaya. Seeder ab use `3` karta hai — allowance admin-configurable hai, to ye fixture config hai, workaround nahi |
+| `PATCH /refunds/:id/withdraw` → **`404 "Invalid API"`** | Ye business 404 **nahi** tha — `refund_request_id` khaali reh gaya, URL `/refunds//withdraw` ban gaya, aur router ka catch-all lag gaya. Khaali variable is tarah bhi dikh sakta hai |
+| `DELETE /bank-accounts/:id` → `409` | Sahi behaviour, par folder 12 pehle chalta hai aur account ko refund se jod deta hai. `spare_bank_account_id` isiliye hai |
+
+⚠️ Aur ek: `OTHER bina note — 422` **sahi status par galat wajah se** pass ho raha tha.
+`reasonNote` ka rule `requestRefund.js` me hai, **eligibility ke baad** — to ineligible
+claim par eligibility ka 422 pehle aata hai aur rule chhua hi nahi jaata. Ab wo request
+`refundable_claim_id` use karti hai aur **message bhi assert** karti hai
+(*"Please tell us what went wrong"*), sirf status code nahi.
+
+### ⚠️ Seeder shadow indexes reap karta hai — aur usse pehle nahi kar raha tha
+
+Is scratch database me `invoiceId_1` aur `razorpayOrderId_1` pade the — **blanket** unique
+indexes nullable paths par, theek wahi jodi jiska `CLAUDE.md` zikr karta hai. Mongo missing
+field ko `null` index karta hai, to blanket unique **doosre** aise row ko reject kar deta
+hai jiske paas abhi value nahi: do unsettled transactions seed karte hi
+`dup key: { invoiceId: null }` — ek aise field ka naam lekar jo fixture ne kabhi set hi
+nahi kiya.
+
+`reapShadowIndexes` normally boot par aur ghante me chalta hai — par capture run server ko
+`ENABLE_JOBS=false` ke saath uthata hai (taaki sweeps beech me na chalein), aur **isi liye**
+inhe koi reap nahi kar raha tha. Seeder ab money rows likhne se **pehle** khud reap chalata
+hai; helper ki apni do shartein use surakshit rakhti hain (sirf pehle se superseded blanket
+unique, aur partial replacement na ho to kuch bhi drop nahi).
+
+### 🔴 In do authorization tests ka trap — ab band
+
+Ye do requests test karti hain ki ek customer doosre ka payment/claim **na khol paaye**:
+
+```
+GET  /voucher-claims/payments/{{other_customer_transaction_id}}   -> asserts 403
+POST /refunds { "claimId": "{{other_customer_claim_id}}" }        -> asserts 403
+```
+
+Variable set na ho, to literal `{{other_customer_claim_id}}` body me jaata tha. Dono
+validators `objectId()` use karte hain, to jawab **`422` "Invalid claimId."** aata tha —
+`403` nahi. Test fail hota tha, par **galat wajah se**.
+
+⚠️ **Ise assertion me `422` accept karwa ke chup mat karana.** Tab test hamesha ke liye
+green ho jayega aur kabhi kuch check nahi karega — aur jo wo check kar raha hai wo ye hai
+ki ek customer doosre ka paisa dekh sakta hai ya nahi. Seeder ab wo rows banata hai.
+
+### `offer_id` khaali hone par poora claim flow rukta hai
+
+`offerId` validator me optional hai par **nullable nahi**. Khaali `{{offer_id}}` "no
+offer" nahi hai — wo `422 "Body.offerId is not allowed to be empty"` hai, aur claim ka
+pehla hi request wahin ruk jaata hai.
 
 ---
 
@@ -52,17 +215,38 @@ baaki hai — usme `newman` chahiye, jo is machine par install nahi hai.
 Har saved example ek **asli response** hai, live run se capture kiya gaya:
 
 ```bash
-# 1. Fixtures
+# 0. newman — capture-examples.js ise require karta hai
+#    ⚠️ `npx newman` chalta hai par `require("newman")` fail hota hai; module
+#    chahiye, CLI nahi. Aur `NODE_ENV=production` kuch shells me set hai, jo npm
+#    ko devDependencies skip kara deta hai — install "safal" hota hai aur newman
+#    kabhi nahi aata.
+NODE_ENV=development npm install --include=dev --save-dev newman
+
+# 1. Collection + environment
+node postman/generate-customer-collection.js
+
+# 2. Fixtures — shadow indexes reap karta hai aur das ids environment me likhta hai
 node scripts/seedPostmanFixtures.js --db Trydood2_postman --apply
 
-# 2. Server usi database pe
-MONGO_URL="<...>/Trydood2_postman" npm run dev
+# 3. Server usi database pe (jobs band, warna sweeps beech me chalte hain)
+MONGO_URL="<...>/Trydood2_postman" ENABLE_JOBS=false npm run dev
 
-# 3. Capture — collection chalti hai aur har response wapas usi file me examples ban jaata hai
+# 4. Capture — collection chalti hai aur har response wapas usi file me example ban jaata hai
 node postman/lib/capture-examples.js \
   postman/trydood-customer.postman_collection.json \
   postman/environments/customer-local.postman_environment.json
 ```
+
+> ### Non-JSON jawab bhi example banta hai
+>
+> `capture-examples.js` pehle non-JSON body ko `continue` kar deta tha, is bharose par ki
+> har endpoint envelope deta hai. **Ek nahi deta:** `GET /documents/:token`
+> `302` + `Location` deta hai. To wo request chup-chaap collection ki **ekmatra** request
+> thi jiska koi example nahi tha — aur summary line phir bhi kehti thi ki sab covered hai.
+>
+> Ab non-JSON `previewlanguage: "text"` ke saath save hota hai, `Location` header ke saath,
+> aur body 2,000 chars par cap hai. Us request par `followRedirects: false` bhi hai —
+> warna captured "response" Cloudinary ka **poora PDF** hota.
 
 > ### ⚠️ Generator dobara chalane se captured examples **mit jaate hain**
 >
@@ -151,13 +335,25 @@ Postman → Import → environments/customer-local.postman_environment.json
 Top-right dropdown se environment **select** karein — bina iske pre-request script warning
 deta hai.
 
-### 2. Sirf ek variable bharna hai
+### 2. Variables — kuch bharna nahi hai
 
-`customer_whatsapp` — koi bhi 10-digit number jo `6-9` se shuru ho. Collection khud us
-number se signup kar legi.
+`customer_whatsapp` **seeded customer** par default hai (`9700000021`), aur usi par rehna
+chahiye: money folders (`11` Claims, `12` Refunds, `13` Bank Accounts) us customer ki
+claim, payment, refund aur bank account padhte hain.
 
-Baaki sab (`customer_token`, `brand_id`, `voucher_id`, …) folder `00` se aage **apne aap**
-capture hota jaata hai.
+> Koi naya number daalein to folders `00`–`10` aur `14` phir bhi pass honge — signup,
+> `isFirst`, saare guest reads. Sirf money folders khaali chalenge. Yahi arrangement
+> vendor collection me seeded vendor ke saath pehle se hai.
+
+`customer_token`, `brand_id`, `voucher_id`, `claim_id`, … folder `00` se aage **apne aap**
+capture hote hain. Paanch seeded ids seeder likhta hai (upar dekhein).
+
+**Teen URL har environment me hain** — `local_url` · `stage_url` · `prod_url`. Target
+badalna ho to unme se ek value `base_url` me copy kar dein; re-import ki zarurat nahi.
+
+⚠️ `base_url` beech run me badalne se **re-authentication nahi hota**. Captured
+`customer_token` usi deployment ka hai jisne diya tha, to environment switch karne ke baad
+`00 — Setup & Auth` dobara chalayein.
 
 ### 3. Fixtures seed karein
 
@@ -178,14 +374,30 @@ Kya banta hai — sab Indore (`[75.8937, 22.7533]`) me:
 |---|---|
 | 1 admin user | banners / tickers ka `createdBy`, curation stamps |
 | 1 category + sub-category | master data |
+| 1 customer promo code (`PMFX10`) | claim order ka promo path. ⚠️ Saath me `Setting.customer.promoCode.isEnabled = true` bhi set hota hai — wo default me **`false`** hai, aur `create-order` par band promo ek **hard 422** hai |
 | 2 brands + 1 outlet each | ek pinned as Top Brand |
 | 10 brand features | profile ka 10-cap exercise karne ke liye |
 | 1 visible showcase (8 media) + 1 hidden | dono showcase endpoints ka farak dikhane ke liye |
 | 2 published vouchers | ek suggested + IMAGE banner, ek plain (`bannerType: null`) |
 | 1 banner + 2 tickers | home screen |
 | 1 terms + 1 privacy | legal |
+| **1 customer** (`9700000021`) 🆕 | Jispar poori money history baithi hai. `customer_whatsapp` isi par default hai |
+| **1 paid + settled claim** 🆕 | Claims list, claim detail, payments, aur `documentToken` + `invoiceSnapshot` — dono, warna invoice link `409` deta hai |
+| **1 verified bank account** 🆕 | List, delete aur refund ka bank-account choose — teeno ke asli examples, **bina penny drop ka paisa kharch kiye** |
+| **1 refund `AWAITING_BANK_DETAILS`** 🆕 | `PATCH /refunds/:id/bank-account` ka **ekmatra** valid status |
+| **1 doosra customer + uski claim** 🆕 | Cross-customer `403` tests — inke bina wo `422` dete the |
+
+⚠️ **`pricing` aur `invoiceSnapshot` haath se nahi likhe jaate.** Seeder
+`buildClaimPreview()` aur `buildVoucherInvoiceSnapshot()` — wahi builders jo live path
+chalata hai — call karta hai. Money numbers type kar dena wo tareeka hai jisse fixture us
+API se disagree karne lagta hai jise wo demonstrate kar raha hai, aur uspar bana **har
+captured example wo jhoot inherit** kar leta hai.
 
 Re-runnable hai — apne hi documents pehle clear karta hai, duplicate nahi banata.
+
+⚠️ Money rows **customer par** keyed hain, user par nahi (`VoucherClaim.customerId`), to
+clear step pehle `Customer` resolve karta hai. Sirf `User` delete karne par orphan claims
+bach jaate hain jo agle run ki listing me aa jaate — aur output me kuch nahi kehta.
 
 ### 4. Server usi database pe chalayein
 
@@ -213,7 +425,7 @@ hain, aur folder `07` ke toggle-pairs deliberately aise arrange hain ki list req
 
 | Folder | Kya |
 |---|---|
-| `00 — Setup & Auth` | WhatsApp login, token capture, `isFirst` regression, ADMIN self-signup block |
+| `00 — Setup & Auth` | WhatsApp login, token capture, `isFirst` regression, ADMIN self-signup block, saada + push logout |
 | `01 — User Profile` | Get / update (multipart), aur `DELETE /users/delete` ka no-op behaviour |
 | `02 — Location` | Upsert + read, coordinate order aur zipcode ke traps |
 | `03 — Master Data` | Categories, sub-categories |
@@ -223,7 +435,22 @@ hain, aur folder `07` ke toggle-pairs deliberately aise arrange hain ki list req
 | `07 — Engagement` | Follow / avoid toggles + lists |
 | `08 — Legal` | Terms aur privacy reads |
 | `09 — Push Notifications` | Device register / list / test / unregister |
-| `10 — Access control` | Negative tests — customer token in endpoints pe refuse hona chahiye |
+| `10 — Guest (bina token)` | Har public endpoint bina Authorization header ke |
+| `11 — Voucher Claims` | Order → verify → meri claims / payments → ek claim → code → **invoice link** |
+| `12 — Refunds` | Refund maango, wapas lo, **failed refund ka bank account chuno** 🆕, dekho |
+| `13 — Bank Accounts` 🆕 | OTP → add (live penny drop) → list → delete |
+| `14 — Search` | Global search (guest + signed-in), single-type paginated mode, history CRUD, popular chips |
+| `15 — Email Verification` 🆕 | Code maango → verify. **Har role** — `verifyJwtToken`, koi role gate nahi |
+| `16 — Notifications` 🆕 | Customer inbox, mark-read, aur wo scope test jo **doosre customer ki** row par `matched: 0` sabit karta hai |
+| `17 — App Config (public)` 🆕 | Guest config, version compare (`updateRequired`), aur leak check ki commission/reserve kabhi na aayein |
+| `18 — Access control` | Negative tests — customer token in endpoints pe refuse hona chahiye |
+| `19 — Logout: sab devices se` | ⚠️ **Session kill — sabse aakhir me, aur wahin rehna chahiye** |
+
+> ⚠️ **Folder number naam me hai, aur duplicate par koi error nahi aata.** Chaar naye
+> folders jodne par access-control wala `11` par hi reh gaya tha — do folder `11`, aur
+> Postman array order me render karta hai to sab bilkul normal dikhta hai. Yahi collision
+> pehle bhi ek baar hua tha (`12` / `19`). Naya folder jodein to neeche wale renumber
+> karein.
 
 ---
 

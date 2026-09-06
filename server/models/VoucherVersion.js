@@ -274,6 +274,12 @@ voucherVersionSchema.index(
   },
 );
 
+// Power the `stats.vouchers` counts on the category and sub-category listings.
+// The taxonomy lives here rather than on the master Voucher, so those counts
+// enter this collection first and would otherwise scan every version ever made.
+voucherVersionSchema.index({ categoryId: 1, isDeleted: 1 });
+voucherVersionSchema.index({ subCategoryId: 1, isDeleted: 1 });
+
 // Powers sortBy=RELEVANCE (textScore) on the admin voucher versions listing.
 voucherVersionSchema.index(
   { name: "text", description: "text", versionCode: "text", tags: "text" },

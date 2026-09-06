@@ -10,6 +10,7 @@ const {
   REFUND_DEFAULTS,
   CHARGEBACK_DEFAULTS,
   CUSTOMER_CURRENCY_DEFAULTS,
+  CUSTOMER_SEARCH_DEFAULTS,
 } = require("../../constants/customer");
 
 /**
@@ -43,6 +44,7 @@ exports.getCustomerConfig = async () => {
   const reserve = settlement.reserve || {};
   const refund = c.refund || {};
   const chargeback = c.chargeback || {};
+  const search = c.search || {};
 
   return {
     convenienceFee: {
@@ -205,6 +207,27 @@ exports.getCustomerConfig = async () => {
       deadlineAlertHours: chargeback.deadlineAlertHours?.length
         ? chargeback.deadlineAlertHours
         : CHARGEBACK_DEFAULTS.deadlineAlertHours,
+    },
+
+    search: {
+      isEnabled: search.isEnabled ?? CUSTOMER_SEARCH_DEFAULTS.isEnabled,
+      minQueryLength:
+        search.minQueryLength ?? CUSTOMER_SEARCH_DEFAULTS.minQueryLength,
+      sectionLimit: search.sectionLimit ?? CUSTOMER_SEARCH_DEFAULTS.sectionLimit,
+      historyLimit: search.historyLimit ?? CUSTOMER_SEARCH_DEFAULTS.historyLimit,
+      /**
+       * ⚠️ Read as-is, not with `??`.
+       *
+       * Mongoose hands back an unset array of strings as `[]`, and here an empty
+       * list is a **deliberate** admin choice meaning "no chips". `??` would only
+       * catch `undefined` anyway, so this is a plain read — but it is worth
+       * saying, because the reflex from `bankDetailsReminderHours` and
+       * `deadlineAlertHours` above is to fall back on length, and doing that here
+       * would make clearing the list impossible.
+       */
+      popularQueries: Array.isArray(search.popularQueries)
+        ? search.popularQueries
+        : [...CUSTOMER_SEARCH_DEFAULTS.popularQueries],
     },
 
     // Not admin-configurable. Here so a customer-facing string never has to

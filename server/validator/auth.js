@@ -299,6 +299,32 @@ const strongPassword = Joi.string()
     "any.required": "newPassword is required",
   });
 
+/**
+ * Signing out.
+ *
+ * Both fields are optional, and an empty body is the ordinary case — the client
+ * deletes its JWT and that is most of what "log out" means. What the body adds
+ * is the two things only the server can do.
+ *
+ * ⚠️ Named `pushToken`, not `token` as `/deviceTokens/unregister` calls it. In a
+ * logout body "token" reads as the JWT being surrendered, and sending the wrong
+ * one would fail in a way nobody could see: the device would simply keep getting
+ * notifications.
+ */
+exports.validateLogout = {
+  body: Joi.object({
+    // This device's FCM registration token, so its push notifications stop.
+    // Absent is not an error: an older client that does not send it still signs
+    // out, it just leaves its push registration alive.
+    pushToken: Joi.string().trim().min(20).max(4096).optional().messages({
+      "string.min": "pushToken does not look like a valid push token",
+    }),
+    // "Sign out of all devices" — kills every JWT issued before now, this one
+    // included, and retires every push device. The answer to a lost phone.
+    allDevices: Joi.boolean().default(false),
+  }),
+};
+
 exports.validateSetPassword = {
   body: Joi.object({
     // Only required when the account already has a password — enforced in the
@@ -347,5 +373,42 @@ exports.validateResetPassword = {
         "any.only": PASSWORD_ROLE_MESSAGE,
       }),
     newPassword: strongPassword,
+  }),
+};
+
+/**
+ * ---------------- confirming an email address ----------------
+ *
+ * `email` is **optional on both**, and that is the whole shape of the feature:
+ * omit it to confirm the address already on the account, send one to change to
+ * it. Making it required would force a client to read the profile first just to
+ * echo back a value the server already has.
+ *
+ * ⚠️ No `role` here, unlike the password validators. This endpoint is reached
+ * with a token, so the role is a fact about the caller — accepting one from the
+ * body would be accepting a claim about themselves.
+ */
+const verifiableEmail = Joi.string().trim().lowercase().email().optional().messages({
+  "string.email": "Please enter a valid email address",
+});
+
+exports.validateSendEmailVerification = {
+  body: Joi.object({
+    email: verifiableEmail,
+  }),
+};
+
+exports.validateVerifyEmail = {
+  body: Joi.object({
+    email: verifiableEmail,
+    /**
+     * Length is left to `verifyOtp`, which compares a hash — a code of the wrong
+     * length simply does not match, and stating a length here would tell an
+     * attacker how long it is.
+     */
+    otp: Joi.string().trim().required().messages({
+      "string.empty": "Please enter the code we sent you.",
+      "any.required": "Please enter the code we sent you.",
+    }),
   }),
 };

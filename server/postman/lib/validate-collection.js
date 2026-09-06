@@ -49,10 +49,23 @@ const walk = (items, trail) => {
 
     // ── 1. URL sanity ────────────────────────────────────────────────────
     const raw = node.request?.url?.raw || "";
-    if (!raw.startsWith("{{base_url}}/")) {
-      problems.push(`${where}: url does not start with {{base_url}}/ — "${raw}"`);
+    /**
+     * ⚠️ Two roots, not one.
+     *
+     * `{{base_url}}` ends in `/trydood/v1` and covers 216 of the 219 routes.
+     * The other three — `/`, `/my-ip`, `/client-ip` — are served by `index.js`
+     * **outside** that mount, so they hang off `{{host_url}}`. Requiring
+     * `base_url` here is what kept them out of every collection: they could not
+     * be expressed without failing validation.
+     */
+    const ROOTS = ["{{base_url}}", "{{host_url}}"];
+    const root = ROOTS.find((r) => raw.startsWith(`${r}/`) || raw === `${r}/`);
+    if (!root) {
+      problems.push(
+        `${where}: url does not start with {{base_url}}/ or {{host_url}}/ — "${raw}"`,
+      );
     }
-    if (/\/\//.test(raw.replace("{{base_url}}", ""))) {
+    if (/\/\//.test(raw.replace(root || "{{base_url}}", ""))) {
       problems.push(`${where}: double slash in path — "${raw}"`);
     }
 

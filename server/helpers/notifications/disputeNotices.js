@@ -9,6 +9,7 @@ const {
   deepLink,
   adminUrl,
   vendorUrl,
+  documentUrl,
   ADMIN_PATHS,
   PANEL_PATHS,
 } = require("./panelLinks");
@@ -21,13 +22,17 @@ const money = (amount) =>
     { minimumFractionDigits: 2, maximumFractionDigits: 2 },
   )}`;
 
-const onDate = (date) =>
-  date
-    ? new Date(date).toLocaleString("en-IN", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    : "-";
+/**
+ * ⚠️ `formatDateTime` — and on this file it matters most.
+ *
+ * The helper it replaces had no `timeZone`, so a dispute's `respondBy` printed in
+ * the server's zone (UTC in production): five and a half hours off, on a deadline
+ * whose whole property is that **missing it loses the money automatically**. The
+ * bank does not ask twice. See `formatDateTime.js`.
+ */
+const { formatDateTime } = require("./formatDateTime");
+
+const onDate = formatDateTime;
 
 /**
  * A dispute response deadline is close, or has passed.
@@ -117,8 +122,8 @@ exports.notifyDisputeDeadline = async ({
         ["Status", transaction?.disputeStatus || "-"],
         ["Respond by", when],
       ],
-      buttonText: "Open dispute",
-      buttonUrl: adminUrl(ADMIN_PATHS.dispute(transaction?._id)),
+      ctaLabel: "Open dispute",
+      ctaUrl: adminUrl(ADMIN_PATHS.dispute(transaction?._id)),
     },
   });
 };
@@ -194,8 +199,8 @@ exports.notifyVendorDisputeRaised = async ({
         ["Status", "Held while we contest it"],
         ["What helps", "Bill / KOT number, camera timestamp, staff account"],
       ],
-      buttonText: "Open dispute",
-      buttonUrl: vendorUrl(PANEL_PATHS.dispute(dispute?._id)),
+      ctaLabel: "Open dispute",
+      ctaUrl: vendorUrl(PANEL_PATHS.dispute(dispute?._id)),
     },
   });
 };
@@ -224,6 +229,15 @@ exports.notifyVendorDisputeResolved = async ({
 }) => {
   const reference = claimCode || transaction?.invoiceId || dispute?.disputeId;
   const amount = dispute?.amount || transaction?.paidAmount;
+
+  /**
+   * The chargeback advice — the paper that says what is being taken and why.
+   *
+   * ⚠️ Only on a loss. A won dispute takes nothing from the vendor, so there is
+   * no advice and no button; offering a "Download Advice" there would tell them
+   * money is going when it is not.
+   */
+  const advice = won ? undefined : documentUrl(dispute?.documentToken);
 
   return notify({
     brandId: transaction?.brandId || dispute?.brandId,
@@ -254,6 +268,7 @@ exports.notifyVendorDisputeResolved = async ({
       amount,
       won,
       recoverable,
+      documentNumber: dispute?.documentNumber,
     },
     deepLink: deepLink(PANEL_PATHS.dispute(dispute?._id)),
     dedupeKey: `DISPUTE_RESOLVED_VENDOR:${dispute?.disputeId}:${won ? "WON" : "LOST"}`,
@@ -262,6 +277,7 @@ exports.notifyVendorDisputeResolved = async ({
         ["Claim", reference || "-"],
         ["Amount", money(amount)],
         ["Outcome", won ? "Decided in your favour" : "Upheld for the customer"],
+        ...(advice ? [["Advice No", dispute.documentNumber]] : []),
         [
           "What happens next",
           won
@@ -271,8 +287,20 @@ exports.notifyVendorDisputeResolved = async ({
               : "Nothing to deduct — it was never paid out",
         ],
       ],
-      buttonText: "Open dispute",
-      buttonUrl: vendorUrl(PANEL_PATHS.dispute(dispute?._id)),
+      /**
+       * The advice only exists on a loss, and only once it has been issued — a
+       * won dispute takes nothing, so there is nothing to advise. Dropped rather
+       * than rendered dead when the issuing step failed or `PUBLIC_API_URL` is
+       * unset.
+       */
+      actions: [
+        ...(advice ? [{ label: "Download Advice", url: advice }] : []),
+        {
+          label: "Open dispute",
+          url: vendorUrl(PANEL_PATHS.dispute(dispute?._id)),
+        },
+      ],
     },
+    whatsappUrlParam: dispute?.documentToken,
   });
 };

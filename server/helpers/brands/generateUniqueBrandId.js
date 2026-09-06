@@ -1,11 +1,6 @@
 const Brand = require("../../models/Brand");
+const { generateUniqueDisplayId } = require("../common");
 
-exports.generateUniqueBrandId = async () => {
-  const prefix = "#TB";
-  while (true) {
-    const randomNumber = Math.floor(10000 + Math.random() * 90000);
-    const uniqueId = `${prefix}${randomNumber}`;
-    const existingBrand = await Brand.findOne({ uniqueId });
-    if (!existingBrand) return uniqueId;
-  }
-};
+/** `#TB123456` — see `helpers/common/generateUniqueDisplayId.js`. */
+exports.generateUniqueBrandId = async () =>
+  generateUniqueDisplayId(Brand, { prefix: "#TB" });

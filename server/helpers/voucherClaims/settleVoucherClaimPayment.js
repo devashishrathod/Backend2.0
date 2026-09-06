@@ -12,6 +12,9 @@ const {
   notifyClaimPaid,
   notifyVendorClaimReceived,
   notifyClaimFailed,
+  ADMIN_PATHS,
+  adminUrl,
+  deepLink,
 } = require("../notifications");
 const {
   NOTIFICATION_TYPES,
@@ -22,17 +25,18 @@ const {
   VOUCHER_CLAIM_STATUS,
   CLAIM_HISTORY_ACTION,
   CLAIM_REDEMPTION_MODE,
+  isImplementedRedemptionMode,
 } = require("../../constants/voucherClaim");
 const { recordClaimHistory } = require("./recordClaimHistory");
 const {
   buildVoucherInvoiceSnapshot,
 } = require("./buildVoucherInvoiceSnapshot");
-const { generateInvoiceNumber } = require("../transactions");
+const { generateDocumentNumber } = require("../documents");
 const { getCustomerConfig, getSubscriptionConfig } = require("../settings");
 const {
-  INVOICE_SERIES,
-  TRANSACTION_PURPOSE,
-} = require("../../constants/transaction");
+  DOCUMENT_KIND,
+  DOCUMENT_SERIES,
+} = require("../../constants/document");
 
 const DUPLICATE_KEY = 11000;
 
@@ -276,6 +280,27 @@ exports.settleVoucherClaimPayment = async ({
           transactionId: claimed._id,
         },
         dedupeKey: `SLOT_CONFLICT:${claim._id}`,
+        deepLink: deepLink(ADMIN_PATHS.claim(claim._id)),
+        mail: {
+          lines: [
+            ["Claim code", claim.claimCode || "-"],
+            ["Amount charged", String(claim.pricing?.totalPayable ?? "-")],
+            ["Transaction", String(claimed._id)],
+          ],
+          /**
+           * Two screens, because the decision needs both: the claim says what was
+           * redeemed twice, and the transaction is where a refund is issued from.
+           */
+          actions: [
+            { label: "Open claim", url: adminUrl(ADMIN_PATHS.claim(claim._id)) },
+            {
+              label: "Open transaction",
+              url: adminUrl(ADMIN_PATHS.transaction(claimed._id)),
+            },
+          ],
+          footnote:
+            "The payment is settled and the customer has been charged — nothing is broken. The decision is whether the second redemption should be refunded.",
+        },
       });
     }
   }
@@ -284,6 +309,9 @@ exports.settleVoucherClaimPayment = async ({
    * Phase 1 captures straight to `REDEEMED`: paying at the counter *is* the
    * redemption. Phase 2 stops the same capture at `PAID` and waits for a scan —
    * a behaviour switch, not a migration.
+   *
+   * The mode is read off the **claim**, not off today's constant, so a claim
+   * created before a Phase 2 flip still finishes the way it was created.
    */
   const paidStatus =
     claim.redemptionMode === CLAIM_REDEMPTION_MODE.AUTO
@@ -292,7 +320,7 @@ exports.settleVoucherClaimPayment = async ({
 
   // Conditional on PENDING, so a resume does not overwrite a claim that has
   // since been refunded or cancelled by a human.
-  await VoucherClaim.updateOne(
+  const parked = await VoucherClaim.updateOne(
     { _id: claim._id, status: VOUCHER_CLAIM_STATUS.PENDING },
     {
       $set: {
@@ -304,6 +332,52 @@ exports.settleVoucherClaimPayment = async ({
       },
     },
   );
+
+  /**
+   * ⚠️ Parking at `PAID` is only safe once something can move a claim off it.
+   *
+   * `createVoucherClaimOrder` refuses to create a claim in an unfinishable mode,
+   * so reaching here means the value arrived some other way — a direct database
+   * edit, a script, a half-done Phase 2. The money is already captured, so
+   * refusing is not on the table; what must not happen is that it goes unnoticed,
+   * because a claim stuck at `PAID` throws nothing and fails no test.
+   *
+   * Deliberately **not** rewritten to `REDEEMED`. Once the scan flow is real
+   * that would hand a vendor the money for a voucher nobody redeemed, which is
+   * the worse of the two — and unlike a stuck claim it cannot be undone by hand.
+   * A stuck one still refunds: `PAID` is in `REFUNDABLE_CLAIM_STATUSES`.
+   *
+   * Raised **after** the write and only when it landed. The update is
+   * conditional on `PENDING`, so a claim a human had already refunded or
+   * cancelled is not parked anywhere and there is nothing to shout about — and
+   * a false alarm on a money path is how a real one gets ignored.
+   */
+  if (
+    parked.modifiedCount > 0 &&
+    paidStatus === VOUCHER_CLAIM_STATUS.PAID &&
+    !isImplementedRedemptionMode(claim.redemptionMode)
+  ) {
+    await notifyAdmins({
+      type: NOTIFICATION_TYPES.WEBHOOK_FAILED,
+      severity: NOTIFICATION_SEVERITY.CRITICAL,
+      title: `Claim ${claim.claimCode} captured in unsupported redemption mode`,
+      body:
+        `The payment was captured and the claim is parked at PAID in ` +
+        `redemptionMode "${claim.redemptionMode}", which this build has no way ` +
+        `to complete or expire. The customer has been charged. Refund it, or ` +
+        `settle it by hand, and find out how the mode was set.`,
+      meta: {
+        claimId: claim._id,
+        claimCode: claim.claimCode,
+        redemptionMode: claim.redemptionMode,
+        customerId: claim.customerId,
+        transactionId: claimed._id,
+      },
+      // Per claim, so a retried webhook does not raise it again.
+      dedupeKey: `UNSUPPORTED_REDEMPTION_MODE:${claim._id}`,
+      deepLink: deepLink(ADMIN_PATHS.claim(claim._id)),
+    });
+  }
 
   // The discount is final. If the reservation had already been swept as stale,
   // this re-claims it — the money was captured at the discounted amount, so it
@@ -356,20 +430,30 @@ exports.settleVoucherClaimPayment = async ({
       getSubscriptionConfig(),
     ]);
 
-    const invoiceId = await generateInvoiceNumber({
+    /**
+     * The admin-chosen prefix, falling back to the built-in claim series.
+     *
+     * ⚠️ This used to be able to bring down every claim settlement. The old
+     * `generateInvoiceNumber` validated the series against a hardcoded list of
+     * three, while the settings validator let an admin save any letters — so a
+     * changed prefix threw a 500 *here*, after the money was captured and the
+     * claim redeemed, and the resume job then failed on the same line forever.
+     * `generateDocumentNumber` validates shape rather than membership.
+     */
+    const invoiceId = await generateDocumentNumber({
       series:
         customerConfig.invoice.seriesPrefix ||
-        INVOICE_SERIES[TRANSACTION_PURPOSE.VOUCHER_CLAIM],
+        DOCUMENT_SERIES[DOCUMENT_KIND.VOUCHER_CLAIM],
     });
 
     const freshClaim = await VoucherClaim.findById(claim._id);
     const snapshot = buildVoucherInvoiceSnapshot({
-      transaction: { ...claimed.toObject(), invoiceId },
+      transaction: claimed.toObject(),
       claim: freshClaim,
       config: customerConfig,
       seller: sellerConfig,
+      documentNumber: invoiceId,
       billTo: {
-        name: freshClaim.customerSnapshot?.name,
         email: claimed.email,
         contact: claimed.contact,
       },
@@ -383,7 +467,7 @@ exports.settleVoucherClaimPayment = async ({
         $set: {
           invoiceId,
           invoiceSnapshot: snapshot,
-          invoiceToken: crypto.randomBytes(32).toString("hex"),
+          documentToken: crypto.randomBytes(32).toString("hex"),
         },
       },
       { returnDocument: "after" },
@@ -427,6 +511,18 @@ exports.settleVoucherClaimPayment = async ({
         `was honoured because the money was taken at that price, so the code is now over its cap.`,
       meta: { claimId: claim._id, promoCode: claim.promoCode },
       dedupeKey: `PROMO_OVER_LIMIT:${claim.promoCode}`,
+      deepLink: deepLink(ADMIN_PATHS.promo(claim.promoCode)),
+      mail: {
+        lines: [
+          ["Promo code", claim.promoCode || "-"],
+          ["Claim code", claim.claimCode || "-"],
+          ["Discount honoured", String(claim.pricing?.promoDiscount ?? "-")],
+        ],
+        ctaLabel: "Open promo code",
+        ctaUrl: adminUrl(ADMIN_PATHS.promo(claim.promoCode)),
+        footnote:
+          "Nothing to undo — the money was taken at that price. Lower the cap or close the code if it should stop here.",
+      },
     });
   }
 

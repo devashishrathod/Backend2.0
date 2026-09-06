@@ -3,18 +3,17 @@ const Settlement = require("../../models/Settlement");
 const Transaction = require("../../models/Transaction");
 const Brand = require("../../models/Brand");
 const Bank = require("../../models/Bank");
+const { TRANSACTION_PURPOSE } = require("../../constants/transaction");
 const {
-  TRANSACTION_PURPOSE,
-  INVOICE_SERIES,
-} = require("../../constants/transaction");
+  DOCUMENT_KIND,
+  DOCUMENT_SERIES,
+} = require("../../constants/document");
 const { PAYMENT_STATUS } = require("../../constants");
 const { SETTLEMENT_STATUS } = require("../../constants/settlement");
 const { DUPLICATE_KEY } = require("../../constants/mongo");
 const { getCustomerConfig } = require("../../helpers/settings");
-const {
-  buildTransactionFilter,
-  generateInvoiceNumber,
-} = require("../../helpers/transactions");
+const { buildTransactionFilter } = require("../../helpers/transactions");
+const { generateDocumentNumber } = require("../../helpers/documents");
 const {
   settlementPeriodStart,
   settlementPeriodEnd,
@@ -276,23 +275,19 @@ const buildForBrand = async ({
       payoutProvider: settings.payoutProvider,
       idempotencyKey,
       /**
-       * ⚠️ `TD/STL/26-27/000123`, and nothing was allotting one.
+       * `TD/STL/26-27/000123` — the reference a vendor quotes when they query a
+       * payout, and the one the admin's `settlementNumber` search matches on.
        *
-       * `SETTLEMENT_NUMBER` sat in the constants with a prefix, a pad width and
-       * a counter key, and `INVOICE_SERIES.SETTLEMENT` was already wired into
-       * `generateInvoiceNumber` — every single reference in the codebase was a
-       * **read**. So the field was always empty: the admin's `settlementNumber`
-       * search matched nothing, every vendor notification printed a dash where
-       * the reference should be, and ledger narrations said
-       * "Payout for <objectid>" — the one string a person quotes back when a
-       * payout is queried.
+       * The series is `DOCUMENT_SERIES[PAYOUT_STATEMENT]`, which is the same
+       * `"STL"` the payout statement itself prints, so a settlement and the
+       * document describing it carry one number rather than two.
        *
        * Allotted here rather than in a pre-save hook because `Settlement.create`
        * can legitimately fail on the idempotency key, and a hook would burn a
        * number from a GST-facing sequence on every duplicate build attempt.
        */
-      settlementNumber: await generateInvoiceNumber({
-        series: INVOICE_SERIES.SETTLEMENT,
+      settlementNumber: await generateDocumentNumber({
+        series: DOCUMENT_SERIES[DOCUMENT_KIND.PAYOUT_STATEMENT],
         at: periodEnd,
       }),
       status: SETTLEMENT_STATUS.DRAFT,

@@ -71,12 +71,18 @@ const CUSTOMER_TAX_DEFAULTS = Object.freeze({
 /**
  * Customer-side promo codes.
  *
- * Off until the customer checkout ships. While off, passing a promo code is
- * rejected outright rather than silently ignored — charging full price on a
- * code the customer believes they applied is not acceptable.
+ * On by default. Passing a promo code while this is off is rejected outright
+ * rather than silently ignored — charging full price on a code the customer
+ * believes they applied is not acceptable, and that stays true whichever way
+ * the default points.
+ *
+ * ⚠️ `allowWhenNoOffer` below stays **off**. That is a separate decision and a
+ * more expensive one: a promo on top of no vendor offer at all is a pure
+ * giveaway with no supply behind it, so it is turned on deliberately per
+ * platform rather than inherited from this flag.
  */
 const CUSTOMER_PROMO_DEFAULTS = Object.freeze({
-  isEnabled: false,
+  isEnabled: true,
   // A promo on top of no offer at all is a pure giveaway with no vendor supply
   // behind it, so it needs to be turned on deliberately.
   allowWhenNoOffer: false,
@@ -365,6 +371,20 @@ const CHARGEBACK_DEFAULTS = Object.freeze({
 const CUSTOMER_CURRENCY_DEFAULTS = Object.freeze({
   currency: "INR",
   currencySymbol: "₹",
+  /**
+   * What a **PDF** prints instead of `₹`.
+   *
+   * ⚠️ PDFKit's built-in Helvetica is WinAnsi-encoded, and PDFKit encodes an
+   * unmappable character by truncating its codepoint to the low byte. `₹` is
+   * U+20B9, so `0xB9` reaches the page — which in WinAnsi is `¹`. The payout
+   * statement was printing `¹1,000.00` on every amount for exactly this reason:
+   * it passed `currencySymbol` straight into the document.
+   *
+   * Rendering the sign properly would mean embedding a Unicode font in every
+   * document. `Rs.` is unambiguous, costs nothing, and cannot silently degrade.
+   * Screens and emails keep `currencySymbol` — they are not WinAnsi.
+   */
+  pdfCurrencyPrefix: "Rs. ",
 });
 
 /** Enumerations an admin may pick from. Frozen; the validator reads these. */
@@ -394,6 +414,28 @@ const REFUND_METHODS = Object.freeze({
  */
 const BANK_ATTACH_OTP_PURPOSE = "customer-bank-attach";
 
+/**
+ * The customer home screen's search box.
+ *
+ * `minQueryLength` is the one that changes behaviour rather than volume: below
+ * it the API refuses the query outright, so the app knows exactly when it may
+ * start calling. One character against every brand, voucher and area on the
+ * platform is a scan that returns almost everything and helps nobody.
+ *
+ * `popularQueries` is curated by an admin, not derived from traffic — nothing
+ * logs what customers search for. Empty is a valid state and simply means the
+ * app shows no chips.
+ */
+const CUSTOMER_SEARCH_DEFAULTS = Object.freeze({
+  isEnabled: true,
+  minQueryLength: 2,
+  // Rows per section in overview mode.
+  sectionLimit: 5,
+  // How many recent searches one customer keeps.
+  historyLimit: 20,
+  popularQueries: Object.freeze([]),
+});
+
 const VENDOR_TIMEOUT_ACTIONS = Object.freeze({
   ESCALATE: "ESCALATE",
   AUTO_APPROVE: "AUTO_APPROVE",
@@ -410,6 +452,7 @@ module.exports = {
   REFUND_DEFAULTS,
   CHARGEBACK_DEFAULTS,
   CUSTOMER_CURRENCY_DEFAULTS,
+  CUSTOMER_SEARCH_DEFAULTS,
   SETTLEMENT_CYCLE_TYPES,
   PAYOUT_PROVIDERS,
   REFUND_METHODS,

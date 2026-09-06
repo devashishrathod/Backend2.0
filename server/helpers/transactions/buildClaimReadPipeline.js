@@ -136,7 +136,7 @@ exports.claimProjection = (role) => {
       disputeStatus: 1,
       amountRefunded: 1,
       // The public link is an admin tool for support conversations.
-      invoiceToken: 1,
+      documentToken: 1,
     };
   }
 
@@ -149,7 +149,7 @@ exports.claimProjection = (role) => {
       amountRefunded: 1,
       refundStatus: 1,
       // Their own invoice, and the link they were emailed.
-      invoiceToken: 1,
+      documentToken: 1,
     };
   }
 

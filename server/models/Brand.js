@@ -219,4 +219,14 @@ const brandSchema = new mongoose.Schema(
   { timestamps: true, versionKey: false },
 );
 
+// Power the `stats.brands` counts on the category and sub-category listings.
+// Without them every count is a full collection scan of the brands.
+brandSchema.index({ categoryId: 1, isDeleted: 1 });
+brandSchema.index({ subCategoryId: 1, isDeleted: 1 });
+
+// Global customer search. A `contains` regex still scans, but the anchored
+// `^term` half of the match — the one that produces the top-ranked hits —
+// walks the index instead.
+brandSchema.index({ brandName: 1 });
+
 module.exports = mongoose.model("Brand", brandSchema);

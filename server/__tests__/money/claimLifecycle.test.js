@@ -389,7 +389,7 @@ describe("create to settled, end to end", () => {
     expect((await getVendorBalance(BRAND)).balance).toBe(PRICING.vendorPayable);
     // An invoice number was issued and a token minted, but no PDF rendered.
     expect(settled.invoiceId).toMatch(/^TD\/VCH\//);
-    expect(settled.invoiceToken).toHaveLength(64);
+    expect(settled.documentToken).toHaveLength(64);
     expect(settled.invoiceUrl).toBeFalsy();
     // Two audit rows: created, captured.
     expect(await VoucherClaimHistory.countDocuments({ claimId: claim._id })).toBe(2);

@@ -1,4 +1,8 @@
 const { dispatchPush, isFcmConfigured, probeFcmAuth } = require("../../helpers/push");
+const User = require("../../models/User");
+const {
+  resolveChannelPreferences,
+} = require("../../helpers/notifications/channelPreferences");
 const { throwError } = require("../../utils");
 
 /**
@@ -21,6 +25,31 @@ exports.sendTestPush = async (actor, payload = {}) => {
     throwError(
       422,
       "Push is not configured on this server. Set FCM_PROJECT_ID, FCM_CLIENT_EMAIL and FCM_PRIVATE_KEY.",
+    );
+  }
+
+  /**
+   * ⚠️ The caller's own push preference is checked, and refused rather than
+   * bypassed.
+   *
+   * This endpoint exists to answer *"why am I not getting notifications?"*, and
+   * one of the answers is *"because you switched them off"* — which is also the
+   * only answer the person can fix themselves in ten seconds. Sending anyway
+   * would let somebody watch a test push arrive, conclude push works, and never
+   * discover that every real notification is being suppressed for them.
+   *
+   * Refusing is safe here because nothing depends on it: no notification row is
+   * written and no other delivery is at stake. It is a diagnostic, and this is a
+   * diagnosis.
+   */
+  const user = await User.findOne({ _id: actor.userId, isDeleted: false })
+    .select("notificationPreferences")
+    .lean();
+
+  if (!resolveChannelPreferences(user).push) {
+    throwError(
+      422,
+      "Push notifications are switched off for your account. Turn them on with PUT /notifications/preferences and try again.",
     );
   }
 

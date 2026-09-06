@@ -6,6 +6,13 @@ const {
   VENDOR_TIMEOUT_ACTIONS,
 } = require("../constants/customer");
 const { GATEWAY_FEE_BEARER } = require("../constants/transaction");
+const {
+  DOCUMENT_SERIES_PATTERN,
+  DOCUMENT_SERIES_MIN,
+  DOCUMENT_SERIES_MAX,
+  RESERVED_DOCUMENT_SERIES,
+} = require("../constants/document");
+const { SEARCH_LIMITS } = require("../constants/search");
 
 const voucherSettingSchema = Joi.object({
   maxOffers: Joi.number().integer().min(1).max(100).optional(),
@@ -139,19 +146,79 @@ const customerNotificationSchema = Joi.object({
   isWhatsAppNotificationEnabled: Joi.boolean().optional(),
 });
 
+/**
+ * The admin audience's outbound channels.
+ *
+ * ⚠️ Its own block, not a corner of `vendor` or `customer`, because the whole
+ * point is that the three cannot silence each other. `getNotificationConfig`
+ * used to fall through to the vendor block for admin, so switching off vendor
+ * renewal reminders also switched off `SETTLEMENT_LEDGER_DRIFT`, `REFUND_FAILED`
+ * and every other alert that fires when money has gone wrong.
+ *
+ * ⚠️ This is a **kill switch for an outage**, not a preference. An admin who
+ * personally wants fewer emails has `PUT /notifications/preferences`, which
+ * quiets them without quieting the rest of the team.
+ */
+const adminNotificationSchema = Joi.object({
+  isEmailNotificationEnabled: Joi.boolean().optional(),
+  isPushNotificationEnabled: Joi.boolean().optional(),
+  // Defaults to false, like the other two audiences: WhatsApp needs a
+  // Meta-approved template per message type before anything sends.
+  isWhatsAppNotificationEnabled: Joi.boolean().optional(),
+  /**
+   * How many recipients one broadcast may reach before it is refused.
+   *
+   * ⚠️ `min(1)`, because `0` would refuse every broadcast including a single
+   * named recipient — and the refusal would name a limit nobody remembers
+   * setting.
+   *
+   * ⚠️ No upper bound here on purpose: what this deployment can carry is an
+   * operational judgement, not something a validator should guess. But raising
+   * it does not make a broadcast free — every recipient is a row written and a
+   * push queued, and FCM still takes 500 tokens per batch. Past a few thousand
+   * it belongs in a background job.
+   */
+  maxRecipientsPerDispatch: Joi.number().integer().min(1).optional().messages({
+    "number.min": "maxRecipientsPerDispatch must be at least 1",
+    "number.base": "maxRecipientsPerDispatch must be a number",
+  }),
+});
+
+const adminSettingSchema = Joi.object({
+  notification: adminNotificationSchema.optional(),
+});
+
 const customerInvoiceSchema = Joi.object({
-  // ⚠️ Changing this starts a NEW counter. Numbers already issued keep the old
-  // prefix, which is correct — an invoice number is a permanent legal reference.
+  /**
+   * ⚠️ Changing this starts a NEW counter. Numbers already issued keep the old
+   * prefix, which is correct — an invoice number is a permanent legal reference.
+   *
+   * `invalid` rejects a prefix already owned by another document kind. Two kinds
+   * sharing a counter still produce unique numbers, so this is not a correctness
+   * rule — it is a legibility one: a voucher receipt numbered `TD/SUB/...` lands
+   * in the middle of the subscription series, and nobody reading the books
+   * afterwards can tell the two apart.
+   *
+   * The runtime no longer *depends* on this check. `generateDocumentNumber` used
+   * to accept only three hardcoded series and threw a 500 on anything else —
+   * after the payment was captured — so a prefix this validator allowed could
+   * break every voucher claim until somebody changed it back. It now validates
+   * shape rather than membership, and this rule only stops a human choosing a
+   * confusing prefix.
+   */
   seriesPrefix: Joi.string()
     .trim()
     .uppercase()
-    .min(2)
-    .max(6)
-    .pattern(/^[A-Z]+$/)
+    .min(DOCUMENT_SERIES_MIN)
+    .max(DOCUMENT_SERIES_MAX)
+    .pattern(DOCUMENT_SERIES_PATTERN)
+    .invalid(...RESERVED_DOCUMENT_SERIES)
     .optional()
     .messages({
-      "string.pattern.base": "seriesPrefix may only contain letters",
+      "string.pattern.base": "seriesPrefix may only contain capital letters",
+      "string.min": "seriesPrefix must be at least {#limit} letters",
       "string.max": "seriesPrefix cannot exceed {#limit} characters",
+      "any.invalid": `seriesPrefix cannot be one of ${RESERVED_DOCUMENT_SERIES.join(", ")} — those series belong to other Trydood documents.`,
     }),
 });
 
@@ -271,6 +338,37 @@ const chargebackSettingSchema = Joi.object({
     }),
 });
 
+const searchSettingSchema = Joi.object({
+  isEnabled: Joi.boolean().optional(),
+  /**
+   * ⚠️ Floor of 1. Zero would let an empty query reach a match that runs over
+   * brands, vouchers, categories and every outlet address at once — and return
+   * essentially the whole platform to somebody who typed nothing.
+   */
+  minQueryLength: Joi.number().integer().min(1).max(10).optional().messages({
+    "number.min": "A search needs at least one character to match on.",
+  }),
+  sectionLimit: Joi.number()
+    .integer()
+    .min(1)
+    .max(SEARCH_LIMITS.MAX_SECTION_LIMIT)
+    .optional(),
+  historyLimit: Joi.number().integer().min(1).max(100).optional(),
+  /**
+   * Curated chips for the empty search box.
+   *
+   * ⚠️ No `.min(1)` — unlike the alert arrays above, an empty list here is a
+   * legitimate choice and simply means no chips are shown. Nothing silently
+   * stops working.
+   */
+  popularQueries: Joi.array()
+    .items(
+      Joi.string().trim().min(1).max(SEARCH_LIMITS.MAX_POPULAR_QUERY_LENGTH),
+    )
+    .max(SEARCH_LIMITS.MAX_POPULAR_QUERIES)
+    .optional(),
+});
+
 const customerSettingSchema = Joi.object({
   convenienceFee: convenienceFeeSchema.optional(),
   tax: customerTaxSchema.optional(),
@@ -281,6 +379,7 @@ const customerSettingSchema = Joi.object({
   settlement: settlementSettingSchema.optional(),
   refund: refundSettingSchema.optional(),
   chargeback: chargebackSettingSchema.optional(),
+  search: searchSettingSchema.optional(),
 });
 
 /**
@@ -305,6 +404,64 @@ const securitySettingSchema = Joi.object({
   otp: otpSettingSchema.optional(),
 });
 
+/**
+ * The public block — everything here is readable by anyone at `GET /app-config`.
+ *
+ * ⚠️ Validate it **more** strictly than the private blocks, not less. A typo in
+ * `minVersion` does not fail here and does not fail on save; it fails on every
+ * customer's phone at launch, and the fix needs the very update the typo is
+ * demanding. So the version shape is enforced rather than trusted.
+ */
+const appVersionSchema = Joi.object({
+  android: Joi.string()
+    .trim()
+    .pattern(/^\d+(\.\d+){0,2}$/)
+    .optional()
+    .messages({ "string.pattern.base": "android version must look like 1.2.3" }),
+  ios: Joi.string()
+    .trim()
+    .pattern(/^\d+(\.\d+){0,2}$/)
+    .optional()
+    .messages({ "string.pattern.base": "ios version must look like 1.2.3" }),
+});
+
+const appSettingSchema = Joi.object({
+  minVersion: appVersionSchema.optional(),
+  latestVersion: appVersionSchema.optional(),
+  /**
+   * ⚠️ This locks every user out of every build below `minVersion`, at once.
+   * There is no staged rollout and no undo other than setting it back — so it is
+   * its own field rather than something inferred from a version bump.
+   */
+  forceUpdate: Joi.boolean().optional(),
+  updateMessage: Joi.string().trim().max(300).optional(),
+  storeUrl: Joi.object({
+    android: Joi.string().trim().uri().allow("").optional(),
+    ios: Joi.string().trim().uri().allow("").optional(),
+  }).optional(),
+  /**
+   * Where every "please contact support" sentence in the app points. Blank is
+   * allowed — it is the honest state before somebody fills it in, and refusing
+   * blank would mean the block could never be partially configured.
+   */
+  support: Joi.object({
+    email: Joi.string().trim().lowercase().email().allow("").optional(),
+    phone: Joi.string().trim().allow("").optional(),
+    whatsapp: Joi.string().trim().allow("").optional(),
+  }).optional(),
+  /**
+   * ⚠️ These hide screens in the app. They do **not** close endpoints — the
+   * server keeps enforcing on its own, so turning `promoCodes` off here still
+   * leaves `create-order` returning its hard 422 rather than silently accepting.
+   */
+  features: Joi.object({
+    promoCodes: Joi.boolean().optional(),
+    refunds: Joi.boolean().optional(),
+    voucherClaims: Joi.boolean().optional(),
+    search: Joi.boolean().optional(),
+  }).optional(),
+});
+
 exports.validateUpdateSetting = {
   body: Joi.object({
     vendor: Joi.object({
@@ -314,6 +471,14 @@ exports.validateUpdateSetting = {
     }).optional(),
     customer: customerSettingSchema.optional(),
     security: securitySettingSchema.optional(),
+    /**
+     * ⚠️ Without this entry the block was unreachable. `stripUnknown` is on, so
+     * an `admin` key in the body was silently removed — no error, a 200, and a
+     * toggle that never moved. The model had the field and `getAdminConfig()`
+     * read it; nothing could write it.
+     */
+    admin: adminSettingSchema.optional(),
+    app: appSettingSchema.optional(),
     isActive: Joi.boolean().optional(),
   })
     .min(1)

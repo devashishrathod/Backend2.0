@@ -1,4 +1,24 @@
 const { notify } = require("./notify");
+/**
+ * ### ⚠️ An admin notice goes through `notifyAdmins`, never `notify`
+ *
+ * `notify({ audience: ADMIN })` looks like it addresses the admin team. It does
+ * not address anybody. `resolveRecipient` builds its destination from
+ * `brandId` / `customerId` / `userId`, and an admin notice passes none of them —
+ * so `recipient.email` is `null`, the email block returns early, and
+ * `dispatchPush([null])` finds no devices. The row lands in the admin feed and
+ * **nothing is delivered**: no email, no push.
+ *
+ * Four notices in this file were written that way, including
+ * `SETTLEMENT_LEDGER_DRIFT`, which is CRITICAL and means the books and the bank
+ * disagree about money that has physically moved. An admin who was not looking
+ * at the panel never learned.
+ *
+ * `notifyAdmins` fans out to one row **per active admin**, each with a real
+ * `userId`, so email and push have somewhere to go — and so each admin's own
+ * `notificationPreferences` are consulted for their own copy.
+ */
+const { notifyAdmins } = require("./notifyAdmins");
 const {
   NOTIFICATION_AUDIENCE,
   NOTIFICATION_TYPES,
@@ -8,6 +28,7 @@ const {
   deepLink,
   vendorUrl,
   adminUrl,
+  documentUrl,
   PANEL_PATHS,
   ADMIN_PATHS,
 } = require("./panelLinks");
@@ -24,20 +45,24 @@ const money = (amount) =>
 /** Notice bodies quote money, so the arithmetic in them rounds like the ledger. */
 const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
-const onDate = (date) =>
-  date
-    ? new Date(date).toLocaleString("en-IN", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    : "-";
+/**
+ * ⚠️ One formatter, and it names the timezone — see `formatDateTime.js`.
+ *
+ * The two helpers this replaces called `toLocaleString` / `toLocaleDateString`
+ * with no `timeZone`, so both formatted in the server's zone (UTC in
+ * production). `onDate` is used for a payout **leg's** `initiatedAt`, which is
+ * how an admin decides whether a NEFT is stale — off by five and a half hours
+ * either way.
+ *
+ * A **period** stays date-only. It runs to the end of its last day, and
+ * `31 Aug 2026 11:59 PM` invites a question about that last minute.
+ */
+const { formatDateTime, formatDateRange } = require("./formatDateTime");
+
+const onDate = formatDateTime;
 
 const forPeriod = (settlement) =>
-  `${new Date(settlement.periodStart).toLocaleDateString("en-IN", {
-    dateStyle: "medium",
-  })} – ${new Date(settlement.periodEnd).toLocaleDateString("en-IN", {
-    dateStyle: "medium",
-  })}`;
+  formatDateRange(settlement.periodStart, settlement.periodEnd);
 
 /**
  * Settlement notices.
@@ -71,6 +96,20 @@ const forPeriod = (settlement) =>
  * every query becomes a phone call.
  */
 exports.notifyVendorSettlementPaid = async ({ settlement, utr }) => {
+  /**
+   * The payout statement, with the commission tax invoice inside it.
+   *
+   * ⚠️ This email had no link to it. The token is minted and the statement
+   * frozen the moment the settlement becomes `PAID` — which is exactly when this
+   * message goes out — and the vendor was still sent only to a panel screen. The
+   * one document that explains why ₹10,000 of sales paid out ₹8,820 was reachable
+   * only by someone who already knew to go looking for it.
+   *
+   * Dropped rather than rendered dead when the statement could not be frozen or
+   * `PUBLIC_API_URL` is unset.
+   */
+  const download = documentUrl(settlement.documentToken);
+
   return notify({
     brandId: settlement.brandId,
     audience: NOTIFICATION_AUDIENCE.VENDOR,
@@ -84,6 +123,7 @@ exports.notifyVendorSettlementPaid = async ({ settlement, utr }) => {
     meta: {
       settlementId: settlement._id,
       settlementNumber: settlement.settlementNumber,
+      commissionInvoiceNumber: settlement.commissionInvoiceNumber,
       amount: settlement.netPayable,
       utr,
     },
@@ -95,10 +135,32 @@ exports.notifyVendorSettlementPaid = async ({ settlement, utr }) => {
         ["Period", forPeriod(settlement)],
         ["Amount", money(settlement.netPayable)],
         ["Bank reference (UTR)", utr || "-"],
+        /**
+         * Only when commission was actually charged. The rate is zero today, so
+         * a line naming an invoice number that does not exist would be worse
+         * than no line.
+         */
+        ...(settlement.commissionInvoiceNumber
+          ? [["Commission invoice", settlement.commissionInvoiceNumber]]
+          : []),
       ],
-      buttonText: "View settlement",
-      buttonUrl: vendorUrl(PANEL_PATHS.settlement(settlement._id)),
+      /**
+       * The statement first, then the panel — the same order every other
+       * document email uses, and for the same reason: the paper is what this
+       * email is worth keeping for. Each is dropped independently when its base
+       * is unconfigured.
+       */
+      actions: [
+        ...(download ? [{ label: "Download Statement", url: download }] : []),
+        {
+          label: "View settlement",
+          url: vendorUrl(PANEL_PATHS.settlement(settlement._id)),
+        },
+      ],
     },
+    // The WhatsApp template's URL button is approved against a fixed base with
+    // only the last segment dynamic — so the token is passed, not a full URL.
+    whatsappUrlParam: settlement.documentToken,
   });
 };
 
@@ -136,8 +198,8 @@ exports.notifyVendorSettlementFailed = async ({ settlement, reason }) => {
         ["Amount", money(settlement.netPayable)],
         ["Reason", reason || settlement.failureReason || "Returned by the bank"],
       ],
-      buttonText: "View settlement",
-      buttonUrl: vendorUrl(PANEL_PATHS.settlement(settlement._id)),
+      ctaLabel: "View settlement",
+      ctaUrl: vendorUrl(PANEL_PATHS.settlement(settlement._id)),
     },
   });
 };
@@ -173,8 +235,8 @@ exports.notifyVendorSettlementOnHold = async ({ settlement }) => {
         ["Period", forPeriod(settlement)],
         ["Amount", money(settlement.netPayable)],
       ],
-      buttonText: "View settlement",
-      buttonUrl: vendorUrl(PANEL_PATHS.settlement(settlement._id)),
+      ctaLabel: "View settlement",
+      ctaUrl: vendorUrl(PANEL_PATHS.settlement(settlement._id)),
     },
   });
 };
@@ -192,8 +254,7 @@ exports.notifyVendorSettlementOnHold = async ({ settlement }) => {
  * notification rather than a log line.
  */
 exports.notifyAdminSettlementStuck = async ({ settlement, leg, hours }) => {
-  return notify({
-    audience: NOTIFICATION_AUDIENCE.ADMIN,
+  return notifyAdmins({
     severity: NOTIFICATION_SEVERITY.WARNING,
     type: NOTIFICATION_TYPES.SETTLEMENT_STUCK,
     title: `Unconfirmed payout — ${settlement.settlementNumber || settlement._id}`,
@@ -233,8 +294,8 @@ exports.notifyAdminSettlementStuck = async ({ settlement, leg, hours }) => {
         ["Amount", money(leg?.amount ?? settlement.netPayable)],
         ["Started", onDate(leg?.initiatedAt)],
       ],
-      buttonText: "Open settlement",
-      buttonUrl: adminUrl(ADMIN_PATHS.settlement(settlement._id)),
+      ctaLabel: "Open settlement",
+      ctaUrl: adminUrl(ADMIN_PATHS.settlement(settlement._id)),
     },
   });
 };
@@ -246,8 +307,7 @@ exports.notifyAdminSettlementStuck = async ({ settlement, leg, hours }) => {
  * side so the first person to know is not the one waiting for the money.
  */
 exports.notifyAdminSettlementLate = async ({ settlement, hours }) => {
-  return notify({
-    audience: NOTIFICATION_AUDIENCE.ADMIN,
+  return notifyAdmins({
     severity: NOTIFICATION_SEVERITY.WARNING,
     type: NOTIFICATION_TYPES.SETTLEMENT_LATE,
     title: `Payout overdue — ${settlement.settlementNumber || settlement._id}`,
@@ -270,8 +330,8 @@ exports.notifyAdminSettlementLate = async ({ settlement, hours }) => {
         ["Amount", money(settlement.netPayable)],
         ["Period", forPeriod(settlement)],
       ],
-      buttonText: "Open settlement",
-      buttonUrl: adminUrl(ADMIN_PATHS.settlement(settlement._id)),
+      ctaLabel: "Open settlement",
+      ctaUrl: adminUrl(ADMIN_PATHS.settlement(settlement._id)),
     },
   });
 };
@@ -287,8 +347,7 @@ exports.notifyAdminSettlementLate = async ({ settlement, hours }) => {
 exports.notifyAdminSettlementLedgerDrift = async ({ settlement, legTotal, ledgerTotal }) => {
   const gap = Number((legTotal - ledgerTotal).toFixed(2));
 
-  return notify({
-    audience: NOTIFICATION_AUDIENCE.ADMIN,
+  return notifyAdmins({
     severity: NOTIFICATION_SEVERITY.CRITICAL,
     type: NOTIFICATION_TYPES.SETTLEMENT_LEDGER_DRIFT,
     title: `Ledger drift on ${settlement.settlementNumber || settlement._id}`,
@@ -311,8 +370,8 @@ exports.notifyAdminSettlementLedgerDrift = async ({ settlement, legTotal, ledger
         ["Ledger booked", money(ledgerTotal)],
         ["Gap", money(Math.abs(gap))],
       ],
-      buttonText: "Open settlement",
-      buttonUrl: adminUrl(ADMIN_PATHS.settlement(settlement._id)),
+      ctaLabel: "Open settlement",
+      ctaUrl: adminUrl(ADMIN_PATHS.settlement(settlement._id)),
     },
   });
 };
@@ -399,8 +458,8 @@ exports.notifyVendorSettlementCarriedForward = async ({
         ["Chargebacks deducted", money(chargebackAdjustment)],
         ["Carried into next settlement", money(shortfall)],
       ],
-      buttonText: "View statement",
-      buttonUrl: vendorUrl(PANEL_PATHS.settlement(settlement._id)),
+      ctaLabel: "View statement",
+      ctaUrl: vendorUrl(PANEL_PATHS.settlement(settlement._id)),
     },
   });
 };
@@ -434,9 +493,21 @@ exports.notifyAdminVendorDebtAged = async ({
     .filter(Boolean)
     .join(" and ");
 
-  return notify({
-    brandId,
-    audience: NOTIFICATION_AUDIENCE.ADMIN,
+  /**
+   * ### 🔴 `brandId` used to be passed here, and it sent this to the vendor
+   *
+   * `notify({ brandId, audience: ADMIN })` reads as *"an admin notice, about
+   * this brand"*. It is not what the code did. `resolveRecipient(brandId)`
+   * resolves the **brand's own email**, so the row landed in the admin feed
+   * while the message was delivered to the outlet it is about — carrying an
+   * internal figure and the sentence *"Collect it, or write it off."*
+   *
+   * A vendor reading that could reasonably conclude the debt had been forgiven.
+   *
+   * The brand is still identified: it is in `meta.brandId` and named in the
+   * title. What is gone is the accidental addressing.
+   */
+  return notifyAdmins({
     severity: NOTIFICATION_SEVERITY.WARNING,
     type: NOTIFICATION_TYPES.VENDOR_DEBT_AGED,
     title: `${money(outstanding)} unrecovered from ${brandName || brandId}`,
@@ -457,8 +528,8 @@ exports.notifyAdminVendorDebtAged = async ({
         ["Chargebacks", String(counts.disputes || 0)],
         ["Refund clawbacks", String(counts.refunds || 0)],
       ],
-      buttonText: "Open settlements",
-      buttonUrl: adminUrl(ADMIN_PATHS.SETTLEMENTS),
+      ctaLabel: "Open settlements",
+      ctaUrl: adminUrl(ADMIN_PATHS.SETTLEMENTS),
     },
   });
 };

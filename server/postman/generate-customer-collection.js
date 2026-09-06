@@ -30,6 +30,27 @@ const { FOLLOW_SORT_BY } = require("../constants/follow");
 const { BRAND_AVOIDANCE_SORT_BY } = require("../constants/brandAvoidance");
 
 const { json, ok, err, A, req, folder, countTree } = require("./lib/builders");
+/**
+ * The money and search folders live in their own modules.
+ *
+ * ⚠️ They were previously **not generated at all** — `scripts/add*ToPostman.js`
+ * inserted them straight into the JSON, because `lib/routeGates.js` threw on
+ * `routes/voucherClaims.js` and this generator could not run. Anyone following
+ * the README's "add it to the generator and re-run" would have silently deleted
+ * three folders and 96 captured examples. Both halves are fixed; these folders
+ * are now generated like every other one.
+ */
+const {
+  claimsFolder,
+  refundsFolder,
+  bankFolder,
+} = require("./lib/customerMoneyFolders");
+const { searchFolder } = require("./lib/customerSearchFolder");
+const {
+  emailFolder,
+  inboxFolder,
+  appConfigFolder,
+} = require("./lib/customerAccountFolders");
 
 const OUT = __dirname;
 const ENV_DIR = path.join(OUT, "environments");
@@ -267,20 +288,142 @@ const authFolder = folder(
     }),
 
     req({
-      name: "6. Logout",
+      name: "6. Logout — saada",
       method: "POST",
       segments: ["auth", "logout"],
       token: CUST,
-      gate: "`verifyJwtToken` — koi bhi signed-in role",
       description: [
-        "⚠️ **Ye server pe kuch nahi karta.** Koi token blacklist nahi hai, koi session",
-        "invalidate nahi hoti — JWT apne expiry tak valid rehta hai. App ko token locally",
-        "delete karna hai; ye call sirf ek acknowledgement hai.",
+        "Khaali body wala logout — jo purane clients bhejte hain.",
         "",
-        "Isliye ise sabse aakhir me chalayein, warna baaki requests ke liye token to rahega",
-        "par order confusing lagega.",
+        "⚠️ **Iska description pehle kehta tha *\"ye server pe kuch nahi karta\"*, aur",
+        "wo ab galat hai.** Logout ab push band karta hai, login flags utaarta hai",
+        "aur `allDevices` par har session khatam karta hai (agle do requests).",
+        "Khaali body wala call phir bhi **JWT invalidate nahi karta** — wo stateless",
+        "hai aur apni expiry tak valid rehta hai, to app ko token locally delete",
+        "karna hi hai.",
+        "",
+        "Ise regression ki tarah rakha gaya hai: khaali body aaj bhi bilkul valid",
+        "call hai, aur `sessionsEnded: false` yahi sabit karta hai.",
       ].join("\n"),
-      assert: [...A.status(200), ...A.ok("Logout successful")],
+      assert: [
+        ...A.status(200),
+        ...A.ok("Logout successful"),
+        ...A.custom("saada logout session nahi maarta", [
+          "const d = pm.response.json().data;",
+          'pm.expect(d.sessionsEnded, "sessionsEnded").to.eql(false);',
+        ]),
+      ],
+    }),
+
+    req({
+      name: "6a. Logout — is device ka push bhi band",
+      method: "POST",
+      segments: ["auth", "logout"],
+      token: CUST,
+      body: { pushToken: "{{push_token}}" },
+      description: [
+        "App wahi FCM token bhejti hai jo usne `POST /deviceTokens/register` par",
+        "bheja tha, aur usi device ke notifications band ho jaate hain. Pehle iske",
+        "liye alag se `PUT /deviceTokens/unregister` maarna padta tha — ab ek call",
+        "kaafi hai.",
+        "",
+        "| Response field | Kya |",
+        "|---|---|",
+        "| `pushDeactivated` | Kitne devices retire hue. `pushToken` na bheja to `0` |",
+        "| `activeDevices` | Ab kitne devices par push chalu hai. `null` = push chhua hi nahi |",
+        "| `sessionsEnded` | Yahan hamesha `false` — saada logout token invalidate nahi karta |",
+        "",
+        "⚠️ **Anjaan ya pehle se retire token error nahi hai** — `pushDeactivated: 0`",
+        "aata hai aur logout phir bhi safal. Client retry kar raha ho, ya provider",
+        "ne token pehle hi mar diya ho, to logout us wajah se fail nahi hona chahiye.",
+        "",
+        "⚠️ **Filter me hamesha `userId` hota hai**, to ek user doosre ka device chup",
+        "nahi kara sakta — kisi aur ka token bhejne par bhi `0`.",
+      ].join("\n"),
+      assert: [
+        ...A.status(200),
+        ...A.ok(),
+        ...A.custom("push chhua gaya, aur session nahi mara", [
+          "const d = pm.response.json().data;",
+          'pm.expect(d, "pushDeactivated").to.have.property("pushDeactivated");',
+          'pm.expect(d.sessionsEnded, "sessionsEnded").to.eql(false);',
+        ]),
+      ],
+    }),
+
+  ],
+);
+
+/**
+ * The session kill, in a folder of its own at the **very end** of the run.
+ *
+ * ⚠️ This request was briefly the last item in `00 — Setup & Auth`, which reads
+ * sensibly and is wrong: folder `00` runs *first*. `allDevices: true` stamps
+ * `sessionInvalidatedAt`, so every gated request in all fifteen folders after it
+ * answered `403 "Invalid or malformed token"` — one request took out **206
+ * assertions**, and the examples it captured were 125 real responses to a dead
+ * token rather than to the API.
+ *
+ * A destructive request belongs where nothing follows it. Its own folder makes
+ * that a structural fact rather than a comment somebody has to notice.
+ */
+const sessionKillFolder = folder(
+  "19 — Logout: sab devices se (session kill)",
+  [
+    "⚠️ **Ye folder poore run ke aakhir me hai, aur usi jagah rehna chahiye.**",
+    "",
+    "`allDevices: true` `sessionInvalidatedAt` stamp karta hai, jo **is waqt se",
+    "pehle bana har JWT** mar deta hai — apna wala bhi. Iske baad koi bhi gated",
+    "request `403` degi jab tak `00 — Setup & Auth` dobara na chale.",
+    "",
+    "Ise folder `00` ke aakhir me rakha gaya tha — padhne me theek lagta hai aur",
+    "galat hai, kyunki folder `00` **sabse pehle** chalta hai. Ek request ne baaki",
+    "pandrah folders ke **206 assertions** gira diye the.",
+  ].join("\n"),
+  [
+    req({
+      name: "Logout — sab devices se (kho gaya phone)",
+      method: "POST",
+      segments: ["auth", "logout"],
+      token: CUST,
+      body: { allDevices: true },
+      description: [
+        "Har device se sign out — phone, tablet, sab. Ye kho gaye phone ka jawab",
+        "hai, aur pehle iska koi raasta tha hi nahi.",
+        "",
+        "Do cheezein hoti hain jo saade logout me nahi hotin:",
+        "",
+        "1. `User.sessionInvalidatedAt` stamp hota hai — **ab se pehle bana har JWT**",
+        '   refuse hone lagta hai, `401 "Your session has ended. Please log in again."`',
+        "   ke saath.",
+        "2. Us user ke **saare** push devices retire ho jaate hain.",
+        "",
+        "⚠️ **Jis token se aapne ye call kiya wo bhi mar jaata hai.** Iske baad is",
+        "collection ka koi bhi gated request `403` dega jab tak `00 — Setup & Auth`",
+        "dobara chal kar naya token capture na kar le. Isiliye ye **poore run ke",
+        "aakhir me** apne folder me hai, aur test script `customer_token` unset kar",
+        "deti hai.",
+        "",
+        "⚠️ Session kill `iat` (seconds) par *strictly before* compare karta hai, to",
+        "**usi second me** bana token bach jaata hai. Ye jaan-boojh kar hai — stamp",
+        "ko truncate karna token ko pad karne se behtar hai: sahi session ko galti",
+        "se maarne ki bajaay ek second ki dhil. Practically kabhi nahi dikhta,",
+        "kyunki token login par banta hai aur logout minton baad.",
+      ].join("\n"),
+      assert: [
+        ...A.status(200),
+        ...A.ok(),
+        ...A.custom("sab devices, aur session sach me mara", [
+          "const d = pm.response.json().data;",
+          'pm.expect(d.allDevices, "allDevices").to.eql(true);',
+          'pm.expect(d.sessionsEnded, "sessionsEnded").to.eql(true);',
+        ]),
+        ...A.custom("message batata hai ki sab devices se hua", [
+          "pm.expect(pm.response.json().message).to.match(/all devices/i);",
+        ]),
+        // This token is dead now. Anything after this needs a fresh sign-in.
+        ...[`pm.environment.unset("customer_token");`, ``],
+      ],
     }),
   ],
 );
@@ -2861,7 +3004,15 @@ const guestFolder = folder(
 // 11 — Access control
 // ===========================================================================
 const gateFolder = folder(
-  "11 — Access control (customer token refuse hona chahiye)",
+  /**
+   * ⚠️ `15`, not `11`. Four folders were inserted above this one, and the number
+   * in a folder's **name** is the only thing a reader sees — Postman renders
+   * items in array order, so a duplicate number produces no error and looks
+   * completely normal. This collection briefly had two folders numbered `11`
+   * (Voucher Claims and this one), which is the same collision
+   * `postman/README.md` records happening once before.
+   */
+  "18 — Access control (customer token refuse hona chahiye)",
   [
     "Ye folder **negative tests** ka hai — har request ka pass hona matlab gate kaam kar",
     "raha hai. Sab customer ke apne token se chalti hain, koi extra setup nahi chahiye.",
@@ -2953,12 +3104,18 @@ const gateFolder = folder(
         segments: ["settings", "get"],
         why: "Convenience fee slabs, voucher radius — sab yahin se aate hain.",
       },
-      {
-        name: "Notification feed",
-        method: "GET",
-        segments: ["notifications", "get-all"],
-        why: "`isVendorOrAdmin`. Customer ke liye in-app feed abhi hai hi nahi.",
-      },
+      /**
+       * ⚠️ `GET /notifications/get-all` used to sit here, asserting a customer
+       * was refused. It is **not** refused any more — the feed gained a customer
+       * shape, so the endpoint moved from `isVendorOrAdmin` to `verifyJwtToken`
+       * with the scope derived from the token.
+       *
+       * Removed rather than flipped to expect `200`, because this folder's whole
+       * job is "a customer token must bounce off vendor and admin surfaces". A
+       * request that now expects success does not belong in it — its positive
+       * coverage lives in `16 — Notifications`, including the scope test that
+       * proves a customer cannot read or mark another customer's rows.
+       */
       {
         name: "App banners CRUD",
         method: "GET",
@@ -2988,6 +3145,16 @@ const gateFolder = folder(
 // ===========================================================================
 // Collection
 // ===========================================================================
+/**
+ * ⚠️ Order is load-bearing. Later folders use ids the earlier ones capture, and
+ * `07 — Engagement`'s toggle pairs are arranged so the list request runs in the
+ * `on` state. The money folders sit after `11 — Guest` because they need the
+ * `voucher_id` / `sub_brand_id` / `offer_id` that folder `05` captures.
+ *
+ * `gateFolder` stays last: its negative tests deliberately call vendor and admin
+ * endpoints with a customer token, and one of them would otherwise burn ids the
+ * folders above still need.
+ */
 const items = [
   authFolder,
   profileFolder,
@@ -3000,7 +3167,16 @@ const items = [
   legalFolder,
   pushFolder,
   guestFolder,
+  claimsFolder,
+  refundsFolder,
+  bankFolder,
+  searchFolder,
+  emailFolder,
+  inboxFolder,
+  appConfigFolder,
   gateFolder,
+  // ⚠️ Last, and load-bearing — it kills the session. See the folder's note.
+  sessionKillFolder,
 ];
 
 const stats = countTree(items);
@@ -3104,14 +3280,61 @@ const collection = {
 };
 
 // ---------------------------------------------------------------- env
+/**
+ * Every environment carries **all three** URLs, not just its own.
+ *
+ * `base_url` is what the requests use. `local_url`, `stage_url` and `prod_url`
+ * sit beside it so you can retarget a run by copying one value into `base_url`
+ * — no re-import, and no editing 130 requests. It also means a collection
+ * exported from one machine documents where the other two deployments are,
+ * which was previously only findable by opening the other two env files.
+ *
+ * ⚠️ Changing `base_url` mid-run does not re-authenticate. The captured
+ * `customer_token` belongs to whichever deployment issued it, so switching
+ * environments means re-running `00 — Setup & Auth` before anything gated.
+ */
+const URLS = {
+  local: "http://localhost:8080/trydood/v1",
+  staging: "https://backend2-0-4v4i.onrender.com/trydood/v1",
+  production: "https://api.trydood.com/trydood/v1",
+};
+
 const envFile = (name, baseUrl) => ({
   id: `trydood-customer-${name}`,
   name: `Trydood Customer — ${name}`,
   values: [
     { key: "base_url", value: baseUrl, type: "default", enabled: true },
 
+    // ── the other deployments, for retargeting without a re-import ──
+    { key: "local_url", value: URLS.local, type: "default", enabled: true },
+    { key: "stage_url", value: URLS.staging, type: "default", enabled: true },
+    { key: "prod_url", value: URLS.production, type: "default", enabled: true },
+
+    /**
+     * The server root, without the API prefix.
+     *
+     * `index.js` serves `/`, `/my-ip` and `/client-ip` outside the mount, and
+     * every environment carries all three deployments of both forms so a run
+     * can be retargeted by copying one value across.
+     */
+    { key: "host_url", value: baseUrl.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+    { key: "local_host", value: URLS.local.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+    { key: "stage_host", value: URLS.staging.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+    { key: "prod_host", value: URLS.production.replace(/\/trydood\/v1$/, ""), type: "default", enabled: true },
+
     // ── fill this in ──
-    { key: "customer_whatsapp", value: "9876543210", type: "default", enabled: true },
+    /**
+     * ⚠️ Defaults to the **seeded** customer, not a random number.
+     *
+     * The money folders read a claim, a payment, a refund and a bank account
+     * that belong to this specific customer, so the collection has to sign in
+     * as them. `scripts/seedPostmanFixtures.js` creates the number below and
+     * prints it; change it in both places or neither.
+     *
+     * A fresh number still works for folders `00`–`11` — signup, `isFirst` and
+     * every guest read pass — the money folders just come back empty.
+     */
+    { key: "customer_whatsapp", value: "9700000021", type: "default", enabled: true },
     { key: "otp", value: "000000", type: "default", enabled: true },
 
     // ── captured automatically ──
@@ -3137,6 +3360,73 @@ const envFile = (name, baseUrl) => ({
     { key: "is_first", value: "", type: "default", enabled: true },
     { key: "was_followed", value: "", type: "default", enabled: true },
     { key: "was_avoided", value: "", type: "default", enabled: true },
+
+    // ── money + search: captured as the collection runs ──
+    { key: "claim_transaction_id", value: "", type: "default", enabled: true },
+    { key: "claim_id", value: "", type: "default", enabled: true },
+    { key: "claim_code", value: "", type: "default", enabled: true },
+    { key: "refund_request_id", value: "", type: "default", enabled: true },
+    { key: "offer_id", value: "", type: "default", enabled: true },
+    { key: "search_history_id", value: "", type: "default", enabled: true },
+    { key: "promo_code", value: "PMFX10", type: "default", enabled: true },
+
+    /**
+     * ── seeded, because the collection cannot reach them itself ──
+     *
+     * `bank_account_id` needs a paid penny drop. `invoice_token` is deliberately
+     * never returned by any endpoint. `awaiting_bank_refund_id` needs an admin
+     * to have watched a `SOURCE` refund fail and then asked for bank details.
+     *
+     * The two `other_customer_*` ids are what make the cross-customer 403 tests
+     * mean anything. ⚠️ While they were empty the literal `{{…}}` went into the
+     * request, `objectId()` rejected it, and both tests answered **422** instead
+     * of 403 — failing for the wrong reason, and one "fix" away from being
+     * permanently green while checking nothing.
+     *
+     * `scripts/seedPostmanFixtures.js --apply` prints all five.
+     */
+    { key: "bank_account_id", value: "", type: "default", enabled: true },
+    /** Nothing points at this one, so `DELETE /bank-accounts/:id` can show 200. */
+    { key: "spare_bank_account_id", value: "", type: "default", enabled: true },
+    /** A paid claim with no refund on it, so `POST /refunds` can succeed. */
+    { key: "refundable_claim_id", value: "", type: "default", enabled: true },
+    { key: "invoice_token", value: "", type: "default", enabled: true },
+    { key: "awaiting_bank_refund_id", value: "", type: "default", enabled: true },
+    { key: "other_customer_claim_id", value: "", type: "default", enabled: true },
+    { key: "other_customer_transaction_id", value: "", type: "default", enabled: true },
+
+    /**
+     * ── manual: a real Razorpay checkout is the only source ──
+     *
+     * `POST /voucher-claims/verify` cannot be driven headlessly. Test keys do
+     * not let the API mint a payment, so these arrive from a browser or not at
+     * all. The request's assertion accepts the documented refusal.
+     */
+    { key: "razorpay_order_id", value: "", type: "default", enabled: true },
+    { key: "razorpay_payment_id", value: "", type: "default", enabled: true },
+    { key: "razorpay_signature", value: "", type: "default", enabled: true },
+
+    // ── email verification ──
+    /**
+     * A free address to switch to. `@example.com` is IANA-reserved: mail to
+     * it is discarded, so a capture run never reaches a real inbox.
+     */
+    { key: "new_email", value: "brand.new@example.com", type: "default", enabled: true },
+    /**
+     * ⚠️ From a real inbox. The collection cannot fill this, for the same
+     * reason as the Razorpay trio — so the verify request captures its real
+     * refusal and the success shape lives in the doc.
+     */
+    { key: "email_otp", value: "", type: "default", enabled: true },
+    /** The address the verify request switches **to**. Seeder writes its OTP. */
+    { key: "verify_email", value: "", type: "default", enabled: true },
+    /** What the account started with, for the restore. Empty where there was none. */
+    { key: "account_email", value: "", type: "default", enabled: true },
+
+    // ── notification inbox ──
+    { key: "notification_id", value: "", type: "default", enabled: true },
+    /** Seeded: a row belonging to the OTHER customer, so the scope test bites. */
+    { key: "other_customer_notification_id", value: "", type: "default", enabled: true },
   ],
   _postman_variable_scope: "environment",
 });

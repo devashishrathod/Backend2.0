@@ -1,22 +1,109 @@
 # Trydood 2.0 — Customer Mobile App API Documentation
 
-**Version:** 1.5.0
+**Version:** 1.7.0
 **Base URL (Local):** `http://localhost:8080/trydood/v1`
 **Base URL (Staging):** `https://backend2-0-4v4i.onrender.com/trydood/v1`
+**Base URL (Production):** `https://api.trydood.com/trydood/v1`
 **Framework:** Express.js (Node.js, CommonJS)
 **Database:** MongoDB (Mongoose ODM)
-**Scope:** Customer mobile app ke **35 endpoints** — jinme se **21 guest ke liye khule hain**
-**Last verified:** 2026-08-27 against a running server · Source: `server2.0` scan (151 total endpoints, categorization → [endpoints_category.md](./endpoints_category.md))
+**Scope:** Customer mobile app ke **64 endpoints** — jinme se **22 guest ke liye khule hain**
+**Last verified:** 2026-09-05 against a running server · Categorization → [endpoints_category.md](./endpoints_category.md) (216 total endpoints)
 
-> ✅ **Ye doc live API ke against verify hota hai**, sirf code padhkar nahi likha jaata. Saare 35 endpoints ek chalte hue server pe seeded fixtures ke saath run hote hain: **88 requests, 355 assertions, sab pass.**
+> ✅ **Ye doc live API ke against verify hota hai**, sirf code padhkar nahi likha jaata. Saare endpoints ek chalte hue server pe seeded fixtures ke saath run hote hain: **135 requests, 473 assertions, 0 failed.**
 >
-> ✅ **Postman ke saare examples asli responses hain** — 132 examples, sab ek live run se capture kiye gaye ([`postman/trydood-customer.postman_collection.json`](../postman/trydood-customer.postman_collection.json)). Koi bhi example haath se nahi likha gaya, isliye wo galat ho hi nahi sakta jab tak API khud galat na ho.
+> ✅ **Postman ke saare examples asli responses hain** — **206 examples, 140/140 requests par**, sab ek live run se capture kiye gaye ([`postman/trydood-customer.postman_collection.json`](../postman/trydood-customer.postman_collection.json)). Koi bhi example haath se nahi likha gaya, isliye wo galat ho hi nahi sakta jab tak API khud galat na ho.
 >
-> ✅ **Har `**Access:**` line routes se derive hoti hai**, likhi nahi jaati — is round me wahi 19 galat lines pakdi gayin.
+> ✅ **Har `**Access:**` line routes se derive hoti hai**, likhi nahi jaati — `postman/lib/routeGates.js` `routes/` padhta hai.
+>
+> ✅ **Saare enum values `constants/` ke against verify hue hain** — [Enums Reference](#enums-reference) me koi value haath se nahi likhi gayi.
 >
 > Jahan behaviour buggy ya adhoora hai, wahan ⚠️ (ya 🔴, agar wo cheez tod deti hai) marker hai.
 
-### 🆕 v1.5.0 me kya naya
+> ### ⚠️ Teen requests ke **success** examples capture nahi ho sakte
+>
+> Baaki 122 par asli success response hai. Ye teen live third-party call karte hain,
+> isliye unka saved example wahi asli refusal hai jo is environment me aata hai — aur
+> success ka shape doc me code se likha gaya hai, saaf marker ke saath:
+>
+> | Endpoint | Kyun | Iska example |
+> |---|---|---|
+> | [`POST /voucher-claims/verify`](#17b-post-voucher-claimsverify) | Signature ek **asli Razorpay checkout** se aata hai; test keys se bhi API payment nahi bana sakti | Galat/khaali signature ka refusal |
+> | [`POST /bank-accounts`](#17n-post-bank-accounts--account-jodo-) | **Live CGPey penny drop** — asli paisa, asli bank | Galat OTP ka `401` |
+> | [`POST /deviceTokens/test`](#34-post-devicetokenstest) | **Live FCM** call, aur collection ke paas asli device token nahi hota | Provider ka `422` |
+>
+> ⚠️ **Inke examples haath se mat likhein.** Poora point yahi hai ki example ek asli run
+> se aata hai — haath ka likha example chup-chaap purana ho jaata hai aur galat example
+> bilkul sahi jaisa dikhta hai. Do aise pehle ship ho chuke hain (`nearestOutlet._id` jo
+> asal me `subBrandId` hai, aur flat `medias[]` jo asal me nested `media.data[]` hai), aur
+> dono sirf chalane par pakde gaye.
+
+### 🆕 v1.7.0 me kya naya
+
+**Teen gaps band, aur ek leak.** Appendix B ke #11, #13 aur #14 ab RESOLVED hain.
+
+| Change | Detail |
+|---|---|
+| 🆕 **Email verification** | [#35](#35-post-authemailsend-verification-) · [#36](#36-post-authemailverify-) — **har role ke liye ek hi flow**. `isEmailVerified` sabke `User` par tha aur koi bhi use set nahi kar sakta tha: email edit karne par flag `false` ho jaata tha aur wapas `true` karne ka koi raasta hi nahi tha |
+| 🆕 **Notification inbox** | [#37](#37-get-notificationsget-all-) · [#38](#38-put-notificationsmark-read-) — wahi endpoint jo vendor aur admin use karte hain, scope aur projection token se. Rows **pehle se likhi ja rahi thi**; padhne ka raasta nahi tha |
+| 🆕 **`GET /app-config`** | [#39](#39-get-app-config-) — public. Min version, force-update, support contact, feature flags. Server `updateRequired` khud tay karta hai |
+| 🔴 **Auth leak band** | `/auth/login` aur `/auth/register` **bcrypt hash** response me lauta rahe the. Chaar services raw `user` document return karti thi; ab sab `sanitizeUser()` se guzarti hain |
+| **`meta` bhi strip hota hai** | `fcmToken`, `ipAddress`, `deviceId` ab kisi bhi auth response me nahi aate |
+
+#### 🔴 Woh leak, thoda detail me
+
+`loginWithEmailAndPassword` password compare karne ke liye document **hash ke saath** load
+karta hai — karna hi padta hai — aur phir wahi `user` raw return kar deta tha. Yani har
+safal admin login par bcrypt hash client ke paas, uske logs me, uske crash reports me.
+
+OTP paths `.select("-password")` karte the, to unse sirf `__v` jaata tha. Ab chaaron +
+dono `sanitizeUser()` se guzarte hain.
+
+⚠️ **Blast radius sirf teen keys hai** — `password`, `__v`, `meta`. `User` par `otp` ya
+`refreshToken` जैसा koi path hai hi nahi. Vendor collection ke 105 captured examples me in
+me se ek bhi field pehle se nahi thi, to vendor panel par koi asar nahi.
+
+### v1.6.0 me kya aaya tha
+
+**Poora customer surface — 35 se 57 endpoints.** Pichhla doc keh raha tha "35 endpoints"
+jabki usme claims, refunds aur search ke sections **pehle se maujood the** aur ginti me
+nahi the; upar se do module poori tarah gayab the.
+
+| Change | Detail |
+|---|---|
+| 🆕 **Bank Account APIs (4)** | Poora naya module — [17m](#17m-post-bank-accountsotp--code-maango-)–[17p](#17p-delete-bank-accountsaccountid--account-hataao-). Refund jab **usi raaste se wapas nahi ja sakta** tab yahi destination banta hai |
+| 🆕 **Failed refund ka redirect** | [17j-1 `PATCH /refunds/:requestId/bank-account`](#17j-1-patch-refundsrequestidbank-account--failed-refund-kahan-bheju-) — customer batata hai paisa kahan bheja jaaye. Iske bina refund `FAILED` par baitha rehta tha, vendor ka paisa hold me phansa rehta tha, aur grahak ko uska **kabhi milta hi nahi** |
+| **Claims / Refunds / Search TOC me aaye** | Ye sections doc me the par Table of Contents me nahi — is baar link ho gaye |
+| **140/140 Postman requests par saved example** | Pehle 118 me se **30 requests ke examples hi nahi the** (claims, refunds, search, logout). Ab har request par asli captured response hai — 492 assertions, 0 failed |
+| 🆕 **Enums Reference poora hua** | 8 naye block: `VOUCHER_CLAIM_STATUS` · `PAYMENT_STATUS` · `REFUND_REASON` · `REFUND_REQUEST_STATUS` + customer labels · refund `method` · abuse limits · `SEARCH_RESULT_TYPES` · claim code alphabet. Sab values `constants/` ke against verify ki gayi hain |
+| 🔴 **Postman generator zinda hua** | `generate-customer-collection.js` **chal hi nahi raha tha** — neeche dekhein |
+| **Env me teeno URL** | `local_url` · `stage_url` · `prod_url` — teeno environment files me, taaki `base_url` badalne se target switch ho jaaye bina re-import |
+
+#### 🔴 Generator dead tha, aur README uska ulta keh raha tha
+
+`postman/lib/routeGates.js` `router.stack is not iterable` throw kar raha tha us din se
+jab `routes/voucherClaims.js` ne `{ router, routePrefix }` export karna shuru kiya. Iska
+matlab **`generate-customer-collection.js` bilkul chal hi nahi sakta tha**, aur isi wajah
+se claims/refunds/search ke 30 requests sirf `scripts/add*ToPostman.js` se JSON me daale
+gaye the.
+
+⚠️ Aur `postman/README.md` keh raha tha *"JSON hand-edit mat karein — generator me add
+karke re-run karein"*. Jo bhi us hidayat ko maanta, wo **teen folders aur 96 captured
+examples delete** kar deta, aur command "✅ 88 requests" bolkar safal ho jaati.
+
+Dono theek ho gaye: routeGates `routePrefix`/`extraRoutes` handle karta hai, aur wo teen
+folders ab `postman/lib/customerMoneyFolders.js` + `customerSearchFolder.js` se **generate**
+hote hain.
+
+#### Jo cheezein live run ne pakdi (aur code padhkar nahi dikhti thi)
+
+| Kya | Kahan |
+|---|---|
+| `POST /voucher-claims/create-order` **reuse path** — pehle se order ho to `200` + `reused: true`, `201` nahi. Response nested hai (`data.claim.id`, `data.transaction.id`, `data.razorpay.orderId`) | [17a](#17a-post-voucher-claimscreate-order) |
+| `GET /documents/:token` **`409`** deta hai jab snapshot na ho — sirf token kaafi nahi | [17c](#17c-get-documentstoken) |
+| Search sections me rows `items` me hain, `results` me nahi; single-type mode ka shape **poora alag** hai | [14a](#14a-get-search) · [14b](#14b-get-searchqtype--ek-type-paginated) |
+| `GET /bank-accounts` **plain array** deta hai — koi pagination envelope nahi, khaali par `[]` aur `404` nahi | [17o](#17o-get-bank-accounts--mere-accounts-) |
+
+### v1.5.0 me kya aaya tha
 
 **Guest browsing** — app store approval ke liye user ab sign-up se pehle app dekh sakta hai.
 
@@ -99,10 +186,36 @@ Ye **live verification round** tha. Teen jagah doc code se match nahi kar raha t
 12. [Home Screen APIs](#home-screen-apis)
     - [GET /banners/customer/active](#13-get-bannerscustomeractive)
     - [GET /promotionalTickers/customer/active](#14-get-promotionaltickerscustomeractive)
+12a. [**Search APIs** 🆕](#search-apis-)
+    - [GET /search](#14a-get-search)
+    - [GET /search?type= — ek type, paginated](#14b-get-searchqtype--ek-type-paginated)
+    - [GET /search/popular](#14c-get-searchpopular)
+    - [GET /search/history](#14d-get-searchhistory)
+    - [DELETE /search/history](#14e-delete-searchhistoryhistoryid--delete-searchhistory)
 13. [Voucher APIs](#voucher-apis)
     - [GET /vouchers/customer/get-all](#15-get-voucherscustomerget-all)
     - [GET /vouchers/customer/get/:voucherId](#16-get-voucherscustomergetvoucherid)
     - [POST /vouchers/customer/voucher/preview](#17-post-voucherscustomervoucherpreview)
+13a. [**Voucher Claim APIs** 🆕](#voucher-claim-apis-)
+    - [POST /voucher-claims/create-order](#17a-post-voucher-claimscreate-order)
+    - [POST /voucher-claims/verify](#17b-post-voucher-claimsverify)
+    - [GET /documents/:token](#17c-get-documentstoken)
+    - [GET /voucher-claims — meri claims](#17d-get-voucher-claims--meri-claims)
+    - [GET /voucher-claims/payments](#17e-get-voucher-claimspayments--mere-payments)
+    - [GET /voucher-claims/payments/:transactionId](#17f-get-voucher-claimspaymentstransactionid--ek-payment)
+    - [GET /voucher-claims/:claimId](#17g-get-voucher-claimsclaimid--ek-claim-timeline-ke-saath)
+    - [GET /voucher-claims/code/:claimCode](#17h-get-voucher-claimscodeclaimcode--code-se-kholo)
+13b. [**Refund APIs** 🆕](#refund-apis-)
+    - [POST /refunds](#17i-post-refunds--refund-maango)
+    - [PATCH /refunds/:requestId/withdraw](#17j-patch-refundsrequestidwithdraw--wapas-le-lo)
+    - [PATCH /refunds/:requestId/bank-account](#17j-1-patch-refundsrequestidbank-account--failed-refund-kahan-bheju-) 🆕
+    - [GET /refunds](#17k-get-refunds--meri-refunds)
+    - [GET /refunds/:requestId](#17l-get-refundsrequestid--ek-refund)
+13c. [**Bank Account APIs** 🆕](#bank-account-apis-)
+    - [POST /bank-accounts/otp](#17m-post-bank-accountsotp--code-maango-) 🆕
+    - [POST /bank-accounts](#17n-post-bank-accounts--account-jodo-) 🆕
+    - [GET /bank-accounts](#17o-get-bank-accounts--mere-accounts-) 🆕
+    - [DELETE /bank-accounts/:accountId](#17p-delete-bank-accountsaccountid--account-hataao-) 🆕
 14. [Brand Profile APIs](#brand-profile-apis)
     - [GET /brands/customer/get/:brandId](#18-get-brandscustomergetbrandid)
     - [GET /brands/customer/get-all](#18a-get-brandscustomerget-all-) 🆕
@@ -120,6 +233,16 @@ Ye **live verification round** tha. Teen jagah doc code se match nahi kar raha t
     - [GET /terms-and-conditions/get/:id](#28-get-terms-and-conditionsgetid)
     - [GET /privacy-and-policies/getAll](#29-get-privacy-and-policiesgetall)
     - [GET /privacy-and-policies/get/:id](#30-get-privacy-and-policiesgetid)
+16a. [**Email Verification APIs** 🆕](#email-verification-apis-)
+    - [POST /auth/email/send-verification](#35-post-authemailsend-verification-) 🆕
+    - [POST /auth/email/verify](#36-post-authemailverify-) 🆕
+16b. [**Notification APIs** 🆕](#notification-apis-)
+    - [GET /notifications/get-all](#37-get-notificationsget-all-) 🆕
+    - [PUT /notifications/mark-read](#38-put-notificationsmark-read-) 🆕
+    - [GET /notifications/preferences](#38a-get-notificationspreferences-) 🆕
+    - [PUT /notifications/preferences](#38b-put-notificationspreferences-) 🆕
+16c. [**App Config API** 🆕](#app-config-api-)
+    - [GET /app-config](#39-get-app-config-) 🆕
 17. [Push Notification APIs 🆕](#push-notification-apis)
     - [POST /deviceTokens/register](#31-post-devicetokensregister)
     - [PUT /deviceTokens/unregister](#32-put-devicetokensunregister)
@@ -190,31 +313,44 @@ Authorization: Bearer <token>
 ## Guest access — bina token kya chalta hai
 
 App store approval ke liye user ko **sign-up se pehle** app dekhne dena zaruri tha, isliye
-browse endpoints se auth hata di gayi hai. **35 me se 21 endpoints bina kisi token ke
-chalte hain.**
+browse endpoints se auth hata di gayi hai. **62 me se 22 endpoints guest ke liye khule
+hain** (18 poore public + 4 `optionalAuth`).
 
-### Chaar tarah ke access
+### Chhah tarah ke access
+
+Ye ginti [`postman/lib/routeGates.js`](../postman/lib/routeGates.js) se nikli hai, jo
+`routes/` padhta hai — haath se nahi gini gayi.
 
 | Gate | Matlab | Kitne |
 |---|---|---:|
-| 🌐 **Public** | Token dekha hi nahi jaata. Response sabke liye ek jaisa | 18 |
-| 🌐 **`optionalAuth`** | Token ho to decode hota hai aur response personalise hota hai; na ho to guest chalta hai | 3 |
-| 🔒 **`verifyJwtToken`** | Koi bhi signed-in role | 7 |
-| 🔒 **`isCustomer`** | Sirf customer | 5 |
-| 🔒 **`verifyJwtTokenEvenIfDeactivated`** | Signed in, suspended account bhi — logout aur push unregister, warna suspended user phasa reh jaata | 2 |
+| 🌐 **Public** | Token dekha hi nahi jaata. Response sabke liye ek jaisa | 19 |
+| 🌐 **`optionalAuth`** | Token ho to decode hota hai aur response personalise hota hai; na ho to guest chalta hai | 4 |
+| 🌐 **Public — auth entry** | Login/OTP. Public hona **majboori** hai, warna koi sign in hi na kar paaye — par ye "browsing" nahi hai | 2 |
+| 🔒 **`verifyJwtToken`** | Koi bhi signed-in role — **ek endpoint, kai shapes** (claims, payments, refunds, notifications) | 17 |
+| 🔒 **`isCustomer`** | Sirf customer — engagement, location, claims ke writes, bank accounts, refunds ke writes, search history | 17 |
+| 🔒 **`verifyJwtTokenEvenIfDeactivated`** | Signed in, suspended account bhi — logout, push unregister aur **notification feed**, warna suspended user phasa reh jaata aur suspension samjhane wala notice bhi na padh paata | 3 |
+
+> ⚠️ **18 Public me `GET /documents/:token` bhi hai**, par wo guest surface
+> nahi hai: uska 32-byte token hi credential hai. Wo link WhatsApp/email se aata hai,
+> jahan browser me koi session hota hi nahi.
+>
+> ⚠️ Ye table pehle `verifyJwtToken: 7` aur `isCustomer: 5` kehta tha — ginti claims,
+> refunds, bank accounts aur search jodne se **pehle** ki thi, aur kisi ne update nahi ki.
 
 ### Kya guest kar sakta hai
 
 | Screen | Endpoints |
 |---|---|
 | **Home** | Banner · tickers · categories · sub-categories |
+| **Search** 🆕 | Global search · popular searches. Poora search box guest ke liye khula hai |
 | **Voucher feed** | Feed · voucher detail · discount preview |
 | **Brand** | Directory · profile · showcase gallery · video clips · features |
 | **Legal** | Terms · privacy (sign-up screen ke consent link ke liye zaruri) |
 
 ### Kya guest nahi kar sakta
 
-Profile, saved address, follow / avoid, push notifications — sab kuch jo **"mera"** hai.
+Profile, saved address, follow / avoid, push notifications, **search history** — sab kuch
+jo **"mera"** hai.
 Wahan `401 "Access Denied! Missing authorization token"` aata hai, jo app ke liye login
 screen dikhane ka signal hai.
 
@@ -235,6 +371,10 @@ Na bhejein to:
   "message": "Location is required. Send latitude and longitude, or save an address first."
 }
 ```
+
+Global search bhi wahi resolver use karta hai, par usme location **optional** hai:
+coordinates na ho to sirf offers wala section skip hota hai (`locationRequired: true` ke
+saath) aur brands, categories aur areas normal chalte hain — dekhein [§14a](#14a-get-search).
 
 ### ⚠️ `optionalAuth` ka matlab "koi bhi token chalega" nahi hai
 
@@ -450,6 +590,161 @@ Saare enum values **UPPERCASE** hain (payment ke alawa).
 >
 > Verify karke confirm kiya gaya (2026-08-26).
 
+### VOUCHER_CLAIM_STATUS 🆕
+
+`constants/voucherClaim.js` — ek **claim** ki haalat.
+
+| Value | Matlab | Customer ko kab dikhta hai |
+|---|---|---|
+| `PENDING` | Order khula, paisa abhi nahi aaya | Checkout beech me chhoda |
+| `PAID` | Paisa aa gaya, voucher use karne layak | Aam haalat |
+| `REDEEMED` | Outlet par use ho gaya | Counter par scan/code ke baad |
+| `FAILED` | Payment fail | Card decline, UPI timeout |
+| `CANCELLED` | Rad kar diya gaya | |
+| `EXPIRED` | Voucher ki validity khatam, use nahi hua | Expiry sweep se |
+| `REFUNDED` | Paisa wapas ho gaya | Refund `COMPLETED` hone par |
+
+⚠️ **Ye payment ka status nahi hai.** Do alag lifecycle hain, aur ek hi shabd dono ke
+liye padhna aam galti hai — neeche wala block dekhein.
+
+---
+
+### PAYMENT_STATUS 🆕
+
+`constants/index.js` — ek **payment** ki haalat. **Lowercase**, kyunki ye Razorpay ki
+vocabulary hai, hamari nahi.
+
+| Value | Matlab |
+|---|---|
+| `created` | Order bana, customer ne abhi pay nahi kiya |
+| `authorized` | Bank ne hold kiya, capture nahi hua |
+| `captured` | Paisa aa gaya — yahi `PAID` claim banata hai |
+| `failed` | Fail |
+
+⚠️ `authorized` par atki payment **~5 din me apne aap refund** ho jaati hai. Isiliye
+`GET /transactions/admin/health` use `CRITICAL` ginta hai — wo ghadi ke saath paisa
+khoti hai.
+
+⚠️ `GET /voucher-claims/payments?status=` **inhi** values ko leta hai, claim ki nahi.
+
+---
+
+### REFUND_REASON 🆕
+
+`constants/refund.js` — `POST /refunds` ka `reason`.
+
+| Value | Kab |
+|---|---|
+| `NOT_HONOURED` | Outlet ne voucher maana hi nahi |
+| `OUTLET_CLOSED` | Pahunche to band tha |
+| `WRONG_AMOUNT` | Galat rakam cut gayi |
+| `SERVICE_ISSUE` | Service kharab thi |
+| `DUPLICATE_PAYMENT` | Do baar cut gaya |
+| `CHANGED_MIND` | Iraada badal gaya |
+| `OTHER` | ⚠️ Iske saath `reasonNote` **zaroori** hai |
+
+⚠️ `OTHER` par `reasonNote` maangne ki wajah practical hai: jab outlet inkaar kare aur
+grahak us inkaar ko chunauti de, admin ke paas sameeksha karne ko **yahi ek cheez** hoti
+hai. *"OTHER"* apne aap me kuch nahi batata.
+
+---
+
+### REFUND_REQUEST_STATUS 🆕
+
+`constants/refund.js`. Bara values, par **app ko `REFUND_CUSTOMER_LABEL` dikhana
+chahiye**, raw status nahi — labels usi file me hain aur customer ki zubaan me likhe gaye
+hain.
+
+| Value | Customer ko dikhne wala label | Khula? |
+|---|---|:-:|
+| `REQUESTED` | Refund requested | ✅ |
+| `VENDOR_APPROVED` | Approved by the outlet | ✅ |
+| `VENDOR_REJECTED` | Declined by the outlet | – |
+| `VENDOR_TIMEOUT` | Under review by Trydood | ✅ |
+| `ADMIN_APPROVED` | Approved — processing | ✅ |
+| `ADMIN_REJECTED` | Declined after review | – |
+| `ADMIN_OVERRIDE` | Approved by Trydood | ✅ |
+| `PROCESSING` | On its way to your account | ✅ |
+| `AWAITING_BANK_DETAILS` | Add your bank account so we can send it | ✅ |
+| `COMPLETED` | Refunded | – |
+| `FAILED` | Refund failed — we are on it | ✅ |
+| `CANCELLED` | Withdrawn | – |
+
+**Khula (`isOpen`)** = `REFUND_OPEN_STATUSES`. ⚠️ `FAILED` **khula ginta hai** — paisa
+abhi bhi grahak ko jaana hai, sirf raasta badalna hai
+([17j-1](#17j-1-patch-refundsrequestidbank-account--failed-refund-kahan-bheju-)).
+
+⚠️ **Status se `canWithdraw`/`canDecide` khud mat nikaalein** — response me aate hain.
+Jo panel unhe status se derive karega wo naye state judte hi galat ho jayega.
+
+---
+
+### Refund `method` 🆕
+
+| Value | Matlab |
+|---|---|
+| `SOURCE` *(default)* | Usi card/UPI par wapas |
+| `MANUAL_BANK` | Bank account me NEFT — jab `SOURCE` chal hi na sake |
+
+`SOURCE` band pade instrument par **har baar** fail hota hai, aur wahi
+`AWAITING_BANK_DETAILS` ka raasta kholta hai.
+
+---
+
+### Refund abuse limits (admin-configurable) 🆕
+
+`Setting.customer.refund` · defaults `constants/customer.js` → `REFUND_DEFAULTS`
+
+| Key | Default | Kya |
+|---|---:|---|
+| `maxOpenRequests` | `1` | Ek waqt me kitni khuli refunds |
+| `maxRejectedPerWindow` | `3` | Window me kitni **thukrai** requests |
+| `requestWindowDays` | `30` | Window ki lambai |
+| `windowHours` | `24` | `paidAt` se kitne ghante tak refund maanga ja sakta hai |
+| `allowPartial` | `true` | Aadhi rakam ka refund |
+
+⚠️ Ginti **thukrai** requests ki hoti hai, **approve hui ki kabhi nahi**. Jis grahak ki 5
+refunds approve hui, uske saath 5 baar sach me bura hua. `CANCELLED` bhi ginta hai:
+raise → outlet dekhe → withdraw → phir raise, ye outlet ko vyast rakhne ka tareeka hai
+bina kabhi rejection kamaye.
+
+Limit chhoone par jawab **support par bhejta hai, raasta band nahi karta**.
+
+---
+
+### SEARCH_RESULT_TYPES 🆕
+
+`constants/search.js` — `GET /search` ke sections. `type=` (single, paginated) aur
+`types=` (multi, filter) dono inhi values ko lete hain.
+
+| Value | Section label | Location chahiye? | `seeAll` kahan bhejta hai |
+|---|---|:-:|---|
+| `BRAND` | Brands | ❌ | `/brands/customer/get-all` |
+| `VOUCHER` | Offers | ✅ | `/vouchers/customer/get-all` |
+| `CATEGORY` | Categories | ❌ | Category listing |
+| `SUB_CATEGORY` | Sub-categories | ❌ | Sub-category listing |
+| `AREA` | Areas | ❌ | Location switch |
+
+Section order wahi hai jo is table me hai (`SEARCH_SECTION_ORDER`).
+
+⚠️ Sirf `VOUCHER` ko coordinates chahiye, isliye guest ko **khaali screen nahi** milti —
+baaki chaar sections phir bhi jawab dete hain.
+
+---
+
+### Claim code alphabet 🆕
+
+`helpers/voucherClaims/generateClaimCode.js`
+
+Confusable characters **jaan-boojh kar chhode** gaye hain: `0`/`O`, `1`/`I`/`L`,
+`5`/`S`, `2`/`Z`, `8`/`B`.
+
+Isliye inme se koi bhi character aane par jawab **`422` "mistyped"** hai, `404` nahi —
+`404` padhne me lagta hai claim hai hi nahi, jabki asal me code galat likha gaya hai.
+Counter par yahi farq tay karta hai ki staff dobara type kare ya grahak ko laut jaaye.
+
+---
+
 ### ZIP code validation (country-wise)
 `zipcode` field ka format `country` field pe depend karta hai:
 
@@ -653,28 +948,63 @@ Live verify kiya (2026-08-26): `{"currentScreen": "HOME"}` → `422 "`HOME` is n
 |---|---|---|
 | `Authorization` | `Bearer <token>` | ✅ |
 
-### Body
-Koi nahi.
+### Body — dono optional 🆕
+| Field | Type | Required | Default | Kya karta hai |
+|---|---|---|---|---|
+| `pushToken` | string | ❌ | – | Is device ka FCM token. Bhejne par isi device ke push notifications band |
+| `allDevices` | boolean | ❌ | `false` | `true` = har device se sign out — **har purana JWT turant dead** |
+
+Khaali body bhi bilkul valid hai — wahi purana behaviour, plus flags ab sahi update hote hain.
+
+```jsonc
+{}                                     // is device se logout
+{ "pushToken": "fcm_abc123..." }       // + is device ka push band
+{ "allDevices": true }                 // + har device ka JWT aur push khatam
+```
 
 ### Success — `200`
 ```json
 {
   "success": true,
   "message": "Logout successful",
-  "data": {}
+  "data": {
+    "allDevices": false,
+    "sessionsEnded": false,
+    "pushDeactivated": 1,
+    "activeDevices": 1
+  }
 }
 ```
 
+| Field | Kya |
+|---|---|
+| `sessionsEnded` | `true` sirf `allDevices` par. Matlab har purana token abhi refuse hone lagega |
+| `pushDeactivated` | Kitne devices ka push band hua. `pushToken` na bheja to `0` |
+| `activeDevices` | Ab kitne devices par push chalu hai. `null` matlab push ko chhua hi nahi gaya |
+
+`allDevices: true` par message badal jaata hai — `"Signed out of all devices"`.
+
 ### Errors
-Sirf [common auth errors](#common-errors).
+| Status | Message | Kab |
+|---|---|---|
+| `401` | *(auth error)* | Token nahi ya invalid |
+| `422` | `pushToken does not look like a valid push token` | 20 chars se chhota |
 
 ### ⚠️ Edge cases & notes
 
-**1. Server-side kuch nahi hota.** Controller sirf success return karta hai — token blacklist nahi hota, `isLoggedIn` flag update nahi hota, FCM token remove nahi hota (wo code commented hai). Purana token expiry tak valid rahega.
+**1. Ye endpoint sabke liye ek hi hai** — customer, vendor, sub-vendor, admin. Aur **suspended account bhi ise call kar sakta hai**: baaki har gate deactivated user ko `401` deta hai taaki client use sign out kar de, to sign-out hi refuse karna wo ek cheez hoti jo use phansa deti.
 
-**2. App ko locally cleanup karna hoga:** token delete, user cache clear, login screen pe navigate.
+**2. Saada logout aapka token invalidate nahi karta.** JWT stateless hai — wo apni expiry tak valid rehta hai. **App ko token khud delete karna hoga**, cache clear karna hoga, login screen pe jaana hoga. Server ki taraf se sirf flags neeche aate hain aur (token bheja ho to) push band hota hai.
 
-**3. FCM/push unsubscribe abhi implement nahi hai** — commented out hai. Logout ke baad bhi push notifications aa sakti hain (jab push feature live hoga).
+**3. `pushToken` na bheja to push chalta rahega.** Ye jaan-boojh kar hai — purane app versions jo ye field nahi bhejte wo logout to kar payenge. Par tab tak un devices ko notifications aate rahenge. `pushDeactivated: 0` isi ka signal hai.
+
+> App ko apna FCM token yaad rakhna chahiye (wahi jo `POST /deviceTokens/register` me bheja tha) aur logout par wapas bhejna chahiye. Pehle iske liye alag se `PUT /deviceTokens/unregister` call karna padta tha — ab ek hi call kaafi hai.
+
+**4. `allDevices: true` sach me har device band karta hai** — phone, tablet, sab. Ye kho gaye phone ka jawab hai. Iske baad har device par agli hi request `401 "Your session has ended. Please log in again."` degi, **is device par bhi** — jis token se aapne ye call kiya wo bhi mar jaata hai.
+
+> ⚠️ Ek chhoti si baareeki: session kill `iat` (seconds) ko compare karta hai aur "strictly before" hai, to **usi second me** banaya gaya token bach jaata hai. Practically kabhi nahi hota — token login par banta hai, logout minton baad hota hai — par login ke turant baad `allDevices` maarne par wo ek token zinda reh sakta hai.
+
+**5. Pending payment logout se cancel nahi hota.** Agar customer Razorpay ke checkout me hai aur app se logout kar deta hai, to payment phir bhi complete ho sakti hai aur webhook claim bana dega. Ye jaan-boojh kar hai — logout par order cancel karna us paise ko phansa deta jo bank se nikal chuka hai.
 
 ---
 
@@ -1128,7 +1458,13 @@ GET /categories/getAll?isActive=true&limit=50&sortBy=name&sortOrder=asc
         "description": "restaurants, cafes, and food outlets",
         "image": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/Images/food.jpg",
         "isActive": true,
-        "createdAt": "2026-05-10T08:00:00.000Z"
+        "createdAt": "2026-05-10T08:00:00.000Z",
+        "stats": {
+          "subCategories": { "total": 6, "active": 5 },
+          "brands":        { "total": 48, "active": 41 },
+          "vouchers":      { "total": 130, "active": 96 },
+          "promoCodes":    { "total": 3, "active": 2 }
+        }
       },
       {
         "_id": "68f1a2b3c4d5e6f7a8b9c0e2",
@@ -1136,14 +1472,34 @@ GET /categories/getAll?isActive=true&limit=50&sortBy=name&sortOrder=asc
         "description": "beauty and wellness services",
         "image": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/Images/salon.jpg",
         "isActive": true,
-        "createdAt": "2026-05-10T08:05:00.000Z"
+        "createdAt": "2026-05-10T08:05:00.000Z",
+        "stats": {
+          "subCategories": { "total": 4, "active": 4 },
+          "brands":        { "total": 11, "active": 9 },
+          "vouchers":      { "total": 22, "active": 20 },
+          "promoCodes":    { "total": 0, "active": 0 }
+        }
       }
     ]
   }
 }
 ```
 
-**Projected fields only:** `_id`, `name`, `description`, `image`, `isActive`, `createdAt`. `updatedAt` aur `isDeleted` nahi aate.
+**Projected fields only:** `_id`, `name`, `description`, `image`, `isActive`, `createdAt`, `stats`. `updatedAt` aur `isDeleted` nahi aate.
+
+### `stats` — ye admin panel ke liye hai
+
+Ye endpoint admin panel aur customer app dono use karte hain, aur `stats` dono ko jaata hai. Customer app ke liye ye **optional** hai — ignore kar sakte hain, ya "48 brands" jaisa count chip dikhana ho to `stats.brands.active` use karein.
+
+| Key | Kya |
+|---|---|
+| `subCategories` · `brands` · `vouchers` · `promoCodes` | Is category se juda hua kya-kya exist karta hai |
+| `total` | Jo exist karta hai (deleted nahi) |
+| `active` | Usme se jo `isActive: true` hai — **customer ko yahi dikhana chahiye** |
+
+⚠️ Customer-facing count ke liye `active` lein, `total` nahi. `total` me wo brands/vouchers bhi hain jo abhi off hain, to app "48 brands" dikhayega aur category kholne pe 41 hi milenge.
+
+⚠️ `vouchers` **status nahi dekhta** — draft aur unpublished bhi ginte hain, kyunki wo exist karte hain. Jo customer ko sach me dikhega uska count chahiye to voucher listing ka `total` use karein, ye nahi.
 
 ### Errors
 | Status | Message | Kab |
@@ -1185,12 +1541,18 @@ GET /categories/getAll?isActive=true&limit=50&sortBy=name&sortOrder=asc
     "isActive": true,
     "isDeleted": false,
     "createdAt": "2026-05-10T08:00:00.000Z",
-    "updatedAt": "2026-05-10T08:00:00.000Z"
+    "updatedAt": "2026-05-10T08:00:00.000Z",
+    "stats": {
+      "subCategories": { "total": 6, "active": 5 },
+      "brands":        { "total": 48, "active": 41 },
+      "vouchers":      { "total": 130, "active": 96 },
+      "promoCodes":    { "total": 3, "active": 2 }
+    }
   }
 }
 ```
 
-> `getAll` ke mukable yahan **poora document** aata hai (`isDeleted`, `updatedAt` bhi).
+> `getAll` ke mukable yahan **poora document** aata hai (`isDeleted`, `updatedAt` bhi). `stats` bilkul wahi shape hai — [#9](#9-get-categoriesgetall) me detail hai.
 
 ### Errors
 | Status | Message | Kab |
@@ -1237,7 +1599,11 @@ GET /subCategories/getAll?categoryId=68f1a2b3c4d5e6f7a8b9c0e1&isActive=true&limi
         "isActive": true,
         "isDeleted": false,
         "createdAt": "2026-05-10T09:00:00.000Z",
-        "updatedAt": "2026-05-10T09:00:00.000Z"
+        "updatedAt": "2026-05-10T09:00:00.000Z",
+        "stats": {
+          "brands":   { "total": 12, "active": 10 },
+          "vouchers": { "total": 34, "active": 28 }
+        }
       }
     ]
   }
@@ -1245,6 +1611,8 @@ GET /subCategories/getAll?categoryId=68f1a2b3c4d5e6f7a8b9c0e1&isActive=true&limi
 ```
 
 > Note: yahan `isDeleted` aur `updatedAt` bhi project hote hain (categories `getAll` se different).
+
+`stats` yahan sirf `brands` aur `vouchers` rakhta hai — `PromoCode` sirf `categoryIds` pe scoped hota hai, sub-category ka koi field usme nahi. Baaki matlab [#9](#9-get-categoriesgetall) jaisa hi hai (`active` lein, `total` nahi).
 
 ### Errors
 | Status | Message | Kab |
@@ -1278,10 +1646,15 @@ GET /subCategories/getAll?categoryId=68f1a2b3c4d5e6f7a8b9c0e1&isActive=true&limi
     "isActive": true,
     "isDeleted": false,
     "createdAt": "2026-05-10T09:00:00.000Z",
-    "updatedAt": "2026-05-10T09:00:00.000Z"
+    "updatedAt": "2026-05-10T09:00:00.000Z",
+    "stats": {
+      "brands":   { "total": 12, "active": 10 },
+      "vouchers": { "total": 34, "active": 28 }
+    }
   }
 }
 ```
+> `stats` [#11](#11-get-subcategoriesgetall) waala hi hai.
 
 ### Errors
 | Status | Message |
@@ -1465,6 +1838,455 @@ Sirf [common auth errors](#common-errors).
 **4. `redirect` handling** banner (#13) jaisa hi hai.
 
 **5. `title` max 100 chars hai** — UI me single line me fit ho jaana chahiye.
+
+---
+
+# Search APIs 🆕
+
+Home screen ke sabse upar wala global search box. Ek call me brands, offers, categories,
+sub-categories aur areas — sab.
+
+**Poora module token ke bina chalta hai.** Sirf history wale teen endpoints ko login
+chahiye — guest ki recent searches uske apne device par rehti hain (§14d).
+
+---
+
+## 14a. GET /search
+
+**Access:** 🌐 **Public** (`optionalAuth`) — guest aur signed-in dono.
+
+Signed-in customer ko do cheezein extra milti hain, baaki kuch nahi badalta:
+coordinates na bhejne par uska saved address use ho jaata hai, aur `commit=true`
+wali query yaad rakhi jaati hai.
+
+### Query Params
+
+| Param | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `q` | string | ✅ | – | Search text. Minimum **2** (admin-configurable), maximum 100 |
+| `latitude` · `longitude` | number | ❌ | – | **Saath me hi** bhejein, warna `422`. Na bhejein to offers skip |
+| `types` | CSV | ❌ | sab | `BRAND,VOUCHER,CATEGORY,SUB_CATEGORY,AREA` me se koi bhi |
+| `type` | enum | ❌ | – | Ek hi type, paginated — **response shape badal jaata hai**, [§14b](#14b-get-searchqtype--ek-type-paginated) |
+| `page` | number | ❌ | `1` | Sirf `type` ke saath. Bina `type` ke `422` |
+| `limit` | number | ❌ | `5` | Overview me **per section**; single-type me page size (max 50) |
+| `commit` | boolean | ❌ | `false` | `true` = ye query history me save karo |
+
+```http
+GET /search?q=pizza&latitude=22.7533&longitude=75.8937&limit=5
+```
+
+### Success — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "Search results fetched",
+  "data": {
+    "query": "pizza",
+    "isEnabled": true,
+    "hasLocation": true,
+    "totalResults": 31,
+    "sections": [
+      {
+        "type": "BRAND",
+        "label": "Brands",
+        "total": 3,
+        "items": [
+          {
+            "type": "BRAND",
+            "id": "68f1a2b3c4d5e6f7a8b9c0a1",
+            "title": "Domino's Pizza",
+            "subtitle": "Food & Beverages · 12 outlets",
+            "image": "https://res.cloudinary.com/…/dominos.jpg",
+            "meta": {
+              "uniqueId": "#TB69063",
+              "isTopBrand": true,
+              "isVerified": true,
+              "followersCount": 4821,
+              "outletCount": 12,
+              "categoryId": "68f0…b3e1",
+              "subCategoryId": "68f0…b3e9",
+              "distanceInMeters": 2310
+            },
+            "target": {
+              "screen": "BRAND_PROFILE",
+              "endpoint": "/brands/customer/get/68f1a2b3c4d5e6f7a8b9c0a1"
+            }
+          }
+        ],
+        "seeAll": {
+          "endpoint": "/brands/customer/get-all",
+          "params": { "search": "pizza" }
+        }
+      },
+      {
+        "type": "VOUCHER",
+        "label": "Offers",
+        "total": 24,
+        "locationRequired": false,
+        "items": [
+          {
+            "type": "VOUCHER",
+            "id": "68f2a2b3c4d5e6f7a8b9d1b7",
+            "title": "Weekend Special – 30% Off",
+            "subtitle": "Domino's Pizza · indore · 1.1 km",
+            "image": "https://res.cloudinary.com/…/voucher.jpg",
+            "meta": {
+              "brandId": "68f1a2b3c4d5e6f7a8b9c0a1",
+              "brandName": "Domino's Pizza",
+              "categoryId": "68f0…b3e1",
+              "subCategoryId": "68f0…b3e9",
+              "bestOffer": { "title": "30%", "discountType": "PERCENTAGE", "discountValue": 30 },
+              "startAt": "2026-09-02T00:00:00.000Z",
+              "endAt": "2026-09-30T13:00:00.000Z",
+              "isSuggested": true,
+              "distance": "1.1 km",
+              "distanceInMeters": 1104
+            },
+            "target": {
+              "screen": "VOUCHER_DETAIL",
+              "endpoint": "/vouchers/customer/get/68f2a2b3c4d5e6f7a8b9d1b7"
+            }
+          }
+        ],
+        "seeAll": {
+          "endpoint": "/vouchers/customer/get-all",
+          "params": { "search": "pizza", "latitude": 22.7533, "longitude": 75.8937 }
+        }
+      },
+      {
+        "type": "CATEGORY",
+        "label": "Categories",
+        "total": 1,
+        "items": [
+          {
+            "type": "CATEGORY",
+            "id": "68f0a2b3c4d5e6f7a8b9b3e1",
+            "title": "Food & Beverages",
+            "subtitle": "6 sub-categories · 48 brands · 130 offers",
+            "image": "https://res.cloudinary.com/…/food.jpg",
+            "meta": {
+              "description": "restaurants, cafes, and food outlets",
+              "subCategoryCount": 6,
+              "brandCount": 48,
+              "voucherCount": 130
+            },
+            "target": {
+              "screen": "CATEGORY_LISTING",
+              "endpoint": "/vouchers/customer/get-all",
+              "params": { "categoryId": "68f0a2b3c4d5e6f7a8b9b3e1" }
+            }
+          }
+        ],
+        "seeAll": { "endpoint": "/categories/getAll", "params": { "search": "pizza", "isActive": true } }
+      },
+      { "type": "SUB_CATEGORY", "label": "Sub-categories", "total": 0, "items": [], "seeAll": { "…": "…" } },
+      {
+        "type": "AREA",
+        "label": "Areas",
+        "total": 3,
+        "items": [
+          {
+            "type": "AREA",
+            "id": "indore|madhya pradesh",
+            "title": "indore",
+            "subtitle": "madhya pradesh · 23 outlets · 11 brands",
+            "image": null,
+            "meta": {
+              "city": "indore",
+              "state": "madhya pradesh",
+              "latitude": 22.7533,
+              "longitude": 75.8937,
+              "outletCount": 23,
+              "brandCount": 11
+            },
+            "target": {
+              "screen": "LOCATION_SWITCH",
+              "params": { "latitude": 22.7533, "longitude": 75.8937, "label": "indore" }
+            }
+          }
+        ],
+        "seeAll": { "endpoint": "/search", "params": { "q": "pizza", "type": "AREA" } }
+      }
+    ]
+  }
+}
+```
+
+### Har row ka ek hi shape hota hai
+
+Chahe type koi bhi ho, row me yahi saat fields hoti hain:
+
+| Field | Kya |
+|---|---|
+| `type` | `BRAND` · `VOUCHER` · `CATEGORY` · `SUB_CATEGORY` · `AREA` |
+| `id` | Us cheez ki id. ⚠️ AREA me ye **synthetic** hai — neeche dekhein |
+| `title` · `subtitle` | Seedha render karne ke liye. Subtitle server banata hai |
+| `image` | AREA me hamesha `null` — jagah ki apni koi tasveer nahi hoti |
+| `meta` | Type ke hisaab se extra fields |
+| `target` | **Tap karne pe kahan jaana hai** |
+
+App ek hi row component se paanchon render kar sakti hai. Naya type kal jud jaye to app ko
+bas ek label chahiye, naya parser nahi.
+
+> **`target` server bhejta hai — app hardcode na kare.** Voucher detail ka path kal badla to
+> ek jagah badlega, har shipped app version me nahi. Yahi `seeAll` ke saath bhi: section apna
+> "see all" endpoint aur params khud batata hai.
+
+| `target.screen` | Kya karna hai |
+|---|---|
+| `BRAND_PROFILE` | `target.endpoint` khol do |
+| `VOUCHER_DETAIL` | `target.endpoint` khol do |
+| `CATEGORY_LISTING` · `SUB_CATEGORY_LISTING` | `target.endpoint` ko `target.params` ke saath call karo |
+| `LOCATION_SWITCH` | App apni location `target.params` ke point par set kare — koi page nahi khulta |
+
+### ⚠️ Location na ho to offers skip hote hain — chupke se nahi
+
+`latitude`/`longitude` na ho (aur signed-in customer ka saved address bhi na ho) to:
+
+- `hasLocation: false`
+- `VOUCHER` section **rehta hai**, par `total: 0` aur **`locationRequired: true`**
+- baaki chaar sections normal chalte hain
+
+App ko us section me "Aas-paas ke offers dekhne ke liye location on karein" dikhana chahiye.
+
+⚠️ `locationRequired: true` aur `total: 0` **do alag baatein** hain:
+
+| | Matlab | App kya kahe |
+|---|---|---|
+| `locationRequired: true` | Humein pata hi nahi aap kahan ho | "Location on karein" |
+| `locationRequired: false`, `total: 0` | Aapke 25 km me is naam ka offer nahi hai | "Aas-paas kuch nahi mila" |
+
+**Kyun skip, poori request fail kyun nahi:** voucher pipeline `$geoNear` se shuru hoti hai
+aur `$geoNear` pipeline ka pehla stage hi ho sakta hai — to "bina location voucher search"
+ek filter hata dena nahi, poori alag pipeline hoti. Aur poori request 422 kar dena us guest
+ko brand ka naam bhi nahi dhoondhne deta jisne location permission deny ki hai — jiske liye
+location kabhi chahiye hi nahi thi.
+
+### Khaali section gayab nahi hota
+
+Har maanga gaya section response me rehta hai, chahe `total: 0` ho. App ko "Brands me kuch
+nahi mila" dikhana ho to uske paas section hona chahiye. Aur `totalResults === 0` se saaf
+pata chalta hai ki kuch bhi nahi mila.
+
+**`404` kabhi nahi aata.** Kuch na milna search ka normal jawab hai.
+
+### Kya kis field pe match hota hai
+
+| Section | Match | Location chahiye? |
+|---|---|:-:|
+| `BRAND` | `brandName` | ❌ |
+| `VOUCHER` | Voucher ka naam **aur** offer ka title | ✅ |
+| `CATEGORY` · `SUB_CATEGORY` | `name` | ❌ |
+| `AREA` | Live outlets ke address ka `city` | ❌ |
+
+Har section me exact match sabse upar, phir jo term se **shuru** hota hai, phir jisme term
+kahin aata hai. Bina iske "pizza" search karne par "Tony's Pizza Corner" "Pizza Hut" ke
+upar aa sakta hai.
+
+⚠️ **Brand ki `description` pe match nahi hota**, sirf naam pe. Lambi description me aadhi
+duniya ke shabd aa jaate hain, aur ek bhatka hua "pizza" kisi ko pizza brand nahi bana deta.
+
+⚠️ **Offer ka title bhi match hota hai.** "buy 1 get 1" kisi voucher ke *naam* me nahi
+hota — wo offer hai. Ye jodne se pehle wo phrase, jo customer sach me type karta hai, kuch
+nahi dhoondh paata tha.
+
+### AREA — jagah, cheez nahi
+
+Outlet ka apna koi naam nahi hota (`SubBrand` me `name` field hai hi nahi), to areas live
+outlets ke **address** se bante hain, city ke hisaab se group karke.
+
+**Tap karne pe koi page nahi khulta.** Row me us jagah ka centroid aata hai aur app apni
+location wahan set kar deti hai — home feed aur voucher search pehle se `$geoNear` par hain,
+to sab apne aap us area ke ho jaate hain.
+
+- Centroid us area ke **saare** outlets ka औसत hai, kisi ek dukaan ka pin nahi. Ek pin lene
+  se "Indore" ka matlab ek gali ban jaata aur wahan switch karne par aadhe area ke offers
+  25 km radius se bahar chhoot jaate.
+- ⚠️ `id` (`"indore|madhya pradesh"`) **synthetic** hai — sirf list key ke liye. Kisi
+  endpoint me id ki tarah **mat bhejein**.
+- ⚠️ `city` free text hai, normalise nahi hota. "Andheri West" aur "andheri west" ek row
+  hain, par "Andheri  West" (do space) alag reh jaata hai. Search tootti nahi — ek jagah do
+  rows ki tarah dikh sakti hai.
+
+### Errors
+
+| Status | Message | Kab |
+|---|---|---|
+| `422` | `Search text is required.` | `q` khaali |
+| `422` | `Search text must be at least 2 characters.` | `minQueryLength` se chhota |
+| `422` | `latitude and longitude must be provided together.` | Ek bheja, doosra nahi |
+| `422` | `` `page` only applies with `type`. `` | Overview me `page` |
+| `422` | Send either `type` … or `types` … | Dono ek saath |
+| `401` | `Your session has expired…` | ⚠️ Expired token guest me downgrade **nahi** hota |
+
+⚠️ Aakhri wala jaan-boojh kar hai: expired token ko chupke se guest bana dena signed-in
+customer ko anonymous view dikha deta bina kisi wajah ke, aur usse kabhi dobara login karne
+ko kaha hi nahi jaata.
+
+### ⚠️ Search box kaise call kare
+
+**`commit=true` sirf tab bhejein jab customer Enter/Search dabaye ya kisi result pe tap
+kare** — type karte waqt nahi. Har keystroke pe commit karne se recent list
+`p, pi, piz, pizz, pizza` ban jaati hai aur feature na hone se badtar ho jaata hai.
+
+2 characters se pehle call hi na karein, aur calls ko debounce karein.
+
+---
+
+## 14b. GET /search?q=…&type= — ek type, paginated
+
+**Access:** 🌐 **Public** (`optionalAuth`)
+
+`type` dene se **response ka shape badal jaata hai**: `sections[]` ki jagah ek `items[]`
+plus pagination. Row ka envelope wahi rehta hai, to app ka row component dono mode me ek hi
+chalta hai.
+
+```http
+GET /search?q=indore&type=AREA&page=2&limit=20
+```
+
+```jsonc
+{
+  "success": true,
+  "message": "Search results fetched",
+  "data": {
+    "query": "indore",
+    "isEnabled": true,
+    "type": "AREA",
+    "hasLocation": false,
+    "total": 12,
+    "totalPages": 1,
+    "page": 2,
+    "limit": 20,
+    "items": [ /* wahi row envelope jo sections me hai */ ]
+  }
+}
+```
+
+### "See all" kahan bhejein
+
+| Type | Kahan |
+|---|---|
+| `AREA` | **Yahin** — `?type=AREA`. Aur koi raasta hai hi nahi |
+| `BRAND` | `GET /brands/customer/get-all?search=` — wahan filters aur sort presets hain |
+| `VOUCHER` | `GET /vouchers/customer/get-all?search=&latitude=&longitude=` |
+| `CATEGORY` · `SUB_CATEGORY` | `GET /categories/getAll?search=` — ya yahin, dono chalega |
+
+Har section apna `seeAll` khud batata hai — app ye table hardcode na kare.
+
+AREA akela type hai jiska apna listing endpoint nahi hai: wo kisi collection ka listing
+nahi, live outlets ke addresses ka grouped result hai. Isiliye ye mode maujood hai.
+
+⚠️ `types` (plural — kaunse sections chahiye) aur `type` (singular — mode switch) **alag**
+hain. Dono ek saath bhejne pe `422`.
+
+---
+
+## 14c. GET /search/popular
+
+**Access:** 🌐 **Public**
+
+Search box khulte hi dikhne wali chips.
+
+```jsonc
+{
+  "success": true,
+  "message": "Popular searches fetched",
+  "data": { "isEnabled": true, "queries": ["pizza", "salon", "weekend offers"] }
+}
+```
+
+Admin curate karta hai (`PUT /settings/update` → `customer.search.popularQueries`) —
+traffic se derive **nahi** hoti. Customer kya search karta hai wo kahin log hi nahi hota,
+aur ye endpoint wo shuruaat jaan-boojh kar nahi kar raha.
+
+Mukhya audience guest hai: uski apni recent searches device par hain, to bina iske box
+khaali khulta.
+
+⚠️ `isEnabled: false` par bhi `200` aur `queries: []` — `404` nahi. Ek switch band karne se
+endpoint gayab hua nahi lagna chahiye, warna app ka generic error handler "kuch toot gaya"
+screen dikha dega.
+
+---
+
+## 14d. GET /search/history
+
+**Access:** 🔒 **`isCustomer`**
+
+```jsonc
+{
+  "success": true,
+  "message": "Search history fetched",
+  "data": [
+    { "_id": "68f5…a1", "query": "pizza", "searchCount": 4, "lastSearchedAt": "2026-09-04T09:12:00.000Z" },
+    { "_id": "68f5…a2", "query": "salon", "searchCount": 1, "lastSearchedAt": "2026-09-03T18:40:00.000Z" }
+  ]
+}
+```
+
+| Param | Type | Default | Notes |
+|---|---|---|---|
+| `limit` | number | `20` | Admin-configurable (`historyLimit`), max 100 |
+
+Newest first. Cap se purani rows har commit ke baad apne aap hat jaati hain.
+
+⚠️ **Khaali history `200` + `[]` hai, `404` nahi** — is doc me baaki list endpoints khaali
+pe 404 dete hain (shared `pagination` throw karti hai), par jisne abhi tak kuch search hi
+nahi kiya wo bilkul normal haal me hai. Wahan 404 pehle din hi error screen dikha deta.
+
+⚠️ **Guest ko `401` milta hai, khaali list nahi.** Uski history device par hai; khaali array
+dena "aapne kuch search nahi kiya" ka daava hota, jo sach nahi. App guest state me ye call
+kare hi na.
+
+### History kab likhi jaati hai
+
+Sirf `GET /search?...&commit=true` pe, aur sirf tab jab caller ek live customer ho:
+
+| Caller | `commit=true` pe |
+|---|---|
+| Signed-in customer | Row upsert — dobara search par nayi row nahi, `searchCount` badhta hai |
+| Guest | Kuch nahi, aur koi error bhi nahi |
+| Vendor / admin preview | Kuch nahi — unka `Customer` record hota hi nahi |
+
+⚠️ `Pizza`, `pizza` aur `pizza  hut` vs `pizza hut` ek hi row hain.
+
+⚠️ History likhna search ko **kabhi fail nahi karta**. Results jawab hain, history ek side
+effect — jo bhi ho jaye, customer ko results milte hain aur error sirf log me jaata hai.
+
+---
+
+## 14e. DELETE /search/history/:historyId · DELETE /search/history
+
+**Access:** 🔒 **`isCustomer`**
+
+```http
+DELETE /search/history/68f5a2b3c4d5e6f7a8b9e1f2   → ek entry
+DELETE /search/history                            → poori history
+```
+
+```jsonc
+{ "success": true, "message": "Search history entry removed" }
+{ "success": true, "message": "Search history cleared", "data": { "deletedCount": 12 } }
+```
+
+### Errors
+
+| Status | Message | Kab |
+|---|---|---|
+| `404` | `Search history entry not found` | Id nahi mili, **ya kisi aur ki hai**, ya pehle se deleted |
+| `422` | `Invalid history id.` | Valid ObjectId nahi |
+| `401` | – | Token nahi |
+| `403` | – | Customer nahi (vendor/admin token) |
+
+⚠️ Kisi aur ki row par **`404`**, `403` nahi. "Ye hai to sahi, par aapka nahi" khud ek leak
+hai — usse pata chal jaata hai ki id asli hai.
+
+⚠️ **Hataya hua term dobara search ho sakta hai** aur nayi row ban jaata hai, count 1 se —
+purani count wapas nahi aati. "Maine wo hata diya tha" ka yahi matlab hona chahiye.
+
+⚠️ Pehle se khaali history clear karne par bhi `200` aur `deletedCount: 0`. Customer ne kaha
+"meri history hata do" aur history hat chuki hai.
 
 ---
 
@@ -1837,9 +2659,9 @@ GET /vouchers/customer/get/68f1a2b3c4d5e6f7a8b9c2a1?latitude=22.7533&longitude=7
 
 **4. `discountApplicableOn`** batata hai discount `SUBTOTAL` pe lagega ya `FINAL_BILL` (tax ke baad) pe. Terms me mention karein.
 
-**5. `usageType`:** `ONCE_PER_USER` = ek baar hi use ho sakta hai, `MULTIPLE` = baar-baar. ⚠️ Enforcement abhi implement nahi hai (redemption tracking hi nahi hai) — ye informational hai.
+**5. `usageType`:** `ONCE_PER_USER` = ek baar hi use ho sakta hai, `MULTIPLE` = baar-baar. ✅ **Enforcement database me hai** — `VoucherClaim` par `{voucherId, customerId, offerId}` ka unique partial index, `partialFilterExpression: {holdsUsageSlot: true}` ([VoucherClaim.js:165](../models/VoucherClaim.js#L165)). Slot **per offer** hai, per voucher nahi: 20%-off use karne se free-dessert offer khatam nahi hota. Failed, cancelled ya refunded claim `holdsUsageSlot: false` ho jaati hai, to slot chhoot jaata hai par row rehti hai — history bani rehti hai.
 
-**6. Redemption flow abhi exist nahi karta.** Customer voucher dekh sakta hai, discount preview kar sakta hai, par actually "redeem" karne ka koi endpoint nahi hai. (`VoucherUsage` model bana hua hai par koi route nahi.)
+**6. Redeem karne ka alag endpoint nahi hai — aur Phase 1 me uski zarurat bhi nahi.** Claim ka `redemptionMode` `AUTO` hai ([createVoucherClaimOrder.js:270](../services/voucherClaims/createVoucherClaimOrder.js#L270)), aur us par payment capture hote hi claim seedhe `REDEEMED` ho jaati hai `redeemedAt` ke saath ([settleVoucherClaimPayment.js:312](../helpers/voucherClaims/settleVoucherClaimPayment.js#L312)) — **paisa dena hi redemption hai**. Counter par `GET /voucher-claims/code/:claimCode` se code padha jaata hai; wo ek **read** hai, kuch likhta nahi. Alag redeem endpoint Phase 2 ka kaam hai, jab `redemptionMode` `OUTLET_SCAN` par jaayega — poora plan [Appendix C4](./super_admin_panel_api_doc.md) me.
 
 ---
 
@@ -2054,7 +2876,7 @@ Har row me `key` · `label` · `amount` · `display` chaaron hote hain, aur `dis
 
 | Field | Matlab |
 |---|---|
-| `supported` | `Setting.customer.promoCode.isEnabled` — **default `false`** |
+| `supported` | `Setting.customer.promoCode.isEnabled` — **default `true`** 🆕 |
 | `applied` | Laga to `{ code, description, discount, appliesTo }`, warna `null` |
 | `provisional` | **Guest ke liye `true`** — neeche padhein |
 | `message` | Laga to confirmation, warna **wajah** |
@@ -2361,9 +3183,24 @@ Webhook aur ye callback **har payment par** milliseconds ke faasle par chalte ha
 
 ---
 
-## 17c. GET /transactions/invoice/:token
+## 17c. GET /documents/:token
 
-Invoice download. **Public — koi JWT nahi.**
+Kisi bhi Trydood document ka download. **Public — koi JWT nahi.**
+
+### Ek route, chhe kism ke document
+
+| Kya | Kahan se |
+|---|---|
+| Claim receipt / tax invoice | `Transaction` |
+| Subscription invoice · grant advice | `Transaction` |
+| Refund receipt / credit note | `RefundRequest` |
+| Chargeback advice / debit note | `Dispute` |
+| Payout statement (+ commission tax invoice) | `Settlement` |
+
+Token khud nahi batata ki wo kis kism ka document hai, isliye resolver chaaron
+collection me dhoondhta hai. Pehle `transactions/invoice/:token` aur
+`settlements/statement/:token` do alag route the aur dono ka apna token field naam
+tha — refund aur dispute ke liye teesra aur chautha banana padta.
 
 Link WhatsApp message aur email se khulta hai, jahan browser me koi session hota hi nahi. Login maangna matlab Download button kaam na kare, jo uska ekmatra kaam hai. **32-byte random token hi credential hai.**
 
@@ -2643,6 +3480,58 @@ kuch nahi; paanch baar wahi pattern hai.
 
 ---
 
+## 17j-1. PATCH /refunds/:requestId/bank-account — failed refund kahan bheju 🆕
+
+**Access:** 🔒 **CUSTOMER only** (`isCustomer`) + ownership
+
+Jab paisa **usi raaste se wapas nahi ja sakta** — band card, deactivated UPI — tab
+customer batata hai kahan bheja jaaye.
+
+```jsonc
+// PATCH /refunds/68f2.../bank-account
+{ "bankAccountId": "68f3a1..." }
+```
+
+### Ye endpoint kyun hai
+
+`SOURCE` refund band pade instrument par **har baar** fail hota hai, aur is se pehle
+admin ke paas doosra button hi nahi tha. Request `FAILED` par baithi rehti thi,
+**vendor ka paisa hold me phansa rehta tha, aur grahak ko uska kabhi milta hi nahi** —
+teen taraf se ek saath atka hua, aur teeno me se kisi ko koi error nahi dikhta tha.
+
+### Sirf ek hi status par chalta hai
+
+| Refund ka status | Kya hota hai |
+|---|---|
+| `AWAITING_BANK_DETAILS` | ✅ Account jud jaata hai, status `ADMIN_APPROVED` ho jaata hai |
+| Koi bhi doosra | `409` — *"This refund is … and is not waiting for bank details."* |
+
+`AWAITING_BANK_DETAILS` par pahunchne ke liye admin ko pehle `SOURCE` fail dekhna aur
+`PATCH /refunds/admin/:requestId/request-bank-details` maarna padta hai. Customer ise
+khud trigger nahi kar sakta — app ko ye screen **notification par** dikhani hai.
+
+### ⚠️ Status `ADMIN_APPROVED` par jaata hai, `FAILED` par nahi
+
+Refund ka **faisla** bahut pehle ho chuka tha aur badla nahi; sirf **destination** badla
+hai. `FAILED` par landing use retry queue me daal deti — jaise `SOURCE` dobara try
+karna chahiye — theek wahi ek cheez jo pakka kaam nahi karegi.
+
+### ⚠️ Account aapki apni verified list se hi aa sakta hai
+
+Service teen cheezein jaanchti hai: refund aapka hai, account aapka hai, aur account
+**verified** hai. Unverified account par `422` — *"This account has not been verified
+yet."* Unverified row saboot hai ki koshish hui, destination kabhi nahi.
+
+| Code | Kab |
+|---|---|
+| `200` | Jud gaya |
+| `403` | Refund aapka nahi |
+| `404` | Bank account nahi mila (ya aapka nahi) |
+| `409` | Refund is state me nahi hai |
+| `422` | Account verified nahi hai |
+
+---
+
 ## 17k. GET /refunds — meri refunds
 
 **Access:** 🔒 koi bhi logged-in role (`verifyJwtToken`) — **ek endpoint, teen shapes**
@@ -2712,6 +3601,224 @@ chup-chaap ₹400 paaye wo doosri request aur ek support ticket kholta hai.
 `PROCESSING` par koi notification nahi — asli transition hai par uspar kisi ke karne ko
 kuch nahi, aur jis notification par koi kaam nahi kar sakta wo logon ko unhein
 nazarandaaz karna sikha deti hai jo mayne rakhti hain.
+
+---
+
+# Bank Account APIs 🆕
+
+Customer ke bank accounts — **use tab hote hain jab refund wapas usi raaste se nahi ja
+sakta**. Mount `/bank-accounts` par hai (`routes/customerBankAccounts.js`, `routePrefix`
+override ke saath).
+
+### Ye apna domain kyun hai, `/refunds` ka hissa kyun nahi
+
+Account **customer ka** hai, ek refund ka nahi. Use refund ke neeche rakhna matlab agle
+refund par use **dobara add karna — aur dobara verify karna, paise dekar** — aur ye
+dekhne ka koi raasta na rehna ki customer ke paas file me kya hai.
+
+### ⚠️ Koi endpoint `customerId` leta hi nahi
+
+Har route par `isCustomer`, aur customer id har service ke andar **token se** aata hai.
+Jo endpoint `customerId` leta wo ek insaan ko doosre ke accounts padhne — ya uske naam
+par account jodne — de deta.
+
+---
+
+## 17m. POST /bank-accounts/otp — code maango 🆕
+
+**Access:** 🔒 **CUSTOMER only** (`isCustomer`)
+
+Step one: code, kuch add hone se **pehle**. Body nahi lagti — number/email account se
+aata hai.
+
+```jsonc
+{
+  "success": true,
+  "message": "We have sent you a code.",
+  "data": {
+    "sentTo": "98****3210",     // masked, hamesha
+    "channel": "WHATSAPP"       // WHATSAPP | EMAIL
+  }
+}
+```
+
+### ⚠️ Login akela galat strength ka gate hai
+
+**Account add karna ye tay karta hai ki paisa kahan jayega.** Live session rakhne wala
+koi bhi warna ek pending refund apne account par point kar leta — aur **NEFT wapas nahi
+bulayi ja sakti**. Isliye ek OTP.
+
+### ⚠️ Throttle route par nahi, `sendOtp` me hai
+
+60 second ka gap, 5 per hour (`Setting.security.otp` se override ho sakta hai). Ye
+`services/otps/sendOtp.js` me baitha hai, route par nahi — agle mahine juda koi bhi OTP
+endpoint apne aap covered hai, aur **rate-limit middleware bhoolne par koi error hi nahi
+aata**, bas ek unprotected endpoint.
+
+Keyed on **target** (number/email) + purpose, **IP par nahi**: Indian mobile networks
+hazaaron asli customers ko ek CGNAT address ke peeche rakhte hain, to IP limit ek block
+ke logon ko bahar kar deti hai aur phone wale attacker ko baithe-baithe chhod deti hai.
+
+| Code | Kab |
+|---|---|
+| `200` | Code chala gaya |
+| `404` | Customer nahi mila |
+| `422` | Account par na WhatsApp number hai na email |
+| `429` | Throttle — 60s ke andar dobara, ya ghante me chhathi baar |
+
+---
+
+## 17n. POST /bank-accounts — account jodo 🆕
+
+**Access:** 🔒 **CUSTOMER only** (`isCustomer`)
+
+```jsonc
+{
+  "accountNumber": "912010004512345",      // 9–18 digits
+  "ifscCode": "HDFC0001234",               // 4 letters + '0' + 6
+  "accountHolderName": "Asha Kumari",      // optional — bank ka naam jeet jaata hai
+  "otp": "482913"                          // 17m se
+}
+```
+
+### Kram hi design hai
+
+```
+OTP (consume)  →  pehle se verified account reuse  →  penny drop  →  store
+```
+
+OTP **pehle** jaata hai, taaki chori hui session hamse ek **paid** verification call
+kharch na kara sake, account jodna to door ki baat. Reuse check drop se **pehle**, taaki
+pehle se sabit account dobara daalne par kuch kharch na ho.
+
+### Response — `201`
+
+```jsonc
+{
+  "success": true,
+  "message": "Bank account verified and added.",
+  "data": {
+    "_id": "68f3a1...",
+    "accountHolderName": "ASHA KUMARI",     // bank ka naam
+    "maskedAccountNumber": "***********2345",
+    "accountLast4Digits": "2345",
+    "ifscCode": "HDFC0001234",
+    "bankName": "HDFC Bank",
+    "branchName": "Indore Vijay Nagar",
+    "isVerified": true,
+    "verifiedAt": "2026-09-04T10:12:00.000Z",
+    "isNameMatch": true,
+    "createdAt": "2026-09-04T10:12:00.000Z"
+  }
+}
+```
+
+⚠️ Raw `accountNumber`, poora `verificationResponse` aur `matchingScore` **kabhi nahi**
+aate — projection `present()` se hai, jo listing ke saath **shared** hai.
+
+### ⚠️ Verification ke baare me client se kuch bhi accept nahi hota
+
+Na `isVerified`, na `verifiedAt`, na provider ka response. Server khud penny drop karta
+hai aur `isVerified` uske jawab se derive karta hai. Jo client `isVerified: true` keh
+sakta ho wo refund **kisi bhi** account par point kar sakta hai.
+
+### ⚠️ Fail hua drop bhi record hota hai
+
+Row error throw hone se **pehle** likhi jaati hai. Padhne me ajeeb lagta hai aur
+deliberate hai: support ko dikhna chahiye ki customer ne koshish ki aur provider ne kya
+kaha. Bina likhe throw karne par koi insaan kehta rehta hai ki usne details daali thi aur
+dikhane ko kahin kuch nahi hota.
+
+`isVerified: false` hi wo cheez hai jo **paisa rokti hai** — har payout path use padhta
+hai, to unverified row saboot hai aur destination kabhi nahi.
+
+| Code | Kab |
+|---|---|
+| `201` | Verified aur juda |
+| `401` | OTP galat ya expire |
+| `422` | Account number / IFSC ka shape galat, **ya penny drop fail** (message bank ka) |
+| `429` | OTP attempts khatam |
+
+> ⚠️ **Iska success example Postman me capture nahi hua**, aur ye jaan-boojh kar hai:
+> penny drop ek **live CGPey call** hai jiska hum paisa dete hain. Collection me saved
+> example wahi asli refusal hai jo galat OTP par aata hai. Upar wala `201` shape code se
+> likha gaya hai (`services/customerBankAccounts/addBankAccount.js` ka `present()`).
+
+---
+
+## 17o. GET /bank-accounts — mere accounts 🆕
+
+**Access:** 🔒 **CUSTOMER only** (`isCustomer`)
+
+Customer ke apne accounts, **newest first**.
+
+```jsonc
+{
+  "success": true,
+  "message": "Bank accounts fetched successfully.",
+  "data": [                                  // ⚠️ plain array
+    {
+      "_id": "68f3a1...",
+      "accountHolderName": "ASHA KUMARI",
+      "maskedAccountNumber": "***********2345",
+      "accountLast4Digits": "2345",
+      "ifscCode": "HDFC0001234",
+      "bankName": "HDFC Bank",
+      "branchName": "Indore Vijay Nagar",
+      "isVerified": true,
+      "verifiedAt": "2026-09-04T10:12:00.000Z",
+      "isNameMatch": true,
+      "createdAt": "2026-09-04T10:12:00.000Z"
+    }
+  ]
+}
+```
+
+### ⚠️ `data` ek plain array hai — koi pagination envelope nahi
+
+Ye endpoint shared `pagination()` utility use **nahi** karta. Iska matlab:
+
+- khaali hone par **`200` + `[]`** aata hai, **`404` nahi** — baaki har listing se ulta
+  ([Pagination](#pagination) dekhein)
+- `total` / `page` / `limit` nahi aate
+
+Jaan-boojh kar: bank accounts ki ginti chhoti aur bounded hai, aur *"aapka koi account
+nahi hai"* ek **normal** haalat hai, error nahi.
+
+### Unverified rows bhi aate hain, aur marked aate hain
+
+Unhe chhupane par jis customer ki koshish fail hui wo khaali list dekhta rehta, bina
+jaane ki uski attempt register hui ya nahi. `isVerified: false` wala row screen par
+*"verification pending"* dikhana chahiye, aur use refund destination ki tarah **offer
+nahi** karna chahiye.
+
+---
+
+## 17p. DELETE /bank-accounts/:accountId — account hataao 🆕
+
+**Access:** 🔒 **CUSTOMER only** (`isCustomer`)
+
+Soft delete, baaki sab ki tarah.
+
+```jsonc
+{ "success": true, "message": "Bank account removed.", "data": { "removed": true } }
+```
+
+### ⚠️ Refund is par point kar raha ho to refuse — `409`
+
+> *"A refund is waiting to be paid into this account. It can be removed once that refund
+> is done."*
+
+`PayoutLeg` apna `bankSnapshot` us waqt freeze karta hai jab paisa bheja jaata hai, to
+deletion **history nahi badal sakti**. Par jo refund pay hone ka intezaar kar raha hai wo
+apna destination kho deta hai aur admin ki queue me aisi haalat me pahunchta hai **jahan
+usme paisa daalne ki jagah hi nahi hoti**.
+
+| Code | Kab |
+|---|---|
+| `200` | Hat gaya |
+| `404` | Nahi mila, ya aapka nahi |
+| `409` | Ek khula refund is account par point kar raha hai |
 
 ---
 
@@ -3772,7 +4879,13 @@ Global middleware: `router.use(verifyJwtToken)` — chaaron endpoints pe.
 
 **Kaise kaam karta hai:** App FCM se token leta hai → yahan register karta hai → backend `DeviceToken` row banata hai (userId + role denormalized) → jab koi notification bhejni ho, backend user ke active tokens nikal kar FCM pe multicast karta hai.
 
-⚠️ **Customer ke liye in-app notification feed abhi nahi hai.** `/notifications/get-all` sirf Vendor+Admin ke liye gated hai. Customer ko sirf push milega — history dekhne ka koi endpoint nahi. Agar app me notification inbox chahiye to backend change lagega.
+✅ **Push hi sab kuch nahi hai — inbox bhi hai.** Push turant dikhta hai aur chala jaata hai; agar phone band tha, notification silent thi, ya user ne swipe kar diya, to wo message hamesha ke liye gaya. Isliye feed alag se rehti hai:
+
+- [`GET /notifications/get-all`](#37-get-notificationsget-all-) — poori history, paginated
+- [`PUT /notifications/mark-read`](#38-put-notificationsmark-read-) — read mark karo
+- [`GET`](#38a-get-notificationspreferences-) / [`PUT /notifications/preferences`](#38b-put-notificationspreferences-) — email, push aur WhatsApp alag-alag on/off
+
+⚠️ Device register karna **preferences se alag hai**. `/deviceTokens/register` batata hai *kahan* bhejna hai; preferences batati hain *bhejna hai ya nahi*. Push band karne ke liye token unregister mat karo — `channels.push: false` karo, warna dobara login pe app khud token register kar degi aur push wapas aa jaayega.
 
 ---
 
@@ -3908,12 +5021,17 @@ Device ko push se hata deta hai. **Logout pe call karna zaruri hai.**
 
 **3. `deactivated: 0` error nahi hai** — matlab us filter pe koi active row nahi mili (already unregistered, ya token kisi aur ka).
 
-**4. Logout flow me ye zaruri hai** — `POST /auth/logout` push ko touch nahi karta. Sirf logout call karoge to device notifications receive karta rahega. Sahi order:
+**4. Logout ab ye khud kar leta hai** 🆕 — `POST /auth/logout` ko `pushToken` bhej dein, alag call ki zarurat nahi:
 ```
-PUT /deviceTokens/unregister  { token }
-POST /auth/logout
+POST /auth/logout  { "pushToken": "<wahi token jo register kiya tha>" }
 → local token + cache clear
 ```
+
+Ye endpoint tab bhi kaam ka hai jab logout ke bina ek device retire karna ho — jaise
+"logged-in devices" screen se koi purana phone hataana.
+
+> Pehle logout push ko chhoota hi nahi tha aur dono call karni padti thi. Ab `pushToken`
+> na bhejne par bhi logout chalta hai — bas us device ko notifications aate rahenge.
 
 ---
 
@@ -4031,6 +5149,373 @@ Test push bhejta hai — **sirf caller ke apne devices pe**. Setup verify karne 
 
 ---
 
+---
+
+# Email Verification APIs 🆕
+
+**Access:** 🔒 `verifyJwtToken` — **har role**: customer, vendor, outlet manager, admin.
+
+`User.isEmailVerified` sabke paas tha aur **koi bhi use set nahi kar sakta tha**. Email
+edit karne par flag `false` ho jaata tha aur wapas `true` karne ka koi endpoint hi nahi
+tha — badge sirf ek taraf ja sakta tha.
+
+### Verify aur change ek hi jodi hai
+
+`email` **dono call par optional** hai:
+
+| Bheja | Kya hota hai |
+|---|---|
+| kuch nahi | Account par jo address hai wahi confirm hota hai |
+| naya address | Us par switch — par **verify hone tak account nahi badalta** |
+
+Do alag endpoints ka matlab hota client pehle decide kare ki address badla hai ya nahi —
+aur wo faisla server ke paas pehle se hai.
+
+> ### ⚠️ Code hamesha **naye** address par jaata hai
+>
+> Purane mailbox par code bhejna sirf ye sabit karta hai ki insaan purana mailbox padh
+> leta hai. Sawal wo hai hi nahi — sawal ye hai ki naya address unka hai ya nahi.
+
+---
+
+## 35. POST /auth/email/send-verification 🆕
+
+```jsonc
+{ }                              // account ka apna email confirm karo
+{ "email": "new@example.com" }   // is address par switch karo
+```
+
+### Response — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "We have sent a code to as***a@gmail.com.",
+  "data": {
+    "sentTo": "as***a@gmail.com",   // ⚠️ hamesha masked
+    "isChange": false                // true = address badla ja raha hai
+  }
+}
+```
+
+⚠️ **`sentTo` masked hai** kyunki ye endpoint chori hui session se bhi chal sakta hai, aur
+poora address us haath me nayi jaankari hoti.
+
+### Throttle
+
+`sendOtp` ke andar — **60 second gap, 5 per hour**, aur **target address** par keyed, IP
+par nahi. Route par rakhna matlab agla OTP endpoint bina protection ke chala jaata, aur
+rate-limit bhoolne par **koi error hi nahi aata** — bas ek khula endpoint jo har request
+par paisa kharch karta hai.
+
+| Code | Kab |
+|---|---|
+| `200` | Code chala gaya |
+| `409` | Ye address pehle se verified hai (aur badla bhi nahi ja raha) |
+| `409` | Wo address kisi aur ke **usi role** ke account par hai |
+| `422` | Account par email hai hi nahi, aur aapne bheja bhi nahi |
+| `429` | Throttle — 60s ke andar dobara, ya ghante me chhathi baar |
+
+---
+
+## 36. POST /auth/email/verify 🆕
+
+```jsonc
+{ "otp": "482913" }                                   // apna address confirm
+{ "otp": "482913", "email": "new@example.com" }       // switch confirm
+```
+
+### Response — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "Email address updated and verified.",
+  "data": { "email": "new@example.com", "isEmailVerified": true, "wasChange": true }
+}
+```
+
+⚠️ **Address likhna aur verified mark karna ek hi save me** hota hai. Do step me karne par
+ek pal aisa banta jahan naya address padha hota aur `isEmailVerified: false` — theek wahi
+haalat jisse nikalne ka raasta ye feature de raha hai.
+
+⚠️ **Uniqueness yahan dobara check hoti hai.** Dono call ke beech minute nikalte hain, aur
+utni der me koi aur wo address le sakta hai. Sirf bhejte waqt check karna aapko ek verified
+duplicate de deta.
+
+⚠️ **`loginType` nahi badalta.** `verifyEmailOTP` use `EMAIL` karta hai kyunki wo ek
+sign-in hai; ye nahi — aapke paas pehle se token hai. Yahan badalna ek WhatsApp customer ka
+record sirf isliye badal deta ki usne apna address confirm kiya.
+
+⚠️ **Code consume ho jaata hai** — wahi code dobara nahi chalega, warna ek purana code baad
+me address phir se badal sakta tha.
+
+| Code | Kab |
+|---|---|
+| `200` | Verified |
+| `401` | Code galat, expire, ya pehle se use ho chuka |
+| `403` | Attempts khatam — naya code maangna padega |
+| `409` | Wo address is beech me kisi aur ne le liya |
+| `422` | `otp` nahi bheja, ya email ka format galat |
+
+> ⚠️ **Iska success example Postman me capture nahi hua** — code ek asli inbox me jaata hai
+> aur collection use padh nahi sakti. Saved example wahi refusal hai jo khaali code par
+> aata hai; upar wala `200` shape code se likha gaya hai.
+
+---
+
+# Notification APIs 🆕
+
+**Access:** 🔒 `verifyJwtToken` — **ek endpoint, chaar shapes**.
+
+Customer apni rows dekhta hai, vendor apne brand ki, admin ya to admin feed ya kisi bhi
+brand ki, aur outlet manager ko saaf mana kiya jaata hai. Scope **aur** projection dono
+token se nikalte hain.
+
+### Rows pehle se likhi ja rahi thi
+
+`refundNotices` aur `voucherClaimNotices` dono `audience: CUSTOMER` par likhte hain —
+sirf unhe **padhne ka koi raasta nahi tha**. Customer ko push milta tha aur history kahin
+nahi.
+
+### ⚠️ Alag `/notifications/customer` kyun nahi
+
+Wahi wajah jo `/refunds`, `/settlements` aur `/voucher-claims` ki hai: do surface ka
+matlab do jagah yaad rakhna ki customer ko `emailError`, `dedupeKey` ya kaccha `meta`
+nahi dikhna chahiye. Ek jagah bhoolna = leak — aur wo detail screen par milta hai, jise koi
+dobara nahi padhta.
+
+---
+
+## 37. GET /notifications/get-all 🆕
+
+`?page=` · `?limit=` · `?type=` · `?isRead=`
+
+### Response — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "Notifications fetched successfully",
+  "data": {
+    "total": 3, "totalPages": 1, "page": 1, "limit": 20,
+    "unreadCount": 2,
+    "data": [
+      {
+        "_id": "68f4…",
+        "type": "REFUND_REQUESTED",
+        "severity": "INFO",
+        "title": "We have your refund request",
+        "body": "We have asked the outlet about your ₹500.00 refund on TD-FPHTTY…",
+        "meta": {                       // ⚠️ whitelist — sirf deep-link ke ids
+          "refundRequestId": "68f3…",
+          "claimId": "68f2…",
+          "claimCode": "TD-FPHTTY"
+        },
+        "isRead": false,
+        "createdAt": "2026-09-04T10:12:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+**Sort:** unread pehle, phir newest.
+
+### ⚠️ `meta` whitelist hai, delete-list nahi
+
+Customer ko sirf `claimId` · `claimCode` · `refundRequestId` · `transactionId` ·
+`brandId` milte hain — inbox ko row tap karne par kahin le jaana hota hai, isliye ye
+chahiye. `meta` khud `Mixed` hai: jo notice kal usme kuch bhi daalega wo **default roop
+se adrishya** rahega. Row-minus-kuch bhejne ka matlab hota har naya notice by default leak.
+
+`channels` · `emailSentAt` · `emailError` · `dedupeKey` · `audience` · `customerId` —
+in me se kuch bhi customer ko kabhi nahi jaata.
+
+### ⚠️ `unreadCount` **scope** par ginta hai, filter par nahi
+
+`?type=ANNOUNCEMENT` lagane par list chhoti ho jaati hai par badge wahi rehta hai. Filter
+ke saath ginne par badge us bell se hi asehmat ho jaata jisne use khola tha.
+
+### ⚠️ Khaali inbox `200` + `data: []` deta hai, `404` nahi
+
+Naya customer sabse pehle yahi tapta hai, aur *"abhi koi notification nahi"* ek **normal
+haalat** hai — error screen nahi. (Ye `pagination` ka `allowEmpty`, wahi jo claims listing
+ko diya gaya tha.)
+
+---
+
+## 38. PUT /notifications/mark-read 🆕
+
+```jsonc
+{ "notificationIds": ["68f4…"] }   // kuch rows
+{ "markAll": true }                 // poora inbox
+```
+
+```jsonc
+{ "success": true, "message": "Notifications marked as read",
+  "data": { "matched": 1, "updated": 1, "unreadCount": 1 } }
+```
+
+### ⚠️ Kisi aur ki row par `matched: 0` aata hai, `403` nahi
+
+Scope **update ke filter me** hai. Kisi aur customer ka valid id bhejne par row match hi
+nahi karti — kyunki `customerId` usi query ka hissa hai jo likhti hai.
+
+`403` dene ke liye pehle padhna padta *"ye kiski hai"*, aur wahi read-then-write wapas le
+aata jise filter hataata hai: do call ke beech ek khidki, aur ownership ka faisla doosri
+jagah. `matched: 0` utna hi saaf jawab hai aur ek kam sawal poochta hai.
+
+---
+
+## 38a. GET /notifications/preferences 🆕
+
+**Access:** ⚪ **Har role** — customer, vendor, outlet manager, admin. Id token se
+aati hai, to ye endpoint kisi **aur** ko address kar hi nahi sakta.
+
+Teen channel — email, push, WhatsApp — **ek doosre se poori tarah independent**.
+WhatsApp band aur baaki do chalu ho to baaki do jaate hain.
+
+### Response — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "Notification preferences fetched successfully",
+  "data": {
+    "userId": "68f4…",
+    "role": "CUSTOMER",
+    "audience": "CUSTOMER",          // kaunsa platform block isko govern karta hai
+    "channels": {
+      "email":    { "preference": true,  "effective": true,  "blockedBy": null },
+      "push":     { "preference": true,  "effective": true,  "blockedBy": null },
+      "whatsapp": { "preference": true,  "effective": false, "blockedBy": "PLATFORM" }
+    },
+    "updatedBy": null,               // admin ne badla ho to { _id, name, role }
+    "updatedAt": null                // kabhi nahi badla to null
+  }
+}
+```
+
+### ⚠️ `preference` aur `effective` do alag cheezein hain
+
+`preference` = **aapne kya chuna**. `effective` = **abhi actually kuch jata hai ya
+nahi**. Dono isliye, kyunki ek platform-wide switch aapke choice ko roke bhi sakta
+hai — aur uss haalat me sirf `preference: true` dikhana app ka jhooth bolna hota.
+
+Aaj **WhatsApp teeno audience ke liye platform-wide off hai** (Meta-approved
+template har message type ke liye chahiye), to `blockedBy: "PLATFORM"` normal
+case hai, koi edge case nahi. Aapka choice phir bhi store hota hai aur jis din
+platform switch chalu hoga usi din lag jayega.
+
+`blockedBy` ki teen halatein: `null` (chal raha hai), `"PREFERENCE"` (aapne band
+kiya), `"PLATFORM"` (platform ne band kiya).
+
+### ⚠️ In-app feed in teen me nahi hai, jaan-boojh ke
+
+Notification **row hamesha** likhi jaati hai. Ye toggles sirf **bahar jaane wali
+delivery** tay karte hain. Row hi record hai — feed usi ko padhti hai, aur har
+delivery ka nateeja usi par likha jaata hai.
+
+## 38b. PUT /notifications/preferences 🆕
+
+**Access:** ⚪ Har role — apni hi.
+
+```jsonc
+{ "whatsapp": false }                        // ek channel
+{ "email": false, "push": true }             // ya jitne chahiye
+```
+
+⚠️ **Partial hai.** Sirf wahi channel badalte hain jo body me hain. Poora object
+bhejna zaroori nahi — aur bhejna chahiye bhi nahi: paanch minute purani screen
+tab kisi doosre device par kiye gaye change ko chup-chaap palat degi.
+
+Kam se kam ek channel chahiye, warna `422`.
+
+Response wahi shape jo `GET` ka hai.
+
+### ⚠️ Kuch notifications band nahi hoti
+
+Chhe types preference se upar hain — wo jinme chup rehna aapka hi nuksaan hai:
+
+| Type | Kyun |
+|---|---|
+| `REFUND_BANK_DETAILS_REQUESTED` | Refund tab tak hamare paas ruka hai jab tak aap account na dein |
+| `BRAND_DEACTIVATED` | Vendor sign in hi nahi kar sakta — in-app row pahunch se bahar hai |
+| `REFUND_FAILED` · `SETTLEMENT_LEDGER_DRIFT` · `SHADOW_INDEX_REAPED` · `DISPUTE_DEADLINE` | Admin-side, paisa ruka/khoya hua |
+
+Baaki sab silence ho sakta hai. Poori list aur uska rule:
+[`docs/notification_preferences.md`](./notification_preferences.md).
+
+⚠️ **OTP ismein nahi aata.** Login/verification OTP alag raste se jaata hai —
+koi apne hi code ko silence na kar paye.
+
+---
+
+# App Config API 🆕
+
+## 39. GET /app-config 🆕
+
+**Access:** 🌐 **Public — token ki zarurat nahi**
+
+App launch par pehla call. Min version, force-update, support contact aur feature flags.
+
+`?platform=android|ios` · `?version=1.2.3` — dono optional.
+
+### Response — `200`
+
+```jsonc
+{
+  "app": {
+    "minVersion":    { "android": "1.0.0", "ios": "1.0.0" },
+    "latestVersion": { "android": "1.4.0", "ios": "1.4.0" },
+    "forceUpdate": false,
+    "updateMessage": "A newer version of Trydood is available…",
+    "storeUrl": { "android": "https://play.google.com/…", "ios": "https://apps.apple.com/…" },
+    "platform": "android",       // jiske against judge kiya gaya
+    "updateRequired": false,     // null jab tak version na bhejein
+    "updateAvailable": true
+  },
+  "support":  { "email": "help@trydood.com", "phone": "1800-000-000", "whatsapp": "97…" },
+  "features": { "promoCodes": true, "refunds": true, "voucherClaims": true, "search": true },
+  "pricing":  { "currency": "INR", "currencySymbol": "₹",
+                "convenienceFee": { "isEnabled": true, "slabSize": 500, "feePerSlab": 5, "maxFee": null } },
+  "refund":   { "windowHours": 24, "allowPartial": true }
+}
+```
+
+### ⚠️ Version comparison **server par** hoti hai
+
+`version` bhejiye to server `updateRequired` khud tay karta hai. Do apps me
+*"kya main minimum se neeche hoon"* likhna do mauke hain yeh galti karne ke:
+
+```
+"1.10.0" < "1.9.0"     // text me TRUE — aur bilkul galat
+```
+
+Aur wo galti un builds me hoti hai jinhe theek karne ke liye **wahi update chahiye jo wo
+maang rahe hain**. Segment-wise numeric compare hi iska sahi jawab hai.
+
+⚠️ `version` na bhejein to `updateRequired` aur `updateAvailable` **`null`** aate hain —
+ek imaandaar *"poocha hi nahi"*, us `false` ki jagah jis par client bharosa kar leta.
+
+### ⚠️ `features` screen chhupate hain, endpoint band nahi karte
+
+`promoCodes: false` ka matlab hai app promo ka box na dikhaye. `create-order` phir bhi
+apna hard `422` deta hai agar promo band ho — server apni enforcement khud karta hai.
+Flag ko enforcement samajhna wo tareeka hai jisse feature UI me "off" hota hai aur API par
+khula.
+
+### ⚠️ Ye whitelist hai, "Setting minus kuch" nahi
+
+`Setting` me commission percentage, reserve rates, settlement timing aur gateway-fee
+bearer bhi hain. `helpers/settings/getAppConfig.js` **har field naam lekar** banata hai —
+kyunki ek `...spread` us line par bilkul normal dikhta aur platform ki economics public
+kar deta.
+
+**Admin ise `PUT /settings/update` ke `app` block se badalta hai.** Partial PATCH safe
+hai: sirf `support` bhejne par `features` waise hi rehte hain.
+
 # Appendix A — Not For Customer App
 
 Ye endpoints backend me exist karte hain par **customer app inko use na kare**. Zyada tar pe role check nahi hai, matlab customer token se call ho jayenge — par ye vendor/admin functionality hai. Galti se call karne pe data corrupt ho sakta hai.
@@ -4078,7 +5563,7 @@ Ye endpoints backend me exist karte hain par **customer app inko use na kare**. 
 |---|---:|---|
 | `/promoCodes/*` | 6 | **Admin only** (`router.use(isAdmin)`). Subscription promo codes ka management. Vendor bhi manage nahi karta — wo sirf `/transactions/subscribe/preview` me code redeem karta hai |
 | `/subscribeds/*` | 8 | Admin (6) + Vendor (2). Brand subscription lifecycle — grant, cancel, resync, forfeit compensation |
-| `/notifications/*` | 3 | Vendor + Admin. In-app notification feed + admin broadcast. ⚠️ **Customer ke liye feed abhi nahi hai** — customer ko sirf push milega |
+| `/notifications/*` | 7 → **sirf 3 chhodo** | ✅ Chaar customer ke liye hain aur upar documented hain — [#37](#37-get-notificationsget-all-), [#38](#38-put-notificationsmark-read-), [#38a](#38a-get-notificationspreferences-), [#38b](#38b-put-notificationspreferences-). Baaki teen — `GET|PUT /notifications/admin/preferences` aur `POST /notifications/broadcast` — **admin-only** hain (`isAdmin`); broadcast platform ke har user tak pahunch sakta hai |
 | `/auth/set-password` · `/forgot-password` · `/reset-password` | 3 | Technically role-agnostic hain, par customer app WhatsApp OTP se login karta hai — password flow ki zarurat nahi |
 | `/transactions/*` | 9 | Vendor + Admin payments, Razorpay webhook, dispute worklist |
 | `/brands/admin/verifications*` · `/brands/verifications/history` | 3 | Brand KYC review queue aur audit trail |
@@ -4092,9 +5577,25 @@ Full categorization → [endpoints_category.md](./endpoints_category.md)
 
 # Appendix B — Known Issues
 
-Ye backend issues hain jo customer app ko directly affect karte hain. **Status 2026-08-26 ko verify kiya gaya.** Full technical detail + suggested fixes → [security_findings.md](./security_findings.md)
+Ye backend issues hain jo customer app ko directly affect karte hain. **Status 2026-09-04 ko code ke against verify kiya gaya** — har entry `routes/`, validators aur services padhkar, kisi doosre doc par bharosa karke nahi. Full technical detail + suggested fixes → [security_findings.md](./security_findings.md)
 
 ## ✅ Jo fix ho gaya
+
+### `POST /auth/logout` kuch karta hi nahi tha — FIXED 🆕
+**Pehle:** controller sirf ek line log karke `200` de deta tha. Na push band hota tha, na
+`isLoggedIn` neeche aata tha, na koi token khatam hota tha. App ko alag se
+`PUT /deviceTokens/unregister` maarna padta tha, aur na maare to logged-out phone par
+notifications aate rehte the.
+
+**Ab:** `pushToken` bhejein to usi device ka push band; `allDevices: true` bhejein to har
+device ka JWT aur push dono khatam (kho gaye phone ka jawab). Flags dono taraf se sahi
+hote hain — aur wo teen login paths bhi theek hue jo inhe kabhi set hi nahi karte the,
+WhatsApp login samet. Detail [endpoint #3](#3-post-authlogout) me.
+
+⚠️ Saada logout phir bhi aapka JWT invalidate nahi karta — wo stateless hai aur expiry
+tak valid rehta hai. App ko token khud delete karna hoga. Sirf `allDevices` tokens marta hai.
+
+---
 
 ### "No eligible offer" error — FIXED (v1.3.0)
 **Pehle:** bill kisi bhi offer ke `minBillAmount` se kam ho to preview `400` deta tha. Customer ko lagta tha uska bill hi galat hai, jabki wo bas chhota tha.
@@ -4126,7 +5627,10 @@ Ye backend issues hain jo customer app ko directly affect karte hain. **Status 2
 
 ---
 
-## 🔴 Blockers (production se pehle fix hone chahiye)
+## 🔴 Blocker — ab sirf ek bacha hai
+
+Is section me pehle teen the. #2 (role enforcement) aur #3 (password hash) dono band ho
+chuke hain aur neeche wahi likha hai. **Sirf #1 production blocker hai.**
 
 ### 1. OTP verify hota hi nahi — auth bypass · 🔴 abhi bhi OPEN
 Dono OTP lines abhi bhi commented out hain:
@@ -4140,38 +5644,96 @@ Dono OTP lines abhi bhi commented out hain:
 
 **App pe impact:** development me convenient (koi bhi OTP chalega), par live jaane se pehle uncomment hona zaruri hai. Uncomment hone ke baad naye error cases aayenge — endpoint #2 ke note 6 me listed hain, unko app me pehle se handle karke rakhein.
 
-### 2. Role enforcement — 🟡 partially fixed, 35 endpoints abhi bhi open
-**Pehle:** 108 me se sirf 20 gated the.
-**Ab:** 143 me se **108 gated hain**. Vouchers ke vendor endpoints, transactions, subBrands, aur saare naye modules (`/promoCodes`, `/subscribeds`, `/notifications`) properly gated hain.
+⚠️ **Aur ek: chaalu karte hi throttle live ho jaayega** — 60 second gap, 5 per hour, target number par keyed. App ko `429` handle karna hoga (`retryAfterSeconds` response me aata hai), warna resend button dabate hi user ek aisi error dekhega jiska matlab use samajh nahi aayega.
 
-**Abhi bhi open:** `banners` (5), `promotionalTickers` (5), `showcase` section/media (11), `locations` (5), `brandFeatures` (3), `workHours` (1), plus `subBrands/get-all`, `vouchers/versions/get-all`, `brands/get`, `brands/update`, `brands/verifications/history`.
+📋 Scheduled → [super admin doc, Appendix C1 #1](./super_admin_panel_api_doc.md#appendix-c--future-work).
 
-**App pe impact:** app ko khud discipline rakhni hogi — Appendix A ke endpoints kabhi call na karein. Backend abhi bhi in 35 pe nahi rokega.
+### 2. ✅ RESOLVED — Role enforcement poora ho gaya
 
-### 3. Password hash API response me aa raha hai · 🟡 impact kam hua
-Endpoints #1 aur #2 ka `user` object abhi bhi full Mongoose document hai — koi field exclusion nahi.
+**Pehle:** 108 me se sirf 20 gated the. Phir 143 me se 108. Ye doc **35 endpoints ko
+open** batata tha: `banners` (5), `promotionalTickers` (5), `showcase` section/media
+(11), `locations` (5), `brandFeatures` (3), `workHours` (1), plus
+`subBrands/get-all`, `vouchers/versions/get-all`, `brands/get`, `brands/update`,
+`brands/verifications/history`.
 
-**Kyun kam:** ab OTP accounts bina password ke bante hain, to naye customers ke response me `password` field hoti hi nahi. Hash sirf tab aata hai jab user ne khud `/auth/set-password` se password set kiya ho — jo customer app ke flow me hota hi nahi.
+**Ab:** un 35 me se **34 role-gated hain** — `isAdmin` (banners, tickers),
+`isVendorOrAdmin` (showcase, brandFeatures writes, workHours, subBrands, locations ke
+brand-side routes, brands get/update/history), aur `isCustomer` (`locations/upsert`).
 
-**App pe impact:** phir bhi is field ko kabhi store/log na karein. Ideally response parsing me hi drop kar dein.
+**35va, `GET /locations/get/:id`, jaan-boojh kar `verifyJwtToken` par hai** — aur wo
+"open" nahi hai. Ek `Location` model teen cheezein serve karta hai (customer ka address,
+brand ka, outlet ka), to *kaunsi* location dikhegi ye **service me per-role** tay hota
+hai: customer sirf apni, vendor sirf apne brand ki, admin koi bhi — warna `403`. Role
+gate akela ise theek nahi kar sakta tha.
 
-## 🟠 Data access issues (app ko discipline rakhni hogi)
+⚠️ Ginti [`postman/lib/routeGates.js`](../postman/lib/routeGates.js) se verify ki gayi,
+jo `routes/` padhta hai — 209 me se har route ka gate.
 
-### 4. `?userId` param se kisi bhi user ka data
-- `GET /users/get?userId=<koi_bhi>` → us user ka poora profile
-- `PUT /users/update?userId=<koi_bhi>` → us user ka profile update
+**App pe impact:** Appendix A ke endpoints ab sach me `403` denge, sirf convention nahi
+hai. Purane "app khud discipline rakhe" wale note ki zarurat nahi rahi.
 
-**App pe impact:** ye param **kabhi na bhejein**. Token se hi user resolve hone dein.
+---
 
-### 5. `POST /locations/upsert` body me `userId`
-Body me `userId` bhejne se doosre customer ki location overwrite ho jaati hai.
+### 3. ✅ RESOLVED (customer paths) — password hash ab response me nahi aata
 
-**App pe impact:** body me `userId` kabhi include na karein.
+**Pehle:** `#1` aur `#2` ka `user` object poora Mongoose document tha, bina kisi field
+exclusion ke.
 
-### 6. `GET /locations/get/:id` pe ownership check nahi
-Koi bhi location ID se koi bhi address fetch ho jaata hai.
+**Ab:** dono WhatsApp paths `sanitizeUser()` se guzarte hain
+(`helpers/users/sanitizeUser.js`), jo `password`, `otp` aur `__v` hata deta hai —
+Mongoose document ho ya plain object, aur hamesha plain object lautata hai taaki caller
+galti se stripped document dobara save na kar de.
 
-**App pe impact:** sirf apni location ID use karein (`GET /users/get` ke `data.customerId.locationId._id` se).
+Verify kaise hua: collection ke **182 captured responses** me `"password"`, `"otp"`,
+`"refreshToken"`, `"verificationResponse"`, `"accountNumber"` aur `"matchingScore"`
+— chhah me se **ek bhi nahi** mila.
+
+> ⚠️ **Ye sirf customer (WhatsApp) paths ke liye sach hai.** Email/mobile OTP aur
+> password login — yani **vendor aur admin** ke entry points — abhi bhi kaccha `user`
+> lautate hain. Wo customer app ke scope me nahi hain; vendor/admin doc phase me dekha
+> jayega. Detail [security_findings.md](./security_findings.md) me.
+
+**App pe impact:** kuch nahi. Field aati hi nahi.
+
+---
+
+## ✅ Data access issues — teeno band ho gaye
+
+### 4. ✅ RESOLVED — `?userId` param se kisi bhi user ka data
+
+**Pehle:** `GET /users/get?userId=<koi_bhi>` aur `PUT /users/update?userId=<koi_bhi>`
+kisi bhi user ka profile padh/likh dete the.
+
+**Ab:** dono controllers `req.userId` **token se** lete hain
+(`controllers/users/getUser.js`, `updateUser.js`) — query param padha hi nahi jaata,
+to bhejne se kuch nahi hota.
+
+---
+
+### 5. ✅ RESOLVED — `POST /locations/upsert` body me `userId`
+
+**Pehle:** upsert `validateCreateLocation` schema udhaar leta tha, jisme `userId` accept
+hota tha — to body me kisi aur ka id bhejkar uski location overwrite ki ja sakti thi.
+
+**Ab:** `validateUpsertLocation` **apna, narrower schema** hai jisme `userId` hai hi
+nahi. Ye sirf accident se nahi hua: key ko accept karte rehna use `stripUnknown` ki
+pahunch se **bahar** rakh deta, isliye use hataana zaruri tha, ignore karna kaafi nahi.
+
+Saath me `brandId` / `subBrandId` bhi gaye — create schema reuse karne ka matlab tha ki
+ek customer apne ghar ke address ko **brand address** mark kar sakta tha.
+
+---
+
+### 6. ✅ RESOLVED — `GET /locations/get/:id` pe ownership check
+
+**Pehle:** koi bhi location id se koi bhi address fetch ho jaata tha.
+
+**Ab:** ownership **service me, per role** resolve hoti hai — customer sirf apni,
+vendor sirf apne brand ki (bina `brandId` ke `403`), admin koi bhi. Route par gate
+sirf `verifyJwtToken` hai aur wahi sahi hai: ek `Location` model teen cheezein serve
+karta hai, to "signed in" ke aage ka faisla role dekhe bina liya hi nahi ja sakta.
+
+---
 
 ### 7. ✅ RESOLVED — `/brands/get` PAN/GST/Bank expose karta tha
 Ab wo endpoint `isVendorOrAdmin` ke peeche hai. Customer ke liye naya [`GET /brands/customer/get/:brandId`](#18-get-brandscustomergetbrandid) hai, jisme sirf public fields hain — sensitive lookup wahan build hi nahi hota.
@@ -4181,48 +5743,100 @@ Ab wo endpoint `isVendorOrAdmin` ke peeche hai. Customer ke liye naya [`GET /bra
 ## 🟡 Functional gaps (feature adhoora hai)
 
 ### 8. `DELETE /users/delete` kuch delete nahi karta
-No-op stub. Detail endpoint #6 me.
+No-op stub — poora handler route file me hi hai (`routes/users.js:9`) aur ek hardcoded message lautata hai. Detail endpoint #6 me.
 
-**App pe impact:** "Delete Account" feature ko disable rakhein ya "coming soon" dikhayein. App store compliance risk.
+**App pe impact:** "Delete Account" feature ko disable rakhein ya "coming soon" dikhayein. Store compliance risk hai — Play Store aur App Store dono maangte hain.
+
+📋 Scheduled → [super admin doc, Appendix C1 #2](./super_admin_panel_api_doc.md#appendix-c--future-work).
 
 ### 9. Avoid kiye brands voucher feed se filter nahi hote
-`POST /brandAvoidances/toggle` record banata hai par `GET /vouchers/customer/get-all` usko dekhta nahi.
 
-**App pe impact:** UI me "ye brand ab nahi dikhega" promise na karein. Ya client-side pe avoid list se feed filter karein (avoid list #26 se lein).
+`POST /brandAvoidances/toggle` record banata hai par `GET /vouchers/customer/get-all` usko padhta nahi.
 
-### 10. Voucher redemption flow exist nahi karta
-Customer voucher dekh sakta hai, discount preview kar sakta hai — par redeem nahi kar sakta. `VoucherUsage` model bana hai, koi route nahi.
+**App pe impact:** UI me "ye brand ab nahi dikhega" promise na karein. Ya client-side par avoid list se feed filter karein (#26 se lein).
 
-**App pe impact:** redemption screen abhi ban nahi sakta. `usageType` (`ONCE_PER_USER`) bhi enforce nahi hota.
+📋 Scheduled → [super admin doc, Appendix C1 #3](./super_admin_panel_api_doc.md#appendix-c--future-work).
 
-### 11. Email verification ka koi endpoint nahi
-Email change karne pe `isEmailVerified: false` ho jaata hai, par verify karne ka raasta nahi.
+### 9a. ✅ RESOLVED — ab sirf verified brands dikhte hain
 
-**App pe impact:** email verified badge/flow abhi na banayein.
+**Pehle:** har customer-facing surface sirf `{isDeleted: false, isActive: true}` par filter karti thi. `Brand.isApproved` par koi nahi — aur do service files me comment likha tha ki wo field "kabhi likhi hi nahi jaati", jo **galat tha**: `reviewBrandVerification` use APPROVED par `true`, REJECTED aur REVOKED par `false` likhta hai.
+
+Nateeja: jo brand kabhi verify hua hi nahi, wo directory me aata tha — jismein chhe aise bhi the jinka owner `User` hi maujood nahi tha (khaali dabbe, na outlet na voucher).
+
+**Ab:** ek hi shared filter `customerVisibleBrandFilter` paanchon jagah lagta hai — brand directory, brand detail, voucher feed, global search, aur showcase/clips (`assertPublicBrand` ke through).
+
+⚠️ **App par asar:** ek unverified brand ka **deep link ab `404` deta hai**, `200` nahi. Jo link pehle share ho chuke hain wo tab tak nahi khulenge jab tak brand verify na ho — ye jaan-boojh kar hai, kyunki URL se khulna aur search me na aana wahi leak hai jo showcase endpoints me tha.
+
+### 10. ✅ RESOLVED — voucher claim flow ab poora hai
+
+**Pehle:** customer voucher dekh sakta tha aur discount preview kar sakta tha, par claim
+nahi kar sakta tha. `VoucherUsage` model bana tha, koi route nahi. `usageType`
+(`ONCE_PER_USER`) enforce nahi hota tha.
+
+**Ab:** poora paid flow maujood hai —
+[`create-order`](#17a-post-voucher-claimscreate-order) →
+[`verify`](#17b-post-voucher-claimsverify) → claim listing → ek claim + timeline →
+[counter par `code/:claimCode`](#17h-get-voucher-claimscodeclaimcode--code-se-kholo),
+aur uske aage refunds ka poora raasta.
+
+**`ONCE_PER_USER` ab sach me enforce hota hai**, aur wo bhi database me: partial unique
+index `claim_usageSlot_oncePerUser` `{voucherId, customerId, offerId}` par, jo
+`VoucherClaim.holdsUsageSlot` par key karta hai.
+
+⚠️ Slot **claim bante hi** liya jaata hai, payment par nahi. Payment ka intezaar karna
+theek wahi khidki chhod deta hai jo race ko chahiye: do checkout khule, dono ke paas
+kuch nahi, dono andar.
+
+> ⚠️ **Redeem karna customer ka action nahi hai.** `REDEEMED` status outlet ki taraf se
+> aata hai — customer sirf apna claim code dikhata hai. Isliye customer app me koi
+> "redeem" button nahi hai, aur uski zarurat bhi nahi.
+
+### 11. ✅ RESOLVED — email verification ab hai
+
+**Pehle:** email change karne pe `isEmailVerified: false` ho jaata tha, par verify karne ka
+raasta nahi tha — flag sirf ek taraf ja sakta tha.
+
+**Ab:** [`POST /auth/email/send-verification`](#35-post-authemailsend-verification-) aur
+[`POST /auth/email/verify`](#36-post-authemailverify-). **Har role ke liye ek hi flow** —
+customer, vendor, outlet manager, admin — kyunki `isEmailVerified` sabke `User` par hai.
+
+`email` dono call par optional hai: na bhejein to account ka apna address confirm hota hai,
+bhejein to us par switch. ⚠️ Code hamesha **naye** address par jaata hai — purane par
+bhejna sirf ye sabit karta ki wo purana mailbox padh lete hain, jo sawal hai hi nahi.
+
+**App pe impact:** email verified badge aur "change email" flow ab ban sakta hai.
 
 ### ~~12. `FIXED` discount type kaam nahi karta~~ ✅ FIXED (v1.3.0)
 Enum me tha, calculation me handle nahi tha — aisa offer `discountAmount: 0` deta tha aur eligible list se filter ho jaata tha. Customer ko `"No eligible offer found for this bill amount"` dikhta tha, jaise uska bill hi galat ho.
 
 Ab `FIXED` ko `FLAT` ka alias treat kiya jaata hai — teeno discount types kaam karte hain.
 
-### 13. Public app config endpoint nahi hai
-Min app version, force-update flag, support contact, feature flags — inke liye koi endpoint nahi (`GET /settings/get` admin-only hai).
+### 13. ✅ RESOLVED — `GET /app-config` ab hai
 
-**App pe impact:** force-update / remote config abhi possible nahi. Hardcode karna padega ya Firebase Remote Config jaisa alag solution use karein.
+**Pehle:** min version, force-update, support contact aur feature flags sab `Setting` me
+the par `GET /settings/get` `isAdmin` hai — to app unhe padh hi nahi sakti thi.
+Force-update ke liye number build me hardcode karna padta, aur use badalne ke liye **wahi
+update chahiye hota jo wo maang raha hai**.
 
-### 14. 🆕 Customer ke liye in-app notification feed nahi hai
-`/notifications/get-all` `isVendorOrAdmin` ke peeche gated hai. Customer ko sirf **push** milega — notification history dekhne ka koi endpoint nahi.
+**Ab:** [`GET /app-config`](#39-get-app-config-) — public, aur ek **explicit whitelist**.
+Server `version` dekh kar `updateRequired` khud tay karta hai, taaki
+`"1.10.0" < "1.9.0"` wali string-compare galti do apps me dobara na likhi jaaye.
 
-Aur `NOTIFICATION_TYPES` enum me abhi jo types hain wo mostly subscription/admin events hain (`SUBSCRIPTION_ACTIVATED`, `WEBHOOK_FAILED`, `PAYMENT_DISPUTED`…). Customer-facing type sirf `ANNOUNCEMENT` hai (admin broadcast ke through).
+### 14. ✅ RESOLVED — customer notification feed ab hai
 
-**App pe impact:** notification inbox screen abhi ban nahi sakta. Push aayega par history nahi. Chahiye to backend change lagega.
+**Pehle:** `/notifications/get-all` `isVendorOrAdmin` ke peeche tha. Customer ko sirf
+**push** milta tha — history dekhne ka koi endpoint nahi.
 
-### 15. 🆕 `POST /auth/logout` push unregister nahi karta
-Logout endpoint sirf success message deta hai — na token invalidate karta hai, na device token deactivate karta hai.
+**Ab:** [`GET /notifications/get-all`](#37-get-notificationsget-all-) aur
+[`PUT /notifications/mark-read`](#38-put-notificationsmark-read-), wahi endpoint jo vendor
+aur admin use karte hain — scope aur projection token se.
 
-**App pe impact:** logout pe **manually** `PUT /deviceTokens/unregister` call karein, warna logged-out device notifications receive karta rahega. Sahi order [endpoint #32](#32-put-devicetokensunregister) me hai.
-
----
+⚠️ Doc ka purana daava ki *"customer-facing type sirf `ANNOUNCEMENT` hai"* **galat ho chuka
+tha**. `NOTIFICATION_TYPES` me pehle se `VOUCHER_PAYMENT_SUCCESS`,
+`VOUCHER_PAYMENT_FAILED`, `VOUCHER_REFUNDED`, `REFUND_REQUESTED`, `REFUND_APPROVED`,
+`REFUND_REJECTED`, `REFUND_FAILED`, `VOUCHER_CLAIM_RECEIVED` aur
+`REFUND_BANK_DETAILS_REQUESTED` hain — aur `refundNotices` / `voucherClaimNotices` unhe
+**likh bhi rahe the**. Sirf padhne ka raasta nahi tha.
 
 ## Frontend integration checklist
 

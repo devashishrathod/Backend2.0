@@ -15,6 +15,25 @@ jest.mock("../../helpers/notifications/notify", () => ({
   resolveRecipient: jest.fn(),
 }));
 
+/**
+ * ⚠️ The admin alerts in this file go through `notifyAdmins`.
+ *
+ * They used to be `notify({ audience: ADMIN })`, which resolves its destination
+ * from `brandId` / `customerId` / `userId` — and an admin alert passes none, so
+ * the row was written and no email or push was ever sent.
+ * `SETTLEMENT_LEDGER_DRIFT` is CRITICAL and means the books and the bank
+ * disagree about money that has moved; it reached the panel and nowhere else.
+ *
+ * Same spy, because the seam is the same: every line of the notice runs, and the
+ * payload is asserted. The fan-out per admin is covered against a real seeded
+ * admin in `claimJobs.test.js`.
+ */
+jest.mock("../../helpers/notifications/notifyAdmins", () => ({
+  // Stamps the audience, exactly as the real one does before calling `notify`,
+  // so assertions about who a notice is for keep meaning what they meant.
+  notifyAdmins: (args) => mockNotify({ ...args, audience: "ADMIN" }),
+}));
+
 const {
   connectTestDb,
   disconnectTestDb,

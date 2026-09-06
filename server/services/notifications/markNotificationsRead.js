@@ -1,17 +1,23 @@
 const mongoose = require("mongoose");
 const Notification = require("../../models/Notification");
 const { throwError } = require("../../utils");
-const { ROLES } = require("../../constants");
-const { resolveActorBrand } = require("../../helpers/brands");
-const { NOTIFICATION_AUDIENCE } = require("../../constants/notification");
+const { buildNotificationScope } = require("./notificationScope");
 
 /**
  * Mark notifications as read.
  *
  * Pass `notificationIds` for specific rows, or `markAll: true` to clear the
- * whole feed. Scoped through `resolveActorBrand`, and the update filter carries
- * the brand id as well as the ids — so a vendor cannot mark another brand's
- * notification read by guessing an ObjectId.
+ * whole feed.
+ *
+ * ⚠️ The scope is in the **update filter**, not checked before it. Reading the
+ * rows first and then updating by id would leave a window between the two, and
+ * more importantly it would put the ownership decision in a second place. Here a
+ * customer who guesses another customer's notification id simply matches
+ * nothing — `matched: 0` — because `customerId` is part of the same query that
+ * writes.
+ *
+ * Scope comes from `buildNotificationScope`, shared with the list, so the two
+ * can never disagree about who may touch which row.
  */
 exports.markNotificationsRead = async (actor, payload = {}) => {
   const { notificationIds, markAll } = payload;
@@ -20,15 +26,8 @@ exports.markNotificationsRead = async (actor, payload = {}) => {
     throwError(422, "Provide notificationIds or set markAll to true.");
   }
 
-  const filter = { isRead: false, isDeleted: false };
-
-  const isAdminFeed = actor.role === ROLES.ADMIN && !payload.brandId;
-  if (isAdminFeed) {
-    filter.audience = NOTIFICATION_AUDIENCE.ADMIN;
-  } else {
-    const brand = await resolveActorBrand(actor, payload.brandId);
-    filter.brandId = new mongoose.Types.ObjectId(String(brand._id));
-  }
+  const scope = await buildNotificationScope(actor, payload);
+  const filter = { ...scope, isRead: false };
 
   // Kept before the id narrowing so the remaining-unread count covers the whole
   // feed, not just the rows this call touched.

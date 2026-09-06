@@ -5,6 +5,7 @@ const {
   userField,
   settlementField,
 } = require("./validObjectId");
+const { documentSnapshotSchema } = require("./documentSnapshotSchema");
 const {
   SETTLEMENT_STATUS,
   SETTLEMENT_OPEN_STATUSES,
@@ -230,9 +231,27 @@ const settlementSchema = new mongoose.Schema(
      */
     overdueAlertsSent: { type: Number, default: 0 },
 
-    statementUrl: { type: String, trim: true },
-    /** Unguessable handle for the public statement link, like `invoiceToken`. */
-    statementToken: { type: String, trim: true },
+    /**
+     * The commission tax invoice's own number — `TD/CMN/26-27/000045`.
+     *
+     * ⚠️ Separate from `settlementNumber`, and deliberately. A payout statement
+     * tells a vendor what reached their bank; the commission Trydood charged them
+     * is a **taxable supply from us to them** and needs a tax invoice with its own
+     * number in its own series. They print on one piece of paper — a vendor should
+     * not have to reconcile two files for one payout — but under GST they are two
+     * documents and are numbered as two.
+     *
+     * Absent when no commission was charged. The rate is zero today, so allotting
+     * a number regardless would burn a GST-facing sequence on an invoice for
+     * nothing.
+     */
+    commissionInvoiceNumber: { type: String, trim: true },
+    documentUrl: { type: String, trim: true },
+    /** Everything the statement prints, frozen when the payout was confirmed. */
+    documentSnapshot: { type: documentSnapshotSchema },
+    /** Unguessable handle for the public document link. One name across all four
+     * collections, so `/documents/:token` can resolve a bare token. */
+    documentToken: { type: String, trim: true },
 
     /**
      * `STL:<brandId>:<periodEnd>` — one settlement per brand per period.
@@ -293,11 +312,11 @@ settlementSchema.index(
 );
 
 settlementSchema.index(
-  { statementToken: 1 },
+  { documentToken: 1 },
   {
-    name: SETTLEMENT_INDEXES.STATEMENT_TOKEN,
+    name: SETTLEMENT_INDEXES.DOCUMENT_TOKEN,
     unique: true,
-    partialFilterExpression: { statementToken: { $type: "string" } },
+    partialFilterExpression: { documentToken: { $type: "string" } },
   },
 );
 

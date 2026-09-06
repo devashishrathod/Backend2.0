@@ -42,6 +42,17 @@ const subVendor = (brandId, subBrandId) => ({
 const admin = () => ({ role: ROLES.ADMIN });
 
 /**
+ * Our cut of the promo — the figure this whole file exists to keep out of the
+ * vendor's and the customer's view.
+ *
+ * ⚠️ Named, so the fixture and the assertion cannot drift apart. They were two
+ * separate literals, and the assertion searched for it as a **string** in the
+ * serialised timeline — which matched any ObjectId that happened to contain
+ * `35`, and would have missed a leak carrying any other number.
+ */
+const PLATFORM_PROMO_COST = 35;
+
+/**
  * The snapshot as `createVoucherClaimOrder` actually writes it — the whole
  * pricing block, our promo share included. That is the field this milestone
  * exists to keep off a vendor's page.
@@ -52,7 +63,7 @@ const REAL_SNAPSHOT = {
     offerDiscount: 200,
     netBill: 800,
     convenienceFee: 10,
-    platformPromoCost: 35,
+    platformPromoCost: PLATFORM_PROMO_COST,
     vendorPayable: 800,
     totalPayable: 810,
   },
@@ -96,7 +107,7 @@ beforeEach(async () => {
     netReceived: 792.06,
     email: "customer@example.com",
     contact: "9700000001",
-    invoiceToken: "b".repeat(64),
+    documentToken: "b".repeat(64),
     voucher: {
       claimId,
       billAmount: 1000,
@@ -104,7 +115,7 @@ beforeEach(async () => {
       netBill: 800,
       convenienceFee: 10,
       vendorPayable: 800,
-      platformPromoCost: 35,
+      platformPromoCost: PLATFORM_PROMO_COST,
     },
   });
 
@@ -122,7 +133,7 @@ beforeEach(async () => {
       offerDiscount: 200,
       netBill: 800,
       convenienceFee: 10,
-      platformPromoCost: 35,
+      platformPromoCost: PLATFORM_PROMO_COST,
       vendorPayable: 800,
       totalPayable: 810,
       amountInPaise: 81000,
@@ -183,7 +194,7 @@ beforeEach(async () => {
       action: CLAIM_HISTORY_ACTION.PROMO_RELEASED,
       performedByRole: CLAIM_PERFORMED_BY.SYSTEM,
       reason: "Reservation released back to the campaign budget",
-      snapshot: { platformPromoCost: 35 },
+      snapshot: { platformPromoCost: PLATFORM_PROMO_COST },
       createdAt: new Date("2026-08-20T13:00:00Z"),
     },
   ]);
@@ -206,7 +217,26 @@ describe("the timeline never hands over the raw audit row", () => {
 
     const asText = JSON.stringify(timeline);
     expect(asText).not.toContain("platformPromoCost");
-    expect(asText).not.toContain("35");
+
+    /**
+     * ⚠️ The **value**, looked for as a number at any depth — not as the
+     * substring `"35"` in the serialised blob.
+     *
+     * That is what this line used to be, and it failed on 2026-09-06 because a
+     * randomly generated ObjectId came out as `6a9c7d2da358e9e8260cad88`, which
+     * contains `35`. It would have failed the same way on any timestamp or
+     * amount that happened to. Roughly a coin-toss per run, and every failure
+     * reads as "the margin leaked" when nothing leaked at all.
+     *
+     * It could also pass for the wrong reason: had the snapshot leaked with any
+     * other figure in it, a search for `"35"` would have said nothing.
+     */
+    const values = (node) =>
+      node && typeof node === "object"
+        ? Object.values(node).flatMap(values)
+        : [node];
+
+    expect(values(timeline)).not.toContain(PLATFORM_PROMO_COST);
     expect(timeline.every((row) => row.snapshot === undefined)).toBe(true);
   });
 
@@ -403,8 +433,8 @@ describe("the claim page carries its payment, narrowed the same way", () => {
       const { payment } = await getClaimDetail(customer(CUSTOMER_A), {
         claimId: claim._id,
       });
-      expect(payment.invoiceDownloadUrl).toContain("/transactions/invoice/");
-      expect(payment.invoiceToken).toBeUndefined();
+      expect(payment.invoiceDownloadUrl).toContain("/documents/");
+      expect(payment.documentToken).toBeUndefined();
     } finally {
       if (previous === undefined) delete process.env.PUBLIC_API_URL;
       else process.env.PUBLIC_API_URL = previous;

@@ -148,5 +148,7 @@ promoCodeSchema.index({ isActive: 1, isDeleted: 1, validTill: 1 });
 // The admin listing and the campaign report both scope by audience — without
 // this the two reports scan each other's rows.
 promoCodeSchema.index({ audience: 1, isDeleted: 1, createdAt: -1 });
+// Multikey — powers the `stats.promoCodes` count on the category listing.
+promoCodeSchema.index({ categoryIds: 1, isDeleted: 1 });
 
 module.exports = mongoose.model("PromoCode", promoCodeSchema);

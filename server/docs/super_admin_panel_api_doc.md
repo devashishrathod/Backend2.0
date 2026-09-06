@@ -5,10 +5,14 @@
 **Base URL (Staging):** `https://backend2-0-4v4i.onrender.com/trydood/v1`
 **Framework:** Express.js (Node.js, CommonJS)
 **Database:** MongoDB (Mongoose ODM)
-**Scope:** Super admin panel ke **110 endpoints**
-**Last verified:** 2026-08-22 against current code · Source: `server2.0` scan (143 total endpoints, categorization → [endpoints_category.md](./endpoints_category.md))
+**Scope:** Super admin panel ke endpoints — platform ke **216 routes** me se admin-category ke **84** ([endpoints_category.md](./endpoints_category.md))
+**Postman:** [`trydood-admin.postman_collection.json`](../postman/trydood-admin.postman_collection.json) — 71 requests, **har ek par live-captured example**
 
-> **Note:** Ye doc code se banaya gaya hai, live API testing se nahi. Har request field, error message, aur response shape actual controller/service/validator code se verify kiya gaya hai. Jahan behaviour buggy ya adhoora hai, wahan ⚠️ marker hai.
+> **Note:** Ye doc code padhkar likha gaya — har request field, error message aur response shape controller/service/validator se verify kiya gaya hai. Jahan behaviour buggy ya adhoora hai, wahan ⚠️ marker hai.
+>
+> **Ab uske upar live run bhi hai.** Admin collection ke 71 requests seeded database par asli server ke against chalte hain aur unke saved examples asli responses hain, likhe hue nahi. Wo run **teen cheezein pakad chuka hai** jo code padhne se nahi dikhtin: `PUT /notifications/preferences` har caller ko `500` de raha tha (validator ka closing brace), seeded admin ka email hi login validator ne kabhi accept nahi kiya hota (`.test` TLD), aur settlement approve/retry chup-chaap refuse karte the kyunki kisi brand ke paas verified bank account tha hi nahi.
+>
+> ⚠️ Baaki 35 admin routes ke requests `trydood-brand-verification`, `trydood-subscription` aur `trydood-security-changes` me hain — admin collection unhe dobara nahi likhti. Dekho [`postman/README.md`](../postman/README.md).
 
 ---
 
@@ -920,15 +924,78 @@ Admin ke liye **email OTP recommended path** hai — yahan verification actually
 
 ## 12. POST /auth/logout
 
-**Access:** Intended: All roles · Enforced: **Any authenticated**
+**Access:** Intended: All roles · Enforced: **Any authenticated** (deactivated account bhi kar sakta hai)
 
-### Success — `200`
-```json
-{ "success": true, "message": "Logout successful", "data": {} }
+### Body — optional
+| Field | Type | Default | Kya karta hai |
+|---|---|---|---|
+| `pushToken` | string | — | Is device ka push band |
+| `allDevices` | boolean | `false` | `true` = har device se sign out — **har purana JWT turant dead** |
+
+```jsonc
+{ }                        // sirf is session ka flag saaf
+{ "pushToken": "fcm..." }  // + is device ka push band
+{ "allDevices": true }     // + har device ka JWT aur push khatam
 ```
 
-### ⚠️ Note
-Server-side kuch nahi hota. Sahi sequence: `PUT /deviceTokens/unregister` → `POST /auth/logout` → local clear.
+### Success — `200`
+```jsonc
+{
+  "success": true,
+  "message": "Logout successful",
+  "data": {
+    "allDevices": false,
+    "sessionsEnded": false,
+    "pushDeactivated": 1,
+    "activeDevices": 1
+  }
+}
+```
+
+### ✅ RESOLVED — pehle ye sach me kuch nahi karta tha
+
+**Pehle:** endpoint `200` deta tha aur **server par kuch nahi hota tha** — na `isLoggedIn`, na push, na token. Ek chori hua JWT apni poori umr tak chalta rehta, aur notifications us phone par aati rehti jisse user sign out kar chuka tha. Ye doc bhi wahi sequence sikhata tha (`unregister` phir `logout`), yaani client ko wo kaam karna padta jo server ko karna chahiye tha.
+
+**Ab:** flags set hote hain, push deactivate hota hai, aur `allDevices: true` par **har** purana JWT khatam.
+
+⚠️ **`allDevices` sabse zaroori admin ke liye.** Ek admin account platform ka har brand, har payment aur har settlement dekh sakta hai — kho gaye laptop par `sessionsEnded` hi wo ek switch hai jo turant sab band karta hai.
+
+---
+
+## 12a. POST /auth/email/send-verification 🆕
+## 12b. POST /auth/email/verify 🆕
+
+**Access:** 🔒 `verifyJwtToken` — **har role**, koi role gate nahi.
+
+`User.isEmailVerified` sabke paas tha aur koi bhi use set nahi kar sakta tha — email edit karne par flag `false` ho jaata tha aur wapas `true` karne ka koi raasta nahi tha.
+
+Ye wahi do endpoint hain jo vendor panel aur customer app use karte hain: ek `User`, ek flow. `email` **dono call par optional** — na bhejein to account ka apna address confirm hota hai, bhejein to us par switch (aur **verify hone tak account nahi badalta**).
+
+```jsonc
+// 12a
+{ }                              // apna address confirm
+{ "email": "ops@trydood.com" }   // is par switch
+
+// 12b
+{ "otp": "482913" }
+```
+
+| Code | Kab |
+|---|---|
+| `200` | Code gaya / verify ho gaya |
+| `401` | Code galat, expire, ya use ho chuka |
+| `403` | Attempts khatam |
+| `409` | Address pehle se verified, ya kisi aur ke **usi role** ke account par |
+| `422` | Account par email hai hi nahi aur aapne bheja bhi nahi |
+| `429` | Throttle — 60s gap, 5 per hour, **target address** par keyed |
+
+⚠️ **Code hamesha naye address par jaata hai**, purane par nahi. Purane mailbox par bhejna sirf ye sabit karta hai ki insaan purana mailbox padh leta hai — sawal wo hai hi nahi.
+
+⚠️ **`sentTo` masked hota hai.** Ye endpoint chori hui session se bhi chal sakta hai.
+
+⚠️ **Uniqueness `{ email, role }` par**, aur **verify par dobara** check hoti hai — dono call ke beech minute nikalte hain aur utni der me koi aur wo address le sakta hai.
+
+Poora detail: [vendor doc #19c/#19d](./vendor_panel_api_doc.md#19c-post-authemailsend-verification-).
 
 ---
 
@@ -1420,6 +1487,129 @@ GET /notifications/get-all?brandId=68f1a2b3c4d5e6f7a8b9c3a1
 **8. `type` override kar sakte hain** — default `ANNOUNCEMENT`, par koi aur type bhej kar client ke existing rendering/deep-link ko reuse kar sakte hain.
 
 **9. WhatsApp channel abhi off hai** (`isWhatsAppNotificationEnabled: false`) — Meta template approval pending.
+
+---
+
+## 22a. GET /notifications/admin/preferences 🆕
+
+**Access:** Intended: ADMIN · Enforced: **ADMIN**
+
+Kisi bhi ek user ke teen channel toggles padho — customer, vendor, outlet manager
+ya doosra admin. Profile card ke switches yahin se aate hain.
+
+### Query — **teeno me se theek ek**
+| Field | Type | Notes |
+|---|---|---|
+| `userId` | ObjectId | Seedha user |
+| `customerId` | ObjectId | Customer directory se |
+| `brandId` | ObjectId | Brand list se — brand ka **owner** resolve hota hai |
+
+⚠️ **`xor` hai, `or` nahi.** Do id bhejne par `422`. Warna do id aapas me disagree
+karein to service jo pehle check kare wahi jeet jaata — chup-chaap.
+
+```
+GET /notifications/admin/preferences?customerId=68f1a2b3c4d5e6f7a8b9c3a1
+```
+
+### Success — `200`
+```jsonc
+{
+  "success": true,
+  "message": "Notification preferences fetched successfully",
+  "data": {
+    "userId": "68f1a2b3c4d5e6f7a8b9c001",
+    "role": "CUSTOMER",
+    "audience": "CUSTOMER",
+    "channels": {
+      "email":    { "preference": true,  "effective": true,  "blockedBy": null },
+      "push":     { "preference": false, "effective": false, "blockedBy": "PREFERENCE" },
+      "whatsapp": { "preference": true,  "effective": false, "blockedBy": "PLATFORM" }
+    },
+    "updatedBy": { "_id": "68f1…", "name": "ops admin", "role": "ADMIN" },
+    "updatedAt": "2026-09-05T09:12:00.000Z"
+  }
+}
+```
+
+### Errors
+| Status | Message |
+|---|---|
+| `422` | `Pass exactly one of userId, customerId or brandId.` |
+| `422` | `This customer has no user account to set preferences on` |
+| `404` | `User not found` · `Customer not found` · `Brand not found` |
+
+## 22b. PUT /notifications/admin/preferences 🆕
+
+**Access:** Intended: ADMIN · Enforced: **ADMIN**
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `userId` \| `customerId` \| `brandId` | ObjectId | ✅ | Theek **ek** |
+| `email` | boolean | ⚠️ | |
+| `push` | boolean | ⚠️ | |
+| `whatsapp` | boolean | ⚠️ | |
+
+⚠️ Kam se kam ek channel bhi chahiye. Sirf id bhejna ek aisi request hoti jo kuch
+badalti nahi aur phir bhi `200` deti — panel use "save ho gaya" padhta.
+
+```json
+{ "customerId": "68f1a2b3c4d5e6f7a8b9c3a1", "push": false }
+```
+
+### 🔴 Ye **user ki** preference likhta hai, platform toggle nahi
+
+Ek customer ka WhatsApp on karne se **har customer** ka WhatsApp on nahi hota.
+Platform-wide switch `PUT /settings` me hai (neeche `Setting.admin.notification`
+aur `Setting.customer.notification`).
+
+Agar platform switch hi band hai, to write **ho jaata hai** aur response saaf
+bolta hai:
+
+```jsonc
+"whatsapp": { "preference": true, "effective": false, "blockedBy": "PLATFORM" }
+```
+
+Toggle on dikhega ek note ke saath. User ka choice store rehta hai aur jis din
+platform switch chalu hoga usi din lag jayega. `422` dena user ka choice record
+hi nahi hone deta.
+
+### ⚠️ `updatedBy` sirf naam deta hai
+
+`{ _id, name, role }` — email/mobile nahi. Ye kisi **doosre** ke profile card par
+render hota hai; *"kis admin ne chhua"* ke liye naam chahiye, colleague ke inbox
+ka raasta nahi.
+
+`updatedBy: null` + `updatedAt` present = **usi bande ne khud badla tha**. Khud ka
+change purana admin stamp hata deta hai, taaki naam wahan na pada rahe jo ab state
+explain nahi karta.
+
+### ⚠️ Chhe types preference se upar hain
+
+`REFUND_BANK_DETAILS_REQUESTED`, `BRAND_DEACTIVATED`, `REFUND_FAILED`,
+`SETTLEMENT_LEDGER_DRIFT`, `SHADOW_INDEX_REAPED`, `DISPUTE_DEADLINE` — inme chup
+rehne se padhne wale ki pahunch ya paisa jaata hai. Rule aur poori list:
+[`notification_preferences.md`](./notification_preferences.md).
+
+⚠️ **Ye sirf user ka toggle override karti hain, platform ka nahi** — platform
+switch tab lagta hai jab SMTP down ho ya Meta template na ho, aur us haalat me
+send karna sirf provider se reject hona hai.
+
+### Profile card par bina extra call ke
+
+Raw sub-document un responses me already aa jaata hai jo panel pehle se fetch
+karta hai:
+
+| Endpoint | Kahan |
+|---|---|
+| `GET /customers/admin/get-all` | `account.notificationPreferences` |
+| `GET /customers/admin/:customerId` | `account.notificationPreferences` |
+| `GET /brands/admin/get-all` | `vendor.notificationPreferences` |
+
+⚠️ **Raw hai, aur aksar poori tarah absent.** Field tabhi banta hai jab koi pehli
+baar setting badalta hai — **absent ka matlab sab on**. Un booleans ko seedha mat
+padhiye; resolved jawab (aur platform override) `GET /notifications/admin/preferences`
+deta hai.
 
 ---
 
@@ -3396,14 +3586,43 @@ isActive:    true
         "description": "Restaurants, cafes, and food outlets",
         "image": "https://res.cloudinary.com/…/food.jpg",
         "isActive": true,
-        "createdAt": "2026-05-10T08:00:00.000Z"
+        "createdAt": "2026-05-10T08:00:00.000Z",
+        "stats": {
+          "subCategories": { "total": 6, "active": 5 },
+          "brands":        { "total": 48, "active": 41 },
+          "vouchers":      { "total": 130, "active": 96 },
+          "promoCodes":    { "total": 3, "active": 2 }
+        }
       }
     ]
   }
 }
 ```
 
-**Projected fields only:** `_id`, `name`, `description`, `image`, `isActive`, `createdAt`
+**Projected fields only:** `_id`, `name`, `description`, `image`, `isActive`, `createdAt`, `stats`
+
+### `stats` — kya ginta hai
+
+| Key | Source | Kya count hota hai |
+|---|---|---|
+| `subCategories` | `SubCategory.categoryId` | Is category ki sub-categories |
+| `brands` | `Brand.categoryId` | Is category me registered brands |
+| `vouchers` | `VoucherVersion.categoryId` **current version ka** | Niche note dekhein |
+| `promoCodes` | `PromoCode.categoryIds[]` | Jo customer promo codes is category pe scoped hain |
+
+- `total` = jo **exist** karta hai (`isDeleted: false`), chahe active ho ya na ho.
+- `active` = usi ka wo hissa jiska `isActive: true` hai. Panel "41 / 48 active" dikha sakta hai.
+- **Store nahi hota, har read pe count hota hai** — isliye kuch delete hote hi agli call me number apne aap kam ho jaata hai. Koi counter drift nahi kar sakta.
+- Counts **page ke rows** ke liye nikalte hain, poore filter ke liye nahi — `limit` bada karne se hi kaam badhta hai.
+
+### ⚠️ `vouchers` current version pe ginta hai
+
+Category master `Voucher` par nahi, `VoucherVersion` par hai, aur voucher apni saari purani versions rakhta hai. Isliye count wahi vouchers leta hai jinki **`currentVersionId`** wali version is category me hai:
+
+- versions ginne se ek voucher kai baar ginta,
+- "kabhi bhi is category me thi" ginne se vendor ke category badalne ke baad voucher **dono** categories me ginta rehta — saari categories ka jod actual voucher count se zyada nikalta.
+
+Draft aur unpublished vouchers bhi ginte hain (wo exist karte hain). `active` master `Voucher.isActive` se aata hai.
 
 ### Errors
 | Status | Message |
@@ -3438,11 +3657,17 @@ Admin panel me `isActive` filter **na** lagayein — inactive categories bhi man
     "isActive": true,
     "isDeleted": false,
     "createdAt": "2026-05-10T08:00:00.000Z",
-    "updatedAt": "2026-05-10T08:00:00.000Z"
+    "updatedAt": "2026-05-10T08:00:00.000Z",
+    "stats": {
+      "subCategories": { "total": 6, "active": 5 },
+      "brands":        { "total": 48, "active": 41 },
+      "vouchers":      { "total": 130, "active": 96 },
+      "promoCodes":    { "total": 3, "active": 2 }
+    }
   }
 }
 ```
-> `getAll` ke mukable **poora document**.
+> `getAll` ke mukable **poora document**. `stats` bilkul wahi shape hai — [#62](#62-get-categoriesgetall) me detail hai.
 
 ### Errors
 | Status | Message |
@@ -3510,15 +3735,19 @@ Image replace hone pe purana Cloudinary se delete hota hai.
 |---|---|
 | `404` | `Category not found` |
 | `422` | `Invalid Category Id` |
+| `400` | `Cannot delete this category — 2 sub-categories, 3 brands and 10 vouchers still use it. Move or delete them first.` |
 
 ### ⚠️ Notes
 
 **1. Soft delete hai.**
 
-**2. ⚠️ Cascade nahi hota** — is category ki sub-categories, aur us category se linked brands/vouchers waise hi rehte hain (ab dangling reference ke saath). Delete karne se pehle check karein:
-```http
-GET /subCategories/getAll?categoryId=<id>
-```
+**2. In-use category delete nahi hoti.** Agar koi sub-category, brand ya voucher abhi bhi is category pe hai to `400` aata hai aur message me **exact ginti** hoti hai — admin ko teen listings me ja kar dhoondhna nahi padta. Pehle ye delete chup-chaap ho jata tha aur children dangling `categoryId` ke saath reh jaate the.
+
+Blockers wahi hain jo category ke **andar** hote hain: sub-categories, brands, vouchers. Ginti `stats` waali hi hai (`total`, yani `isDeleted: false` — inactive brand bhi rokega, kyunki wo kal on ho sakta hai).
+
+**Promo codes nahi rokte.** `PromoCode.categoryIds` ownership nahi, sirf scoping filter hai — pichhle season ke ek expired code ki wajah se category delete na ho paana admin ko phasaa dega, aur nuksaan halka hai: deleted id kisi voucher se match nahi karegi, code baaki categories pe scoped reh jayega.
+
+Delete se pehle kya rok raha hai dekhna ho to `GET /categories/get/:id` ka `stats` hi kaafi hai.
 
 **3. `isActive: false` (#64) usually behtar hai** — reference bache rehte hain aur naye brands ko option nahi dikhta.
 
@@ -3616,13 +3845,28 @@ Same as [#62](#62-get-categoriesgetall), plus:
         "isActive": true,
         "isDeleted": false,
         "createdAt": "2026-05-10T09:00:00.000Z",
-        "updatedAt": "2026-05-10T09:00:00.000Z"
+        "updatedAt": "2026-05-10T09:00:00.000Z",
+        "stats": {
+          "brands":   { "total": 12, "active": 10 },
+          "vouchers": { "total": 34, "active": 28 }
+        }
       }
     ]
   }
 }
 ```
 > Categories ke `getAll` se different — yahan `isDeleted` aur `updatedAt` bhi project hote hain.
+
+### `stats` — kya ginta hai
+
+| Key | Source |
+|---|---|
+| `brands` | `Brand.subCategoryId` |
+| `vouchers` | `VoucherVersion.subCategoryId`, **current version ka** — [#62](#62-get-categoriesgetall) waali hi rule |
+
+`total` / `active` ka matlab, aur counts stored kyun nahi hain, [#62](#62-get-categoriesgetall) me hai.
+
+⚠️ **`promoCodes` yahan hai hi nahi.** `PromoCode` sirf `categoryIds` rakhta hai, sub-category ka koi field usme nahi — hamesha-`0` wali key "abhi koi nahi hai" padhi jaati, jabki sach ye hai ki ye link exist hi nahi karta.
 
 ### Errors
 | Status | Message | Kab |
@@ -3646,9 +3890,21 @@ Same as [#62](#62-get-categoriesgetall), plus:
 {
   "success": true,
   "message": "Sub-category fetched",
-  "data": { "_id": "…", "categoryId": "…", "name": "cafe", "image": "…", "isActive": true, "isDeleted": false }
+  "data": {
+    "_id": "…",
+    "categoryId": "…",
+    "name": "cafe",
+    "image": "…",
+    "isActive": true,
+    "isDeleted": false,
+    "stats": {
+      "brands":   { "total": 12, "active": 10 },
+      "vouchers": { "total": 34, "active": 28 }
+    }
+  }
 }
 ```
+> `stats` [#67](#67-get-subcategoriesgetall) waala hi hai.
 
 ### Errors
 | Status | Message |
@@ -3668,7 +3924,7 @@ Same as [#62](#62-get-categoriesgetall), plus:
 | `id` | ObjectId | ✅ |
 
 ### Body — sab optional
-`name` (3–120) · `description` (max 300) · `isActive` · `image` (multipart)
+`name` (3–120) · `description` (max 300) · `categoryId` (ObjectId) · `isActive` · `image` (multipart)
 
 ### Success — `200`
 ```json
@@ -3679,11 +3935,12 @@ Same as [#62](#62-get-categoriesgetall), plus:
 | Status | Message |
 |---|---|
 | `404` | `Sub-category not found` |
+| `404` | `Category not found!` — naya `categoryId` exist nahi karta |
 | `400` | *(duplicate name)* |
-| `422` | `Name has minimum 3 characters` |
+| `422` | `Name has minimum 3 characters` / `Invalid categoryId format` |
 
 ### ⚠️ Note
-⚠️ `categoryId` update nahi ho sakta — validator me nahi hai. Sub-category dusri category me move karne ke liye naya banana padega.
+`categoryId` bhejkar sub-category ko **dusri category me move** kiya ja sakta hai — `validateUpdateSubCategory` me ye field hai aur service `subcategory.categoryId` set karti hai. (Is doc me pehle likha tha ki ye possible nahi — wo galat tha.) Yahi wo raasta hai jo `DELETE /categories/delete/:id` ka *"Move or delete them first"* wala `400` sujhaata hai.
 
 ---
 
@@ -3706,9 +3963,14 @@ Same as [#62](#62-get-categoriesgetall), plus:
 |---|---|
 | `404` | `Sub-category not found` |
 | `422` | `Invalid SubCategory Id` |
+| `400` | `Cannot delete this sub-category — 3 brands and 10 vouchers still use it. Move or delete them first.` |
 
 ### ⚠️ Note
-⚠️ **Cascade nahi hota** — jo brands is sub-category pe hain (`brand.subCategoryId`) unka reference dangling ho jaayega. Vouchers ka `subCategoryId` bhi. `isActive: false` safer hai.
+**In-use sub-category delete nahi hoti.** Brands (`Brand.subCategoryId`) ya vouchers (`VoucherVersion.subCategoryId`) abhi bhi ispe hain to `400` aata hai, exact ginti ke saath. Pehle ye delete ho jaata tha aur wo reference dangling reh jaate the.
+
+Ginti `stats.brands.total` / `stats.vouchers.total` hi hai — `isDeleted: false`, yani inactive brand bhi rokega.
+
+Brand ko hataane ke liye uski `subCategoryId` badlein (`PUT /brands/update`), voucher ke liye nayi version me sub-category badlein. `isActive: false` (#69) tab bhi ek valid option hai jab aap sirf naye brands ko ye option nahi dikhana chahte.
 
 ---
 
@@ -6023,7 +6285,104 @@ Sirf [common auth errors](#common-errors) + `403` role check.
 | `vendor.showcase` | `maxSections` · `maxItemsPerSection` · `maxImagesPerSection` · `maxVideosPerSection` · `maxImageSizeMB` · `maxVideoSizeMB` (sab ≥1) · `allowedImages[]` · `allowedVideos[]` (min 1 item) · `isActive` |
 | `vendor.subscription` | Niche full table |
 | `customer` | Niche full table — **naya**, pehle pahunch me hi nahi tha |
+| `admin.notification` | 🆕 `isEmailNotificationEnabled` · `isPushNotificationEnabled` · `isWhatsAppNotificationEnabled` |
+| `app` | 🆕 `minVersion` · `latestVersion` · `support` · `features` — niche |
 | `isActive` | boolean |
+
+### 🆕 `app` — mobile app ka force-update aur support contact
+
+```json
+{
+  "app": {
+    "minVersion":    { "android": "1.4.0", "ios": "1.4.0" },
+    "latestVersion": { "android": "1.6.2", "ios": "1.6.1" },
+    "support":  { "email": "help@trydood.com", "phone": "18001234567", "whatsapp": "919876543210" },
+    "features": { "promoCodes": true, "refunds": true, "voucherClaims": true, "search": true }
+  }
+}
+```
+
+Yahi block **`GET /app-config`** padhta hai — wo public hai, token ke bina, aur app launch par pehla call hota hai.
+
+> ### 🔴 Ye block yahan hone ki poori wajah
+>
+> Minimum version pehle bhi `Setting` me tha, par use padhne ka ekmatra raasta `GET /settings/get` tha — jo `isAdmin` hai. Matlab app use padh hi nahi sakti thi: number **build me hardcode** hota tha, aur badalne ke liye wahi update chahiye hota jo wo maang raha hai.
+>
+> Ab yahan se badla ja sakta hai aur app agle launch par dekh legi — koi release nahi.
+
+⚠️ **`updateRequired` server tay karta hai, app nahi.** Client apna version bhejta hai aur `GET /app-config` jawab deta hai. Do apps me *"kya main minimum se neeche hoon"* likhna do mauke hain `"1.10.0" < "1.9.0"` wali galti karne ke — jo **text me sach hai** — aur wo galti theek un builds me hoti jinhe theek karne ke liye wahi update chahiye jo wo maang rahe hain.
+
+⚠️ **`features` display flags hain, gate nahi.** Inhe `false` karne se endpoint band nahi hota — app us tab/button ko chhupa deti hai. Asli gate `customer.promoCode.isEnabled` jaise blocks me hai. Dono ko ek samajhna matlab ek feature UI se gayab par API par khula.
+
+⚠️ `GET /app-config` **whitelist** se banta hai, `Setting` minus kuch nahi. Wahi document commission, reserve rate, settlement timing aur gateway-fee bearer bhi rakhta hai — ek spread us line par bilkul normal dikhta aur platform ki economics public kar deta.
+
+### 🆕 `admin.notification` — admin audience ke apne channels
+
+```json
+{
+  "admin": {
+    "notification": {
+      "isEmailNotificationEnabled": false,
+      "maxRecipientsPerDispatch": 10000
+    }
+  }
+}
+```
+
+Merged hai, replaced nahi — ek flag PATCH karne se baaki waise hi rehte hain.
+
+### 🆕 `maxRecipientsPerDispatch` — ek broadcast kitne logon tak ja sakta hai
+
+Default **5000**. `POST /notifications/broadcast` isse bada audience resolve kare
+to **`422`** deta hai:
+
+> This audience resolves to more than 5000 recipients, which is the limit for a
+> single dispatch. Narrow the target, raise
+> `admin.notification.maxRecipientsPerDispatch` in settings, or send it as a
+> background job.
+
+⚠️ **Ye refusal hai, truncation nahi.** Pehle 5000 ko bhejkar baaki chhod dena
+sabse bura outcome hai: bhejne wale ko lagta hai sab tak pahunch gaya, aur kisi ko
+pata bhi nahi chalta ki nahi pahuncha.
+
+⚠️ **Message me "more than" likha hai, exact ginti nahi** — aur wo jaan-boojh kar
+hai. Audience resolve karte waqt sirf `cap + 1` rows fetch hoti hain, theek isliye
+ki poori ginti karni hi na pade. Exact number likhne par cap `1` set karne wale
+admin ko *"2 recipients"* dikhta tha; wo `2` karta to phir fail hota, ab
+*"3 recipients"* kehkar. Jo pata hai wahi bolna sahi hai.
+
+⚠️ **Number badhana broadcast ko sasta nahi banata.** Har recipient ek row hai jo
+likhi jaati hai aur ek push jo queue hota hai, aur FCM abhi bhi 500 token per
+batch leta hai. Kuch hazaar se upar ye background job ka kaam hai — refusal ka
+message yahi kehta hai.
+
+`min: 1` hai. `0` har broadcast ko rok deta, ek naamzad recipient wale ko bhi.
+
+⚠️ `getAdminConfig` ise `??` se padhta hai, `||` se nahi — warna configured `0`
+chup-chaap `5000` ban jaata, wahi jaal jo `CLAUDE.md` `settlement.delayDays` ke
+liye likhta hai.
+
+### 🔴 Pehle ye block pahunch me hi nahi tha
+
+`getNotificationConfig(audience)` ka branch *"customer? … warna vendor"* tha, aur
+**admin `warna` me gir jaata tha**. Matlab `vendor.subscription.isEmailNotificationEnabled`
+off karne se admin ki `SETTLEMENT_LEDGER_DRIFT`, `REFUND_FAILED` aur har wo alert
+bhi band ho jaati thi jo paisa galat hone par kisi insaan tak pahunchne ke liye
+hai — aur kuch bola nahi jaata tha, kyunki in-app rows waise hi aati rehti thi.
+
+Ab teen audience, teen block, koi kisi ko chup nahi kara sakta.
+
+### ⚠️ Ye outage ka kill switch hai, preference nahi
+
+Defaults **on** hain aur on hi rehne chahiye — email `true`, push `true`, WhatsApp
+`false` (Meta template pending). Jis admin ko personally kam email chahiye uske
+paas `PUT /notifications/preferences` hai, jo sirf **use** chup karti hai, poori
+team ko nahi.
+
+⚠️ Live `Setting` document me ye field abhi **physically hai hi nahi** — wo iske
+add hone se pehle likha gaya tha. Mongoose read par defaults hydrate kar deta hai,
+isliye `GET /settings` me block **dikhta hai** aur delivery bhi sahi chalti hai;
+DB me row pehli write par banti hai. Koi migration nahi chahiye.
 
 ### `vendor.subscription` fields
 
@@ -6189,6 +6548,33 @@ Har block alag se merge hota hai. Nested block bhi merge hota hai — `settlemen
 |---|---|---|
 | `writeOffDays` | `90` | 1–365 |
 
+**`customer.search`** 🆕 — customer home screen ka global search box
+| Field | Default | Validation | Kya karta hai |
+|---|---|---|---|
+| `isEnabled` | `true` | boolean | Kill switch. Neeche dekhein — 404 nahi deta |
+| `minQueryLength` | `2` | 1–10 | Isse chhoti query pe `422` |
+| `sectionLimit` | `5` | 1–20 | `GET /search` me per-section rows |
+| `historyLimit` | `20` | 1–100 | Ek customer ki kitni recent searches rakhni hain |
+| `popularQueries` | `[]` | max 10, har ek max 100 chars | Search box ki curated chips |
+
+```json
+{ "customer": { "search": { "popularQueries": ["pizza", "salon", "weekend offers"] } } }
+```
+
+⚠️ **`popularQueries` traffic se nahi banti.** Customer kya search karta hai wo kahin log
+hi nahi hota — ye list poori tarah aapki hai. Khaali chhodna valid hai aur uska matlab
+sirf itna hai ki app koi chip nahi dikhayegi (koi `.min(1)` nahi hai, unlike alert wale
+arrays).
+
+⚠️ **`isEnabled: false` search band karta hai, endpoint nahi.** `GET /search` phir bhi
+`200` deta hai — `isEnabled: false`, khaali `sections`. `404` ya `503` dena app ke
+generic error handler tak pahunch jaata aur customer ko "kuch toot gaya" screen milti,
+jabki aapne sirf ek switch band kiya tha.
+
+⚠️ **`minQueryLength` yahin se aata hai, Joi se nahi.** Joi schema require ke waqt ek baar
+banti hai, to usme value bake karne se aapka har baad ka badlaav chup-chaap ignore ho
+jaata. Service har request par ye setting padhti hai.
+
 ### ⚠️ Golden rule — ek 422 jo aapko milega
 
 ```
@@ -6221,6 +6607,11 @@ Dono taraf se block hota hai:
 **Sirf ek nested field badalna (baaki reserve fields waise hi rahenge):**
 ```json
 { "customer": { "settlement": { "reserve": { "percent": 15 } } } }
+```
+
+**Search ki chips set karna:**
+```json
+{ "customer": { "search": { "popularQueries": ["pizza", "spa", "weekend offers"] } } }
 ```
 
 **Convenience fee band karna:**
@@ -6930,11 +7321,175 @@ aise settlement se bandha chhod dega jo kabhi pay nahi hogi.
 
 ## Abhi nahi bana
 
-- **Statement PDF** — `statementUrl` / `statementToken` model me hain, generator nahi.
+- **Statement PDF** — `documentUrl` / `documentToken` model me hain, generator nahi.
   Vendor abhi `GET /settlements/:id/transactions` se lines padh sakta hai.
 - **RazorpayX / Route** — `payoutProvider` aur `PayoutLeg` isi ke liye bane hain.
 - **Reserve release** — `reserveHeld` bookta hai, `holdDays` ke baad chhodne wali job
   nahi. Reserve default me off hai.
+
+---
+
+# Reference — endpoints ka baaki hissa
+
+Ye section un endpoints ko cover karta hai jo `scripts/verifyApiCoverage.js` ne **undocumented** pakde the. Har ek collection me maujood hai, saved example ke saath — yahan wo cheezein likhi hain jo example se nahi dikhtin.
+
+## Brands — status aur curation
+
+### `PUT /brands/admin/:brandId/status`
+
+Do alag switch, aur wo ek jaise **nahi** hain:
+
+| Field | Asar |
+|---|---|
+| `isActive: false` | Brand **band** — vendor bhi andar nahi aa sakta |
+| `hideFromCustomers: true` | Sirf listing se hataata hai; vendor kaam karta rehta hai |
+
+⚠️ Dispute ke dauraan aksar **doosra** chahiye hota hai, pehla nahi. Dono ko ek samajhna ek chalte hue brand ko band kar deta hai, aur vendor ko pata bhi nahi chalta ki kyun.
+
+⚠️ `reason` **sirf deactivate karte waqt** accept hota hai — `isActive: true` ke saath bhejne par `422 "A reason is only accepted when deactivating an account"`. Ye jaan-boojh kar hai: wapas chaalu karne ki wajah record me rakhne layak nahi, band karne ki hai.
+
+### `GET /brands/admin/top-brands` · `PUT /brands/admin/top-brands/:brandId`
+
+Home screen par kaunse brands upar aayenge. `PUT` body: `{ isTopBrand, sortOrder, note }`.
+
+⚠️ Ye **editorial** faisla hai, algorithmic nahi. Koi score isse nahi chalata — jo yahan set hoga wahi dikhega, isliye purani entries kisi ko hataye bina baithi rehti hain.
+
+### `GET /vouchers/admin/suggestions` · `PUT /vouchers/admin/suggestions/:voucherId`
+
+Wahi cheez vouchers ke liye — `suggested: true` wale customer feed me upar aate hain.
+
+---
+
+## Refunds — manual bank ka poora raasta
+
+Gateway refund refuse kar de (window band, payment bahut purana), to paisa NEFT se jaata hai. Chaar endpoints, aur **ye ek state machine hai**:
+
+```
+ADMIN_APPROVED → request-bank-details → AWAITING_BANK_DETAILS
+                 (customer account jodta hai)
+               → pay-to-bank          → PROCESSING
+               → confirm-bank-payout  → COMPLETED
+                 ya fail-bank-payout  → FAILED (wapas khulta hai)
+```
+
+| Endpoint | Body | Kya kehta hai |
+|---|---|---|
+| `PATCH /refunds/admin/:requestId/request-bank-details` | `{ reason }` | "Gateway se nahi ja sakta, account do" |
+| `PATCH /refunds/admin/:requestId/pay-to-bank` | — | "Maine NEFT **shuru** kiya" |
+| `PATCH /refunds/admin/:requestId/confirm-bank-payout` | `{ utr, mode, paidAt }` | "Paisa **pahunch** gaya" |
+| `PATCH /refunds/admin/:requestId/fail-bank-payout` | `{ reason }` | "Bank ne wapas kiya" |
+
+⚠️ **`pay-to-bank` aur `confirm-bank-payout` alag isliye hain** ki shuru hona aur pahunchna do alag ghatnaayein hain. Ek endpoint hota to dono ek jaise dikhte — aur `sweepStalePayouts` ka poora kaam theek wahi farq dekhna hai: wo un payouts ko dhoondhta hai jo shuru hue aur confirm nahi hue.
+
+⚠️ `paidAt` alag field hai, `updatedAt` nahi. NEFT kal shuru hua aur aaj confirm hua — reconciliation wahi padhta hai jo **bank ne** kiya, wo nahi jab humne form bhara.
+
+⚠️ `utr` bank ka reference hai — baad me "paisa sach me gaya?" ka jawab sirf usi se milta hai.
+
+---
+
+## Settlements — jo `12 — Settlements` me nahi the
+
+| Endpoint | From → To | Rows chhodta hai? |
+|---|---|---|
+| `PATCH /settlements/admin/:id/cancel` | ON_HOLD / APPROVED → CANCELLED | ✅ haan |
+| `PATCH /settlements/admin/:id/retry` | FAILED → APPROVED | ❌ nahi |
+| `PATCH /settlements/admin/:id/abandon` | FAILED → ABANDONED | ✅ haan |
+
+⚠️ **`retry` aur `abandon` ka asli farq yahi hai.** Retry rows apne paas rakhta hai — wahi payout dobara koshish karega. Abandon unhe chhod deta hai, to paisa agle cycle me kisi doosri settlement me wapas aa jaata hai. Ulta karne par ya to paisa do baar chala jaata hai, ya hamesha ke liye phans jaata hai.
+
+### `GET /settlements/admin/debt/:brandId` · `PATCH /settlements/admin/debt/:brandId/write-off`
+
+`netPayable <= 0` settlement ko `CARRIED_FORWARD` bhejta hai — aur carry forward karna **hi** rows chhodna hai, to bakaya aur kamai dono agle cycle me chale jaate hain. Jab tak brand bech raha hai, nayi sales use kaat deti hain.
+
+⚠️ **Jis din wo band karta hai, wahi rows hamesha claim aur release hoti rehti hain** — koi error nahi, koi log nahi, aur paisa hamari kitaab par ek aise aadmi se receivable ban kar baith jaata hai jo wapas nahi aa raha. `alertVendorDebt` roz ye report karta hai aur **kuch karta nahi**; 90 din par apne aap maaf kar dena us brand ko maaf kar dega jo bas season ke beech me hai.
+
+Write-off body: `{ reason, olderThanDays }`.
+
+⚠️ Ye har row par **do** `MANUAL_ADJUSTMENT` likhta hai — `VENDOR_PAYABLE` credit taaki agla cycle bakaya na dekhe, aur `PLATFORM_COST` debit kyunki nuksaan humne uthaya. Reference **sirf vendor row par** jaata hai: `ONCE_PER_REFUND` aur `ONCE_PER_DISPUTE` `{reference, entryType}` par unique hain, to dono par daalne se doosra duplicate-key no-op ban jaata — bakaya saaf ho jaata, cost kabhi aati hi nahi, aur kitaab theek utni kam ho jaati jitna maaf kiya.
+
+---
+
+## Transactions — hold chhodna
+
+### `PATCH /transactions/admin/:transactionId/release-hold`
+
+Body: `{ reason }` — **required**.
+
+⚠️ **Is endpoint se pehle in states se koi raasta hi nahi tha.** `settlementHold` refund maangte hi lag jaata hai, aur wahi ek line *"vendor ko de chuke, ab wapas lo"* wali poori samasya hata deti hai. Uska ulta utna hi khatarnak hai: **jo hold koi chhodta nahi, wo vendor ka paisa hamesha ke liye har settlement se bahar rakh deta hai — chup-chaap**, kyunki eligibility predicate bas match karna band kar deti hai.
+
+⚠️ Tab tak mana karta hai jab tak koi refund khula hai ya chargeback unresolved hai.
+
+### `GET /disputes/:disputeId/evidence-pack` · `GET /transactions/disputes/:disputeId/evidence-pack`
+
+Ek hi jawab, do mount — `/disputes` naya saaf raasta, `/transactions/disputes/...` purana. Razorpay ko jawab dene ke liye jo chahiye ek jagah: payment, claim, invoice, redemption ka waqt.
+
+⚠️ `ledger_type_dispute_unique` **dispute** par keyed hai, transaction par nahi — Razorpay dispute webhooks dobara bhejta hai **aur out of order** bhejta hai, to ek der se aaya `lost` ek `won` ke baad aa sakta hai.
+
+---
+
+## Showcase — admin bhi kar sakta hai
+
+Ye aath endpoints `isVendorOrAdmin` hain, yaani admin bhi kisi brand ka showcase chala sakta hai. **Request aur saved example [vendor collection](./vendor_panel_api_doc.md) ke `10 — Showcase` folder me hai** — yahan dobara nahi rakhe gaye, kyunki ek hi request ki do copy matlab do jagah badalna, aur ek badli-doosri-reh-gayi hi drift ki shuruaat hai.
+
+| Endpoint | Kya |
+|---|---|
+| `GET /showcase/section/get/:sectionId` | Ek section, media ke saath |
+| `PUT /showcase/section/update/:sectionId` | Section ka naam/visibility |
+| `DELETE /showcase/section/delete/:sectionId` | Soft delete |
+| `POST /showcase/section/:sectionId/add-media` | **multipart** — file chahiye |
+| `PUT /showcase/section/:sectionId/media/replace/:mediaId` | **multipart** |
+| `PATCH /showcase/section/:sectionId/media/update/:mediaId` | Sirf caption/alt — file nahi |
+| `PUT /showcase/section/:sectionId/media/reorder` | **Poora** order bhejein |
+| `DELETE /showcase/section/:sectionId/media/delete/:mediaId` | Soft delete |
+
+⚠️ Reorder **poori list** maangta hai, sirf hile hue item nahi — `"2 sections expected, 1 received"` wahi refusal hai. Aadha order bhejna baaki ko `sortOrder: 0` par gira deta, aur gallery chup-chaap bikhar jaati.
+
+---
+
+## Public / role-agnostic
+
+### `GET /documents/:token`
+
+⚠️ **Ek hi public document route, chhe kism ke document ke liye** — claim receipt,
+subscription invoice, grant advice, payout statement, refund receipt, chargeback
+advice. Koi bearer nahi; path ka token hi credential hai. Wahi token vendor aur
+customer ke email/WhatsApp link me hota hai, isliye ye us aadmi ke liye kaam karta
+hai jo abhi login nahi hai.
+
+⚠️ Pehle `settlements/statement/:token` aur `transactions/invoice/:token` do alag
+route the, aur dono ka apna token field naam tha — to bare token se ye pata hi nahi
+chalta tha ki wo kis kism ka document hai. Refund aur dispute ke liye teesra aur
+chautha route banana padta. Ab chaaron collection par field ka naam `documentToken`
+hai aur resolver khud dhoondhta hai.
+
+⚠️ Payout statement ka token **sirf tab mint hota hai jab settlement `PAID` bane**
+(`transitionSettlement`: `becomingPaid && !documentToken`), aur snapshot bhi wahin
+freeze hota hai — usse pehle har figure abhi bhi hil sakta hai. Galat token par
+`404` aata hai, `401` nahi — `401` ye bata deta ki token maujood hai par aapka nahi.
+
+⚠️ Payout statement ke andar **commission ka tax invoice** bhi chhapta hai, apne
+alag number ke saath (`TD/CMN/…`). Do document, ek kaagaz: statement batata hai
+bank me kya pahuncha, aur commission Trydood ki taraf se vendor ko di gayi taxable
+supply hai — GST me wo apna document hai. Commission zero ho to wo section aur uska
+number, dono nahi bante.
+
+### `GET /disputes` · `GET /disputes/:disputeId`
+
+Gate sirf `verifyJwtToken` — **scope token se aata hai**. Vendor apne brand ke disputes dekhta hai, admin sabke. Isi wajah se ye kisi ek role ki collection me fit nahi hota; request `13 — Disputes` folder me hai.
+
+⚠️ `respondBy` **absent** hota hai jab tak Razorpay deadline na de. Use aggregation me `null` se compare karna bina `$ifNull` ke ulta jawab deta hai — yahi galti `vendorWasPaid: true` bana chuki hai un payments par jo **kabhi settle hi nahi hue**, aur wahi field admin dekhkar tay karta hai ki wapas lene ko kuch hai bhi ya nahi.
+
+### `GET /` · `GET /my-ip` · `GET /client-ip`
+
+⚠️ Teeno `index.js` seedha serve karta hai — **`/trydood/v1` ke bahar**. Collection me `{{host_url}}` use hota hai, `{{base_url}}` nahi; warna `/trydood/v1/my-ip` banta hai jo router ka catch-all `404` deta hai, aur wo galti routing bug jaisi dikhti hai.
+
+| Route | Kya |
+|---|---|
+| `GET /` | Health check — plain text, envelope nahi |
+| `GET /my-ip` | **Is process** ka outbound address — Atlas Network Access allow-list ke liye |
+| `GET /client-ip` | Caller ka address, `TRUST_PROXY` ke through |
+
+⚠️ `/client-ip` galat hona mehnga hai: rate limiter isi par ginta hai. `TRUST_PROXY` ghalat hone par limiter **poore desh ko ek client** gin leta hai; ulta, jo hop hai hi nahi use trust karna matlab caller ka khud likha `X-Forwarded-For` maan lena.
 
 ---
 
@@ -6984,114 +7539,561 @@ Full categorization → [endpoints_category.md](./endpoints_category.md)
 
 # Appendix B — Known Issues
 
-**Status 2026-08-22 ko code ke against verify kiya gaya.** Full detail → [security_findings.md](./security_findings.md)
+**Status 2026-09-06 ko code ke against dobara verify kiya gaya.**
 
-## 🔴 Blockers — admin panel ke liye sabse serious
+⚠️ Pichli baar is list me **9 findings aise the jo fix ho chuke the**. Ek fixed
+finding likha rehna khaali shor nahi hai — agla insaan use fix karne baithta hai
+jo pehle se theek hai, aur baaki list par bhi bharosa kam ho jaata hai. Isliye ab
+har entry par wo file aur line likhi hai jisse ye claim verify hota hai.
 
-### 1. Admin banne ke **do** unauthenticated raaste hain
+---
 
-**(a) `POST /auth/register` public hai, default role `ADMIN`** *(finding #2)*
+## 🔴 Blocker
+
+### 1. WhatsApp OTP verify hota hi nahi
+
 ```js
-// routes/auth.js:31 — koi auth middleware nahi
-router.post("/register", validateSchema(validateRegisterUser), register);
-// validator/auth.js:16
-role: Joi.string()....default(ROLES.ADMIN),
+// services/auth/verifyOtpWithWhatsapp.js:22
+//  await verifyOtp(whatsappNumber, otp);
 ```
 
-**(b) `POST /auth/loginOrSignUp-with-whatsapp` `role: "ADMIN"` accept karta hai** *(finding #15)*
-```bash
-POST /auth/loginOrSignUp-with-whatsapp  { "whatsappNumber": "9999999999", "role": "ADMIN" }
-POST /auth/verify-otp-whatsapp          { "whatsappNumber": "9999999999", "otp": "000000", "role": "ADMIN" }
-→ ADMIN JWT
-```
-**(b) zyada aasan hai** — sirf ek phone number chahiye.
+Koi bhi kisi ka number daale aur koi bhi 6-digit code de — **uska account khul
+jaata hai**. Uski claims, refunds, bank accounts, settlements: sab.
 
-**(c) Aur WhatsApp OTP verify hota hi nahi** *(finding #7)* — `verifyOtpWithWhatsapp.js:12` commented hai.
+⚠️ **Ye do-line change hai, ek nahi.** `loginOrSignUpWithWhatsapp.js:224` par
+`sendOtp` bhi commented hai. Sirf verify chaalu karne se OTP kabhi bheja hi nahi
+jaayega aur har login fail hoga.
 
-**Teeno milkar:** koi bhi, kahin se bhi, admin token le sakta hai — aur ab admin ke paas promo codes, subscription grants, webhook replay, platform-wide broadcast, aur settings hain.
+⚠️ Chaalu karte hi throttle live ho jaayega (60s / 5 per hour, target par keyed),
+to Postman collections ke auth folders reseed ke beech `429` khaane lagenge.
 
-**Ye teen sabse pehle fix hone chahiye.** Teeno ke fix chhote hain (kul ~5 lines).
+**Pehle ye do raaste bhi khule the aur ab band hain** — is finding ka daayra utna
+hi hai jitna upar likha hai:
 
-### 2. Role enforcement — 35 endpoints abhi bhi open
-
-Bahut sudhar hua (108/143 gated), par ye modules abhi bhi sirf `verifyJwtToken` pe hain:
-
-| Module | Admin panel pe kya matlab |
+| Tha | Ab |
 |---|---|
-| `banners` (5) | **Customer/vendor bhi app ke home banner bana/badal/delete kar sakte hain** |
-| `promotionalTickers` (5) | Same — app ke tickers |
-| `showcase` (11) | Kisi bhi brand ka content edit ho sakta hai |
-| `locations` (5) | `getAll` se sabke addresses — customers ke ghar ke pate bhi |
-| `brandFeatures` (3 writes) | Kisi bhi brand ke features |
-| `workHours` (1) | Kisi bhi outlet ke hours |
-| `subBrands/get-all` · `vouchers/versions/get-all` · `brands/get` · `brands/update` · `brands/verifications/history` | Platform-wide data sabko khula |
-
-**Admin panel pe impact:** ye endpoints admin ke liye kaam karte hain (isliye documented hain), par **inpe koi bhi authenticated user aa sakta hai**. Content integrity ka risk hai — banner/ticker moderation trail bharosemand nahi hai.
-
-### 3. `?userId` param se kisi bhi user ka data
-`GET /users/get?userId=` aur `PUT /users/update?userId=` — admin ke liye ye support tool hai, par **vendor aur customer bhi kar sakte hain**.
+| `POST /auth/register` public, default role `ADMIN` | `routes/auth.js:46` — `isAdmin` ke peeche |
+| WhatsApp signup se `role: "ADMIN"` | `loginOrSignUpWithWhatsapp.js:29` — `SELF_SIGNUP_ROLES` sirf CUSTOMER aur VENDOR |
 
 ---
 
-## 🟠 Data & correctness
+## 🟠 Feature toota hua hai, chup-chaap
 
-### 4. Legal create endpoints bilkul kaam nahi karte *(finding #16)*
-`POST /terms-and-conditions/create` aur `POST /privacy-and-policies/create` **hamesha `422 "Path \`type\` is required."`** dete hain — model `type` maangta hai, validator use accept nahi karta, service set nahi karti.
+### 2. `DELETE /users/delete` kuch delete nahi karta
 
-Plus `description` sirf 300 chars tak, aur service me lowercase ho jaata hai.
+```js
+// routes/users.js:9 — poora handler yahi hai
+router.delete("/delete", verifyJwtToken, (req, res) => {
+  res.status(200).json({ message: "User deleted successfully" });
+});
+```
 
-**Admin panel pe impact:** legal content management screen abhi ban nahi sakta. Fix ~30 min ka hai.
+App ka "Delete my account" button success dikhata hai aur **kuch nahi hota**.
+Account deletion Play Store aur App Store dono ki requirement hai.
 
-### 5. `showcase/section/get-all` brand-scoped nahi hai *(finding #4)*
-Service me `brandId` filter commented out hai, aur `brandId` query param support hi nahi hota. Response me `brandId` project bhi nahi hota.
+⚠️ Ye envelope bhi todta hai — `success` field hai hi nahi — aur route file me
+business logic hai, jo `CLAUDE.md` ka *"Never"* hai.
 
-**Admin panel pe impact:** **brand-wise showcase moderation abhi possible nahi hai.** Sirf platform-wide list milti hai. Us brand ka content dekhne ke liye `GET /brands/get?brandId=` use karein.
+⚠️ Fix karte waqt: identity index `partialFilterExpression: { isDeleted: false }`
+par hai, to soft delete karte hi wo number free ho jaayega aur wahi insaan dobara
+signup kar sakta hai. Ye **sahi behaviour hai**, par money history ka kya karna
+hai — wo product decision hai.
 
-### 6. `GET /brands/get` PAN/GST/Bank expose karta hai *(finding #3)*
-Admin ko ye data dikhna sahi hai — **problem ye hai ki customer ko bhi yahi milta hai**. Role-based projection chahiye.
+### 3. Avoid kiye brands voucher feed se filter nahi hote
 
-### 7. ✅ *(pehle galat samjha gaya — ab clear)* Approval state brand pe maintained hai
-Ek pichhle scan me lagta tha ki `brand.status` / `brand.isApproved` kabhi likhe hi nahi jaate. **Ye galat tha** — `reviewBrandVerification` aur `acknowledgeBrandApproval` dono inko poori tarah maintain karte hain:
+Customer "Don't show me this brand" dabata hai; brand phir bhi feed me aata hai.
+`BrandAvoidance` row likhi jaati hai aur koi use padhta nahi.
 
-`status` · `isApproved` · `isReviewed` · `isRejected` · `isRevoked` · `rejectionReason` · `revokeReason` · `verifiedBy` · `verifiedAt` · `approvedByAdminId` · `approvedAt` · `rejectedByAdminId` · `rejectedAt` · `revokedByAdminId` · `revokedAt` · `isApprovalAcknowledged` · `approvalAcknowledgedAt`
+⚠️ Fix se pehle `{customerId, brandId}` par index chahiye — feed pipeline pehle
+se bhaari hai (geo distance, offers, promo), aur ek aur lookup bina index ke har
+call par full scan karega.
 
-**Admin panel pe impact:** brand list/detail screens `GET /brands/get` ke top-level fields se hi approval state dikha sakte hain. `systemverifies[0]` sirf **score aur flags** ke liye chahiye.
+### 4. ✅ Redemption — ye bug **nahi** hai, Phase 1 ka design hai
 
-### 8. Ownership checks kai jagah missing hain
-`showcase/section/*/:sectionId` · media endpoints · `brandFeatures/*/:featureId` · `locations/*/:id` · `vouchers/publish/:versionId`
+Pehle yahan likha tha *"redemption flow exist hi nahi karta"*. Wo galat padhta
+hai. Code me shuru se **do phase** hain aur Phase 1 hi chaalu hai:
 
-Admin ke liye ye "feature" hai (sab kuch edit kar sakta hai), par **vendor A bhi vendor B ka data edit kar sakta hai**.
+```js
+// constants/voucherClaim.js:50
+// AUTO is Phase 1: paying at the counter *is* the redemption.
+// OUTLET_SCAN is Phase 2, where the claim code is shown and scanned.
+CLAIM_REDEMPTION_MODE = { AUTO, OUTLET_SCAN, ADMIN }
+```
 
-### 9. Brand verification history customer ko dikhti hai *(finding #13)*
-Route pe role gate nahi, aur service ki scoping sirf `VENDOR` handle karti hai. Customer koi bhi `brandId` bhej kar KYC scores, flags, rejection reasons padh sakta hai.
+`createVoucherClaimOrder.js:270` par `AUTO` **hardcoded** hai (model ka default
+bhi wahi), aur `settleVoucherClaimPayment.js:312` us par capture ko seedha
+`REDEEMED` likhta hai, `redeemedAt` ke saath.
 
-### 10. `FIXED` discount type kaam nahi karta *(finding #12)*
-Enum me hai, calculation me handle nahi. Voucher review karte waqt agar offer `FIXED` type ka ho — **wo customer ko kabhi apply nahi hoga**, par list view me "best offer" dikh sakta hai.
+**To Phase 1 me alag se "redeem" karne ko kuch hai hi nahi — payment hi
+redemption hai.** `GET /voucher-claims/code/:claimCode` ek **read** hai: counter
+par code padh kar dekhna ki kya khareeda gaya. Wo kuch likhta nahi, aur use
+likhna bhi nahi chahiye.
 
-**Admin panel pe impact:** voucher review screen pe `FIXED` type flag karein — wo voucher publish hone layak nahi hai.
+Money path teeno jagah iske saath consistent hai:
+
+| Kya | Kahan | Sthiti |
+|---|---|---|
+| Refund `PAID` **aur** `REDEEMED` dono par milta hai | `requestRefund.js:41` | ✅ Zaroori hai — `REDEEMED` na hota to Phase 1 me koi kabhi refund maang hi nahi sakta |
+| Settlement eligibility claim status par gate karti hi nahi | transactions se chalti hai | ✅ |
+| Golden rule settings se chalta hai, claim clock se nahi | `assertSettlementTimingRule.js` | ✅ |
+
+**Jo aaj declare hai par inert hai** (aur ye theek hai — enum pehle se likh diya
+gaya taaki Phase 2 par shape na badle):
+
+- `PAID` status — koi likhta hi nahi
+- `EXPIRED` — **poore codebase me koi producer nahi**, koi sweep job nahi
+- `expiresAt`, `redeemedBy` — kabhi set nahi hote
+- `{status, expiresAt}` index — dead, par harmless
+
+Phase 2 kya-kya maangega — poora plan **Appendix C · C4** me hai.
+
+### 5. `SUB_VENDOR` ka daayra saankra hai — par utna nahi jitna yahan likha tha
+
+Pehle yahan *"sirf chaar endpoints"* likha tha. Sahi ginti **31** hai.
+
+**Outlet login shipped hai, future ka kaam nahi.** Vendor apna outlet
+`POST /subBrands/signUp-with-whatsapp` se jodta hai (gate `isVendorOrAdmin`,
+plan ka slot consume hota hai), service `role: SUB_VENDOR` ka User banati hai —
+**bina password ke** — aur `signUpSubBrandWithWhatsapp.js:94` par outlet ke
+number par `sendOtp(WHATSAPP, …)` chala jaata hai. **Wahi verify step hai.**
+Uske baad outlet wala `POST /auth/loginOrSignUp-with-whatsapp` se login karta
+hai; `SELF_SIGNUP_ROLES` sirf usse *khud ko banane* se rokta hai, login se
+nahi.
+
+**4 endpoints outlet-specific gate (`isVendorOrSubVendor`) par:**
+
+```
+POST  /disputes/:disputeId/evidence
+POST  /transactions/disputes/:disputeId/evidence
+PATCH /refunds/:requestId/approve
+PATCH /refunds/:requestId/reject
+```
+
+**+ 27 endpoints jo sirf `verifyJwtToken` par hain** — yaani koi bhi logged-in
+role. Outlet ke kaam ke jo hain:
+
+```
+GET /voucher-claims/code/:claimCode     ← counter par code padhna
+GET /voucher-claims · /voucher-claims/:claimId · /voucher-claims/payments
+GET /refunds · /refunds/:requestId
+GET /disputes · /disputes/:disputeId
+GET /settlements · /settlements/:settlementId
+```
+
+To **claim verify karne ka read-half aaj hi kaam karta hai** — Phase 2 ke liye
+sirf likhne wala aadha banana hai.
+
+**Scoping sahi hai, koi leak nahi.** `assertTransactionAccess.js:133` par:
+
+```js
+if (role === SUB_VENDOR && actor.subBrandId && claim.subBrandId &&
+    String(claim.subBrandId) !== String(actor.subBrandId))
+  throwError(403, "This claim was not made at your outlet.");
+```
+
+Aur `VoucherClaim.subBrandId` model me `required: true` hai aur hamesha
+`outlet._id` se bharta hai, to wo null-check kabhi bypass nahi ho sakta. Yahi
+narrowing `buildRefundReadPipeline`, `buildSettlementReadPipeline` aur
+`notificationScope` me bhi hai.
+
+⚠️ **Jo sach me nahi khulta**, aur kyun: `resolveActorBrand` par
+`String(brand.userId) !== String(userId)` → `403`. SUB_VENDOR ka `userId` Brand
+par hota hi nahi (uske paas `subBrandId` hai), to us helper se guzarne wala har
+kaam — vouchers, showcase, subscriptions — outlet ke liye band hai. Wo helper
+**16 files** use karti hain, isliye blast radius bada hai.
+
+⚠️ `GET /settlements` par SUB_VENDOR ko **poora brand** dikhta hai, apna outlet
+nahi — settlement poore brand ke din ka hota hai, ek counter ka nahi. Ye
+`buildSettlementReadPipeline.js:77` par jaan-boojh kar hai.
+
+ℹ️ Do middleware bane hain par koi route inhe use nahi karta: `isSubVendor`
+(`validateRoles.js:19`) aur `isBrandSideOrAdmin` (`validateRoles.js:34`).
 
 ---
 
-## 🟡 Functional gaps
+## ✅ Pehle yahan the, ab fix ho chuke hain
 
-### 11. `SUB_VENDOR` accounts kuch nahi kar sakte
-Outlet signup pe account banta hai, OTP jaata hai, par koi route `SUB_VENDOR` handle nahi karta.
+Har ek code ke against verify kiya gaya — 2026-09-06.
 
-### 12. `DELETE /users/delete` no-op hai
-Kuch delete nahi karta, standard envelope bhi use nahi karta.
+| Purana finding | Ab kya hai |
+|---|---|
+| `POST /auth/register` public, default ADMIN | `routes/auth.js:46` — `isAdmin` |
+| WhatsApp signup se ADMIN ban sakte ho | `loginOrSignUpWithWhatsapp.js:29` — `SELF_SIGNUP_ROLES` |
+| Role enforcement — 35 endpoints open | 81 admin routes sahi gate par; `scripts/verifyApiCoverage.js` naapta hai |
+| `?userId` param se kisi bhi user ka data | Aisa koi param bacha nahi |
+| Legal create endpoints kaam nahi karte | `controllers/termsAndConditions` — `create` maujood aur wired |
+| `showcase/section/get-all` brand-scoped nahi | `services/showcases/getAllSections.js:7` — `resolveActorBrand` |
+| `GET /brands/get` PAN/GST/Bank expose karta hai | Projection me wo fields nahi |
+| Brand verification history customer ko dikhti hai | `routes/brands.js:146` — `isVendorOrAdmin` |
+| `FIXED` discount type kaam nahi karta | `calculateVoucherPricing.js:41` — FLAT ka alias |
+| Email verification ka endpoint nahi | `POST /auth/email/send-verification` + `/verify` |
+| `POST /auth/logout` push unregister nahi karta | Karta hai, aur `allDevices` bhi |
+| `brand.isApproved` kabhi likha nahi jaata | `reviewBrandVerification.js` teeno action par likhta hai |
+| Promo codes off by default | Dono defaults ab `true` |
+| Notification broadcast ka 5000 ka cap fixed hai | `admin.notification.maxRecipientsPerDispatch` — admin panel se badalta hai |
 
-### 13. Voucher redemption flow exist nahi karta
-`VoucherUsage` model bana hai, koi route nahi. `usageType` (`ONCE_PER_USER`) enforce nahi hota. Redemption analytics abhi possible nahi.
+---
 
-### 14. Email verification ka endpoint nahi hai
+# Appendix C — Future Work
 
-### 15. `POST /auth/logout` push unregister nahi karta
+Ye kaam **jaan-boojh kar tala gaya hai**, bhoola nahi. Har ek par alag se approval
+lena hai. Jo abhi live hai wo Appendix B me hai; ye wo hai jo abhi tak socha nahi
+gaya ya shuru nahi hua.
 
-### 16. Promo codes off hain by default
-`isPromoCodeEnabled: false`. Codes banane se pehle `PUT /settings/update` (#100) se enable karein.
+## C1. Auth aur account
 
-### 17. Notification broadcast ka 5000 ka cap hai
-Usse bade audience ke liye job chahiye — request se nahi ho sakta.
+| # | Kya | Use case | Asar agar na kiya | Fix ka shape |
+|---|---|---|---|---|
+| 1 | **OTP verify chaalu karna** | Koi bhi kisi ke account me ghus sakta hai | Poora auth bypass — Appendix B #1 | `verifyOtpWithWhatsapp.js:22` **aur** `loginOrSignUpWithWhatsapp.js:224` dono uncomment; throttle ka asar collections par dekhna padega |
+| 2 | **Account deletion sach me karna** | App ka "Delete my account" jhooth bolta hai | Store policy violation | Service banao: soft-delete User + role profile, sessions khatam, push tokens off, envelope use karo |
+| 3 | **Avoided brands ko feed se hatana** | "Don't show me this brand" kaam nahi karta | UI ka promise poora nahi hota | Feed pipeline me `BrandAvoidance` join + `{customerId, brandId}` index |
+
+## C2. Vendor operations
+
+| # | Kya | Use case | Asar agar na kiya | Fix ka shape |
+|---|---|---|---|---|
+| 4 | **Phase 2 — outlet scan redemption** | Counter par code scan karke redeem mark karna | Kuch toota nahi rehta; Phase 1 (payment = redemption) chalta rehta hai | Poora plan **C4** me — ek switch nahi, saat jude hue badlaav |
+| 5 | **SUB_VENDOR ka daayra** | Outlet manager apne outlet ke vouchers/claims/timings dekhe | Login aur 31 endpoints aaj bhi kaam karte hain; baaki par `403` | `resolveActorBrand` ko sub-vendor scope dena — **16 files** use karti hain, blast radius bada |
+
+## C4. Phase 2 — outlet scan redemption ka poora plan
+
+> **Status:** 🔴 Sirf plan. Koi code nahi likha gaya. Approval ke baad hi shuru
+> hoga.
+
+Aaj Phase 1 hai: payment hi redemption hai. Phase 2 use do kadam me todta hai —
+customer pay karta hai (`PAID`), phir counter par code scan hota hai
+(`REDEEMED`). Sunne me ek flag ka kaam lagta hai. **Hai nahi** — kyunki beech me
+ek nayi avastha khul jaati hai jo aaj exist hi nahi karti: *paisa liya ja chuka
+hai, par voucher abhi tak use nahi hua*.
+
+Us ek avastha se saara kaam nikalta hai.
+
+### C4.0 ⚠️ Pehle ek product faisla — code se pehle
+
+**Customer ne pay kar diya aur window ke andar kabhi scan nahi karaya. Paisa
+kiska?**
+
+| Option | Kya hota hai | Kya sochna padega |
+|---|---|---|
+| **A — Auto refund** | Window band, paisa wapas | Vendor ko settle ho chuka hoga to wapas lena padega — `taintSettlement` ka raasta |
+| **B — Vendor rakhta hai** | Voucher zaya, paisa vendor ka | Customer ko *pehle* saaf batana padega, warna dispute banega |
+| **C — Platform rakhta hai** | Zaya paisa platform ka | Sabse aasan, par sabse mushkil samjhaana |
+
+**Ye teeno alag settlement code maangte hain.** Isliye ye pehla kadam hai — is
+jawab ke bina C4.5 aur C4.6 likhe hi nahi ja sakte.
+
+### C4.1 Jo pehle se bana hua hai ✅
+
+Phase 2 ke liye scaffolding pehle se padi hai — ye **naya nahi likhna**:
+
+| Kya | Kahan |
+|---|---|
+| `PAID`, `EXPIRED` statuses | `constants/voucherClaim.js:12-21` |
+| `CLAIM_REDEMPTION_MODE.OUTLET_SCAN` | `constants/voucherClaim.js:56` |
+| `CLAIM_HISTORY_ACTION.REDEEMED` / `EXPIRED` | `constants/voucherClaim.js:64-66` |
+| `expiresAt`, `redeemedBy` fields | `models/VoucherClaim.js:100-102` |
+| `{status, expiresAt}` index | `models/VoucherClaim.js:202` |
+| `redemptionWindowHours: 24` | `constants/customer.js:125` default; **`Setting.js:325` par asli setting hai**, `validator/settings.js:132` validate karta hai, aur `getCustomerConfig.js:91` ise customer config me **return** karta hai. Admin ise aaj hi badal sakta hai — bas koi uspar hisaab nahi karta |
+| `VOUCHER_CLAIM_EXPIRED` notification type | `constants/notification.js:150` |
+| `notifyClaimExpired({ claim })` | `voucherClaimNotices.js:223` — likha hua, production me wired nahi. `mailRender.test.js:435` iska template test karta hai, to render toota hua nahi hai |
+| **Redemption ledger — poora bana hua** | `VoucherUsage` har capture par likhi jaati hai (`settleVoucherClaimPayment.js:233-259`), refund par `applyRefundCompletion.js:336` use reverse karta hai, aur `buildClaimPreview.js:156` use padhta hai |
+| Once-per-user — **do parat** | `VoucherClaim` par `{voucherId, customerId, offerId}` + `holdsUsageSlot:true`, aur `VoucherUsage` par wahi keys + `{isOncePerUser:true, isReversed:false}` (`VoucherUsage.js:154`) |
+| Slot conflict ka handling | `settleVoucherClaimPayment.js:253-268` — duplicate par usage bina slot ke likhti hai, `slotConflict: true` flag karti hai aur admin ko batati hai. Paisa liya ja chuka hai, to ye business conflict hai, technical failure nahi |
+| Guessable-proof claim code | `generateClaimCode.js:20` — `crypto.randomInt`, look-alike letters hataye hue |
+| Outlet ka access narrowing | `assertTransactionAccess.js:133` — pehle se sahi |
+| Code se claim padhna | `GET /voucher-claims/code/:claimCode` — read-half already live |
+
+> ⚠️ Isliye Phase 2 me *ledger* nahi banana — wo bana hua hai aur chal raha hai.
+> Banana sirf **do-kadam wali state machine** hai: capture ko `PAID` par rokna,
+> scan par aage badhana, aur na-scan hone par band karna.
+
+### C4.1a Kya ye adhoora scaffolding aaj **error deta hai**? ❌ Nahi
+
+2026-09-06 ko naapa gaya:
+
+| Gate | Natija |
+|---|---|
+| `npm test` | 59 suites · **1256 pass · 0 fail** |
+| `scripts/verifyApiCoverage.js` | 219/219 |
+| `scripts/verifySchemaRelationships.js` | 53 models · 194 paths · 0 tooti hui ref |
+
+Ek-ek tukda:
+
+| Tukda | Aaj kya hota hai | Error? |
+|---|---|---|
+| `PAID` status | Kabhi likha nahi jaata; `REFUNDABLE_CLAIM_STATUSES` me ek extra entry bhar hai | ❌ |
+| `EXPIRED` status | Koi producer nahi. `customerStats.js:140` ka `expiredClaims` **hamesha 0** dikhega — galat nahi, bas hamesha 0 | ❌ |
+| `expiresAt` | Kabhi set nahi. `{status, expiresAt}` index non-unique hai, missing field null index karta hai | ❌ (bas ek dead index ki write cost) |
+| `redeemedBy` | Sirf declare hai — **koi padhta ya populate nahi karta** | ❌ |
+| `redemptionWindowHours` | Admin badal sakta hai, config me dikhta hai, **par koi uspar hisaab nahi karta** | ❌ — par badalna bekaar hai, aur wo confuse kar sakta hai |
+| `notifyClaimExpired` | Production me call nahi hota; template test pass hai | ❌ |
+| `isSubVendor`, `isBrandSideOrAdmin` | Dead exports | ❌ |
+
+### C4.1b ✅ Ek risk tha — ab band hai
+
+Pehle yahan ek asli khatra tha: `redemptionMode` ka enum `OUTLET_SCAN` allow
+karta tha, aur `createVoucherClaimOrder` me `AUTO` **hardcoded** tha. Agar wo
+value kisi bhi tarah kisi claim par pahunch jaati — seedha DB edit, naya seeder,
+ya aage chal kar galti se — to claim capture hoti, `PAID` par ruk jaati, aage
+badhane ka endpoint na hota, band karne ka sweep na hota. **Paisa liya ja chuka,
+claim hamesha ke liye atki — aur chup-chaap**, kyunki na koi exception uthta na
+koi test girta.
+
+Ab teen parat hain:
+
+| Parat | Kahan | Kya karti hai |
+|---|---|---|
+| **Ek jagah sach** | `constants/voucherClaim.js` — `DEFAULT_REDEMPTION_MODE` + `IMPLEMENTED_REDEMPTION_MODES` | Hardcode hata. Enum kehta hai kaun se mode ka *naam* hai; ye list kehti hai kaun se ke peeche **chalta hua code** hai. Aaj sirf `AUTO` |
+| **Paise se pehle mana** | `createVoucherClaimOrder` ka pehla statement | Default aisa mode ho jiske peeche code na ho, to `503` — koi claim banti hi nahi. Pricing aur gateway order se **pehle**, kyunki refuse karna muft hai aur capture karke atkana nahi |
+| **Paise ke baad shor** | `settleVoucherClaimPayment` | Yahan mana nahi kar sakte — paisa ja chuka. To `PAID` par parking hoti hai **aur admin ko `CRITICAL` alert** jaata hai, `dedupeKey` ke saath taaki retry se spam na ho |
+
+⚠️ Settle wala hissa jaan-boojh kar claim ko `REDEEMED` **nahi** likh deta. Scan
+flow asli hone ke baad wo vendor ko us voucher ka paisa de deta jo kabhi redeem
+hi nahi hua — aur atki hui claim se ulta, wo haath se ulta nahi kiya ja sakta.
+Atki hui claim refund ho sakti hai: `PAID` `REFUNDABLE_CLAIM_STATUSES` me hai.
+
+⚠️ **Aur wahi baat jo pehle bhi thi:** `OUTLET_SCAN` ko
+`IMPLEMENTED_REDEMPTION_MODES` me daalna **C4.4 aur C4.5 ke usi commit me** hona
+chahiye, unse pehle kabhi nahi. Test `"creates claims in a mode this build can
+carry to REDEEMED"` isi ko pakadta hai.
+
+### C4.2 Switch — `AUTO` se `OUTLET_SCAN`
+
+Hardcode ja chuka (C4.1b). Ab do constants hain — `DEFAULT_REDEMPTION_MODE` aur
+`IMPLEMENTED_REDEMPTION_MODES` — to Phase 2 ka switch **do line ka badlaav** hai,
+ek code hunt nahi:
+
+```js
+// constants/voucherClaim.js — dono ek saath, ek hi commit me
+const IMPLEMENTED_REDEMPTION_MODES = Object.freeze([AUTO, OUTLET_SCAN]);
+const DEFAULT_REDEMPTION_MODE = CLAIM_REDEMPTION_MODE.OUTLET_SCAN;
+```
+
+⚠️ Par ye **tabhi** jab C4.4 (redeem endpoint) aur C4.5 (sweep) ban chuke hon.
+Test `"creates claims in a mode this build can carry to REDEEMED"` pehle
+badalne par red ho jaayega — wo test badalna galat jawab hai.
+
+⚠️ **Aage chal kar per-brand chahiye hoga, platform-wide nahi.** Ek hi platform
+par kirana (scan chahiye) aur salon (appointment, scan bemaani) dono honge. Us
+waqt constant se nikal kar brand-level setting banegi — aur tab
+`isImplementedRedemptionMode` ka check us setting ke **write path** par bhi
+lagana padega, sirf claim banate waqt nahi.
+
+⚠️ **`redemptionMode` claim par freeze hota hai** — jo claims Phase 1 me bane
+hain wo `AUTO` hi rahenge aur `REDEEMED` hi rahenge. **Koi migration nahi.**
+Yahi wajah hai ki `settleVoucherClaimPayment.js:312` claim ka apna
+`redemptionMode` padhta hai, global setting nahi. Ye pehle se sahi likha hai —
+todna nahi.
+
+### C4.3 `expiresAt` capture par likhna
+
+Aaj kabhi set nahi hota. `OUTLET_SCAN` par capture ke waqt
+`paidAt + redemptionWindowHours` likhna padega.
+
+⚠️ Window **capture se** naapo, claim banne se nahi — customer PENDING me kitni
+der raha wo uski window nahi khaani chahiye.
+
+### C4.4 Redeem endpoint — likhne wala aadha
+
+`PATCH /voucher-claims/:claimId/redeem` · gate `isVendorOrSubVendor`
+
+| Zaroorat | Kyun |
+|---|---|
+| **Conditional update** `{_id, status: PAID}` | Do baar scan karna do baar redeem na kare — read-then-write yahan race hai |
+| Sirf `PAID → REDEEMED` | `EXPIRED` ya `REFUNDED` claim scan par 409 mile, chup-chaap na khule |
+| `redeemedAt` + `redeemedBy` | `redeemedBy` outlet ka user id — kaun sa counter, kis ne |
+| `assertClaimAccess` se guzre | Outlet narrowing already likhi hai, dobara mat likho |
+| `CLAIM_HISTORY_ACTION.REDEEMED` audit row | History append-only hai; scan ka nishaan chahiye |
+| Idempotent jawab | Pehle se `REDEEMED` hai to wahi claim wapas do, error nahi — counter par staff dobara tap karega |
+
+### C4.5 EXPIRED sweep job — sabse aasani se bhoolne wala hissa
+
+**Aaj `EXPIRED` ko koi likhta hi nahi.** `OUTLET_SCAN` chaalu karte hi
+paid-but-never-scanned claims hamesha `PAID` me latke rahenge — matlab customer
+ka paisa gaya, voucher use nahi hua, aur system kabhi maanega hi nahi ki window
+band ho gayi.
+
+`jobs/index.js` me naya job chahiye — `JobLock` ke saath, warna do instance ek hi
+claim ko do baar expire karenge.
+
+⚠️ `EXPIRED` `CLAIM_SLOT_RELEASING_STATUSES` me hai
+(`constants/voucherClaim.js:40-45`), to expire karte waqt **`holdsUsageSlot`
+false karna hi padega** — warna customer ka once-per-user slot hamesha ke liye
+phansa rahega aur wo dobara claim nahi kar payega.
+
+Job ko `notifyClaimExpired` bhi bulana hai — wo function bana hua hai.
+
+### C4.6 ⚠️ Refund window ka clock badalna padega
+
+Aaj refund window payment se naapi jaati hai. Phase 2 me wo **galat** ho jaayegi:
+
+```
+Phase 1:  pay ─────────────────────► refund window band
+Phase 2:  pay ──── 24h window ──── scan ─────► refund window yahan se shuru
+                                                honi chahiye
+```
+
+Agar clock payment par hi raha, to jo customer 23ve ghante me scan karayega
+uski refund window **scan se pehle hi** band ho chuki hogi. Usne kharab khana
+liya aur refund maang hi nahi sakta.
+
+### C4.7 ⚠️ Golden rule dobara nikalna padega
+
+```
+settlementDelayHours >= windowHours + vendorApprovalHours + adminBufferHours
+```
+
+`assertSettlementTimingRule.js:46-52` ye aaj enforce karta hai. Phase 2 me
+refund ka raasta **`redemptionWindowHours` jitna lamba** ho jaata hai, kyunki
+refund scan ke baad shuru hota hai aur scan 24 ghante baad tak ho sakta hai:
+
+```
+refundPathHours = redemptionWindowHours + windowHours
+                  + vendorApprovalHours + adminBufferHours
+```
+
+⚠️ Ye badle bina T+2 settlement us refund se **pehle** paisa bhej dega jo abhi
+aana baaki hai. Wahi wo halat hai jise ye rule rokne ke liye likha gaya tha.
+
+### C4.8 Settlement me unredeemed claim nahi jaani chahiye
+
+Aaj settlement eligibility claim status par gate karti hi nahi — transactions se
+chalti hai, aur Phase 1 me har paid claim redeemed hai, isliye theek hai. Phase
+2 me wo dhaarna toot jaati hai: `PAID`-par-`REDEEMED`-nahi claim settlement me
+chali jaayegi aur **vendor ko us voucher ka paisa mil jaayega jo kabhi use hi
+nahi hua**.
+
+Iska sahi jawab C4.0 ke faisle par tika hai.
+
+### C4.9 Docs, Postman aur tests
+
+`scripts/verifyApiCoverage.js` naya endpoint bina row ke commit nahi hone dega:
+
+- `endpoints_category.md` me category row
+- `vendor_panel_api_doc.md` me section (request + saara enum)
+- `trydood-vendor` collection me request + **saved example**
+- Seeder ko ek `PAID` claim banana padega jise collection scan kar sake
+
+Money suite me kam se kam: double-scan idempotency, `EXPIRED` claim ka scan,
+sweep job ka slot release, aur golden rule ka naya hisaab.
+
+### C4.10 Kaam ka kram
+
+```
+C4.0  product faisla          ← iske bina baaki likha hi nahi ja sakta
+  │
+  ├─ C4.2  per-brand switch
+  ├─ C4.3  expiresAt likhna
+  ├─ C4.4  redeem endpoint
+  ├─ C4.5  sweep job + slot release + notification
+  │
+  ├─ C4.6  refund clock            ┐
+  ├─ C4.7  golden rule ka hisaab   ├─ teeno ek saath, ek hi money change hai
+  ├─ C4.8  settlement eligibility  ┘
+  │
+  └─ C4.9  docs + postman + tests
+```
+
+⚠️ C4.6/4.7/4.8 alag-alag nahi ja sakte. Teeno ek hi baat ke teen chehre hain —
+"paisa kab pakka hota hai". Ek badla aur doosra na badla, to settlement aur
+refund ek doosre se aage-peeche ho jaayenge, aur uska lakshan hai **paisa chup-chaap
+galat jagah ruk jaana**.
+
+## C3. ✅ Do solve ho gaye, ek bacha
+
+Ye teeno "bug" nahi the — ye wo cheezein thin jo ek **committed collection** kar
+nahi sakti. Do ka ab asli coverage hai, teesra jaan-boojh kar waisa hi hai.
+
+### ✅ #6 — Banner aur ticker upload · ab jest me tested
+
+**Kya tha:** dono creates ko file chahiye, aur repo me koi binary fixture nahi.
+Dono ka saved example `422` tha — jo sirf ye sabit karta hai ki validator zinda
+hai, upload ke baare me kuch nahi.
+
+**Kyun fixture nahi daali:** uploads asli Cloudinary account me `folder: "Images"`
+jaate hain. Har capture run par ek asli upload hota, aur wo 1×1 PNG jama hote
+rehte — jinhe kabhi koi delete nahi karta.
+
+**Ab:** `__tests__/money/mediaUploadRollback.test.js` — **12 tests**, mocked
+uploader. Yahan wo cheezein test hoti hain jo ek captured `200` kabhi nahi
+karta:
+
+| Kya | Kyun maayne rakhta hai |
+|---|---|
+| `type` se field derive hona (IMAGE→`image`, VIDEO→`video`, GIF→`gif`) | Galat hone par banner ban jaata aur **blank render** hota |
+| VIDEO banner par image file → `422`, aur upload **attempt hi nahi** | Jo file reject honi hai uske liye Cloudinary ko paisa dena galat kram hai |
+| Overlap guard upload se **pehle** chalta hai | Wahi wajah |
+| Insert fail hone par uploaded media **delete** ho | Warna asset Cloudinary me hamesha rehta, jise koi reference nahi karta aur koi dhoondh nahi sakta |
+| Rollback asli error ko **nigal na le** | Warna `422 "Title is required"` ki jagah rollback ka error dikhta |
+| Insert safal hone par kuch delete **na** ho | — |
+
+⚠️ **Mutation-tested.** `deleteBannerMedia` wali line hata kar chalaya — test
+fail hua, phir file restore ki. Ek test jo bug hataane par bhi pass ho jaaye,
+na hone se bura hai.
+
+⚠️ Ek asli farq bhi pakda gaya: banner khud file ki jaanch karta hai, ticker
+`files?.icon` seedha uploader ko de deta hai. Do endpoint jo ek jaise dikhte
+hain, alag behave karte hain — ab wo assert hai, taaki badle to jaan-boojh kar
+badle.
+
+### ✅ #8 — Email verify ka success · ab asli capture hai
+
+**Kya tha:** code asli inbox me jaata hai, collection mail padh nahi sakti.
+Saved example `401` tha.
+
+**Kaise solve kiya — aur kaise nahi kiya:** server me **koi test mode nahi**
+daala. Koi `if (isTest)`, koi magic OTP jise server accept kare — kuch nahi.
+
+Uske bajaye **seeder ek asli `Otp` row likhta hai**, usi
+`hashOtp(code, target, purpose)` se jo production likhta hai. Collection wahi
+code bhejti hai aur `verifyOtp` **bilkul badla hua nahi** chalta: wahi hash
+compare, wahi attempt counter, wahi consume-on-success.
+
+⚠️ **Ye farq zaroori hai.** Ek flag daalna — *"test me `000000` chalega"* —
+theek wahi shape hai jisse is repo ka WhatsApp OTP bypass shuru hua tha. Jo
+branch production me pahunch sakti hai wo gap hai, chahe kaise bhi guard karo —
+aur `NODE_ENV` yahan guard karta hi nahi (dev machine ke kuch shells me wo
+`production` set hai). Is design me production me **naya code path exist hi
+nahi karta**, to exploit karne ko kuch nahi hai.
+
+Do baatein jo isse chalane layak banati hain:
+
+- **Har collection ka apna address** (`verify.customer.…`, `verify.vendor.…`,
+  `verify.admin.…`). Ek shared address se pehli collection code consume kar
+  leti thi aur baaki do ko `401` milta tha — jo toote endpoint jaisa padha
+  jaata hai, khaayi hui fixture jaisa nahi.
+- **Admin ke liye restore.** Admin **email se login** karta hai, to badla hua
+  address agle run ka login tod deta — aur failure folder `00` par dikhti,
+  us request par nahi jisne address hilaya. Wahi jo `Set Password` ne kiya tha.
+  Uske liye seeder **doosri** row likhta hai, kyunki pehla verify pehli wali
+  consume kar chuka hota hai.
+
+### ⚠️ #7 — Razorpay webhooks · jaan-boojh kar waise hi
+
+`POST /transactions/webhook/razorpay` aur `/customer` ka signature raw body par
+HMAC hai. Collection use bana sakti hai — **par tabhi jab webhook secret ek
+committed env file me ho**, yaani repo me credential, sirf ek green tick ke
+liye. Wo galat sauda hai.
+
+**Aur iski zarurat bhi nahi:** `__tests__/money/webhook.test.js` isko **14
+tests** se cover karta hai aur asli HMAC banata hai:
+
+```js
+crypto.createHmac("sha256", secret).update(rawBody).digest("hex")
+```
+
+To signature verification, replay, aur out-of-order events sab tested hain.
+Collection ka `400` **documentation** hai, gap nahi.
+
+⚠️ Par ek baat: naya webhook event type add karne par **jest test likhna
+padega** — collection use nahi pakdegi. Aur naya webhook path `index.js` ke
+`WEBHOOK_PATHS` me daalna na bhoolein, warna wo rate limiter ke peeche chala
+jaayega — jiska symptom hai **paisa chup-chaap rukna**, kyunki `429` par
+Razorpay kuch der retry karke chhod deta hai.
+
+**Agar kabhi chahiye ho:** pre-request script jo `pm.environment` se secret le,
+aur wo value **CI se inject** ho — repo me kabhi nahi.
+
 
 ---
 

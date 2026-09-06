@@ -1,5 +1,3 @@
-const Customer = require("../../models/Customer");
-const Location = require("../../models/Location");
 const SubBrand = require("../../models/SubBrand");
 const { throwError, pagination } = require("../../utils");
 const {
@@ -7,6 +5,7 @@ const {
   mapCustomerVoucherListItem,
 } = require("../../helpers/vouchers");
 const { getVoucherConfig } = require("../../helpers/settings");
+const { resolveCustomerCoordinates } = require("../../helpers/customers");
 
 /**
  * Half the Earth's circumference in metres — larger than any real distance
@@ -17,63 +16,19 @@ const EARTH_MAX_DISTANCE_METERS = 20_037_508;
 
 exports.getCustomerVouchers = async (userId, query) => {
   /**
-   * Optional context, not identity.
+   * Explicit coordinates, else the signed-in customer's saved address.
    *
-   * The feed is open to guests, so there may be no `userId` at all — and a
-   * signed-in vendor or admin previewing the app has no Customer row either.
-   * The record is only ever used for the saved-location fallback below, so a
-   * missing one is not an error: it just means coordinates have to be explicit.
-   *
-   * This used to `throwError(404, "Customer not found.")` on a missing record,
-   * which turned "you didn't tell me where you are" into "who are you?" — and
-   * once the route became public it fired for every caller, signed in or not.
+   * `required: true` — this listing *is* a nearest-first feed, so with no point
+   * there is nothing honest to return. The global search shares this resolver
+   * with `required: false`, because it still has brands and categories to
+   * answer with. Same lookup, same messages, one definition.
    */
-  const customer = userId
-    ? await Customer.findOne({
-        userId,
-        isActive: true,
-        isDeleted: false,
-      }).select("_id locationId")
-    : null;
-
-  let latitude = query.latitude;
-  let longitude = query.longitude;
-
-  /**
-   * If coordinates aren't supplied,
-   * fallback to customer's saved location.
-   */
-
-  if (latitude === undefined || longitude === undefined) {
-    if (!customer?.locationId) {
-      throwError(
-        400,
-        "Location is required. Send latitude and longitude, or save an address first.",
-      );
-    }
-
-    const location = await Location.findOne({
-      _id: customer.locationId,
-
-      isActive: true,
-
-      isDeleted: false,
-    }).select("geo");
-
-    if (
-      !location ||
-      !location.geo ||
-      !Array.isArray(location.geo.coordinates)
-    ) {
-      throwError(400, "Customer location coordinates not found.");
-    }
-
-    [longitude, latitude] = location.geo.coordinates;
-  }
-
-  latitude = Number(latitude);
-
-  longitude = Number(longitude);
+  const { latitude, longitude } = await resolveCustomerCoordinates({
+    userId,
+    latitude: query.latitude,
+    longitude: query.longitude,
+    required: true,
+  });
 
   /**
    * -----------------------------------------

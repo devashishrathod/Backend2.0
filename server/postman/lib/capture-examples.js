@@ -192,10 +192,49 @@ newman.run(
       } catch {
         parsed = null;
       }
-      if (parsed === null) continue; // non-JSON (none expected) — skip rather than guess
+
+      /**
+       * A non-JSON answer is still an answer.
+       *
+       * ⚠️ This used to `continue`, on the reasoning that every endpoint returns
+       * the JSON envelope. One does not: `GET /documents/:token`
+       * answers **302** with a `Location`, and Express writes a short HTML body
+       * with it. So that request was silently the only one in the collection
+       * with no saved example — and silence is the whole problem, because the
+       * summary line still said every request was covered.
+       *
+       * The body is capped: a redirect that was followed would otherwise drop a
+       * whole PDF into the collection. Requests whose answer *is* the redirect
+       * set `followRedirects: false`, so what lands here is the 302 itself.
+       */
+      const example =
+        parsed === null
+          ? {
+              name: `${rec.code} — ${rec.status}`,
+              originalRequest: rec.originalRequest,
+              status: rec.status,
+              code: rec.code,
+              _postman_previewlanguage: "text",
+              header: [
+                ...(rec.location
+                  ? [{ key: "Location", value: rec.location }]
+                  : []),
+              ],
+              cookie: [],
+              body: String(rec.bodyText || "").slice(0, 2000),
+            }
+          : null;
+
+      if (example) {
+        if (!byRequest.has(rec.itemId)) byRequest.set(rec.itemId, []);
+        byRequest.get(rec.itemId).push(example);
+        if (!byEndpoint.has(rec.endpoint)) byEndpoint.set(rec.endpoint, []);
+        byEndpoint.get(rec.endpoint).push({ label: rec.itemName, example });
+        continue;
+      }
 
       const clean = sanitize(parsed, placeholders);
-      const example = {
+      const jsonExample = {
         name: exampleName(rec.code, clean),
         originalRequest: rec.originalRequest,
         status: rec.status,
@@ -207,10 +246,10 @@ newman.run(
       };
 
       if (!byRequest.has(rec.itemId)) byRequest.set(rec.itemId, []);
-      byRequest.get(rec.itemId).push(example);
+      byRequest.get(rec.itemId).push(jsonExample);
 
       if (!byEndpoint.has(rec.endpoint)) byEndpoint.set(rec.endpoint, []);
-      byEndpoint.get(rec.endpoint).push({ label: rec.itemName, example });
+      byEndpoint.get(rec.endpoint).push({ label: rec.itemName, example: jsonExample });
     }
 
     // ── write back ─────────────────────────────────────────────────────
@@ -294,6 +333,16 @@ newman.run(
     bodyText: args.response.stream
       ? Buffer.from(args.response.stream).toString("utf8")
       : "",
+    /**
+     * Kept only for the redirect case, where it **is** the response: the
+     * invoice and payout-statement links answer 302 and the target URL is the
+     * entire payload. A body-only example of those documents nothing.
+     */
+    location:
+      (args.response.headers &&
+        typeof args.response.headers.get === "function" &&
+        args.response.headers.get("Location")) ||
+      null,
     // Postman renders the example against the request that produced it, so it
     // has to be a snapshot rather than a reference to the live one.
     originalRequest: {

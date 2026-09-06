@@ -6,9 +6,9 @@
 **Framework:** Express.js (Node.js, CommonJS)
 **Database:** MongoDB (Mongoose ODM)
 **Scope:** Vendor / brand panel ke **81 endpoints**
-**Last verified:** 2026-08-27 against current code · Source: `server2.0` scan (149 total endpoints, categorization → [endpoints_category.md](./endpoints_category.md))
+**Last verified:** live run against current code · Platform ke **216 routes** me se vendor-category ke ([endpoints_category.md](./endpoints_category.md))
 
-> ✅ **v1.2.0 se ye doc live API ke against verify ho chuka hai** — sirf code padhkar nahi likha gaya. Saare 78 endpoints ek chalte hue server pe seeded fixtures ke saath run kiye gaye: **101 requests, 234 assertions, sab pass.** Collection: [`postman/trydood-vendor.postman_collection.json`](../postman/trydood-vendor.postman_collection.json)
+> ✅ **v1.2.0 se ye doc live API ke against verify ho chuka hai** — sirf code padhkar nahi likha gaya. Har endpoint ek chalte hue server pe seeded fixtures ke saath run kiya gaya: **125 requests, 292 assertions, 0 failed, aur 125/125 par live-captured example.** Voucher Claims, Refunds aur Settlements pehli baar is run me chale — pehle wo teen folders generator me the hi nahi. Collection: [`postman/trydood-vendor.postman_collection.json`](../postman/trydood-vendor.postman_collection.json)
 >
 > Jahan behaviour buggy ya adhoora hai, wahan ⚠️ (ya 🔴, agar wo cheez tod deti hai) marker hai.
 
@@ -89,14 +89,14 @@ Ye **re-verification round** tha — har endpoint ka gate code se dobara nikala 
 
 ## Overview
 
-Vendor panel 18 functional areas cover karta hai:
+Vendor panel 22 functional areas cover karta hai:
 
 | # | Area | Endpoints | Kya karta hai |
 |---|---|---:|---|
 | 1 | Auth | 10 | WhatsApp/Email/Mobile OTP login + password set/forgot/reset + logout |
 | 2 | User Profile | 3 | Profile fetch, update, delete |
 | 3 | Push Notifications | 4 | Device register/unregister, my devices, test |
-| 4 | Notification Feed | 2 | In-app notifications + mark read |
+| 4 | Notification Feed | 4 | In-app notifications, mark read, aur email/push/WhatsApp toggles ([#19a](#19a-get-notificationspreferences-), [#19b](#19b-put-notificationspreferences-)) |
 | 5 | Onboarding | 8 | Business details → PAN → GST → Bank → system verify → partnership → acknowledge |
 | 6 | KYC Verification | 3 | Live PAN / GST / Bank verification (CGPey) |
 | 7 | Brand | 3 | Brand detail, update, verification history |
@@ -111,6 +111,10 @@ Vendor panel 18 functional areas cover karta hai:
 | 16 | Payments | 4 | Checkout preview, order, verify, invoice |
 | 17 | Master Data | 4 | Categories + sub-categories |
 | 18 | Legal | 4 | Terms & Conditions, Privacy Policy |
+| 19 | Voucher Claims | 5 | Read-only — claims, payments, aur counter par code verify ([#82](#82-get-voucher-claims--mere-brand-ki-claims)–[#86](#86-get-voucher-claimscodeclaimcode--counter-par)) |
+| 20 | Refunds | 4 | Worklist, approve, reject, detail ([#87](#87-get-refunds--mere-brand-ki-refunds)–[#90](#90-get-refundsrequestid--ek-refund)) |
+| 21 | Settlements | 3 | Payouts, legs, statement lines ([#91](#91-get-settlements--mere-payouts)–[#93](#93-get-settlementssettlementidtransactions--statement-lines)) |
+| 22 | Email Verification | 2 | 🆕 Address confirm ya change ([#19c](#19c-post-authemailsend-verification-), [#19d](#19d-post-authemailverify-)) — har role ke liye ek hi flow |
 
 **Important architecture notes:**
 
@@ -472,7 +476,12 @@ Saare enum values **UPPERCASE** hain (payment gateway values ke alawa).
 
 ### VOUCHER_USAGE_TYPE
 `ONCE_PER_USER` · `MULTIPLE`
-> ⚠️ Enforcement abhi implement nahi hai — redemption tracking hi nahi hai
+> ✅ **Database enforce karta hai** — `VoucherClaim` par `{voucherId, customerId, offerId}`
+> ka unique partial index (`partialFilterExpression: {holdsUsageSlot: true}`,
+> [VoucherClaim.js:165](../models/VoucherClaim.js#L165)). Slot **per offer** hai:
+> customer ne 20%-off liya to free-dessert offer abhi bhi khula hai. Claim fail,
+> cancel ya refund ho to `holdsUsageSlot: false` ho jaata hai — slot chhoot jaata
+> hai, row rehti hai.
 
 ### DISCOUNT_APPLICABLE_ON
 `SUBTOTAL` *(default)* · `FINAL_BILL`
@@ -1287,6 +1296,185 @@ GET /notifications/get-all?isRead=false&limit=20
 
 ### ⚠️ Note
 Response ka `unreadCount` fresh hai — badge directly update kar sakte hain.
+
+---
+
+## 19a. GET /notifications/preferences 🆕
+
+**Access:** ⚪ **Har role** — Vendor, Sub-vendor, Customer, Admin
+
+Teen channel — email, push, WhatsApp — **ek doosre se independent**. Id token se
+aati hai, to ye endpoint kisi aur ko address nahi kar sakta.
+
+### Success — `200`
+```jsonc
+{
+  "success": true,
+  "message": "Notification preferences fetched successfully",
+  "data": {
+    "userId": "68f1a2b3c4d5e6f7a8b9c001",
+    "role": "VENDOR",
+    "audience": "VENDOR",
+    "channels": {
+      "email":    { "preference": true,  "effective": true,  "blockedBy": null },
+      "push":     { "preference": true,  "effective": true,  "blockedBy": null },
+      "whatsapp": { "preference": true,  "effective": false, "blockedBy": "PLATFORM" }
+    },
+    "updatedBy": null,
+    "updatedAt": null
+  }
+}
+```
+
+### ⚠️ `preference` alag hai, `effective` alag
+
+`preference` = vendor ne kya chuna. `effective` = abhi actually kuch jaata hai ya
+nahi. Ek platform-wide switch vendor ke choice ko rok sakta hai, aur us haalat me
+sirf `preference: true` dikhana panel ka jhooth bolna hota.
+
+Aaj **WhatsApp platform-wide off hai** (Meta template pending), to
+`blockedBy: "PLATFORM"` normal case hai. `blockedBy`: `null` · `"PREFERENCE"` ·
+`"PLATFORM"`.
+
+### ⚠️ Sub-vendor ka toggle apna alag hai
+
+Brand ke notifications brand ke **owner** ko jaate hain. Outlet manager alag
+`User` hai apni toggles ke saath. Owner ki band karne se counter par baitha banda
+chup nahi hota.
+
+### ⚠️ In-app feed in teen me nahi hai
+
+Notification **row hamesha** likhi jaati hai — ye toggles sirf bahar jaane wali
+delivery tay karte hain.
+
+## 19b. PUT /notifications/preferences 🆕
+
+**Access:** ⚪ Har role — apni hi.
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `email` | boolean | ⚠️ | |
+| `push` | boolean | ⚠️ | |
+| `whatsapp` | boolean | ⚠️ | |
+
+⚠️ **Kam se kam ek** chahiye. **Partial hai** — sirf jo bheja wahi badalta hai.
+Poora object bhejne se paanch minute purani screen doosre device ka change palat
+degi.
+
+```json
+{ "whatsapp": false }
+```
+
+### Errors
+| Status | Message |
+|---|---|
+| `422` | `Send at least one of email, push or whatsapp to change.` |
+
+### ⚠️ Chhe notifications band nahi hoti
+
+Wo jinme chup rehna padhne wale ka hi nuksaan hai — jaise `BRAND_DEACTIVATED`,
+jismein vendor sign in hi nahi kar sakta, to in-app row uski pahunch se bahar hai
+aur email/WhatsApp hi ek raasta bachta hai. Poori list aur rule:
+[`docs/notification_preferences.md`](./notification_preferences.md).
+
+⚠️ **OTP ismein nahi aata** — koi apne hi login code ko silence na kar paye.
+
+---
+
+## 19c. POST /auth/email/send-verification 🆕
+
+**Access:** 🔒 `verifyJwtToken` — **har role**: vendor, outlet manager, customer, admin. Koi role gate nahi.
+
+`User.isEmailVerified` sabke paas tha aur **koi bhi use set nahi kar sakta tha**. Email edit karne par flag `false` ho jaata tha aur wapas `true` karne ka koi endpoint hi nahi tha — badge sirf ek taraf ja sakta tha. Yahi wo gap hai jo *"Known Gaps #5"* me likha tha.
+
+### Verify aur change ek hi jodi hai
+
+`email` **dono call par optional** hai:
+
+| Bheja | Kya hota hai |
+|---|---|
+| kuch nahi | Account par jo address hai wahi confirm hota hai |
+| naya address | Us par switch — par **verify hone tak account nahi badalta** |
+
+Do alag endpoints ka matlab hota client pehle decide kare ki address badla hai ya nahi — aur wo faisla server ke paas pehle se hai.
+
+```jsonc
+{ }                                  // account ka apna email confirm karo
+{ "email": "billing@cafemocha.in" }  // is address par switch karo
+```
+
+### Response — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "We have sent a code to bi***g@cafemocha.in.",
+  "data": {
+    "sentTo": "bi***g@cafemocha.in",   // ⚠️ hamesha masked
+    "isChange": true                    // true = address badla ja raha hai
+  }
+}
+```
+
+> ### ⚠️ Code hamesha **naye** address par jaata hai
+>
+> Purane mailbox par code bhejna sirf ye sabit karta hai ki insaan purana mailbox padh leta hai. Sawal wo hai hi nahi — sawal ye hai ki naya address unka hai ya nahi.
+
+⚠️ **`sentTo` masked hai** kyunki ye endpoint chori hui session se bhi chal sakta hai, aur poora address us haath me nayi jaankari hoti.
+
+⚠️ **Uniqueness `{ email, role }` par hai.** Ek hi address ka VENDOR aur CUSTOMER account rakhna supported hai — vendor apne hi platform par khareedari kar sakta hai. Collision sirf **usi role** ke andar hai.
+
+### Throttle
+
+`sendOtp` ke andar — **60 second gap, 5 per hour**, **target address** par keyed, IP par nahi. Route par rakhna matlab agla OTP endpoint bina protection ke chala jaata, aur bhoolne par **koi error hi nahi aata** — bas ek khula endpoint jo har request par paisa kharch karta hai.
+
+| Code | Kab |
+|---|---|
+| `200` | Code chala gaya |
+| `409` | Ye address pehle se verified hai (aur badla bhi nahi ja raha) |
+| `409` | Wo address kisi aur ke **usi role** ke account par hai |
+| `422` | Account par email hai hi nahi, aur aapne bheja bhi nahi |
+| `429` | Throttle — 60s ke andar dobara, ya ghante me chhathi baar |
+
+---
+
+## 19d. POST /auth/email/verify 🆕
+
+**Access:** 🔒 `verifyJwtToken` — har role.
+
+```jsonc
+{ "otp": "482913" }                                        // apna address confirm
+{ "otp": "482913", "email": "billing@cafemocha.in" }       // switch confirm
+```
+
+### Response — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "Email address updated and verified.",
+  "data": { "email": "billing@cafemocha.in", "isEmailVerified": true, "wasChange": true }
+}
+```
+
+⚠️ **Address likhna aur verified mark karna ek hi save me** hota hai. Do step me karne par ek pal aisa banta jahan naya address padha hota aur `isEmailVerified: false` — theek wahi haalat jisse nikalne ka raasta ye feature de raha hai.
+
+⚠️ **Uniqueness yahan dobara check hoti hai.** Dono call ke beech minute nikalte hain, aur utni der me koi aur wo address le sakta hai. Sirf bhejte waqt check karna aapko ek verified duplicate de deta.
+
+⚠️ **`loginType` nahi badalta.** `verifyEmailOTP` use `EMAIL` karta hai kyunki wo ek sign-in hai; ye nahi — aapke paas pehle se token hai. Yahan badalna ek WhatsApp vendor ka record sirf isliye badal deta ki usne apna address confirm kiya.
+
+⚠️ **Code consume ho jaata hai** — wahi code dobara nahi chalega, warna ek purana code baad me address phir se badal sakta tha.
+
+| Code | Kab |
+|---|---|
+| `200` | Verified |
+| `401` | Code galat, expire, ya pehle se use ho chuka |
+| `403` | Attempts khatam — naya code maangna padega |
+| `409` | Wo address is beech me kisi aur ne le liya |
+| `422` | `otp` nahi bheja, ya email ka format galat |
+
+> ⚠️ **Iska success example Postman me capture nahi hua** — code ek asli inbox me jaata hai aur collection use padh nahi sakti. Saved example wahi refusal hai jo khaali code par aata hai; upar wala `200` shape code se likha gaya hai.
 
 ---
 
@@ -5382,14 +5570,20 @@ GET /categories/getAll?isActive=true&limit=50&sortBy=name&sortOrder=asc
         "description": "restaurants, cafes, and food outlets",
         "image": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/Images/food.jpg",
         "isActive": true,
-        "createdAt": "2026-05-10T08:00:00.000Z"
+        "createdAt": "2026-05-10T08:00:00.000Z",
+        "stats": {
+          "subCategories": { "total": 6, "active": 5 },
+          "brands":        { "total": 48, "active": 41 },
+          "vouchers":      { "total": 130, "active": 96 },
+          "promoCodes":    { "total": 3, "active": 2 }
+        }
       }
     ]
   }
 }
 ```
 
-**Projected fields only:** `_id`, `name`, `description`, `image`, `isActive`, `createdAt`
+**Projected fields only:** `_id`, `name`, `description`, `image`, `isActive`, `createdAt`, `stats`
 
 ### Errors
 | Status | Message |
@@ -5401,6 +5595,10 @@ GET /categories/getAll?isActive=true&limit=50&sortBy=name&sortOrder=asc
 **1. Default `limit` 10 hai** — onboarding dropdown ke liye badhayein (`limit=50`).
 **2. `isActive=true` bhejein.**
 **3. Names lowercase me aate hain** — display pe capitalize karein.
+
+**4. `stats` vendor panel ke liye nahi hai.** Ye endpoint teeno consumers share karte hain aur counts admin panel ke liye add hue the — onboarding ke category dropdown me inhe ignore karein. `stats.brands` platform-wide ginti hai, vendor ke apne brands ki nahi.
+
+Shape: `subCategories` / `brands` / `vouchers` / `promoCodes`, har ek me `{ total, active }`. Poori detail super admin doc ke `GET /categories/getAll` me hai.
 
 ---
 
@@ -5426,12 +5624,18 @@ GET /categories/getAll?isActive=true&limit=50&sortBy=name&sortOrder=asc
     "isActive": true,
     "isDeleted": false,
     "createdAt": "2026-05-10T08:00:00.000Z",
-    "updatedAt": "2026-05-10T08:00:00.000Z"
+    "updatedAt": "2026-05-10T08:00:00.000Z",
+    "stats": {
+      "subCategories": { "total": 6, "active": 5 },
+      "brands":        { "total": 48, "active": 41 },
+      "vouchers":      { "total": 130, "active": 96 },
+      "promoCodes":    { "total": 3, "active": 2 }
+    }
   }
 }
 ```
 
-> `getAll` ke mukable **poora document** aata hai.
+> `getAll` ke mukable **poora document** aata hai. `stats` wahi hai — [#74](#74-get-categoriesgetall) dekhein.
 
 ### Errors
 | Status | Message |
@@ -5476,12 +5680,17 @@ GET /subCategories/getAll?categoryId=68f1a2b3c4d5e6f7a8b9c0e1&isActive=true&limi
         "isActive": true,
         "isDeleted": false,
         "createdAt": "2026-05-10T09:00:00.000Z",
-        "updatedAt": "2026-05-10T09:00:00.000Z"
+        "updatedAt": "2026-05-10T09:00:00.000Z",
+        "stats": {
+          "brands":   { "total": 12, "active": 10 },
+          "vouchers": { "total": 34, "active": 28 }
+        }
       }
     ]
   }
 }
 ```
+> `stats` yahan sirf `brands` aur `vouchers` rakhta hai — `promoCodes` sirf category level pe hota hai. Vendor panel ke liye ye counts relevant nahi, [#74](#74-get-categoriesgetall) ka note dekhein.
 
 ### Errors
 | Status | Message | Kab |
@@ -5515,7 +5724,11 @@ Onboarding me brand ki category set karne ke liye `PUT /brands/update` (#32) pe 
     "description": "coffee shops and cafes",
     "image": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/Images/cafe.jpg",
     "isActive": true,
-    "isDeleted": false
+    "isDeleted": false,
+    "stats": {
+      "brands":   { "total": 12, "active": 10 },
+      "vouchers": { "total": 34, "active": 28 }
+    }
   }
 }
 ```
@@ -5976,6 +6189,34 @@ Full categorization → [endpoints_category.md](./endpoints_category.md)
 
 ---
 
+# Dispute evidence — vendor ka bayaan
+
+Bank ne ek payment wapas maang liya (chargeback). Razorpay ko jawab bhejne se pehle vendor apna paksh record karta hai.
+
+## `POST /disputes/:disputeId/evidence`
+## `POST /transactions/disputes/:disputeId/evidence`
+
+**Access:** 🔒 `isVendorOrSubVendor` — **outlet manager tak**.
+
+Body: `{ "note": "Customer ne counter par voucher redeem kiya, CCTV timestamp ke saath." }`
+
+⚠️ **Gate `SUB_VENDOR` tak jaan-boojh kar pahunchta hai.** Jo insaan counter par tha wahi aksar jaanta hai ki hua kya — use bahar rakhne ka matlab hota sabse achhi gawahi ka na aana.
+
+⚠️ Ye faisla **nahi** karta, sirf record karta hai. Dispute jeetne ya haarne ka jawab Razorpay se webhook par aata hai, aur wo bhi **out of order** aa sakta hai: `ledger_type_dispute_unique` isiliye dispute par keyed hai, transaction par nahi — ek der se aaya `lost` ek `won` ke baad aa sakta hai.
+
+⚠️ **Do mount, ek hi handler.** `/disputes` naya saaf raasta hai, `/transactions/disputes/...` purana. Dono live hain, isliye dono documented hain — naya kaam naye wale par likhein.
+
+Worklist (`GET /disputes`) khud is collection me nahi hai: uska gate koi role nahi maangta aur scope token se aata hai, isliye wo [admin doc](./super_admin_panel_api_doc.md) me hai. Vendor wahi endpoint call karke apne hi brand ke disputes dekh sakta hai.
+
+| Code | Kab |
+|---|---|
+| `200` | Bayaan record ho gaya |
+| `403` | Dusre brand ka dispute |
+| `404` | Dispute maujood nahi |
+| `422` | `note` khaali |
+
+---
+
 # Appendix B — Known Issues
 
 Ye backend issues hain jo vendor panel ko directly affect karte hain. **Status 2026-08-22 ko code ke against verify kiya gaya.** Full detail → [security_findings.md](./security_findings.md)
@@ -6219,13 +6460,27 @@ cross-brand id (galat list se copy-paste, stale cache) **chup-chaap kaam kar jay
 
 ## 🟡 Functional gaps
 
+📋 Scheduled → [super admin doc, Appendix C1 #1](./super_admin_panel_api_doc.md#appendix-c--future-work).
+
 ### 2. `SUB_VENDOR` accounts kuch nahi kar sakte
 Outlet signup pe `SUB_VENDOR` user banta hai aur OTP bhi jaata hai, par **koi route
 `SUB_VENDOR` role handle nahi karta**. `isSubVendor` middleware ab exist karta hai par
 kisi route pe laga nahi hai, aur `verifyJwtToken` un ke liye `req.brandId` set nahi karta.
 
-**Vendor panel pe impact:** outlet-level login screen abhi na banayein. Outlet management
-vendor ke through hi hogi.
+⚠️ Poori tarah sach nahi raha — **chaar** endpoints ab `SUB_VENDOR` lete hain:
+
+```
+POST  /disputes/:disputeId/evidence
+POST  /transactions/disputes/:disputeId/evidence
+PATCH /refunds/:requestId/approve
+PATCH /refunds/:requestId/reject
+```
+
+Yaani outlet manager refund decide kar sakta hai aur dispute par bayaan de sakta hai — **aur bas**. Apne outlet ki claims, vouchers ya timings kuch nahi dekh sakta.
+
+**Vendor panel pe impact:** outlet-level login screen sirf in chaar kaamon ke liye ban sakta hai. Baaki outlet management vendor ke through hi hogi.
+
+📋 Poora daayra dena scheduled hai → [Appendix C2 #5](./super_admin_panel_api_doc.md#appendix-c--future-work). ⚠️ Blast radius bada hai: `resolveActorBrand` abhi `brand.userId === actor.userId` check karta hai aur SUB_VENDOR ka `userId` brand par hota hi nahi — wo helper **11 services** use karti hain.
 
 ### 3. `DELETE /users/delete` no-op hai
 Kuch delete nahi karta, aur standard response envelope bhi use nahi karta (`success`
@@ -6234,41 +6489,78 @@ field hi nahi aati).
 Cascade plan likha hua hai ([account_deletion_plan.md](./account_deletion_plan.md)) —
 implement tab hoga jab poora flow ready ho.
 
-**Vendor panel pe impact:** "Delete account" feature disable rakhein.
+**Vendor panel pe impact:** "Delete account" feature disable rakhein — Play Store aur App Store dono ise maangte hain, to ye compliance risk hai.
 
-### 4. Voucher redemption flow exist nahi karta
-Customer voucher dekh sakta hai aur discount preview kar sakta hai, par redeem nahi kar
-sakta. `VoucherUsage` model bana hai, koi route nahi. `usageType` (`ONCE_PER_USER`)
-enforce nahi hota.
+📋 Scheduled → [Appendix C1 #2](./super_admin_panel_api_doc.md#appendix-c--future-work).
 
-**Vendor panel pe impact:** redemption/scan screen abhi ban nahi sakta. Voucher analytics
-bhi limited rahegi. Ye agle phase ka kaam hai.
+### 4. ✅ Redeem endpoint nahi hai — **par ye bug nahi hai**
 
-### 5. Email verification ka endpoint nahi hai
-Email change pe `isEmailVerified: false` ho jaata hai, par verify karne ka raasta nahi.
+Yahan pehle likha tha *"redemption flow exist nahi karta"* aur *"`usageType`
+enforce nahi hota"*. **Dono galat the** — 2026-09-06 ko code ke against verify
+kiya gaya.
 
-**Vendor panel pe impact:** email verified badge/flow abhi na banayein.
+Phase 1 me claim ka `redemptionMode` `AUTO` hota hai
+([createVoucherClaimOrder.js:270](../services/voucherClaims/createVoucherClaimOrder.js#L270)),
+aur us par payment capture hote hi claim seedhe `REDEEMED` ho jaati hai
+`redeemedAt` ke saath
+([settleVoucherClaimPayment.js:312](../helpers/voucherClaims/settleVoucherClaimPayment.js#L312)).
+**Counter par paisa dena hi redemption hai** — alag se mark karne ko kuch bacha
+hi nahi.
 
-### 6. `POST /auth/logout` push unregister nahi karta
-Aur token blacklist bhi nahi hai — JWT apni expiry tak valid rehta hai.
+`usageType` bhi enforce hota hai, aur database me — upar `VOUCHER_USAGE_TYPE`
+dekhein.
 
-**Vendor panel pe impact:** logout pe `PUT /deviceTokens/unregister` bhi call karein, aur
-token locally delete karein.
+**Vendor panel par iska matlab:** claims screen Phase 1 me **read-only** hai.
+`GET /voucher-claims/code/:claimCode` counter par code padhne ke liye hai — wo
+ek read hai, aur use likhna bhi nahi chahiye. Dobara wahi code padhna koi
+samasya nahi, kyunki padhna kuch badalta nahi.
 
-### 7. Promo codes vendor checkout pe abhi off hain
-`isPromoCodeEnabled: false` default hai. Checkout preview `"Promo codes are coming soon"`
-message deta hai.
+📋 Phase 2 (outlet scan) ka poora plan →
+[Appendix C4](./super_admin_panel_api_doc.md#appendix-c--future-work).
+⚠️ Wo ek flag ka kaam nahi hai: refund window ka clock, golden rule ka hisaab
+aur settlement eligibility teeno saath badalne padenge.
 
-**Vendor panel pe impact:** promo code field dikhayein par `preview.promo.supported`
-check karein — `false` ho to disable ya hide karein.
+### 5. ✅ RESOLVED — Email verification ab hai
 
-### 8. `brand.isApproved` aur `brand.status` kabhi likhe nahi jaate
-Dono fields model me hain par koi code inhe set nahi karta — hamesha `false` / `PENDING`.
-Asli verdict `SystemVerify` document me hai.
+**Pehle:** email change pe `isEmailVerified: false` ho jaata tha, aur wapas `true` karne ka koi raasta nahi tha. Badge sirf ek hi taraf ja sakta tha.
 
-**Vendor panel pe impact:** approval status ke liye `GET /brands/verifications/history`
-([#33](#33-get-brandsverificationshistory)) ya `systemVerify.status` dekhein —
-`brand.isApproved` pe kabhi bharosa na karein.
+**Ab:** [`POST /auth/email/send-verification`](#19c-post-authemailsend-verification-) aur [`POST /auth/email/verify`](#19d-post-authemailverify-) — dono `verifyJwtToken` ke peeche, **koi role gate nahi**. Wahi do endpoint customer app bhi use karti hai.
+
+**Vendor panel pe impact:** verified badge aur email-change flow ab banaya ja sakta hai.
+
+### 6. ✅ RESOLVED — logout ab sach me logout karta hai
+
+**Pehle:** endpoint `200` deta tha aur **server par kuch nahi hota tha** — na flags, na push, na token. Ek chori hua JWT apni poori umr chalta rehta, aur notifications us phone par aati rehti jisse user sign out kar chuka tha.
+
+**Ab:** flags set hote hain, push deactivate hota hai, aur `allDevices: true` par **har** purana JWT khatam. Response me `sessionsEnded`, `pushDeactivated`, `activeDevices` aate hain.
+
+**Vendor panel pe impact:** `PUT /deviceTokens/unregister` alag se call karne ki zarurat nahi — body me `pushToken` bhej dein. Kho gaye laptop ke liye `allDevices: true`.
+
+### 7. ✅ RESOLVED — promo codes ab default me on hain
+
+**Pehle:** `isPromoCodeEnabled: false` default tha aur checkout preview *"Promo codes are coming soon"* deta tha.
+
+**Ab:** dono defaults `true` hain — vendor subscription (`SUBSCRIPTION_DEFAULTS`) aur customer claim (`CUSTOMER_PROMO_DEFAULTS`).
+
+⚠️ **`preview.promo.supported` phir bhi check karein.** Default badla hai, switch nahi hata: `PUT /settings/update` se admin ise ek call me band kar sakta hai agar koi campaign wapas lena ho — bina deploy ke. Field hardcode karke mat dikhayein.
+
+⚠️ `allowWhenNoOffer` alag se **off** hai aur rahega. Jis voucher par vendor ka koi offer hi nahi, us par promo lagana bina supply ke pura giveaway hai — wo alag se on karna padta hai.
+
+### 8. ✅ RESOLVED — `brand.isApproved` likha bhi jaata hai aur ab filter bhi karta hai
+
+**Pehle:** ye finding kehti thi ki dono fields kabhi set nahi hote aur `isApproved` par "kabhi bharosa na karein". **Dono baatein galat thin.** `reviewBrandVerification` teeno action par likhta hai:
+
+| Action | `isApproved` | `status` |
+|---|---|---|
+| APPROVED | `true` | `APPROVED` |
+| REJECTED | `false` | `REJECTED` |
+| REVOKED | `false` | `REVOKED` |
+
+⚠️ Aur ye galti mehngi padi. Do service files me yahi baat **comment me likhi thi**, isliye customer-facing queries `isApproved` par filter karti hi nahi thin — sirf `isActive` par. Nateeja: koi bhi brand jo delete nahi hua tha, customer directory me aa jaata tha, jismein chhe aise bhi the **jinka owner `User` hi maujood nahi tha**.
+
+**Ab:** ek shared filter `customerVisibleBrandFilter` paanchon customer surfaces par lagta hai — directory, brand detail, voucher feed, global search, aur showcase/clips.
+
+**Vendor panel pe impact:** jab tak brand verify nahi hota, uske vouchers **customer ko dikhte hi nahi**. Onboarding screen par ye saaf batayein — vendor ko lagega uska voucher live hai jabki wo feed me hai hi nahi. Approval status ke liye `systemVerify.status` ya `GET /brands/verifications/history` ([#33](#33-get-brandsverificationshistory)) dekhein; `isApproved` ab bharose layak hai par history usme nahi hai.
 
 ---
 

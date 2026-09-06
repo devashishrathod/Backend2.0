@@ -20,9 +20,10 @@ const {
   scopeFor,
 } = require("./buildSettlementReadPipeline");
 const {
-  generateAndUploadStatement,
-  renderStatementPdf,
-} = require("./generateAndUploadStatement");
+  buildSettlementDocumentSnapshot,
+  commissionTaxLines,
+} = require("./buildSettlementDocumentSnapshot");
+const { issueSettlementDocument } = require("./issueSettlementDocument");
 const { computeVendorDebt, brandsWithAgedDebt } = require("./vendorDebt");
 const { buildReserveRiskMap, RESERVE_BASIS } = require("./reserveRisk");
 
@@ -83,8 +84,13 @@ module.exports = {
    * most are never opened, and the number is allotted at build time either way,
    * so the series has no gaps.
    */
-  generateAndUploadStatement,
-  renderStatementPdf,
+  /**
+   * The payout statement, with the commission tax invoice printed inside it.
+   * Frozen at PAID — every earlier state can still move.
+   */
+  buildSettlementDocumentSnapshot,
+  issueSettlementDocument,
+  commissionTaxLines,
   /**
    * ⚠️ What a brand owes that no cycle can reach.
    *

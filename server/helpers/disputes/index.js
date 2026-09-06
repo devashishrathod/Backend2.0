@@ -1,7 +1,18 @@
 const { recordDispute, summariseDisputes } = require("./recordDispute");
 const { buildEvidencePack, buildNarrative } = require("./buildEvidencePack");
+const { issueChargebackDocument } = require("./issueChargebackDocument");
+const {
+  buildChargebackDocumentSnapshot,
+} = require("./buildChargebackDocumentSnapshot");
 
 module.exports = {
+  /**
+   * The vendor's chargeback advice, issued the moment a dispute is lost — so
+   * they learn about the deduction before the payout it comes out of, rather
+   * than from money quietly missing.
+   */
+  issueChargebackDocument,
+  buildChargebackDocumentSnapshot,
   /**
    * Everything we can prove about a disputed payment, assembled from our own
    * records — with the argument already written out.

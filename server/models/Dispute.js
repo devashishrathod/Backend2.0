@@ -7,6 +7,7 @@ const {
   userField,
 } = require("./validObjectId");
 const { DISPUTE_STATUS } = require("../constants/webhook");
+const { documentSnapshotSchema } = require("./documentSnapshotSchema");
 
 /**
  * One dispute the bank has raised against one payment.
@@ -142,6 +143,32 @@ const disputeSchema = new mongoose.Schema(
      */
     vendorNotifiedAt: { type: Date },
 
+    /**
+     * ---------- the advice the vendor gets ----------
+     *
+     * ⚠️ A lost dispute produced **no paper at all**. The vendor's next payout
+     * simply came out lower, with a "chargebacks recovered" line on the statement
+     * and nothing behind it — no claim code, no date, no reason. The first they
+     * knew of it was money missing.
+     *
+     * Issued the moment the dispute is `LOST`, not when the recovery lands, so
+     * the vendor learns about the deduction before it happens rather than after.
+     * The settlement statement then references this number, which is what lets
+     * them trace a deduction back to the sale it came from.
+     *
+     * Under GST a recovery from a vendor against a tax invoice is a debit note;
+     * with no tax on the original it is simply an advice. `resolveDocumentTitle`
+     * picks from what was actually charged, so the same code covers both sides of
+     * the GST switch.
+     */
+    documentNumber: { type: String, trim: true },
+    /** Unguessable handle for the public link. The number never appears in a URL. */
+    documentToken: { type: String, trim: true },
+    /** Cached storage URL. Null until somebody first downloads it. */
+    documentUrl: { type: String, trim: true },
+    /** Everything the advice prints, frozen when it was issued. */
+    documentSnapshot: { type: documentSnapshotSchema },
+
     isDeleted: { type: Boolean, default: false },
   },
   { timestamps: true },
@@ -167,6 +194,36 @@ disputeSchema.index(
 disputeSchema.index(
   { brandId: 1, status: 1, recoverySettlementId: 1 },
   { name: "dispute_brand_status_recovery" },
+);
+
+/**
+ * The advice's number and its link, both unique among the rows that have one.
+ *
+ * Partial on `$type: "string"` because a dispute exists from the moment it is
+ * opened and only gets a document if it is **lost** — in a non-sparse unique
+ * index the absent field would be stored as `null` and the second open dispute
+ * would collide.
+ *
+ * The number's index is also what makes issuing safe under Razorpay's
+ * redelivery: a second `dispute.lost` for the same dispute loses on the index
+ * rather than burning another number out of a GST-facing sequence.
+ */
+disputeSchema.index(
+  { documentToken: 1 },
+  {
+    name: "dispute_documentToken_unique",
+    unique: true,
+    partialFilterExpression: { documentToken: { $type: "string" } },
+  },
+);
+
+disputeSchema.index(
+  { documentNumber: 1 },
+  {
+    name: "dispute_documentNumber_unique",
+    unique: true,
+    partialFilterExpression: { documentNumber: { $type: "string" } },
+  },
 );
 
 module.exports = mongoose.model("Dispute", disputeSchema);

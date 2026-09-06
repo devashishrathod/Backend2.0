@@ -21,9 +21,7 @@ const { PROMO_CODE_LIMITS } = require("../../constants/promoCode");
 const {
   TRANSACTION_PURPOSE,
   ACCOUNT_FOR_PURPOSE,
-  INVOICE_SERIES,
 } = require("../../constants/transaction");
-const { generateInvoiceNumber } = require("../../helpers/transactions");
 
 /**
  * Open a Razorpay order for a subscription purchase.
@@ -157,9 +155,19 @@ exports.createSubscribeOrder = async (actor, payload) => {
     notes: razorpayOrder.notes,
     // Was previously written as `offer_id`, which the schema silently dropped.
     offerId: razorpayOrder.offer_id,
-    invoiceId: await generateInvoiceNumber({
-      series: INVOICE_SERIES[TRANSACTION_PURPOSE.SUBSCRIPTION],
-    }),
+    /**
+     * ⚠️ No `invoiceId` here, deliberately.
+     *
+     * It used to be allotted on this line, beside the Razorpay order — so a
+     * vendor who opened checkout and walked away **burned an invoice number**,
+     * and an abandoned cart is the common case rather than the rare one. The
+     * subscription series ended up with more holes in it than entries, which is
+     * exactly what a GST document-of-record sequence may not have.
+     *
+     * `settleSubscriptionPayment` allots it once the payment is captured, so the
+     * series only advances when money actually moves — the same rule the voucher
+     * claim side has always followed.
+     */
     createdAtRaw: razorpayOrder.created_at,
   });
 
