@@ -163,9 +163,9 @@ const loadRealTargets = async () => {
 
   const txn = await pick(
     "transactions",
-    { invoiceToken: { $exists: true, $nin: [null, ""] } },
-    { invoiceToken: 1, invoiceId: 1 },
-    "invoiceToken",
+    { documentToken: { $exists: true, $nin: [null, ""] } },
+    { documentToken: 1, invoiceId: 1 },
+    "documentToken",
   );
   const settlement = await pick(
     "settlements",
@@ -176,7 +176,7 @@ const loadRealTargets = async () => {
   const refund = await pick("refundrequests", {}, { claimCode: 1 }, "refundRequestId");
   const claim = await pick("voucherclaims", {}, { claimCode: 1 }, "claimId");
 
-  REAL.invoiceToken = txn?.invoiceToken || `test-token-${Date.now()}`;
+  REAL.documentToken = txn?.documentToken || `test-token-${Date.now()}`;
   REAL.invoiceId = txn?.invoiceId || "TD/INV/26-27/000842";
   REAL.settlementId = settlement?._id || oid();
   REAL.refundRequestId = refund?._id || oid();
@@ -277,7 +277,7 @@ const transaction = () => ({
   _id: REAL.transactionId,
   brandId,
   invoiceId: REAL.invoiceId,
-  invoiceToken: REAL.invoiceToken,
+  documentToken: REAL.documentToken,
   paidAmount: 810,
   amount: 810,
   razorpayPaymentId: "pay_QxTest0000001",
@@ -330,6 +330,9 @@ const makeCases = () => [
     build: () =>
       notices.notifySubscriptionActivated({
         brand,
+        // So the preview carries the Download Invoice button and the invoice
+        // number, exactly as the real activation email now does.
+        transaction: transaction(),
         subscription,
         subscribed: subscribed(),
         action: SUBSCRIPTION_ACTION.NEW,
@@ -341,6 +344,9 @@ const makeCases = () => [
     build: () =>
       notices.notifySubscriptionActivated({
         brand,
+        // So the preview carries the Download Invoice button and the invoice
+        // number, exactly as the real activation email now does.
+        transaction: transaction(),
         subscription,
         subscribed: subscribed(),
         action: SUBSCRIPTION_ACTION.RENEW,
@@ -352,6 +358,9 @@ const makeCases = () => [
     build: () =>
       notices.notifySubscriptionActivated({
         brand,
+        // So the preview carries the Download Invoice button and the invoice
+        // number, exactly as the real activation email now does.
+        transaction: transaction(),
         subscription: { _id: oid(), name: "Prime Plus" },
         subscribed: subscribed({ paidAmount: 2499 }),
         action: SUBSCRIPTION_ACTION.UPGRADE,
@@ -365,6 +374,9 @@ const makeCases = () => [
     build: () =>
       notices.notifySubscriptionActivated({
         brand,
+        // So the preview carries the Download Invoice button and the invoice
+        // number, exactly as the real activation email now does.
+        transaction: transaction(),
         subscription: { _id: oid(), name: "Pro Lite" },
         subscribed: subscribed({ paidAmount: 0 }),
         action: SUBSCRIPTION_ACTION.DOWNGRADE,
@@ -376,6 +388,9 @@ const makeCases = () => [
     build: () =>
       notices.notifySubscriptionActivated({
         brand,
+        // So the preview carries the Download Invoice button and the invoice
+        // number, exactly as the real activation email now does.
+        transaction: transaction(),
         subscription,
         subscribed: subscribed({ paidAmount: 0 }),
         action: SUBSCRIPTION_ACTION.NEW,

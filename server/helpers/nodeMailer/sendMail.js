@@ -257,7 +257,7 @@ const renderMailHtml = ({ title, body, lines = [], footnote, ...rest }) => {
  *
  * @returns {Promise<{sent: boolean, skipped?: boolean, error?: string}>}
  */
-exports.sendMail = async ({ to, subject, title, ...content }) => {
+exports.sendMail = async ({ to, subject, title, attachments, ...content }) => {
   if (!to) return { sent: false, skipped: true, error: "no recipient" };
 
   const mailer = getTransporter();
@@ -274,6 +274,20 @@ exports.sendMail = async ({ to, subject, title, ...content }) => {
         to,
         subject: subject || title,
         html: renderMailHtml({ title, ...content }),
+        /**
+         * Nodemailer's own attachment shape, passed straight through.
+         *
+         * Spread conditionally so the key is absent rather than `undefined` on
+         * the ordinary case — every notification this system sends is a link to
+         * a document, never the document itself, because a receipt mailed as an
+         * attachment cannot be revoked and cannot be re-rendered after a
+         * correction. The download link can do both.
+         *
+         * It exists for the verification script, which mails the rendered PDF
+         * beside the real notification so a whole document can be reviewed
+         * without a deploy.
+         */
+        ...(attachments?.length ? { attachments } : {}),
       }),
       new Promise((_, reject) =>
         setTimeout(
