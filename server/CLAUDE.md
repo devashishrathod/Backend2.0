@@ -767,6 +767,30 @@ Two concurrent taps both pass a read-then-write check. Inserting the key is what
 makes the second one lose — the unique index decides, not the timing. And the
 gateway is called **last**, because it is the only step with no undo.
 
+### A document issuer must not throw, and must not be silent either
+
+Every `issue*Document` helper runs **after** the money has moved, so none of them
+may throw: failing a completed refund or a finished payout over a missing PDF is
+far worse than the missing PDF. That is not licence to swallow.
+
+"Must not fail" had been written as "must not be mentioned" — each one ended in a
+bare `console.error`, so a customer holding a refund with no receipt, or a vendor
+with a payout and no statement, was a fact nobody learned until they asked. They
+all call `alertDocumentFailed` now, deduped per record, wrapped so raising the
+alert cannot itself escape the handler.
+
+It matters more than a missing PDF sounds, because **only Transaction-backed
+documents can be re-issued**. `POST /transactions/invoice/regenerate` rebuilds a
+snapshot and mints a token for a subscription, a grant or a claim. There is no
+equivalent for a refund receipt, a payout statement or a chargeback advice — so
+for those, somebody knowing is the whole recovery path.
+
+**Allot the number as late as possible.** `generateDocumentNumber` advances a
+shared counter, so anything that throws between taking a number and writing it
+leaves that number attached to nothing — a hole in a document-of-record series,
+which is the one thing these series may not have. Do every lookup first; only
+the snapshot build and the write belong after it.
+
 ---
 
 ## Production
