@@ -13,12 +13,39 @@ const SubscribedHistory = require("../../models/SubscribedHistory");
 const Transaction = require("../../models/Transaction");
 const Notification = require("../../models/Notification");
 
+/**
+ * ⚠️ The **leaf** module is mocked, not the barrel.
+ *
+ * `settleSubscriptionPayment` destructures `generateDocumentNumber` at require
+ * time, so the local binding is captured before any test runs — a `jest.spyOn`
+ * on `helpers/documents` replaces a property nobody reads again and the mock
+ * silently does nothing. Mocking the file the barrel re-exports works, because
+ * the barrel requires it too.
+ *
+ * Named `mock*` deliberately: jest refuses a factory that closes over any other
+ * out-of-scope variable, and that prefix is the sanctioned escape hatch.
+ */
+let mockGenerateDocumentNumber;
+jest.mock("../../helpers/documents/generateDocumentNumber", () => {
+  const actual = jest.requireActual(
+    "../../helpers/documents/generateDocumentNumber",
+  );
+  return {
+    generateDocumentNumber: (...args) =>
+      mockGenerateDocumentNumber
+        ? mockGenerateDocumentNumber(...args)
+        : actual.generateDocumentNumber(...args),
+  };
+});
+
 const { generateBrandMerchantId } = require("../../helpers/brands");
 const {
   activateSubscription,
   settleSubscriptionPayment,
 } = require("../../helpers/subscribeds");
-const { resumeIncompleteSettlements } = require("../../services/voucherClaims");
+const {
+  resumeIncompleteSettlements,
+} = require("../../services/transactions/settlementJobs");
 const {
   TRANSACTION_PURPOSE,
   RAZORPAY_ACCOUNTS,
@@ -31,6 +58,7 @@ const {
 // ⚠️ `SUBSCRIPTION_TYPES` lives in the root constants barrel, not the
 // subscription one — the model imports it from there too.
 const { ROLES, SUBSCRIPTION_TYPES } = require("../../constants");
+const { NOTIFICATION_TYPES } = require("../../constants/notification");
 
 /**
  * Resuming a subscription settlement that was claimed and then abandoned.
@@ -166,6 +194,20 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await clearCollections(...COLLECTIONS);
+  // Null means "use the real one" — the failure tests opt in.
+  mockGenerateDocumentNumber = null;
+  /**
+   * `notifyAdmins` fans out one row per active admin, so with nobody on the
+   * database it writes nothing — correct behaviour, and useless to assert on.
+   */
+  await User.create({
+    uniqueId: `USR-ADMIN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    name: "test admin",
+    email: `admin${Date.now()}${Math.floor(Math.random() * 1000)}@example.com`,
+    mobile: `98${String(Date.now()).slice(-8)}`,
+    role: ROLES.ADMIN,
+    isActive: true,
+  });
   VENDOR = await seedVendor();
   BRAND = await Brand.create({
     brandName: "test brand",
@@ -475,6 +517,88 @@ describe("settling with resume: true", () => {
   });
 });
 
+describe("a settlement whose document failed is not finished", () => {
+  /**
+   * ⚠️ The failure that made the alert pointless.
+   *
+   * The document block is caught so a settled payment is never failed over a
+   * missing PDF — right. But the stage then advanced to INVOICED and COMPLETE
+   * regardless, and COMPLETE is exactly what the sweep reads to decide there is
+   * nothing left to do. So the alert fired, nobody could act on it
+   * automatically, and the vendor kept a paid plan with no invoice until a human
+   * re-issued it by hand.
+   */
+  it("stops the stage short so the sweep comes back for it", async () => {
+    const transaction = await seedStrandedPayment();
+
+    // The document cannot be numbered: an admin-chosen series that is not a
+    // legal shape. This is a real failure mode, not an invented one.
+    mockGenerateDocumentNumber = () => {
+      throw new Error("document series is not usable");
+    };
+
+    const result = await settleSubscriptionPayment({
+      transaction,
+      payment: { captured: true, id: transaction.razorpayPaymentId },
+      resume: true,
+    });
+
+    // The money and the plan are unaffected — that is why this must not throw.
+    expect(result.subscribed).toBeTruthy();
+
+    const after = await Transaction.findById(transaction._id);
+    expect(after.invoiceId).toBeFalsy();
+    expect(after.settlementStage).not.toBe(SETTLEMENT_STAGE.COMPLETE);
+    expect(after.settlementStage).not.toBe(SETTLEMENT_STAGE.INVOICED);
+  });
+
+  it("is picked up again by the sweep, and finishes once the document works", async () => {
+    const transaction = await seedStrandedPayment();
+
+    mockGenerateDocumentNumber = () => {
+      throw new Error("document series is not usable");
+    };
+
+    await settleSubscriptionPayment({
+      transaction,
+      payment: { captured: true, id: transaction.razorpayPaymentId },
+      resume: true,
+    });
+
+    // Still outstanding, so the sweep sees it.
+    expect((await resumeIncompleteSettlements()).found).toBe(1);
+
+    // Whatever was wrong is fixed; the next sweep completes it.
+    mockGenerateDocumentNumber = null;
+    const repaired = await resumeIncompleteSettlements();
+    expect(repaired.resumed).toBe(1);
+
+    const after = await Transaction.findById(transaction._id);
+    expect(after.invoiceId).toBeTruthy();
+    expect(after.settlementStage).toBe(SETTLEMENT_STAGE.COMPLETE);
+  });
+
+  /** And it told somebody, rather than only leaving work behind. */
+  it("alerts an admin about the missing document", async () => {
+    const transaction = await seedStrandedPayment();
+    mockGenerateDocumentNumber = () => {
+      throw new Error("document series is not usable");
+    };
+
+    await settleSubscriptionPayment({
+      transaction,
+      payment: { captured: true, id: transaction.razorpayPaymentId },
+      resume: true,
+    });
+
+    const alert = await Notification.findOne({
+      type: NOTIFICATION_TYPES.WEBHOOK_FAILED,
+    }).lean();
+    expect(alert).toBeTruthy();
+    expect(alert.title).toContain("Invoice could not be issued");
+  });
+});
+
 describe("the sweep now covers both money flows", () => {
   it("picks up a stranded subscription payment", async () => {
     const transaction = await seedStrandedPayment();
@@ -515,6 +639,29 @@ describe("the sweep now covers both money flows", () => {
 
     const result = await resumeIncompleteSettlements();
     expect(result.found).toBe(0);
+  });
+
+  /**
+   * ⚠️ One flow must not be able to hold the other's repair path hostage.
+   *
+   * A single shared `.limit(50)` let a bad afternoon on voucher claims fill
+   * every slot, so a vendor whose subscription stranded waited behind fifty
+   * claims on every tick for as long as the backlog lasted. The two flows have
+   * nothing to do with each other.
+   */
+  it("gives each flow its own budget instead of one shared pool", async () => {
+    // Three subscriptions, but a budget of one per flow.
+    await Promise.all([
+      seedStrandedPayment(),
+      seedStrandedPayment(),
+      seedStrandedPayment(),
+    ]);
+
+    const result = await resumeIncompleteSettlements({ perPurposeLimit: 1 });
+
+    // One subscription taken, not three — and the slot is this flow's own, so a
+    // claim backlog could not have consumed it.
+    expect(result.found).toBe(1);
   });
 
   /**

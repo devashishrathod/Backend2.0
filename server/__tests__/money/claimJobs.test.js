@@ -55,10 +55,13 @@ jest.mock("../../helpers/transactions/getPaymentDetails", () => ({
 
 const {
   releaseStaleClaimHolds,
-  resumeIncompleteSettlements,
   reconcileClaimPayments,
   alertStuckAuthorizations,
 } = require("../../services/voucherClaims");
+// Moved out of `claimJobs`: it sweeps every money flow, not only claims.
+const {
+  resumeIncompleteSettlements,
+} = require("../../services/transactions/settlementJobs");
 
 const seedClaim = async ({ ageMinutes = 60, ...overrides } = {}) => {
   const brandId = oid();

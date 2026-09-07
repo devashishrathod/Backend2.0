@@ -7,7 +7,6 @@ const {
 const { getClaimDetail } = require("./getClaimDetail");
 const {
   releaseStaleClaimHolds,
-  resumeIncompleteSettlements,
   reconcileClaimPayments,
   alertStuckAuthorizations,
 } = require("./claimJobs");
@@ -26,7 +25,6 @@ module.exports = {
   // The four safety nets. Registered in `jobs/index.js`, which gives them the
   // cross-process lock and the health record.
   releaseStaleClaimHolds,
-  resumeIncompleteSettlements,
   reconcileClaimPayments,
   alertStuckAuthorizations,
 };
