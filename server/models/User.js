@@ -73,7 +73,22 @@ const userSchema = new mongoose.Schema(
       unique: true,
       sparse: true,
     },
-    referralCode: { type: String, unique: true },
+    /**
+     * ⚠️ Unique, but the index is declared below — **not** here.
+     *
+     * `unique: true` on this line built a blanket `referralCode_1`, and this
+     * field is optional. Mongo indexes a missing field as `null`, so only one
+     * user in the entire system could exist without a code: the second insert
+     * failed with a duplicate key naming a field nobody filled in. That is
+     * exactly the `invoiceId_1` failure described in `CLAUDE.md` and the shape
+     * the note above `identityIndex` condemns — `whatsappNumber`, `email` and
+     * `mobile` were all fixed and this one was missed.
+     *
+     * Every signup path generates a code today, so nothing has hit it. The
+     * moment anything creates a User without one — a staff account, a bulk
+     * import, a migration, a fixture — the second one fails.
+     */
+    referralCode: { type: String },
     uniqueId: { type: String, required: true, unique: true },
     appliedReferralCode: { type: String },
     referralCount: { type: Number, default: 0 },
@@ -305,5 +320,29 @@ const identityIndex = (field) => [
 userSchema.index(...identityIndex("whatsappNumber"));
 userSchema.index(...identityIndex("email"));
 userSchema.index(...identityIndex("mobile"));
+
+/**
+ * A referral code is unique **among the users who have one**.
+ *
+ * The same partial shape as the three above, and for the same reason: the field
+ * is optional, and a blanket unique on a nullable path rejects the second row
+ * that has no value. Not keyed on `role` — unlike a phone number, a referral
+ * code identifies one account globally, and the redemption path looks it up
+ * without one.
+ *
+ * ⚠️ `isDeleted` is deliberately **not** in the filter. A closed account must
+ * keep its code reserved: codes are handed out and typed in by other people, and
+ * recycling one would credit a stranger's signup to whoever inherited it. That
+ * is the opposite of the phone-number case, where releasing the value is the
+ * whole point.
+ */
+userSchema.index(
+  { referralCode: 1 },
+  {
+    name: "user_referralCode_unique",
+    unique: true,
+    partialFilterExpression: { referralCode: { $type: "string" } },
+  },
+);
 
 module.exports = mongoose.model("User", userSchema);
