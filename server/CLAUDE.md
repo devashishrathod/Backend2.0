@@ -238,6 +238,22 @@ node scripts/migrateCustomerClaimFoundation.js --apply  # change it
 > timestamp — the one usable lead, since `$currentOp` is not permitted on Atlas
 > shared tiers.
 >
+> ⚠️ The reaper only removes a blanket index that a partial one **already
+> supersedes**. It cannot know that a blanket unique is wrong when no replacement
+> has been declared — and that is the case it can never save you from:
+>
+> ```
+> node scripts/verifyNullableUniques.js
+> ```
+>
+> reads every schema and reports any unique index, partial or not absent, whose
+> keys include a path that is neither `required` nor defaulted. `User.referralCode`
+> was one: optional, blanket unique, so only one user in the system could exist
+> without a referral code. Every signup path generates one, so it never fired —
+> which is exactly why a scan finds it and testing does not. Declaring the partial
+> index is the whole fix; the reaper drops the blanket one at the next boot, in
+> every collection, so no migration step is needed.
+>
 > ```bash
 > node scripts/findIndexWriters.js   # shadows, connection count, and the fix
 > ```
@@ -790,6 +806,48 @@ shared counter, so anything that throws between taking a number and writing it
 leaves that number attached to nothing — a hole in a document-of-record series,
 which is the one thing these series may not have. Do every lookup first; only
 the snapshot build and the write belong after it.
+
+#### A failed document must not leave the settle looking finished
+
+The document is the last step of a settle, and it has to fail in exactly one
+shape: **do not throw, do not go silent, do not advance the stage.**
+
+The two settlers each had one of those wrong, in opposite directions.
+`settleVoucherClaimPayment` left the block unguarded, so a document failure threw
+out of the settle after the money was captured and the claim redeemed — and
+`verifyVoucherClaimPayment` awaits the settler directly, so the customer was
+charged, held a redeemed voucher, and was shown a **500**. Some of them pay
+again. `settleSubscriptionPayment` caught it, which was right, but then wrote
+`INVOICED` and `COMPLETE` anyway — and `COMPLETE` is exactly what the sweep
+reads to decide there is nothing left, so the vendor kept a paid plan with no
+invoice until a human re-issued it.
+
+Both now track whether a document was actually issued and gate the stage writes
+on it. A failure alerts, the money and the domain records stand, and the sweep
+retries the document until it lands.
+
+**A stage marker is a claim about what happened. Never write one past a step
+that did not.**
+
+### One flow may not starve the other's repair path
+
+`resumeIncompleteSettlements` lives in
+[`services/transactions/settlementJobs.js`](./services/transactions/settlementJobs.js),
+**not** under either money flow. It was written inside
+`services/voucherClaims/claimJobs.js` and scoped to `purpose: VOUCHER_CLAIM`,
+which is how a stranded subscription came to have no repair path at all — the
+machinery existed, the sweep simply could not see it. A job that dispatches every
+flow does not belong inside one of them, and looking in the wrong place is what
+let the gap survive.
+
+Its budget is **per purpose**, not one shared pool. A single `.limit(50)` across
+both let a voucher backlog fill every slot, so a vendor whose subscription
+stranded waited behind fifty claims on every tick for as long as the backlog
+lasted.
+
+Its failure alert is keyed on which flows failed as well as the hour, or the
+first flow to fail claims the hourly key and the other's first failure is
+deduped into silence.
 
 ---
 
