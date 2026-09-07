@@ -22,16 +22,23 @@ const {
   NOTIFICATION_TYPES,
   NOTIFICATION_SEVERITY,
 } = require("../../constants/notification");
-const {
-  TRANSACTION_PURPOSE,
-  SETTLEMENT_STAGE,
-} = require("../../constants/transaction");
+const { TRANSACTION_PURPOSE } = require("../../constants/transaction");
 const {
   VOUCHER_CLAIM_STATUS,
   CLAIM_HISTORY_ACTION,
 } = require("../../constants/voucherClaim");
 
 const MINUTE_MS = 60 * 1000;
+
+/**
+ * ⚠️ `resumeIncompleteSettlements` used to live here, and that was the bug.
+ *
+ * Scoped to `purpose: VOUCHER_CLAIM` beside these three genuinely claim-specific
+ * jobs, it could not see a subscription payment that stranded half-settled — so
+ * that flow had no repair path at all. It now dispatches every money flow and
+ * lives in `services/transactions/settlementJobs.js`, which is where to look for
+ * it.
+ */
 
 /**
  * Reclaim the once-per-user slots held by checkouts that were never completed.
@@ -156,142 +163,6 @@ exports.releaseStaleClaimHolds = async () => {
   }
 
   return { checked: stale.length, cancelled, keptForCapture };
-};
-
-/**
- * Finish settlements that were claimed and then abandoned.
- *
- * The repair path for the crash this whole staged design exists for: the
- * conditional claim is terminal, so a process that dies after it leaves a
- * transaction `verified: true` with the work half done and **no way back in** —
- * verify says `alreadyVerified`, the webhook retry says `alreadySettled`.
- *
- * Every step of the settle is idempotent, so this does not need to know where it
- * stopped. It runs the whole thing again and the finished parts are no-ops.
- *
- * ### ⚠️ Scoped by BOTH purpose and the stage existing
- *
- * `settlementStage != "COMPLETE"` is true of a **missing** field, and every
- * transaction written before the field existed has none. Without the `$exists`
- * guard this job's first run would try to re-settle the entire subscription
- * history. The M10 migration marked those `COMPLETE`, so the data is clean too —
- * but a query that only works because of a migration someone remembered to run
- * is not a query worth relying on.
- */
-exports.resumeIncompleteSettlements = async ({ olderThanMinutes = 5 } = {}) => {
-  const cutoff = new Date(Date.now() - olderThanMinutes * MINUTE_MS);
-
-  const now = new Date();
-
-  /**
-   * ⚠️ Ordered by how little we have tried, not by whatever Mongo returns first.
-   *
-   * This was a bare `.limit(50)` with no sort. A row that always throws —
-   * corrupt pricing, a voucher since deleted — kept its place in natural order
-   * and consumed a slot on every run. Fifty of those and the sweep spends every
-   * tick failing on the same fifty while newly stranded payments are never
-   * reached at all. That matters more here than anywhere else in this file:
-   * this is the path that repairs a customer who was charged and got nothing.
-   *
-   * `settlementResumeAt` is the back-off gate and `settlementResumeAttempts` is
-   * the ordering. A poisoned row is never dropped — it just stops queueing ahead
-   * of a payment nobody has tried yet.
-   */
-  const stranded = await Transaction.find({
-    ...buildTransactionFilter({
-      purpose: TRANSACTION_PURPOSE.VOUCHER_CLAIM,
-      verified: true,
-    }),
-    settlementStage: { $exists: true, $ne: SETTLEMENT_STAGE.COMPLETE },
-    verifiedAt: { $lte: cutoff },
-    $or: [
-      { settlementResumeAt: { $exists: false } },
-      { settlementResumeAt: null },
-      { settlementResumeAt: { $lte: now } },
-    ],
-  })
-    .sort({ settlementResumeAttempts: 1, verifiedAt: 1 })
-    .limit(50);
-
-  if (!stranded.length) return { found: 0, resumed: 0, failed: 0 };
-
-  let resumed = 0;
-  let failed = 0;
-
-  for (const transaction of stranded) {
-    try {
-      await settleVoucherClaimPayment({
-        transaction,
-        // The payment is already recorded on the row; resume does not re-read
-        // the gateway and does not re-take the conditional claim.
-        payment: { captured: true, id: transaction.razorpayPaymentId },
-        resume: true,
-      });
-      resumed++;
-    } catch (error) {
-      failed++;
-
-      /**
-       * Back off, so this row stops blocking the ones behind it.
-       *
-       * Doubling from five minutes and capped at six hours: long enough that a
-       * permanently broken row costs one attempt a quarter-day, short enough
-       * that a transient failure — a gateway blip, a lock contention — is
-       * retried while it still matters.
-       */
-      const attempts = (transaction.settlementResumeAttempts || 0) + 1;
-      const backoffMs = Math.min(
-        5 * MINUTE_MS * 2 ** (attempts - 1),
-        6 * 60 * MINUTE_MS,
-      );
-
-      await Transaction.updateOne(
-        { _id: transaction._id },
-        {
-          $set: {
-            settlementResumeAttempts: attempts,
-            settlementResumeAt: new Date(Date.now() + backoffMs),
-          },
-        },
-      );
-      console.error(
-        `[resumeIncompleteSettlements] ${transaction._id} failed:`,
-        error?.message,
-      );
-    }
-  }
-
-  if (failed) {
-    await notifyAdmins({
-      type: NOTIFICATION_TYPES.WEBHOOK_FAILED,
-      severity: NOTIFICATION_SEVERITY.CRITICAL,
-      title: `${failed} voucher settlement(s) could not be resumed`,
-      body:
-        `Money was captured and the settlement never finished. Each of these has a ` +
-        `customer who paid and a vendor who has not been credited.`,
-      meta: { failed, found: stranded.length },
-      dedupeKey: `RESUME_FAILED:${new Date().toISOString().slice(0, 13)}`,
-      /**
-       * The **list**, not a record: this alert is about a batch, and the
-       * individual ids are in `meta` for a client that wants them. Pointing at
-       * one of several would hide the rest.
-       */
-      deepLink: deepLink(ADMIN_PATHS.TRANSACTIONS),
-      mail: {
-        lines: [
-          ["Could not resume", String(failed)],
-          ["Stranded settlements found", String(stranded.length)],
-          ["Checked at", formatDateTime(new Date())],
-        ],
-        ctaLabel: "Open transactions",
-        ctaUrl: adminUrl(ADMIN_PATHS.TRANSACTIONS),
-        footnote:
-          "Every step of a settle is idempotent, so these are safe to resume again once the cause is fixed.",
-      },
-    });
-  }
-
-  return { found: stranded.length, resumed, failed };
 };
 
 /**

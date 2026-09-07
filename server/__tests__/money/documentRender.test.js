@@ -19,13 +19,33 @@ const {
  * in the file as a plain substring, not even with compression off. Concatenating
  * the hex runs gives back what the page actually says, which is what these tests
  * are about.
+ *
+ * ### ⚠️ Only the content streams, and that is load-bearing
+ *
+ * This used to scan the **whole file** for `<hex>` runs. A PDF trailer carries
+ * `/ID [<16 random bytes> <the same 16 bytes>]`, which is the same shape, so
+ * every render appended thirty-two bytes of noise to the "page text" — twice
+ * over, and different on every run because PDFKit derives the id per file.
+ *
+ * That made this suite **flaky at roughly one run in sixteen**: whenever the
+ * random id happened to contain `0xB9`, the WinAnsi test below found `¹` and
+ * failed with a message that reads exactly like a real rupee-sign regression.
+ * The document was correct every time.
+ *
+ * Restricting the scan to `stream`…`endstream` keeps the trailer, the xref and
+ * the object dictionaries out of it. Nothing outside a content stream is text
+ * the page shows.
  */
 const pdfText = (filePath) => {
   const raw = fs.readFileSync(filePath).toString("latin1");
   let text = "";
-  for (const match of raw.matchAll(/<([0-9A-Fa-f]+)>/g)) {
-    text += Buffer.from(match[1], "hex").toString("latin1");
+
+  for (const stream of raw.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)) {
+    for (const match of stream[1].matchAll(/<([0-9A-Fa-f]+)>/g)) {
+      text += Buffer.from(match[1], "hex").toString("latin1");
+    }
   }
+
   fs.unlinkSync(filePath);
   return text;
 };
@@ -216,6 +236,34 @@ describe("renderDocumentPdf()", () => {
     expect(pdf).toContain("Rs. ");
     // U+20B9 truncated to its low byte is `¹` — what the payout statement printed.
     expect(pdf).not.toContain("¹");
+  });
+
+  /**
+   * ⚠️ Guards the reader above, not the renderer — and the test right before it.
+   *
+   * `pdfText` used to scan the whole file for `<hex>` runs, which also matches the
+   * trailer's `/ID [<16 bytes> <the same 16 bytes>]`. Those bytes are random per
+   * render, so about one run in sixteen contained `0xB9` and the WinAnsi
+   * assertion above failed with a message that reads like a real rupee-sign
+   * regression, on a document that was correct.
+   *
+   * This asserts the id never reaches the extracted text, so nobody can quietly
+   * simplify the reader back to scanning the file end to end.
+   */
+  it("reads only the page content, never the PDF trailer", async () => {
+    const { filePath } = await renderDocumentPdf(CLAIM, { compress: false });
+    const raw = fs.readFileSync(filePath).toString("latin1");
+
+    const id = raw.match(/\/ID\s*\[\s*<([0-9A-Fa-f]+)>/);
+    // If PDFKit ever stops writing one, this test has nothing to protect.
+    expect(id).toBeTruthy();
+    const idBytes = Buffer.from(id[1], "hex").toString("latin1");
+    expect(idBytes).toHaveLength(16);
+
+    const pdf = pdfText(filePath); // also removes the file
+    expect(pdf).not.toContain(idBytes);
+    // And the reader still works.
+    expect(pdf).toContain("PAYMENT RECEIPT");
   });
 
   /**

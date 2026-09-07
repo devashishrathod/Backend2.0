@@ -55,10 +55,13 @@ jest.mock("../../helpers/transactions/getPaymentDetails", () => ({
 
 const {
   releaseStaleClaimHolds,
-  resumeIncompleteSettlements,
   reconcileClaimPayments,
   alertStuckAuthorizations,
 } = require("../../services/voucherClaims");
+// Moved out of `claimJobs`: it sweeps every money flow, not only claims.
+const {
+  resumeIncompleteSettlements,
+} = require("../../services/transactions/settlementJobs");
 
 const seedClaim = async ({ ageMinutes = 60, ...overrides } = {}) => {
   const brandId = oid();
@@ -292,7 +295,23 @@ describe("stranded settlements are finished", () => {
     expect(result.found).toBe(0);
   });
 
-  it("does not touch a subscription transaction", async () => {
+  /**
+   * ⚠️ This used to assert `found: 0` — the sweep ignored subscriptions entirely.
+   *
+   * That was the bug: a vendor whose subscription settlement died half-way had
+   * their money taken and nothing ever came back to finish it. The sweep now
+   * covers both flows, so what has to be pinned here is no longer "it is
+   * skipped" but "it is not handed to the wrong settler".
+   *
+   * The two settlers share nothing. Running the claim one on a subscription row
+   * fails on "this payment has no voucher claim attached to it" — and worse, the
+   * reverse would settle a customer's ₹760 against a vendor's ₹4,999 plan. The
+   * row below is deliberately too thin to settle, so the message it fails with
+   * is the proof of which settler received it.
+   *
+   * The full round trip lives in `subscriptionResume.test.js`.
+   */
+  it("routes a subscription transaction to the subscription settler", async () => {
     await Transaction.create({
       purpose: TRANSACTION_PURPOSE.SUBSCRIPTION,
       gatewayAccount: RAZORPAY_ACCOUNTS.VENDOR,
@@ -303,10 +322,28 @@ describe("stranded settlements are finished", () => {
       settlementStage: SETTLEMENT_STAGE.CLAIMED,
     });
 
-    // The two settlers share nothing; running one on the other's row would fail
-    // on "this payment has no voucher claim attached to it".
-    const result = await resumeIncompleteSettlements();
-    expect(result.found).toBe(0);
+    const logged = [];
+    const spy = jest
+      .spyOn(console, "error")
+      .mockImplementation((...args) => logged.push(args.join(" ")));
+
+    let result;
+    try {
+      result = await resumeIncompleteSettlements();
+    } finally {
+      spy.mockRestore();
+    }
+
+    // Picked up, where before it was invisible.
+    expect(result.found).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(result.resumed).toBe(0);
+
+    const reason = logged.join("\n");
+    // The subscription settler's own 404 — it got there.
+    expect(reason).toContain("Brand not found");
+    // And the claim settler's, which must never appear for this row.
+    expect(reason).not.toContain("voucher claim attached");
   });
 
   it("leaves a settlement that has only just been claimed", async () => {

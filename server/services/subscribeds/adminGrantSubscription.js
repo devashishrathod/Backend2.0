@@ -30,10 +30,14 @@ const {
   activateSubscription,
 } = require("../../helpers/subscribeds");
 const { buildInvoiceSnapshot } = require("../../helpers/transactions");
-const { generateDocumentNumber } = require("../../helpers/documents");
+const {
+  generateDocumentNumber,
+  alertDocumentFailed,
+} = require("../../helpers/documents");
 const { invoiceUrl } = require("../../helpers/notifications/panelLinks");
 const {
   notifySubscriptionActivated,
+  ADMIN_PATHS,
 } = require("../../helpers/notifications");
 
 /**
@@ -249,11 +253,33 @@ exports.adminGrantSubscription = async (actor, payload) => {
       { $set: { invoiceSnapshot } },
     );
   } catch (error) {
-    // The grant is already live; a missing document must not undo it.
-    console.error(
-      `[adminGrantSubscription] invoice failed for transaction ${transaction._id}:`,
-      error?.message,
-    );
+    /**
+     * The grant is already live, so a missing document must not undo it — but it
+     * must not be silent either. The paid path raises this alert; this one
+     * printed a line nobody reads.
+     *
+     * Unlike a refund or a payout statement this one *is* recoverable without a
+     * developer: the grant is Transaction-backed, so
+     * `POST /transactions/invoice/regenerate` rebuilds the snapshot and mints a
+     * token. Somebody still has to know to do it.
+     */
+    await alertDocumentFailed({
+      source: "adminGrantSubscription",
+      title: "A grant advice could not be issued",
+      body:
+        `The plan was granted and is live, but its document could not be written. ` +
+        `The vendor has a plan with no paperwork explaining where it came from.`,
+      recordId: transaction._id,
+      path: ADMIN_PATHS.transaction(transaction._id),
+      lines: [
+        ["Brand", brand.brandName || brand.legalBusinessName || "-"],
+        ["Plan", subscription.name || "-"],
+        ["Reference", invoiceId || "-"],
+      ],
+      footnote:
+        "The grant itself is unaffected. Re-issue the document from the transaction — this one can be regenerated.",
+      error,
+    });
   }
 
   /**

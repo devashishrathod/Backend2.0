@@ -238,6 +238,22 @@ node scripts/migrateCustomerClaimFoundation.js --apply  # change it
 > timestamp — the one usable lead, since `$currentOp` is not permitted on Atlas
 > shared tiers.
 >
+> ⚠️ The reaper only removes a blanket index that a partial one **already
+> supersedes**. It cannot know that a blanket unique is wrong when no replacement
+> has been declared — and that is the case it can never save you from:
+>
+> ```
+> node scripts/verifyNullableUniques.js
+> ```
+>
+> reads every schema and reports any unique index, partial or not absent, whose
+> keys include a path that is neither `required` nor defaulted. `User.referralCode`
+> was one: optional, blanket unique, so only one user in the system could exist
+> without a referral code. Every signup path generates one, so it never fired —
+> which is exactly why a scan finds it and testing does not. Declaring the partial
+> index is the whole fix; the reaper drops the blanket one at the next boot, in
+> every collection, so no migration step is needed.
+>
 > ```bash
 > node scripts/findIndexWriters.js   # shadows, connection count, and the fix
 > ```
@@ -544,8 +560,36 @@ COMPLETE` — and `resumeIncompleteSettlements` re-runs the whole thing with
 `resume: true`. Because every step is idempotent, **resume does not need to know
 where it stopped**.
 
+It sweeps **both** flows and dispatches through `resolveSettler(purpose)` — the
+same registry the webhook receiver uses, so a resume and a live delivery can
+never disagree about which settler owns a row. An unknown purpose is a hard stop
+for that row, not a fallthrough.
+
 If you add a step to a settle, it must be safe to run twice, and it must sit
 before the `COMPLETE` stage marker.
+
+#### ⚠️ `resume: true` is what makes the claim non-load-bearing
+
+The conditional claim is not just a race guard — it is the only thing stopping
+the rest of the settle from running twice. A resume skips it deliberately, so
+anything the claim was protecting has to protect itself:
+
+- **`activateSubscription`** checks for an existing `Subscribed` on the
+  transaction and returns it. Without that, a resume creates a second ACTIVE plan
+  and then feeds the vendor's just-purchased one to the supersede block, which
+  retires it and books the whole unused term as forfeited — a fabricated debt
+  that surfaces in `GET /subscribeds/admin/forfeited`.
+- The real enforcement is the **unique partial index** on
+  `Subscribed.transactionId`; the in-code check only saves a failed insert. Two
+  resumes running together both find nothing, and the index picks the winner —
+  the loser catches `11000` and adopts the winner's row.
+- **Dates come from the record, never from `new Date()`.** `validity` is
+  recomputed on every call, so an invoice numbered during a resume would print a
+  term the plan never had. `settleSubscriptionPayment` takes them off the
+  returned `Subscribed`.
+- **Every notice needs a `dedupeKey`**, or each sweep tells the vendor again.
+
+Before making anything resumable, ask what the conditional claim was hiding.
 
 ### Locks are taken when a record is created, not when it is paid
 
@@ -738,6 +782,72 @@ Full flow: [`docs/settlement_flow.md`](./docs/settlement_flow.md).
 Two concurrent taps both pass a read-then-write check. Inserting the key is what
 makes the second one lose — the unique index decides, not the timing. And the
 gateway is called **last**, because it is the only step with no undo.
+
+### A document issuer must not throw, and must not be silent either
+
+Every `issue*Document` helper runs **after** the money has moved, so none of them
+may throw: failing a completed refund or a finished payout over a missing PDF is
+far worse than the missing PDF. That is not licence to swallow.
+
+"Must not fail" had been written as "must not be mentioned" — each one ended in a
+bare `console.error`, so a customer holding a refund with no receipt, or a vendor
+with a payout and no statement, was a fact nobody learned until they asked. They
+all call `alertDocumentFailed` now, deduped per record, wrapped so raising the
+alert cannot itself escape the handler.
+
+It matters more than a missing PDF sounds, because **only Transaction-backed
+documents can be re-issued**. `POST /transactions/invoice/regenerate` rebuilds a
+snapshot and mints a token for a subscription, a grant or a claim. There is no
+equivalent for a refund receipt, a payout statement or a chargeback advice — so
+for those, somebody knowing is the whole recovery path.
+
+**Allot the number as late as possible.** `generateDocumentNumber` advances a
+shared counter, so anything that throws between taking a number and writing it
+leaves that number attached to nothing — a hole in a document-of-record series,
+which is the one thing these series may not have. Do every lookup first; only
+the snapshot build and the write belong after it.
+
+#### A failed document must not leave the settle looking finished
+
+The document is the last step of a settle, and it has to fail in exactly one
+shape: **do not throw, do not go silent, do not advance the stage.**
+
+The two settlers each had one of those wrong, in opposite directions.
+`settleVoucherClaimPayment` left the block unguarded, so a document failure threw
+out of the settle after the money was captured and the claim redeemed — and
+`verifyVoucherClaimPayment` awaits the settler directly, so the customer was
+charged, held a redeemed voucher, and was shown a **500**. Some of them pay
+again. `settleSubscriptionPayment` caught it, which was right, but then wrote
+`INVOICED` and `COMPLETE` anyway — and `COMPLETE` is exactly what the sweep
+reads to decide there is nothing left, so the vendor kept a paid plan with no
+invoice until a human re-issued it.
+
+Both now track whether a document was actually issued and gate the stage writes
+on it. A failure alerts, the money and the domain records stand, and the sweep
+retries the document until it lands.
+
+**A stage marker is a claim about what happened. Never write one past a step
+that did not.**
+
+### One flow may not starve the other's repair path
+
+`resumeIncompleteSettlements` lives in
+[`services/transactions/settlementJobs.js`](./services/transactions/settlementJobs.js),
+**not** under either money flow. It was written inside
+`services/voucherClaims/claimJobs.js` and scoped to `purpose: VOUCHER_CLAIM`,
+which is how a stranded subscription came to have no repair path at all — the
+machinery existed, the sweep simply could not see it. A job that dispatches every
+flow does not belong inside one of them, and looking in the wrong place is what
+let the gap survive.
+
+Its budget is **per purpose**, not one shared pool. A single `.limit(50)` across
+both let a voucher backlog fill every slot, so a vendor whose subscription
+stranded waited behind fifty claims on every tick for as long as the backlog
+lasted.
+
+Its failure alert is keyed on which flows failed as well as the hour, or the
+first flow to fail claims the hourly key and the other's first failure is
+deduped into silence.
 
 ---
 

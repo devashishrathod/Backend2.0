@@ -25,7 +25,7 @@ const {
   buildInvoiceSnapshot,
   detectDoubleCapture,
 } = require("../transactions");
-const { generateDocumentNumber } = require("../documents");
+const { generateDocumentNumber, alertDocumentFailed } = require("../documents");
 const { invoiceUrl } = require("../notifications/panelLinks");
 const { DOCUMENT_KIND, DOCUMENT_SERIES } = require("../../constants/document");
 const { SETTLEMENT_STAGE } = require("../../constants/transaction");
@@ -78,11 +78,26 @@ const mapPayment = (payment, expectedTotal) => ({
  * with a conditional update on `verified: false`. Exactly one caller wins and
  * performs the activation; the loser is told the plan is already live.
  *
+ * ### Resuming a settlement that was claimed and then abandoned
+ *
+ * The claim below is terminal: a process that dies after it leaves the payment
+ * captured, `verified: true`, and the work half done, with **no way back in** —
+ * verify and the webhook both answer `alreadySettled`. `resumeIncompleteSettlements`
+ * is the way back in, and it calls this with `resume: true`.
+ *
+ * A resume re-runs everything and lets the finished parts no-op. What it must
+ * *not* do is re-run the money checks, because it has no gateway payload to
+ * check — the payment was recorded on the row long ago and the job passes a
+ * synthetic stand-in. Fed that, the amount check would throw 422 on every sweep
+ * and `!captured` would release a promo code that was already committed.
+ *
  * @param {object} args
  * @param {object} args.transaction  the Transaction being settled
  * @param {object} args.payment      Razorpay payment payload
  * @param {object} [args.actor]      who triggered it; absent for the webhook
  * @param {string} [args.source]     SUBSCRIPTION_SOURCE for the new record
+ * @param {boolean} [args.resume]    skip the money checks and the conditional
+ *                                   claim, and redo the rest
  * @returns {{ subscribed, transaction, action, invoiceId, invoiceDownloadUrl,
  *             invoiceUrl, alreadySettled, limits }}
  */
@@ -91,36 +106,43 @@ exports.settleSubscriptionPayment = async ({
   payment,
   actor = {},
   source = SUBSCRIPTION_SOURCE.PAYMENT,
+  resume = false,
 }) => {
   // ---------------- money checks ----------------
-  // The signature proves the payment is genuine, not that it belongs to this
-  // order or that the right amount arrived.
-  if (payment.order_id && payment.order_id !== transaction.razorpayOrderId) {
-    throwError(422, "This payment belongs to a different order.");
-  }
+  //
+  // Skipped wholesale on a resume: every one of them interrogates a live gateway
+  // payload, and a resume has none. They already passed on the run that claimed
+  // this transaction — that is why it is `verified: true` and has a payment id.
+  if (!resume) {
+    // The signature proves the payment is genuine, not that it belongs to this
+    // order or that the right amount arrived.
+    if (payment.order_id && payment.order_id !== transaction.razorpayOrderId) {
+      throwError(422, "This payment belongs to a different order.");
+    }
 
-  const expectedPaise =
-    transaction.pricing?.amountInPaise ||
-    Math.round((transaction.amount || 0) * 100);
-  if (Number(payment.amount) !== Number(expectedPaise)) {
-    throwError(
-      422,
-      `Payment amount mismatch. Expected ₹${(expectedPaise / 100).toFixed(2)} but received ₹${((payment.amount || 0) / 100).toFixed(2)}. Please contact support.`,
-    );
-  }
+    const expectedPaise =
+      transaction.pricing?.amountInPaise ||
+      Math.round((transaction.amount || 0) * 100);
+    if (Number(payment.amount) !== Number(expectedPaise)) {
+      throwError(
+        422,
+        `Payment amount mismatch. Expected ₹${(expectedPaise / 100).toFixed(2)} but received ₹${((payment.amount || 0) / 100).toFixed(2)}. Please contact support.`,
+      );
+    }
 
-  if (!payment.captured) {
-    // Nothing was taken, so let the promo hold go.
-    await releasePromoCode({
-      transactionId: transaction._id,
-      reason: `Payment not captured (${payment.status || "unknown"})`,
-    });
-    throwError(
-      402,
-      payment.error_description ||
-        payment.error_reason ||
-        `Payment was not captured (status: ${payment.status || "unknown"}). Please try again.`,
-    );
+    if (!payment.captured) {
+      // Nothing was taken, so let the promo hold go.
+      await releasePromoCode({
+        transactionId: transaction._id,
+        reason: `Payment not captured (${payment.status || "unknown"})`,
+      });
+      throwError(
+        402,
+        payment.error_description ||
+          payment.error_reason ||
+          `Payment was not captured (status: ${payment.status || "unknown"}). Please try again.`,
+      );
+    }
   }
 
   // ---------------- claim the transaction ----------------
@@ -128,22 +150,38 @@ exports.settleSubscriptionPayment = async ({
   // proceeds to activate.
   // `let`, because the document stage below re-reads it after stamping the
   // number and the snapshot onto it.
-  let claimed = await Transaction.findOneAndUpdate(
-    { _id: transaction._id, verified: false },
-    {
-      $set: {
-        ...mapPayment(payment, transaction.amount),
-        razorpayPaymentId: payment.id,
-        verified: true,
-        verifiedAt: new Date(),
-        // The claim is terminal — nothing can re-enter through it — but several
-        // dependent writes follow. This is how `resumeIncompleteSettlements`
-        // finds a settlement that was claimed and then abandoned mid-way.
-        settlementStage: SETTLEMENT_STAGE.CLAIMED,
+  let claimed;
+  if (resume) {
+    /**
+     * The claim already happened on the run that stranded this. Taking it again
+     * would find `verified: true`, conclude somebody else won, and return
+     * `alreadySettled` — reporting success while repairing nothing, which is the
+     * exact failure the resume job exists to end.
+     *
+     * `mapPayment` is deliberately not re-applied either: fed the job's
+     * synthetic payload it would overwrite the real `paidAmount`, `fee`, `tax`
+     * and method with zeroes and undefined.
+     */
+    claimed = await Transaction.findById(transaction._id);
+    if (!claimed) throwError(404, "Transaction not found.");
+  } else {
+    claimed = await Transaction.findOneAndUpdate(
+      { _id: transaction._id, verified: false },
+      {
+        $set: {
+          ...mapPayment(payment, transaction.amount),
+          razorpayPaymentId: payment.id,
+          verified: true,
+          verifiedAt: new Date(),
+          // The claim is terminal — nothing can re-enter through it — but several
+          // dependent writes follow. This is how `resumeIncompleteSettlements`
+          // finds a settlement that was claimed and then abandoned mid-way.
+          settlementStage: SETTLEMENT_STAGE.CLAIMED,
+        },
       },
-    },
-    { returnDocument: "after" },
-  );
+      { returnDocument: "after" },
+    );
+  }
 
   if (!claimed) {
     // Someone else settled it first — return what they produced.
@@ -215,6 +253,25 @@ exports.settleSubscriptionPayment = async ({
     paidAmount: claimed.paidAmount,
     dueAmount: claimed.dueAmount,
   });
+
+  /**
+   * ⚠️ The term the document states comes from the **plan**, not from the clock.
+   *
+   * `validity` above is computed from `new Date()` every time this function
+   * runs. On a first settle that is the moment the plan starts, so the two agree.
+   * On a resume days later they do not: the plan still runs from when it was
+   * activated, but `validity` now says today. An invoice numbered on that sweep
+   * would print a start date the subscription never had, and an end date a year
+   * past the one the vendor is actually entitled to.
+   *
+   * `activateSubscription` returns the live record — the one that was created on
+   * the original run — so its dates are the ones that were real. Falling back to
+   * the computed pair keeps a first settle byte-identical to before.
+   */
+  const issuedValidity = {
+    startDate: subscribed?.startDate || validity.startDate,
+    endDate: subscribed?.endDate || validity.endDate,
+  };
 
   // The discount is now final. If the reservation had already been swept as
   // stale, this re-claims it: the money was captured at the discounted amount so
@@ -292,6 +349,10 @@ exports.settleSubscriptionPayment = async ({
    * second number on a transaction that already has one — which would leave the
    * gap this ordering exists to prevent.
    */
+  // Whether there is a document at the end of this. The stage advances below
+  // depend on it, so a failure stays visible to the resume sweep.
+  let documentIssued = Boolean(claimed.invoiceId);
+
   try {
     if (!claimed.invoiceId) {
       const [config, billing] = await Promise.all([
@@ -309,7 +370,7 @@ exports.settleSubscriptionPayment = async ({
         pricing: claimed.pricing,
         config,
         billing,
-        validity,
+        validity: issuedValidity,
         paymentMethod: claimed.paymentMethod,
         documentNumber,
       });
@@ -339,75 +400,50 @@ exports.settleSubscriptionPayment = async ({
       );
       if (numbered) claimed = numbered;
     }
+    documentIssued = true;
   } catch (error) {
     /**
-     * The money is captured and the plan is live, so this must not throw — but it
-     * must not be swallowed either.
+     * The money is captured and the plan is live, so this must not throw. It
+     * must not be silent either — and, the part that was wrong, it must not look
+     * finished.
      *
-     * It used to be a bare `console.error`, which meant a vendor with a paid
-     * subscription and no invoice was a fact nobody learned until they asked.
-     * The alert is deduped, so a retry storm does not become a mail storm.
+     * The alert has been here since the bare `console.error` was replaced. What
+     * had not changed is what came next: the stage advanced to INVOICED and then
+     * COMPLETE regardless, so the resume sweep — which finds work by exactly
+     * that field — would never come back. A vendor with a paid plan and no
+     * invoice stayed that way until a human re-issued it by hand.
+     *
+     * Now the stage stops here. The sweep re-runs the settle, every finished
+     * step no-ops, and the document is retried until it lands.
      */
-    console.error(
-      `[settleSubscriptionPayment] invoice failed for transaction ${claimed._id}:`,
-      error?.message,
-    );
-
-    /**
-     * ⚠️ Nested `try`, and it is load-bearing.
-     *
-     * `notifyAdmins` goes through `notifyAudience`, which never throws for a
-     * delivery failure but **does** propagate an invalid or oversized audience —
-     * deliberately, so a caller's mistake is not swallowed. Here that guarantee
-     * points the wrong way: this runs after the money is captured and the plan is
-     * live, so an exception escaping would fail a settlement that actually
-     * succeeded, and the client would be told the payment failed.
-     *
-     * Losing the alert is bad. Failing the settlement to deliver it is worse.
-     */
-    try {
-      await notifyAdmins({
-        type: NOTIFICATION_TYPES.WEBHOOK_FAILED,
-        severity: NOTIFICATION_SEVERITY.WARNING,
-        title: `Invoice could not be issued for ${brand.brandName || brand.legalBusinessName || "a vendor"}`,
-        body:
-          `The payment settled and the plan is live, but the invoice number or snapshot could not be written. ` +
-          `The vendor has a paid subscription with no invoice. Re-issue it from the transaction.`,
-        meta: {
-          transactionId: claimed._id,
-          brandId: brand._id,
-          subscriptionId: subscription._id,
-          reason: error?.message,
-        },
-        dedupeKey: `INVOICE_FAILED:${claimed._id}`,
-        deepLink: deepLink(ADMIN_PATHS.transaction(claimed._id)),
-        mail: {
-          lines: [
-            ["Brand", brand.brandName || brand.legalBusinessName || "-"],
-            ["Plan", subscription.name || "-"],
-            ["Amount", String(claimed.paidAmount ?? "-")],
-            ["Reason", error?.message || "-"],
-          ],
-          ctaLabel: "Open transaction",
-          ctaUrl: adminUrl(ADMIN_PATHS.transaction(claimed._id)),
-          footnote:
-            "Nothing is broken for the vendor — the plan is active. They simply have no invoice until it is re-issued.",
-        },
-      });
-    } catch (alertError) {
-      console.error(
-        `[settleSubscriptionPayment] could not raise the invoice-failure alert for ${claimed._id}:`,
-        alertError?.message,
-      );
-    }
+    await alertDocumentFailed({
+      source: "settleSubscriptionPayment",
+      title: `Invoice could not be issued for ${brand.brandName || brand.legalBusinessName || "a vendor"}`,
+      body:
+        `The payment settled and the plan is live, but the invoice number or ` +
+        `snapshot could not be written. The settlement is deliberately left ` +
+        `incomplete so the resume sweep retries it.`,
+      recordId: claimed._id,
+      path: ADMIN_PATHS.transaction(claimed._id),
+      lines: [
+        ["Brand", brand.brandName || brand.legalBusinessName || "-"],
+        ["Plan", subscription.name || "-"],
+        ["Amount", String(claimed.paidAmount ?? "-")],
+      ],
+      footnote:
+        "Nothing is broken for the vendor — the plan is active. The sweep will keep trying the document.",
+      error,
+    });
   }
 
-  // The invoice number and snapshot are frozen (or the failure raised and moved
-  // past — a missing document is a re-issue problem, not a settlement failure).
-  await Transaction.updateOne(
-    { _id: claimed._id },
-    { $set: { settlementStage: SETTLEMENT_STAGE.INVOICED } },
-  );
+  // Only when there is actually a document. Advancing regardless is what made a
+  // failed issue look finished.
+  if (documentIssued) {
+    await Transaction.updateOne(
+      { _id: claimed._id },
+      { $set: { settlementStage: SETTLEMENT_STAGE.INVOICED } },
+    );
+  }
 
   /**
    * ---------------- tell the vendor ----------------
@@ -428,11 +464,19 @@ exports.settleSubscriptionPayment = async ({
     { $set: { currentScreen: SCREENS.OUTLET_PAGE } },
   );
 
-  // Nothing left to resume.
-  await Transaction.updateOne(
-    { _id: claimed._id },
-    { $set: { settlementStage: SETTLEMENT_STAGE.COMPLETE } },
-  );
+  /**
+   * Nothing left to resume — and only when that is true.
+   *
+   * COMPLETE is what the sweep reads to decide a settlement is finished, so
+   * writing it over a failed document is how a vendor keeps a paid plan with no
+   * invoice for ever.
+   */
+  if (documentIssued) {
+    await Transaction.updateOne(
+      { _id: claimed._id },
+      { $set: { settlementStage: SETTLEMENT_STAGE.COMPLETE } },
+    );
+  }
 
   return {
     subscribed,

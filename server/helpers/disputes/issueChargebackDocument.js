@@ -5,7 +5,8 @@ const VoucherClaim = require("../../models/VoucherClaim");
 const { DOCUMENT_KIND, DOCUMENT_SERIES } = require("../../constants/document");
 const { getSubscriptionConfig } = require("../settings");
 const { buildBillingDetails } = require("../subscribeds");
-const { generateDocumentNumber } = require("../documents");
+const { generateDocumentNumber, alertDocumentFailed } = require("../documents");
+const { ADMIN_PATHS } = require("../notifications");
 const {
   buildChargebackDocumentSnapshot,
 } = require("./buildChargebackDocumentSnapshot");
@@ -87,13 +88,31 @@ exports.issueChargebackDocument = async ({ dispute, transaction }) => {
       { returnDocument: "after" },
     ).lean();
   } catch (error) {
-    // The loss is booked and the recovery is queued. A missing advice is a
-    // re-issue problem, not a reason to fail a webhook Razorpay will stop
-    // retrying.
-    console.error(
-      `[issueChargebackDocument] could not issue an advice for dispute ${dispute.disputeId}:`,
-      error?.message,
-    );
+    /**
+     * The loss is booked and the recovery is queued, so this must not throw at a
+     * webhook Razorpay will stop retrying — but it must not be silent either.
+     *
+     * A chargeback advice is what tells the vendor why money was taken back off
+     * them. Without it the debit appears on their settlement with nothing
+     * explaining it, and there is no re-issue endpoint to produce one.
+     */
+    await alertDocumentFailed({
+      source: "issueChargebackDocument",
+      title: "A chargeback advice could not be issued",
+      body:
+        `The loss is booked and the recovery is queued, but the advice could not ` +
+        `be written. The vendor will see the debit on their settlement with no ` +
+        `document explaining where it came from.`,
+      recordId: dispute._id,
+      path: ADMIN_PATHS.dispute(dispute._id),
+      lines: [
+        ["Dispute", dispute.disputeId || String(dispute._id)],
+        ["Amount", String(dispute.amount ?? "-")],
+      ],
+      footnote:
+        "The ledger is correct and the recovery is unaffected — only the advice is missing. Re-issuing it is a manual step.",
+      error,
+    });
     return null;
   }
 };

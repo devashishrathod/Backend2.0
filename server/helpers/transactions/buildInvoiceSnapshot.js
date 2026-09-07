@@ -84,7 +84,24 @@ exports.buildInvoiceSnapshot = ({
   // A document with no tax on it must not call itself a tax invoice, and the
   // decision is frozen here — GST may be switched on between issuing this and
   // somebody downloading it.
-  const isTaxInvoice = Number(pricing.gstAmount) > 0;
+  //
+  /**
+   * ⚠️ Nothing collected means this is not a tax invoice, whatever the pricing
+   * block says.
+   *
+   * A grant is priced **as if it were sold**, so the GST position is on record
+   * even when nobody paid — which is right for the books and wrong for the
+   * paper. A FREE grant therefore carried `gstAmount > 0` and printed itself as a
+   * TAX INVOICE for ₹764.84 of tax against ₹0.00 collected. Under GST a tax
+   * invoice asserts that tax is due on a supply for consideration, and a
+   * giveaway is not one.
+   *
+   * A *partial* collection stays a tax invoice: money changed hands, and the
+   * supply it was for is the priced one.
+   */
+  const collected = Number(transaction?.paidAmount ?? 0);
+  const isFreeGrant = isManual && collected <= 0;
+  const isTaxInvoice = Number(pricing.gstAmount) > 0 && !isFreeGrant;
 
   const number = documentNumber || transaction?.invoiceId;
   const method =
@@ -131,19 +148,41 @@ exports.buildInvoiceSnapshot = ({
     });
   }
 
-  lineItems.push({ label: "Taxable Value", amount: pricing.taxableValue });
+  /**
+   * "Taxable Value" only where there is tax. On a free grant nothing is taxable,
+   * and the row still matters — it is what the plan was worth — so it is named
+   * for what it actually is.
+   */
+  lineItems.push({
+    label: isTaxInvoice ? "Taxable Value" : "Plan value",
+    amount: pricing.taxableValue,
+  });
 
   // ---------------- what it says about itself ----------------
   const meta = [
-    { label: isTaxInvoice ? "Invoice No" : "Receipt No", value: number || "-" },
+    {
+      /**
+       * A free grant collected nothing, so neither "Invoice No" nor "Receipt No"
+       * is true of it — both name a payment. It is a reference, and that is what
+       * the vendor's email calls it too.
+       */
+      label: isTaxInvoice ? "Invoice No" : isFreeGrant ? "Reference No" : "Receipt No",
+      value: number || "-",
+    },
     {
       label: "Transaction Ref",
       value: transaction?._id ? String(transaction._id) : "-",
     },
     {
       label: "Payment Status",
-      value:
-        transaction?.status === PAYMENT_STATUS.CAPTURED
+      /**
+       * ⚠️ A free grant is stored `CAPTURED` — it is complete, there is nothing
+       * to wait for — which made this print "Paid" against a plan nobody paid
+       * for. The row is about money, so it has to answer for money.
+       */
+      value: isFreeGrant
+        ? "No payment collected"
+        : transaction?.status === PAYMENT_STATUS.CAPTURED
           ? "Paid"
           : transaction?.status || "-",
     },
@@ -251,7 +290,10 @@ exports.buildInvoiceSnapshot = ({
 
     // Taken from pricing rather than config: the code that was actually charged
     // against, not whatever the setting says now.
-    hsnSacCode: pricing?.hsnSacCode || config?.hsnSacCode,
+    // Only on a document that carries tax. An SAC on an untaxed advice states a
+    // tax treatment that was not applied — the claim builder omits it for the
+    // same reason.
+    hsnSacCode: isTaxInvoice ? pricing?.hsnSacCode || config?.hsnSacCode : undefined,
     placeOfSupply: pricing?.placeOfSupplyState
       ? `${pricing.placeOfSupplyState}${pricing.placeOfSupplyStateCode ? ` (${pricing.placeOfSupplyStateCode})` : ""}`
       : undefined,
@@ -260,8 +302,17 @@ exports.buildInvoiceSnapshot = ({
     details,
     timeline,
     lineItems,
-    taxLines: taxLinesFor(pricing),
-    total: { label: "Total Payable", amount: pricing.totalPayable },
+    // No tax block on a document that carries no tax — a GST breakup printed
+    // beside "nothing was collected" states a liability that does not exist.
+    taxLines: isTaxInvoice ? taxLinesFor(pricing) : [],
+    /**
+     * Nothing is payable on a free grant, so the bold last line must not say
+     * "Total Payable" against a figure nobody owes. It says what the grant was
+     * worth instead, which is the fact worth recording.
+     */
+    total: isFreeGrant
+      ? { label: "Value of this grant", amount: pricing.totalPayable }
+      : { label: "Total Payable", amount: pricing.totalPayable },
     notes,
 
     // Machine-readable, beside the printed blocks rather than instead of them.

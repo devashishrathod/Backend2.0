@@ -4,6 +4,7 @@ const { verifySubscribeTransaction } = require("./verifySubscribeTransaction");
 const { regenerateInvoice } = require("./regenerateInvoice");
 const { handleRazorpayWebhook } = require("./handleRazorpayWebhook");
 const { resolveSettler, SETTLER_PURPOSES } = require("./webhookSettlers");
+const { resumeIncompleteSettlements } = require("./settlementJobs");
 const { replayWebhookEvent } = require("./replayWebhookEvent");
 const {
   getWebhookEvents,
@@ -33,6 +34,12 @@ module.exports = {
   handleRazorpayWebhook,
   resolveSettler,
   SETTLER_PURPOSES,
+  /**
+   * The repair path for a settlement that was claimed and then abandoned.
+   * Dispatches every money flow through the registry above, so it belongs
+   * beside it rather than inside either flow.
+   */
+  resumeIncompleteSettlements,
   replayWebhookEvent,
   getWebhookEvents,
   getWebhookEvent,
