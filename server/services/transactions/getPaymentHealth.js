@@ -37,6 +37,15 @@ const {
  * require costs one cache lookup per call and cannot go wrong: by the time a
  * request is being served, both modules are fully loaded.
  */
+/**
+ * What the resume sweep settles, so this page counts exactly what that job
+ * repairs. Required lazily for the same reason `jobsHealth` is: the settler
+ * registry pulls in both settlers, and this module is required at route-build
+ * time.
+ */
+const settlerPurposes = () =>
+  require("./webhookSettlers").SETTLER_PURPOSES;
+
 const jobsHealth = () => require("../../jobs").getJobsHealth();
 
 const MINUTE_MS = 60 * 1000;
@@ -100,11 +109,31 @@ exports.getPaymentHealth = async () => {
      * several writes follow it. `resumeIncompleteSettlements` re-runs them, so a
      * count above zero for long means that job is not working — which is why
      * this sits next to `jobs` rather than in a separate page.
+     *
+     * ### ⚠️ Two things this got wrong, and both made the number a lie
+     *
+     * It read `{ $ne: COMPLETE }` with no `$exists`, and `$ne` is **true of a
+     * missing field**. Every transaction written before `settlementStage`
+     * existed was therefore counted as a stranded settlement — a permanent
+     * false positive on an admin health page that nothing could ever clear,
+     * because the sweep is correctly guarded and will never touch those rows.
+     * It was reporting two on the dev database while nothing was wrong.
+     *
+     * And it was scoped to voucher claims, so a stranded **subscription** was
+     * invisible here even though the same sweep now repairs it. A page whose job
+     * is "is the safety net working" has to see everything the net covers, or a
+     * subscription backlog builds up behind a reassuring zero.
+     *
+     * `SETTLER_PURPOSES` keeps the two in step: whatever the sweep settles is
+     * what this counts.
      */
     Transaction.countDocuments({
-      ...claimFilter,
+      // `purpose: null` is this builder's deliberate "span both" escape hatch;
+      // the registry narrows it back to the purposes that can be settled.
+      ...buildTransactionFilter({ purpose: null }),
+      purpose: { $in: settlerPurposes() },
       verified: true,
-      settlementStage: { $ne: SETTLEMENT_STAGE.COMPLETE },
+      settlementStage: { $exists: true, $ne: SETTLEMENT_STAGE.COMPLETE },
       isDeleted: false,
     }),
 
