@@ -31,7 +31,7 @@ const { recordClaimHistory } = require("./recordClaimHistory");
 const {
   buildVoucherInvoiceSnapshot,
 } = require("./buildVoucherInvoiceSnapshot");
-const { generateDocumentNumber } = require("../documents");
+const { generateDocumentNumber, alertDocumentFailed } = require("../documents");
 const { getCustomerConfig, getSubscriptionConfig } = require("../settings");
 const {
   DOCUMENT_KIND,
@@ -422,7 +422,28 @@ exports.settleVoucherClaimPayment = async ({
    * number on a transaction that already has one — which would leave a hole in
    * the series, the exact thing this ordering protects.
    */
-  if (!claimed.invoiceId) {
+  /**
+   * ⚠️ Whether the document actually got issued, and the stage below depends on
+   * it.
+   *
+   * This block used to be unguarded, so a document failure threw out of the
+   * settle — after the money was captured and the claim redeemed. The customer's
+   * `POST /voucher-claims/verify` then answered **500** for a claim that had in
+   * fact succeeded: they had been charged, they held a redeemed voucher, and the
+   * app told them the payment failed. Some of them pay again.
+   *
+   * It must not throw. But it must not march past the failure either — that is
+   * what the subscription side did, and it left the row `COMPLETE` so the resume
+   * sweep would never come back for it.
+   *
+   * So: catch, tell an admin, and leave the stage where it is. The sweep re-runs
+   * the whole settle, the finished steps no-op, and this one is retried until it
+   * lands.
+   */
+  let documentIssued = Boolean(claimed.invoiceId);
+
+  try {
+    if (!claimed.invoiceId) {
     const [customerConfig, sellerConfig] = await Promise.all([
       getCustomerConfig(),
       // One legal entity, so the seller identity comes from the vendor-side
@@ -473,12 +494,36 @@ exports.settleVoucherClaimPayment = async ({
       { returnDocument: "after" },
     );
     if (numbered) claimed = numbered;
+    }
+    documentIssued = true;
+  } catch (error) {
+    await alertDocumentFailed({
+      source: "settleVoucherClaimPayment",
+      title: "A claim receipt could not be issued",
+      body:
+        `The payment settled and the claim is redeemed, but the receipt could ` +
+        `not be written. The customer has been charged and has no document. The ` +
+        `settlement is left incomplete on purpose, so the resume sweep retries it.`,
+      recordId: claimed._id,
+      path: ADMIN_PATHS.transaction(claimed._id),
+      lines: [
+        ["Claim", claim.claimCode || String(claim._id)],
+        ["Amount", String(claimed.paidAmount ?? claimed.amount ?? "-")],
+      ],
+      footnote:
+        "The money and the redemption are correct — only the document is missing, and the sweep will keep trying.",
+      error,
+    });
   }
 
-  await Transaction.updateOne(
-    { _id: claimed._id },
-    { $set: { settlementStage: SETTLEMENT_STAGE.INVOICED } },
-  );
+  // Only when there is actually a document. Advancing regardless is what left a
+  // failed issue looking finished, so nothing ever came back for it.
+  if (documentIssued) {
+    await Transaction.updateOne(
+      { _id: claimed._id },
+      { $set: { settlementStage: SETTLEMENT_STAGE.INVOICED } },
+    );
+  }
 
   /**
    * ---------------- stage 3: tell people ----------------
@@ -494,10 +539,18 @@ exports.settleVoucherClaimPayment = async ({
   await notifyClaimPaid({ claim: settledClaim, transaction: claimed });
   await notifyVendorClaimReceived({ claim: settledClaim });
 
-  await Transaction.updateOne(
-    { _id: claimed._id },
-    { $set: { settlementStage: SETTLEMENT_STAGE.COMPLETE } },
-  );
+  /**
+   * COMPLETE means there is nothing left to resume, so it may only be written
+   * when that is true. A settle whose document failed still has work outstanding
+   * — the sweep finds it by this field, and marking it finished is how a
+   * charged customer ends up permanently without a receipt.
+   */
+  if (documentIssued) {
+    await Transaction.updateOne(
+      { _id: claimed._id },
+      { $set: { settlementStage: SETTLEMENT_STAGE.COMPLETE } },
+    );
+  }
 
   if (promoCommit?.exceededLimit) {
     // A limited code went past its cap because a late payment had to be
