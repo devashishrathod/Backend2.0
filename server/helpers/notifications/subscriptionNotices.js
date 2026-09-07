@@ -154,6 +154,22 @@ exports.notifySubscriptionActivated = ({
       transactionId: transaction?._id,
       invoiceId: transaction?.invoiceId,
     },
+    /**
+     * One activation notice per plan, however many times the settle runs.
+     *
+     * ⚠️ This was the only subscription notice without a dedupe key — its three
+     * siblings below (expiring, expired, cancelled) all have one. It did not
+     * matter while a settlement could only ever run once, because the conditional
+     * claim on `verified: false` turned a replay away long before this line.
+     * `resumeIncompleteSettlements` skips that claim by design, so without a key
+     * a vendor whose settlement was interrupted gets "your plan is live" again on
+     * every sweep — by email, push and WhatsApp.
+     *
+     * Keyed on the subscription record rather than the transaction: it is the
+     * thing the message is about, and it is what an admin grant and a paid
+     * purchase have in common.
+     */
+    dedupeKey: `SUBSCRIPTION_ACTIVATED:${subscribed._id}`,
     deepLink: deepLink(PANEL_PATHS.SUBSCRIPTION),
     mail: {
       lines,

@@ -8,10 +8,16 @@ const {
 } = require("../helpers/promoCodes");
 const {
   releaseStaleClaimHolds,
-  resumeIncompleteSettlements,
   reconcileClaimPayments,
   alertStuckAuthorizations,
 } = require("../services/voucherClaims");
+/**
+ * Not from `services/voucherClaims` any more: it sweeps every money flow, and
+ * living under one of them is how the other went unswept.
+ */
+const {
+  resumeIncompleteSettlements,
+} = require("../services/transactions/settlementJobs");
 const {
   escalateStaleRefunds,
   reconcileRefunds,

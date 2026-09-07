@@ -225,6 +225,110 @@ describe("a document with no tax does not call itself a tax invoice", () => {
   });
 });
 
+/**
+ * ⚠️ A grant is priced **as if it were sold**, so the GST position is on record
+ * even when nobody paid. That is right for the books and wrong for the paper: a
+ * free grant carried `gstAmount > 0` and printed itself as a TAX INVOICE for
+ * ₹764.84 of tax against ₹0.00 collected.
+ *
+ * Under GST a tax invoice asserts that tax is due on a supply for consideration.
+ * A giveaway is not one.
+ */
+describe("a grant nobody paid for is not a tax invoice", () => {
+  const GRANT_PRICING = {
+    listPrice: 4999,
+    discountPercent: 10,
+    discountAmount: 499.9,
+    promoDiscount: 0,
+    taxableValue: 4249.1,
+    gstPercentage: 18,
+    taxType: "IGST",
+    igst: 764.84,
+    gstAmount: 764.84,
+    hsnSacCode: "998315",
+    totalPayable: 5013.94,
+  };
+
+  const grant = ({ paidAmount, isManual = true }) =>
+    buildInvoiceSnapshot({
+      transaction: {
+        _id: oid(),
+        paidAmount,
+        status: "captured",
+        manualPaymentMode: paidAmount > 0 ? "CASH" : "FREE",
+        createdAt: new Date("2026-09-01T05:00:00Z"),
+        verifiedAt: new Date("2026-09-01T05:00:00Z"),
+      },
+      subscription: { name: "Pro Plus", type: "YEARLY", durationInYears: 1 },
+      pricing: GRANT_PRICING,
+      config: { companyName: "Trydood", companyGstin: "33AAKCT3750H1ZB" },
+      billing: { brandName: "Cafe Mocha" },
+      validity: {
+        startDate: new Date("2026-09-01T05:00:00Z"),
+        endDate: new Date("2027-08-31T18:29:00Z"),
+      },
+      isManual,
+      documentNumber: "TD/GRT/26-27/000008",
+    });
+
+  it("calls a free grant an advice, and prints no tax block", async () => {
+    const snapshot = grant({ paidAmount: 0 });
+
+    expect(snapshot.title).toBe(DOCUMENT_TITLE.GRANT_ADVICE);
+    expect(snapshot.isTaxInvoice).toBe(false);
+    expect(snapshot.taxLines).toEqual([]);
+    // An SAC on an untaxed advice states a treatment that was not applied.
+    expect(snapshot.hsnSacCode).toBeUndefined();
+
+    const { filePath } = await renderDocumentPdf(snapshot, { compress: false });
+    const pdf = pdfText(filePath);
+
+    expect(pdf).toContain(DOCUMENT_TITLE.GRANT_ADVICE);
+    expect(pdf).not.toContain(DOCUMENT_TITLE.TAX_INVOICE);
+    expect(pdf).not.toContain("IGST");
+    expect(pdf).not.toContain("998315");
+    expect(pdf).toContain("No payment was collected");
+  });
+
+  /**
+   * The row is about money, so it has to answer for money. A free grant is
+   * stored `CAPTURED` — it is complete, there is nothing to wait for — which
+   * made the document print "Paid" against a plan nobody paid for.
+   */
+  it("does not claim a free grant was paid", () => {
+    const snapshot = grant({ paidAmount: 0 });
+    const status = snapshot.meta.find((m) => m.label === "Payment Status");
+
+    expect(status.value).toBe("No payment collected");
+    expect(snapshot.meta[0].label).toBe("Reference No");
+    expect(snapshot.total.label).toBe("Value of this grant");
+    expect(snapshot.lineItems.at(-1).label).toBe("Plan value");
+  });
+
+  /**
+   * Money changed hands, and the supply it was for is the priced one — so a
+   * collected grant stays a tax invoice, whether the collection was full or
+   * partial.
+   */
+  it("stays a tax invoice when anything was collected", () => {
+    for (const paidAmount of [5013.94, 2000]) {
+      const snapshot = grant({ paidAmount });
+      expect(snapshot.title).toBe(DOCUMENT_TITLE.TAX_INVOICE);
+      expect(snapshot.isTaxInvoice).toBe(true);
+      expect(snapshot.taxLines).toHaveLength(1);
+      expect(snapshot.total.label).toBe("Total Payable");
+    }
+  });
+
+  /** A paid subscription is untouched by any of this. */
+  it("leaves an ordinary paid subscription alone", () => {
+    const snapshot = grant({ paidAmount: 5013.94, isManual: false });
+    expect(snapshot.title).toBe(DOCUMENT_TITLE.TAX_INVOICE);
+    expect(snapshot.hsnSacCode).toBe("998315");
+    expect(snapshot.total.label).toBe("Total Payable");
+  });
+});
+
 describe("the receipt names the customer who paid", () => {
   /**
    * ⚠️ Every customer receipt ever issued printed `Bill To: -`.
