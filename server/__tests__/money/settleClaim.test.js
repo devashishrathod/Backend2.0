@@ -19,6 +19,25 @@ const {
   settleVoucherClaimPayment,
 } = require("../../helpers/voucherClaims");
 const { getVendorBalance } = require("../../helpers/ledger");
+
+/**
+ * ⚠️ The **leaf** module, not the barrel. `settleVoucherClaimPayment`
+ * destructures `generateDocumentNumber` at require time, so replacing the
+ * property on `helpers/documents` would change something nobody reads again.
+ * Named `mock*` because jest refuses a factory closing over anything else.
+ */
+let mockGenerateDocumentNumber;
+jest.mock("../../helpers/documents/generateDocumentNumber", () => {
+  const actual = jest.requireActual(
+    "../../helpers/documents/generateDocumentNumber",
+  );
+  return {
+    generateDocumentNumber: (...args) =>
+      mockGenerateDocumentNumber
+        ? mockGenerateDocumentNumber(...args)
+        : actual.generateDocumentNumber(...args),
+  };
+});
 const {
   TRANSACTION_PURPOSE,
   RAZORPAY_ACCOUNTS,
@@ -156,6 +175,106 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await clearCollections(...COLLECTIONS);
+  // Null means "use the real one"; the document-failure tests opt in.
+  mockGenerateDocumentNumber = null;
+});
+
+/**
+ * ⚠️ The document is the last step, and it used to be the one that could undo
+ * the customer's whole experience of a successful payment.
+ *
+ * The invoice block was unguarded, so anything it threw — a config read, an
+ * admin-chosen series that is not a legal shape — escaped the settle **after**
+ * the money was captured and the claim redeemed. `POST /voucher-claims/verify`
+ * does not catch it (`services/voucherClaims/verifyVoucherClaimPayment.js`
+ * awaits the settler directly), so the customer was charged, held a redeemed
+ * voucher, and was shown a 500. Some of them pay again.
+ */
+describe("a document failure does not fail the customer's payment", () => {
+  const breakTheDocument = () => {
+    mockGenerateDocumentNumber = () => {
+      throw new Error("document series is not usable");
+    };
+  };
+
+  it("settles the money and the claim, and does not throw", async () => {
+    const { transaction, claim, brandId } = await seedClaim();
+    await seedAdmin();
+    breakTheDocument();
+
+    const result = await settleVoucherClaimPayment({
+      transaction,
+      payment: capturedPayment(),
+    });
+
+    // Everything that moved money still happened.
+    expect(result.alreadySettled).toBe(false);
+    expect((await VoucherClaim.findById(claim._id)).status).toBe(
+      VOUCHER_CLAIM_STATUS.REDEEMED,
+    );
+    expect((await getVendorBalance(brandId)).balance).toBe(785);
+  });
+
+  /**
+   * And it must not look finished. COMPLETE is what the resume sweep reads to
+   * decide there is nothing left to do, so writing it over a failed document is
+   * how a charged customer stays without a receipt for ever.
+   */
+  it("leaves the settlement incomplete so the sweep retries it", async () => {
+    const { transaction } = await seedClaim();
+    await seedAdmin();
+    breakTheDocument();
+
+    await settleVoucherClaimPayment({
+      transaction,
+      payment: capturedPayment(),
+    });
+
+    const settled = await Transaction.findById(transaction._id);
+    expect(settled.invoiceId).toBeFalsy();
+    expect(settled.settlementStage).not.toBe(SETTLEMENT_STAGE.COMPLETE);
+    expect(settled.settlementStage).not.toBe(SETTLEMENT_STAGE.INVOICED);
+  });
+
+  it("tells an admin, rather than only leaving work behind", async () => {
+    const { transaction } = await seedClaim();
+    await seedAdmin();
+    breakTheDocument();
+
+    await settleVoucherClaimPayment({
+      transaction,
+      payment: capturedPayment(),
+    });
+
+    const alert = await Notification.findOne({
+      title: /receipt could not be issued/i,
+    }).lean();
+    expect(alert).toBeTruthy();
+  });
+
+  it("finishes once the document works again", async () => {
+    const { transaction } = await seedClaim();
+    await seedAdmin();
+    breakTheDocument();
+    await settleVoucherClaimPayment({
+      transaction,
+      payment: capturedPayment(),
+    });
+
+    // Whatever was wrong is fixed, and the settle is re-run the way the sweep
+    // re-runs it.
+    mockGenerateDocumentNumber = null;
+    const resumed = await Transaction.findById(transaction._id);
+    await settleVoucherClaimPayment({
+      transaction: resumed,
+      payment: { captured: true, id: resumed.razorpayPaymentId },
+      resume: true,
+    });
+
+    const settled = await Transaction.findById(transaction._id);
+    expect(settled.invoiceId).toBeTruthy();
+    expect(settled.settlementStage).toBe(SETTLEMENT_STAGE.COMPLETE);
+  });
 });
 
 describe("a captured payment settles the whole claim", () => {
