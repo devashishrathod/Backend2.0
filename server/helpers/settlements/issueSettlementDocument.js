@@ -6,7 +6,8 @@ const { PAYOUT_TYPE, PAYOUT_LEG_STATUS } = require("../../constants/payout");
 const { DOCUMENT_SERIES } = require("../../constants/document");
 const { getSubscriptionConfig } = require("../settings");
 const { buildBillingDetails } = require("../subscribeds");
-const { generateDocumentNumber } = require("../documents");
+const { generateDocumentNumber, alertDocumentFailed } = require("../documents");
+const { ADMIN_PATHS } = require("../notifications");
 const {
   buildSettlementDocumentSnapshot,
 } = require("./buildSettlementDocumentSnapshot");
@@ -52,6 +53,22 @@ exports.issueSettlementDocument = async (settlement) => {
   // Already issued — a re-entry into PAID, or a self-heal path running again.
   if (settlement.documentSnapshot?.documentNumber) return null;
 
+  /**
+   * Only when commission was actually charged.
+   *
+   * The rate is zero today, so allotting one regardless would put a number from
+   * a GST-facing series against an invoice for a supply that did not happen.
+   *
+   * Computed outside the `try` because the failure alert reports it: a statement
+   * that also lost a commission invoice is a tax-record gap, not just missing
+   * paperwork, and the two need telling apart. Reading it from inside the catch
+   * would throw a ReferenceError inside the handler whose whole job is to let
+   * nothing escape.
+   */
+  const hasCommission =
+    Number(settlement.commissionAmount) > 0 ||
+    Number(settlement.commissionTax) > 0;
+
   try {
     const [brand, rows, legs, seller] = await Promise.all([
       Brand.findById(settlement.brandId),
@@ -75,16 +92,6 @@ exports.issueSettlementDocument = async (settlement) => {
 
     // The vendor's tax identity, for the commission invoice's Bill To.
     const billing = brand ? await buildBillingDetails(brand) : {};
-
-    /**
-     * Only when commission was actually charged.
-     *
-     * The rate is zero today, so allotting one regardless would put a number from
-     * a GST-facing series against an invoice for a supply that did not happen.
-     */
-    const hasCommission =
-      Number(settlement.commissionAmount) > 0 ||
-      Number(settlement.commissionTax) > 0;
 
     const commissionInvoiceNumber =
       settlement.commissionInvoiceNumber ||
@@ -118,12 +125,34 @@ exports.issueSettlementDocument = async (settlement) => {
       { returnDocument: "after" },
     ).lean();
   } catch (error) {
-    // The payout is done and the vendor has their money. A missing statement is
-    // a re-issue problem, not a reason to fail the transition.
-    console.error(
-      `[issueSettlementDocument] could not issue a statement for settlement ${settlement._id}:`,
-      error?.message,
-    );
+    /**
+     * The payout is done and the vendor has their money, so this must not throw
+     * — but a bare `console.error` meant nobody learned.
+     *
+     * ⚠️ Worse here than anywhere else this pattern appears. The statement can
+     * carry the **commission invoice**, and commission is a taxable supply — so
+     * a silent failure is not only a vendor without their payout paperwork, it
+     * is a GST document that was never issued for a supply that happened. There
+     * is no re-issue endpoint for a settlement statement.
+     */
+    await alertDocumentFailed({
+      source: "issueSettlementDocument",
+      title: "A payout statement could not be issued",
+      body:
+        `The settlement is PAID and the vendor has their money, but the statement ` +
+        `could not be written. The vendor has no paperwork for the payout` +
+        `${hasCommission ? ", and the commission invoice for a taxable supply was not issued either" : ""}.`,
+      recordId: settlement._id,
+      path: ADMIN_PATHS.settlement(settlement._id),
+      lines: [
+        ["Settlement", settlement.settlementNumber || String(settlement._id)],
+        ["Net paid", String(settlement.netPayable ?? "-")],
+        ["Commission charged", hasCommission ? "yes" : "no"],
+      ],
+      footnote:
+        "The payout itself is complete and the ledger is correct — only the statement is missing. Re-issuing it is a manual step.",
+      error,
+    });
     return null;
   }
 };

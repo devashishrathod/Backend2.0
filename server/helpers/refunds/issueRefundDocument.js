@@ -2,7 +2,8 @@ const crypto = require("crypto");
 const RefundRequest = require("../../models/RefundRequest");
 const Transaction = require("../../models/Transaction");
 const { getSubscriptionConfig } = require("../settings");
-const { generateDocumentNumber } = require("../documents");
+const { generateDocumentNumber, alertDocumentFailed } = require("../documents");
+const { ADMIN_PATHS } = require("../notifications");
 const { DOCUMENT_KIND, DOCUMENT_SERIES } = require("../../constants/document");
 const {
   buildRefundDocumentSnapshot,
@@ -57,10 +58,6 @@ exports.issueRefundDocument = async ({
   try {
     const seller = await getSubscriptionConfig();
 
-    const documentNumber = await generateDocumentNumber({
-      series: DOCUMENT_SERIES[DOCUMENT_KIND.REFUND],
-    });
-
     /**
      * The original payment, for the number this document reverses and the tax
      * character it inherits. Re-read rather than trusted from the caller, because
@@ -71,6 +68,22 @@ exports.issueRefundDocument = async ({
       transaction?.invoiceSnapshot
         ? transaction
         : await Transaction.findById(refundRequest.transactionId).lean();
+
+    /**
+     * ⚠️ Allotted **after** every lookup, and as late as it can be.
+     *
+     * `generateDocumentNumber` advances a shared counter, so anything that
+     * throws between taking a number and writing it leaves that number attached
+     * to nothing — a hole in a document-of-record series, which is the one thing
+     * this series may not have.
+     *
+     * This used to sit above the config read and the transaction read, so a slow
+     * or missing row burned a number on the way past. Only the snapshot build
+     * and the write are after it now, and the snapshot needs the number.
+     */
+    const documentNumber = await generateDocumentNumber({
+      series: DOCUMENT_SERIES[DOCUMENT_KIND.REFUND],
+    });
 
     const documentSnapshot = buildRefundDocumentSnapshot({
       refundRequest,
@@ -95,12 +108,33 @@ exports.issueRefundDocument = async ({
       { returnDocument: "after" },
     ).lean();
   } catch (error) {
-    // The refund is complete and the customer has their money. A missing
-    // document is a re-issue problem, not a reason to fail the completion.
-    console.error(
-      `[issueRefundDocument] could not issue a document for refund ${refundRequest._id}:`,
-      error?.message,
-    );
+    /**
+     * The refund is complete and the customer has their money, so this must not
+     * throw — but it must not be silent either.
+     *
+     * It was a bare `console.error`, which meant a customer holding a refund
+     * with no receipt was a fact nobody learned until they asked for it. There
+     * is no re-issue endpoint for a refund document, so nothing else was ever
+     * going to surface it.
+     */
+    await alertDocumentFailed({
+      source: "issueRefundDocument",
+      title: "A refund receipt could not be issued",
+      body:
+        `The refund completed and the customer has their money, but the receipt ` +
+        `could not be written. They have no document for a refund that reverses a ` +
+        `tax invoice, and there is no self-service way to produce one.`,
+      recordId: refundRequest._id,
+      path: ADMIN_PATHS.refund(refundRequest._id),
+      lines: [
+        ["Refund request", String(refundRequest._id)],
+        ["Amount", String(refundRequest.refundAmount ?? "-")],
+        ["Claim", String(refundRequest.voucherClaimId ?? claim?._id ?? "-")],
+      ],
+      footnote:
+        "The money has moved and the ledger is correct — only the document is missing. Re-issuing it is a manual step.",
+      error,
+    });
     return null;
   }
 };
