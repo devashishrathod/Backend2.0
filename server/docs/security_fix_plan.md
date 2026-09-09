@@ -14,7 +14,7 @@ Ye record hai ki kya-kya badla aur **kyun**, taaki baad me koi code padhe to des
 | Existing ADMIN WhatsApp se **login** kar sakta hai, par naya ADMIN **ban nahi sakta** | Validator me `ADMIN` allowed rehta hai (login ke liye); service me `SELF_SIGNUP_ROLES` guard naya account rokta hai |
 | Password sign-in **sirf ADMIN** ke liye | Customer/vendor WhatsApp OTP se aate hain — unpe password ek extra credential hota jise churaya ja sake, aur kuch nahi |
 | `isFirst` ka matlab = "OTP verify nahi hua", "User doc naya hai" nahi | Warna OTP na aane pe retry karte hi `false` ho jaata tha |
-| Showcase CRUD admin ke liye bhi | `validateBrandVendor` token se brand resolve karta tha, to admin kabhi use kar hi nahi sakta tha |
+| Showcase CRUD admin ke liye bhi | `validateBrandVendor` token se brand resolve karta tha, to admin kabhi use kar hi nahi sakta tha. **Wo helper ab delete ho chuka hai** — uski jagah `helpers/showcases/resolveSectionForActor.js` hai, jo vendor ko uske apne brand tak rakhta hai aur admin ko kisi bhi brand par allow karta hai |
 | Password hash strip **per-service** | `sanitizeUser()` — schema-level `select: false` se saare password reads audit karne padte |
 | Pehla admin **CLI se** | `/auth/register` ab gated hai, to `scripts/seedAdmin.js` bootstrap path hai |
 
@@ -78,6 +78,10 @@ Poora plan + har decision ka reason → [voucher_brand_features_plan.md](./vouch
 - **Stale curation apne aap chhup jaati hai** — customer list already sirf `PUBLISHED` + valid-date vouchers aur `isActive` brands dikhati hai. Admin ko manually unpin nahi karna padta. **Par admin ke apne view me wo dikhte hain**, warna list se gayab ho jaate aur flag DB me pinned reh jaata — unpin karna hi namumkin ho jaata.
 - **Convenience fee** — `Setting.customer.convenienceFee` se, constants sirf fallback. **Original bill** pe lagti hai, discount ke baad wale pe nahi — warna har offer ke saath fee badalti aur offer comparison ki har row pe alag fee dikhani padti.
 - **No-offer ab error nahi** — `calculateVoucherOffer` bill offer minimum se kam hone pe `400` throw karta tha, jo customer ko *"tumhara bill galat hai"* padhta tha. Ab `200` + `offerApplied: false`, aur fee bhi `0`. `billAmount <= 0` phir bhi `400` hai — wo malformed input hai, business case nahi.
+  > ⚠️ `calculateVoucherOffer` ab exist nahi karta. Ye kaam
+  > `helpers/vouchers/resolveClaimOffer.js` (kaun sa offer lagta hai) aur
+  > `helpers/vouchers/calculateVoucherPricing.js` ka `computeOfferDiscount`
+  > (kitna discount) me baant diya gaya. Upar wala niyam waisa hi hai.
 - **Suggestions tab ka geo fallback** — paas me ek bhi pin na mile to distance limit hat jaati hai aur `isOutOfRange: true` aata hai. Jis sheher me curated brands pahunche hi nahi, wahan khaali tab **toota feature** lagta hai. Main feed me ye fallback kabhi nahi chalta.
 
 ---

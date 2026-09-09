@@ -80,7 +80,12 @@ Lekin baaki 5 (`create`, `getAll`, `get/:id`, `update/:id`, `delete/:id`) sab ro
 
 Abhi `/subscriptions` clearly **vendor plans** lag rahe hain (vendor onboarding me plan subscribe karta hai, `Subscribed` model brand se linked hai).
 
-Lekin `SUBSCRIPTION_PLANS` enum me `FREE` / `BASIC` / `PREMIUM` / `FAMILY` hai — `FAMILY` naam se lagta hai customer-side plans bhi plan me hain.
+Pehle `constants.js` me ek `SUBSCRIPTION_PLANS` enum tha — `FREE` / `BASIC` / `PREMIUM` / `FAMILY` — aur `FAMILY` naam se lagta tha ki customer-side plans bhi plan me hain.
+
+> ⚠️ **Wo enum kabhi kisi code ne padha hi nahi tha**, aur ab hata diya gaya hai.
+> Plans `Subscription` model se aate hain jahan `name` ek **free-text required
+> String** hai — admin panel se jo likha jaaye. To us enum se koi nateeja nahi
+> nikalta; ye sawaal product decision par hi tikta hai, code ke sanket par nahi.
 
 **Sawal:** `GET /subscriptions/getAll` aur `GET /subscriptions/get/:id` customer doc me daalun?
 - Option A — nahi, ye sirf vendor + admin ke liye hai *(mera default assumption)*
@@ -316,7 +321,7 @@ Reference doc (`API_DOCUMENTATION.md`) pura English me hai.
 | 2 | `/follows/*` aur `/brandAvoidances/*` sirf CUSTOMER ke liye | dono services me `resolveCustomerByUserId(userId)` |
 | 3 | `/banners/*` aur `/promotionalTickers/*` CRUD = ADMIN (app-level, brand se linked nahi) | models me `brandId` nahi, sirf `createdBy` |
 | 4 | `/banners/customer/active` + `/promotionalTickers/customer/active` = CUSTOMER | dedicated services, sirf active+dated records |
-| 5 | Showcase section/media CRUD = VENDOR | `createSection.js` → `validateBrandVendor(userId)` |
+| 5 | Showcase section/media CRUD = VENDOR **ya ADMIN** | `routes/showcase.js` → `isVendorOrAdmin`, phir `helpers/showcases/resolveSectionForActor.js` — vendor apne brand tak, admin kisi bhi brand par. *(Pehle yahan `validateBrandVendor(userId)` tha jo token se brand nikaalta tha, isliye admin band tha; wo helper ab exist nahi karta)* |
 | 6 | `/showcase/get-brand-showcase/:brandId` + `/:brandId/video-clips` = CUSTOMER | inactive/deleted filter out, `storage`/`metadata` strip |
 | 7 | `/vouchers/customer/*` (3 endpoints) = CUSTOMER | dedicated customer services |
 | 8 | `POST /vouchers/review/:versionId` = ADMIN | service ka param hi `adminUserId` hai + "Admin authentication is required" error |
