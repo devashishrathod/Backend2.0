@@ -1,7 +1,9 @@
-const { deleteAllMedia } = require("../../helpers/showcases");
+const {
+  deleteAllMedia,
+  resolveSectionForActor,
+} = require("../../helpers/showcases");
 const { releaseSlot } = require("../../helpers/brands");
 const { ENTITLEMENT_BUCKETS } = require("../../constants/subscription");
-const { resolveSectionForActor } = require("../../helpers/showcases");
 
 /**
  * Soft-delete a section and everything in it.

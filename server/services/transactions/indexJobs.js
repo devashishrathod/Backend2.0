@@ -1,6 +1,6 @@
 const {
   reapShadowIndexes,
-} = require("../../helpers/transactions/reapShadowIndexes");
+} = require("../../helpers/transactions");
 const {
   sendQuietly,
   notifyAdminShadowIndexReaped,

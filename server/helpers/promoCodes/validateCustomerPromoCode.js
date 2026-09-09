@@ -11,7 +11,7 @@ const {
 const { assertPromoWindowAndCaps } = require("./assertPromoWindowAndCaps");
 const { buildAudienceFilter } = require("./buildAudienceFilter");
 const { round2 } = require("../subscribeds/calculatePricing");
-const { buildTransactionFilter } = require("../transactions/buildTransactionFilter");
+const { buildTransactionFilter } = require("../transactions");
 const { TRANSACTION_PURPOSE } = require("../../constants/transaction");
 
 const sameId = (a, b) => String(a) === String(b);

@@ -6,7 +6,7 @@ const {
   LEDGER_ENTRY_RULES,
   ONCE_PER_TRANSACTION_TYPES,
 } = require("../../constants/ledger");
-const { round2 } = require("../subscribeds/calculatePricing");
+const { round2 } = require("../subscribeds");
 const { throwError } = require("../../utils");
 
 const { DUPLICATE_KEY } = require("../../constants/mongo");

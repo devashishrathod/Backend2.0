@@ -11,7 +11,7 @@ const {
   pickByProjection,
 } = require("../../helpers/transactions");
 const { buildClaimTimeline } = require("../../helpers/voucherClaims");
-const { invoiceUrl } = require("../../helpers/notifications/panelLinks");
+const { invoiceUrl } = require("../../helpers/notifications");
 
 /**
  * One claim, its payment, and its story.

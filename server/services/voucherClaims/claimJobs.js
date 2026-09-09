@@ -15,8 +15,8 @@ const {
   ADMIN_PATHS,
   adminUrl,
   deepLink,
+  formatDateTime,
 } = require("../../helpers/notifications");
-const { formatDateTime } = require("../../helpers/notifications/formatDateTime");
 const { getCustomerConfig } = require("../../helpers/settings");
 const {
   NOTIFICATION_TYPES,
