@@ -36,13 +36,31 @@ exports.expireVouchers = async () => {
     .select("_id brandId")
     .lean();
 
+  /**
+   * `ARCHIVED` is swept alongside `PUBLISHED`.
+   *
+   * ⚠️ An archived version is one a newer publish replaced — it left circulation
+   * early, but its own validity window is still running. When `endAt` finally
+   * passes it has genuinely expired, and this is the sweep that says so. Without
+   * `ARCHIVED` in this filter every superseded version would sit archived for
+   * ever, and "how many vouchers expired this month" would count only the ones
+   * that were never replaced.
+   */
   const versionResult = await VoucherVersion.updateMany(
     {
-      status: VOUCHER_STATUSES.PUBLISHED,
+      status: {
+        $in: [VOUCHER_STATUSES.PUBLISHED, VOUCHER_STATUSES.ARCHIVED],
+      },
       endAt: { $lte: now },
       isDeleted: false,
     },
-    { $set: { status: VOUCHER_STATUSES.EXPIRED, isActive: false } },
+    {
+      $set: {
+        status: VOUCHER_STATUSES.EXPIRED,
+        expiredAt: now,
+        isActive: false,
+      },
+    },
   );
 
   let masterResult = { matchedCount: 0, modifiedCount: 0 };

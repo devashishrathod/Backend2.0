@@ -119,6 +119,64 @@ exports.publishVoucher = async (userId, versionId) => {
         `);
 
     const publishedAt = new Date();
+
+    /**
+     * The version this one replaces is retired **first**, and as **ARCHIVED**.
+     *
+     * ### ⚠️ Order is load-bearing — this is an index constraint, not a style choice
+     *
+     * `voucherId_1_status_1` is a partial unique index on
+     * `{ status: "PUBLISHED", isDeleted: false }`: a voucher may have exactly one
+     * published version. Publishing the new one *before* retiring the old one
+     * leaves both `PUBLISHED` for the width of a single statement — and inside a
+     * transaction Mongo enforces a unique index on the write, not at commit. So
+     * that ordering did not merely race; it **failed every time**, with
+     * `E11000 … dup key: { voucherId, status: "PUBLISHED" }`.
+     *
+     * The effect was that a voucher which already had a published version could
+     * never publish another — the vendor's second version was refused with a
+     * duplicate-key error naming a field they never touched.
+     *
+     * ### Why ARCHIVED and not EXPIRED
+     *
+     * Two different things were collapsing into one word. A version can leave
+     * circulation because the vendor published a newer one, or because its own
+     * `endAt` arrived — and only the second is an expiry. Marking a supersede as
+     * `EXPIRED` made a voucher whose validity ran another three months look like
+     * one whose time was up, and no report could tell the two apart afterwards.
+     *
+     * `archivedAt` records when it was replaced. `expireVouchers` then carries it
+     * on to `EXPIRED` when `endAt` genuinely passes, so the archived state is a
+     * stage in the life of a version rather than a dead end.
+     */
+    if (previousPublishedVersions.length > 0) {
+      const archiveResult = await VoucherVersion.updateMany(
+        {
+          voucherId: voucher._id,
+          status: VOUCHER_STATUSES.PUBLISHED,
+          _id: { $ne: version._id },
+          isDeleted: false,
+        },
+        {
+          $set: {
+            status: VOUCHER_STATUSES.ARCHIVED,
+            archivedAt: publishedAt,
+            isActive: false,
+            updatedBy: userId,
+          },
+        },
+        { session },
+      );
+
+      if (archiveResult.modifiedCount !== previousPublishedVersions.length) {
+        throwError(
+          409,
+          "Previous published voucher version changed while publishing. Please try again.",
+        );
+      }
+    }
+
+    // Only now is the published slot free.
     const versionUpdateResult = await VoucherVersion.updateOne(
       {
         _id: version._id,
@@ -145,32 +203,6 @@ exports.publishVoucher = async (userId, versionId) => {
         409,
         "Voucher version was already published or its status changed. Please refresh and try again.",
       );
-    }
-
-    if (previousPublishedVersions.length > 0) {
-      const expireResult = await VoucherVersion.updateMany(
-        {
-          voucherId: voucher._id,
-          status: VOUCHER_STATUSES.PUBLISHED,
-          _id: { $ne: version._id },
-          isDeleted: false,
-        },
-        {
-          $set: {
-            status: VOUCHER_STATUSES.EXPIRED,
-            isActive: false,
-            updatedBy: userId,
-          },
-        },
-        { session },
-      );
-
-      if (expireResult.modifiedCount !== previousPublishedVersions.length) {
-        throwError(
-          409,
-          "Previous published voucher version changed while publishing. Please try again.",
-        );
-      }
     }
 
     const voucherUpdateResult = await Voucher.updateOne(
@@ -237,29 +269,29 @@ exports.publishVoucher = async (userId, versionId) => {
     );
 
     if (previousPublishedVersions.length > 0) {
-      const expirationHistory = previousPublishedVersions.map((oldVersion) => ({
+      const archiveHistory = previousPublishedVersions.map((oldVersion) => ({
         voucherId: voucher._id,
         voucherVersionId: oldVersion._id,
         brandId: voucher.brandId,
-        action: VOUCHER_APPROVAL_ACTION.EXPIRED,
+        action: VOUCHER_APPROVAL_ACTION.ARCHIVED,
         performedBy: userId,
         versionNumber: oldVersion.versionNumber,
         voucherCode: voucher.voucherCode,
         versionCode: oldVersion.versionCode,
         reason:
-          "Previous published version replaced by a newer published version.",
+          "Previous published version archived — replaced by a newer published version.",
         metadata: {
           previousVoucherStatus: VOUCHER_STATUSES.APPROVED,
           previousVersionStatus: VOUCHER_STATUSES.PUBLISHED,
-          newVersionStatus: VOUCHER_STATUSES.EXPIRED,
+          newVersionStatus: VOUCHER_STATUSES.ARCHIVED,
           replacedByVersionId: version._id,
           replacedByVersionNumber: version.versionNumber,
           replacedByVersionCode: version.versionCode,
-          expiredAt: publishedAt,
-          expiredBy: userId,
+          archivedAt: publishedAt,
+          archivedBy: userId,
         },
       }));
-      await VoucherApprovalHistory.insertMany(expirationHistory, { session });
+      await VoucherApprovalHistory.insertMany(archiveHistory, { session });
     }
     await session.commitTransaction();
     return {
