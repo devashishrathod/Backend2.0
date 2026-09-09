@@ -21,7 +21,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const { ROLES, LOGIN_TYPES, ADDRESS_TYPES } = require("../constants");
+const { ROLES, ADDRESS_TYPES } = require("../constants");
 const { VOUCHER_SORT_BY, VOUCHER_DISCOUNT_TYPES } = require("../constants/voucher");
 const { VOUCHER_BANNER_TYPE } = require("../constants/voucherBanner");
 const { CONVENIENCE_FEE_DEFAULTS } = require("../constants/customer");
