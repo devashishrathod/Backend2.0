@@ -23,12 +23,6 @@ const STORAGE_PROVIDER = {
   S3: "S3",
 };
 
-const SHOWCASE_SORT_BY = {
-  CREATED_AT: "createdAt",
-  SORT_ORDER: "sortOrder",
-  TITLE: "title",
-};
-
 const SHOWCASE_MEDIA_CONFIG = {
   maxItems: 15,
   maxImages: 15,
@@ -44,6 +38,5 @@ module.exports = {
   SHOWCASE_SECTION_TYPE,
   SHOWCASE_COVER_IMAGE_MODE,
   STORAGE_PROVIDER,
-  SHOWCASE_SORT_BY,
   SHOWCASE_MEDIA_CONFIG,
 };
