@@ -19,6 +19,7 @@ const {
   generateVoucherVersionCode,
   uploadVoucherBannerMedia,
   deleteVoucherBannerMedia,
+  syncAttachedSubBrandsCount,
 } = require("../../helpers/vouchers");
 const {
   validateVoucherOffers,
@@ -200,6 +201,7 @@ exports.createVoucher = async (actor, payload, files = {}) => {
       isDeleted: false,
     }));
     await VoucherSubBrand.insertMany(mappingDocuments, { session });
+    await syncAttachedSubBrandsCount(version._id, session);
 
     await session.commitTransaction();
     return {
