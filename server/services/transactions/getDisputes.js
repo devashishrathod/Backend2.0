@@ -328,5 +328,3 @@ exports.getDispute = async (actor = {}, disputeId) => {
   return row;
 };
 
-exports.vendorDisputeProjection = vendorProjection;
-exports.adminDisputeProjection = adminProjection;

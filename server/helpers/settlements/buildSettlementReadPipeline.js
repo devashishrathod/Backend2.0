@@ -287,5 +287,4 @@ const describeReserve = (settlement) => {
   }
 };
 
-exports.VENDOR_STATUS_LABEL = VENDOR_STATUS_LABEL;
 exports.scopeFor = scopeFor;

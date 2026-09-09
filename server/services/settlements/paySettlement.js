@@ -700,8 +700,6 @@ const presentLeg = (leg) => ({
 });
 
 exports.presentLeg = presentLeg;
-exports.liveBankSnapshot = liveBankSnapshot;
-exports.paidTotal = paidTotal;
 
 /**
  * The bank pulled a completed payout back.

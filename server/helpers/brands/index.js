@@ -1,6 +1,5 @@
 const { generateUniqueBrandId } = require("./generateUniqueBrandId");
 const { generateBrandMerchantId } = require("./generateBrandMerchantId");
-const { validateBrandVendor } = require("./validateBrandVendor");
 const {
   recordBrandVerificationHistory,
 } = require("./recordBrandVerificationHistory");
@@ -25,7 +24,6 @@ const {
 const { outletDistanceExpression } = require("./outletDistanceExpression");
 const {
   resolveBrandIdentity,
-  BRAND_IDENTITY_FALLBACK_NAME,
 } = require("./resolveBrandIdentity");
 
 const {
@@ -38,12 +36,10 @@ module.exports = {
   customerVisibleBrandExpr,
   resolveActorBrand,
   resolveBrandIdentity,
-  BRAND_IDENTITY_FALLBACK_NAME,
   assertPublicBrand,
   outletDistanceExpression,
   generateUniqueBrandId,
   generateBrandMerchantId,
-  validateBrandVendor,
   recordBrandVerificationHistory,
   recordBrandStatusHistory,
   resolveOnboardingEditWindow,

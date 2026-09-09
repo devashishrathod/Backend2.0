@@ -1,7 +1,6 @@
 const {
   buildSettlements,
   computeTotals,
-  freezeBankSnapshot,
 } = require("./buildSettlements");
 const {
   approveSettlement,
@@ -43,7 +42,6 @@ module.exports = {
    */
   buildSettlements,
   computeTotals,
-  freezeBankSnapshot,
   /**
    * â ï¸ Approval is the last point at which exclusion is free, and the flag is
    * enforced **in the update filter** â a read-then-write check leaves the same

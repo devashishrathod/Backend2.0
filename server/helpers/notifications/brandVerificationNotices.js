@@ -1,11 +1,10 @@
 const {
   NOTIFICATION_TYPES,
   NOTIFICATION_SEVERITY,
-  NOTIFICATION_AUDIENCE,
 } = require("../../constants/notification");
 const { notify } = require("./notify");
 const { notifyAdmins } = require("./notifyAdmins");
-const { resolveBrandIdentity } = require("../brands/resolveBrandIdentity");
+const { resolveBrandIdentity } = require("../brands");
 const {
   PANEL_PATHS,
   ADMIN_PATHS,
@@ -327,6 +326,3 @@ exports.notifyAdminsBrandAwaitingReview = async ({
     },
   });
 };
-
-// Exposed so the admin audience label stays consistent if a caller needs it.
-exports.BRAND_REVIEW_ADMIN_AUDIENCE = NOTIFICATION_AUDIENCE.ADMIN;

@@ -190,4 +190,3 @@ const presentHistory = (row, role) => ({
     : {}),
 });
 
-exports.presentHistory = presentHistory;

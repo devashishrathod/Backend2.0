@@ -132,4 +132,3 @@ exports.resolveBrandIdentity = async (brandOrId) => {
   }
 };
 
-exports.BRAND_IDENTITY_FALLBACK_NAME = FALLBACK_NAME;

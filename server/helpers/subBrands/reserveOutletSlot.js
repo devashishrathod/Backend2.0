@@ -1,9 +1,6 @@
 const { OUTLET_TYPES } = require("../../constants");
 const { ENTITLEMENT_BUCKETS } = require("../../constants/subscription");
-const {
-  reserveSlot,
-  bucketLabel,
-} = require("../brands/entitlementSlots");
+const { reserveSlot } = require("../brands");
 
 /**
  * Which plan pool an outlet type draws on. Outlets and franchises are separate
@@ -24,4 +21,3 @@ exports.reserveOutletSlot = (brandId, outletType) =>
   reserveSlot(brandId, bucketFor(outletType));
 
 exports.bucketFor = bucketFor;
-exports.bucketNoun = (bucket) => bucketLabel(bucket).one;
