@@ -1,6 +1,6 @@
 const User = require("../../models/User");
 const { throwError } = require("../../utils");
-const { sendOtp } = require("../otps/sendOtp");
+const { sendOtp } = require("../otps");
 const { LOGIN_TYPES, ROLES } = require("../../constants");
 
 exports.loginWithEmailOTP = async (body) => {

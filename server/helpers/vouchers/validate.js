@@ -1,4 +1,3 @@
-const mongoose = require("mongoose");
 const { throwError } = require("../../utils");
 const Brand = require("../../models/Brand");
 const SubBrand = require("../../models/SubBrand");
@@ -12,16 +11,6 @@ const {
   validateVoucherOffers,
   normalizeVoucherOffers,
 } = require("../voucherOffers");
-
-exports.validateObjectIds = (ids, fieldName = "Ids") => {
-  if (!Array.isArray(ids)) ids = [ids];
-  for (const id of ids) {
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      throwError(400, `Invalid ${fieldName} format.`);
-    }
-  }
-  return true;
-};
 
 exports.removeDuplicateObjectIds = (ids = []) => {
   return [...new Set(ids.map((id) => String(id)))];

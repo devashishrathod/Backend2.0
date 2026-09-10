@@ -21,12 +21,3 @@ exports.normalizeQuery = (value = "") =>
  */
 exports.searchRegex = (value = "") =>
   new RegExp(escapeRegex(String(value).trim()), "i");
-
-/**
- * The same term anchored to the start, for the ranking half of a match.
- *
- * Only this form can use an index on the field; the unanchored one always
- * scans. Both are needed — a customer searching "hut" expects "Pizza Hut".
- */
-exports.searchPrefixRegex = (value = "") =>
-  new RegExp(`^${escapeRegex(String(value).trim())}`, "i");

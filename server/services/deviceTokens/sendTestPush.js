@@ -2,7 +2,7 @@ const { dispatchPush, isFcmConfigured, probeFcmAuth } = require("../../helpers/p
 const User = require("../../models/User");
 const {
   resolveChannelPreferences,
-} = require("../../helpers/notifications/channelPreferences");
+} = require("../../helpers/notifications");
 const { throwError } = require("../../utils");
 
 /**

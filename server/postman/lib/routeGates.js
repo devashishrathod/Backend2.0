@@ -17,8 +17,9 @@ const path = require("path");
 // succeed.
 require("dotenv").config({ path: path.join(__dirname, "..", "..", ".env") });
 
-// Longest first — `isVendorOrAdminEvenIfDeactivated` must match before
-// `isVendorOrAdmin`, which must match before `isVendor`.
+// Longest first — `verifyJwtTokenEvenIfDeactivated` must match before
+// `verifyJwtToken`, and `isVendorOrAdmin` before `isVendor`. A shorter name is
+// a prefix of a longer one, so the order here *is* the matching rule.
 //
 // ⚠️ Every gate `middlewares/index.js` exports has to appear here. One that is
 // missing does not error — the route silently falls through to `PUBLIC`, which
@@ -26,9 +27,7 @@ require("dotenv").config({ path: path.join(__dirname, "..", "..", ".env") });
 // and `isBrandSideOrAdmin` were both missing, so the four outlet-facing routes
 // (refund approve/reject, dispute evidence ×2) documented themselves as open.
 const GATES = [
-  "isVendorOrAdminEvenIfDeactivated",
   "verifyJwtTokenEvenIfDeactivated",
-  "validateRolesEvenIfDeactivated",
   "isVendorOrSubVendor",
   "isBrandSideOrAdmin",
   "isVendorOrAdmin",
@@ -49,8 +48,6 @@ const LABEL = {
   isVendorOrSubVendor: "`isVendorOrSubVendor` — vendor or outlet manager",
   isBrandSideOrAdmin: "`isBrandSideOrAdmin` — vendor, outlet or admin",
   isVendorOrAdmin: "`isVendorOrAdmin` — vendor or admin",
-  isVendorOrAdminEvenIfDeactivated:
-    "`isVendorOrAdminEvenIfDeactivated` — vendor or admin, **suspended account bhi**",
   verifyJwtToken: "`verifyJwtToken` — koi bhi signed-in role",
   verifyJwtTokenEvenIfDeactivated:
     "`verifyJwtTokenEvenIfDeactivated` — signed in, **suspended account bhi**",

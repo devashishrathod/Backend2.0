@@ -377,10 +377,21 @@ const transactionSchema = new mongoose.Schema(
     disputeAlertsSent: { type: Number, default: 0 },
     disputeResolvedAt: { type: Date },
     isRefunded: { type: Boolean, default: false },
-    isRefundRequested: { type: Boolean, default: false },
+    /**
+     * ⚠️ There is no `isRefundRequested` here, deliberately.
+     *
+     * "Does this payment have a refund?" is answered by the `RefundRequest`
+     * collection, which carries `transactionId` and `claimId` as **required,
+     * indexed** foreign keys — plus `isOpen` for the live ones. That is one
+     * query, and it cannot drift.
+     *
+     * A boolean here would be a second copy of the same fact. The one that used
+     * to sit here was never written by any code path, so it read `false` on a
+     * payment with ten refunds against it — and `false` is the direction that
+     * costs money.
+     */
     isPaidToVendor: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
-    isRemoved: { type: Boolean, default: false },
     isDeleted: { type: Boolean, default: false },
   },
   { timestamps: true, versionKey: false },

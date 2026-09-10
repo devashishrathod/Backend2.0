@@ -14,7 +14,7 @@ const {
   generateAndUploadDocument,
   generateDocumentNumber,
 } = require("../../helpers/documents");
-const { invoiceUrl } = require("../../helpers/notifications/panelLinks");
+const { invoiceUrl } = require("../../helpers/notifications");
 
 /**
  * Build a snapshot for a transaction that has none.

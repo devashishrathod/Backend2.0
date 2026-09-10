@@ -55,29 +55,11 @@ exports.validateListSettlements = {
 exports.validateSettlementDetail = { params: settlementIdParam };
 
 /**
- * The public statement link.
- *
- * ⚠️ The token **is** the credential here — there is no JWT behind it — so its
- * shape is checked before it reaches a query. `crypto.randomBytes(32).toString("hex")`
- * is exactly 64 hex characters, and anything else is not a token this system ever
- * issued: refusing it up front keeps malformed input out of the lookup entirely.
- *
- * The error deliberately says nothing useful. A holder of a bad token learning
- * that it was *nearly* right is how guessing gets cheaper.
+ * ⚠️ The public statement link's validator lives in `validator/documents.js` now,
+ * as `validateDocumentByToken`. `/settlements/statement/:token` was replaced by
+ * `GET /documents/:token`, which serves all six document kinds — a settlement
+ * statement is one of them, so the check no longer belongs to this domain.
  */
-exports.validateStatementByToken = {
-  params: Joi.object({
-    token: Joi.string()
-      .trim()
-      .pattern(/^[a-f0-9]{64}$/i)
-      .required()
-      .messages({
-        "any.required": "Statement not found.",
-        "string.empty": "Statement not found.",
-        "string.pattern.base": "Statement not found.",
-      }),
-  }),
-};
 
 /** The statement lines. Paged separately — a busy brand's day is hundreds. */
 exports.validateSettlementTransactions = {

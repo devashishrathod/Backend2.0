@@ -1,0 +1,223 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:w="urn:schemas-microsoft-com:office:word"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8"/>
+<title>Trydood WhatsApp Buttons — Routes</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
+<style>
+@page { size: A4; margin: 2cm 1.8cm; }
+body { font-family: Calibri, "Segoe UI", Arial, sans-serif; font-size: 10.5pt; color: #1a1a1a; line-height: 1.45; }
+h1 { font-size: 26pt; color: #0b6b3a; margin: 0 0 4pt 0; }
+h2 { font-size: 17pt; color: #0b6b3a; border-bottom: 2px solid #0b6b3a; padding-bottom: 3pt; margin: 24pt 0 10pt 0; }
+h3 { font-size: 13pt; color: #14532d; margin: 20pt 0 6pt 0; }
+h4 { font-size: 11pt; color: #1a1a1a; margin: 12pt 0 4pt 0; }
+p { margin: 0 0 7pt 0; }
+a { color: #0b6b3a; }
+.sub { font-size: 12pt; color: #555; margin-bottom: 2pt; }
+.meta { font-size: 9.5pt; color: #777; }
+table { border-collapse: collapse; width: 100%; margin: 6pt 0 10pt 0; }
+th { background: #0b6b3a; color: #fff; font-size: 9.5pt; text-align: left; padding: 5pt 6pt; border: 0.5pt solid #0b6b3a; }
+td { font-size: 9.5pt; padding: 5pt 6pt; border: 0.5pt solid #c8c8c8; vertical-align: top; }
+tr.alt td { background: #f4f8f5; }
+.num { width: 26pt; text-align: center; font-weight: bold; }
+.msg { border: 1pt solid #b8d8c4; background: #f7fcf9; padding: 9pt 11pt; margin: 4pt 0 10pt 0;
+       font-family: Consolas, "Courier New", monospace; font-size: 9.5pt; line-height: 1.5; }
+.tmpl { border-left: 3pt solid #0b6b3a; padding-left: 10pt; margin: 0 0 22pt 0; page-break-inside: avoid; }
+.hdr { background: #eaf4ee; padding: 6pt 9pt; margin-bottom: 8pt; }
+.tname { font-family: Consolas, "Courier New", monospace; font-size: 12pt; font-weight: bold; color: #0b6b3a; }
+.facts { font-size: 9.5pt; color: #444; margin-top: 2pt; }
+.note { border-left: 3pt solid #c99a06; background: #fffbea; padding: 7pt 10pt; margin: 4pt 0 10pt 0; font-size: 9.5pt; }
+.hold { border-left: 3pt solid #b91c1c; background: #fef4f4; padding: 7pt 10pt; margin: 4pt 0 10pt 0; font-size: 9.5pt; }
+.cap { display: inline-block; background: #b91c1c; color: #fff; font-size: 8pt; padding: 1pt 5pt; margin-left: 4pt; }
+.new { display: inline-block; background: #b45309; color: #fff; font-size: 8pt; padding: 1pt 5pt; }
+.ok { color: #0b6b3a; font-weight: bold; }
+.brk { page-break-before: always; }
+code { font-family: Consolas, "Courier New", monospace; background: #f0f0f0; padding: 0 2pt; }
+.lead { font-size: 11pt; }
+.back { font-size: 9pt; }
+</style>
+</head>
+<body>
+
+<h1>Trydood WhatsApp Buttons — Routes</h1>
+<p class="sub">Every button, where it sends the reader, and who owns that page</p>
+<p class="meta">58 buttons across 42 templates &nbsp;·&nbsp; Prepared 08 Sep 2026</p>
+
+<h2>What this is for</h2>
+<p class="lead">Each WhatsApp message carries one or two buttons. This lists every one of them: the URL
+that is registered with Meta, the constant in the backend that builds it, what the dynamic part of the
+URL contains, and the front-end route that has to exist for the tap to land somewhere.</p>
+<p><b>The rule behind every destination:</b> a button opens <b>the exact record the message is about</b>,
+never a list. A payment notification opens that payment; a refund notification opens that refund. The
+only exceptions are the plan list — where the vendor is choosing, so a list is the point — and the
+onboarding and dashboard screens, which are single pages.</p>
+
+<h3>⚠️ A URL is frozen when Meta approves the template</h3>
+<p>Everything below has to be right <b>before</b> a template is created, not after. If a route changes
+later, the template has to be built again under a new name and the old one keeps sending in the
+meantime. So a "NEW" or "Confirm" row in the last column is a blocker, not a to-do.</p>
+
+<h2>What needs building or confirming</h2>
+<h3>5 routes do not exist yet</h3>
+<table>
+<tr><th class="num">#</th><th style="width:22%">Template</th><th style="width:16%">Button</th><th>Route needed</th></tr>
+<tr class=""><td class="num">18</td><td><code>vendor_voucher_claim_received</code></td><td><b>View Transaction</b></td><td>transactions/:transactionId — this claim's full detail, not the list<br/><span class="meta">backend constant: <code>PANEL_PATHS.transaction(id)</code></span></td></tr>
+<tr class="alt"><td class="num">19</td><td><code>vendor_plan_limit_reached</code></td><td><b>Upgrade Plan</b></td><td>subscription/plans/:planId — opens that plan ready to buy<br/><span class="meta">backend constant: <code>PANEL_PATHS.planCheckout(planId)</code></span></td></tr>
+<tr class=""><td class="num">24</td><td><code>vendor_refund_requested</code></td><td><b>Review Refund</b></td><td>refunds/:refundRequestId — this request, opened ready to decide<br/><span class="meta">backend constant: <code>PANEL_PATHS.refund(id)</code></span></td></tr>
+<tr class="alt"><td class="num">25</td><td><code>vendor_refund_reminder</code></td><td><b>Review Refund</b></td><td>refunds/:refundRequestId<br/><span class="meta">backend constant: <code>PANEL_PATHS.refund(id)</code></span></td></tr>
+<tr class=""><td class="num">26</td><td><code>vendor_refund_completed</code></td><td><b>View Refund</b></td><td>refunds/:refundRequestId<br/><span class="meta">backend constant: <code>PANEL_PATHS.refund(id)</code></span></td></tr>
+</table>
+
+<h3>13 routes exist but need confirming</h3>
+<table>
+<tr><th class="num">#</th><th style="width:22%">Template</th><th style="width:16%">Button</th><th>What to confirm</th></tr>
+<tr class=""><td class="num">1</td><td><code>vendor_subscription_activated</code></td><td><b>View Subscription</b></td><td>The vendor's own subscription page — NOT the plan list</td></tr>
+<tr class="alt"><td class="num">2</td><td><code>vendor_subscription_renewed</code></td><td><b>View Subscription</b></td><td>The vendor's own subscription page — NOT the plan list</td></tr>
+<tr class=""><td class="num">3</td><td><code>vendor_subscription_upgraded</code></td><td><b>View Subscription</b></td><td>The vendor's own subscription page — NOT the plan list</td></tr>
+<tr class="alt"><td class="num">4</td><td><code>vendor_subscription_downgraded</code></td><td><b>View Subscription</b></td><td>The vendor's own subscription page — NOT the plan list</td></tr>
+<tr class=""><td class="num">5</td><td><code>vendor_subscription_granted</code></td><td><b>View Subscription</b></td><td>The vendor's own subscription page — NOT the plan list</td></tr>
+<tr class="alt"><td class="num">12</td><td><code>brand_rejected</code></td><td><b>Contact Support</b></td><td>trydood.com/contact</td></tr>
+<tr class=""><td class="num">13</td><td><code>brand_approval_revoked</code></td><td><b>Contact Support</b></td><td>trydood.com/contact</td></tr>
+<tr class="alt"><td class="num">14</td><td><code>brand_deactivated</code></td><td><b>Contact Support</b></td><td>trydood.com/contact</td></tr>
+<tr class=""><td class="num">16</td><td><code>brand_hidden_from_customers</code></td><td><b>Contact Support</b></td><td>trydood.com/contact</td></tr>
+<tr class="alt"><td class="num">21</td><td><code>vendor_settlement_failed</code></td><td><b>Contact Support</b></td><td>trydood.com/contact</td></tr>
+<tr class=""><td class="num">34</td><td><code>customer_refund_rejected</code></td><td><b>Contact Support</b></td><td>trydood.com/contact</td></tr>
+<tr class="alt"><td class="num">36</td><td><code>customer_refund_bank_details</code></td><td><b>Contact Support</b></td><td>trydood.com/contact</td></tr>
+<tr class=""><td class="num">38</td><td><code>customer_claim_expired</code></td><td><b>Contact Support</b></td><td>trydood.com/contact</td></tr>
+</table>
+
+<h2>Sign-in behaviour</h2>
+<table>
+<tr><th style="width:20%">Surface</th><th>What happens when the reader is not signed in</th></tr>
+<tr><td><b>Vendor panel</b><br/><code>https://vendor.trydood.com</code></td><td>The panel's own auth guard shows the login screen, then continues to the requested page. Nothing is appended to the URL — the route <i>is</i> the destination.</td></tr>
+<tr class="alt"><td><b>Admin panel</b><br/><code>https://admin.trydood.com</code></td><td>Same as the vendor panel.</td></tr>
+<tr><td><b>Customer app</b><br/><code>https://app.trydood.com</code></td><td>App installed and signed in: opens that screen. Signed out: login, then that screen. <b>Not installed:</b> the link opens in a browser, and whatever is served at that host decides — it should send the visitor to the store. That decision cannot be expressed in the link, so it belongs to the page at that host.</td></tr>
+<tr class="alt"><td><b>Document download</b><br/><code>https://api.trydood.com</code></td><td>No sign-in. The token in the URL is the authorisation, which is why it is long and unguessable.</td></tr>
+<tr><td><b>Website</b><br/><code>https://trydood.com</code></td><td>Public page, no sign-in.</td></tr>
+</table>
+
+<h2>Base URLs</h2>
+<table>
+<tr><th style="width:22%">Owner</th><th style="width:34%">Base</th><th>Buttons</th></tr>
+<tr class=""><td><b>Backend (public)</b></td><td><code>https://api.trydood.com</code></td><td>10</td></tr>
+<tr class="alt"><td><b>Vendor panel</b></td><td><code>https://vendor.trydood.com</code></td><td>27</td></tr>
+<tr class=""><td><b>Website</b></td><td><code>https://trydood.com</code></td><td>8</td></tr>
+<tr class="alt"><td><b>Customer app</b></td><td><code>https://app.trydood.com</code></td><td>9</td></tr>
+<tr class=""><td><b>Admin panel</b></td><td><code>https://admin.trydood.com</code></td><td>4</td></tr>
+</table>
+
+<h2 class="brk">Every button</h2>
+<p class="meta">Grouped by who owns the destination. <b>Front-end route</b> is the column to correct — send it back and both documents are rebuilt from it.</p>
+
+<h3>Backend (public) — 10 buttons</h3>
+<table>
+<tr><th class="num">#</th><th style="width:19%">Template</th><th style="width:13%">Button text</th><th style="width:8%">Type</th><th style="width:22%">Full URL</th><th style="width:14%">Dynamic part is</th><th>Front-end route</th></tr>
+<tr class=""><td class="num">1</td><td><code>vendor_subscription_activated</code></td><td><b>Download Invoice</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td>documentToken (64-char hex)</td><td>GET /trydood/v1/documents/:token — already live <span class="ok">✓</span><br/><span class="meta">documentUrl(token)</span></td></tr>
+<tr class="alt"><td class="num">2</td><td><code>vendor_subscription_renewed</code></td><td><b>Download Invoice</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td>documentToken (64-char hex)</td><td>GET /trydood/v1/documents/:token — already live <span class="ok">✓</span><br/><span class="meta">documentUrl(token)</span></td></tr>
+<tr class=""><td class="num">3</td><td><code>vendor_subscription_upgraded</code></td><td><b>Download Invoice</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td>documentToken (64-char hex)</td><td>GET /trydood/v1/documents/:token — already live <span class="ok">✓</span><br/><span class="meta">documentUrl(token)</span></td></tr>
+<tr class="alt"><td class="num">4</td><td><code>vendor_subscription_downgraded</code></td><td><b>Download Invoice</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td>documentToken (64-char hex)</td><td>GET /trydood/v1/documents/:token — already live <span class="ok">✓</span><br/><span class="meta">documentUrl(token)</span></td></tr>
+<tr class=""><td class="num">5</td><td><code>vendor_subscription_granted</code></td><td><b>Download Advice</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td>documentToken (64-char hex)</td><td>GET /trydood/v1/documents/:token — already live <span class="ok">✓</span><br/><span class="meta">documentUrl(token)</span></td></tr>
+<tr class="alt"><td class="num">20</td><td><code>vendor_settlement_paid</code></td><td><b>Download Statement</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td>documentToken (64-char hex)</td><td>GET /trydood/v1/documents/:token — already live <span class="ok">✓</span><br/><span class="meta">documentUrl(token)</span></td></tr>
+<tr class=""><td class="num">29</td><td><code>vendor_dispute_resolved_lost</code></td><td><b>Download Advice</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td>documentToken (64-char hex)</td><td>GET /trydood/v1/documents/:token — already live <span class="ok">✓</span><br/><span class="meta">documentUrl(token)</span></td></tr>
+<tr class="alt"><td class="num">30</td><td><code>customer_payment_success</code></td><td><b>Download Receipt</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td>documentToken (64-char hex)</td><td>GET /trydood/v1/documents/:token — already live <span class="ok">✓</span><br/><span class="meta">documentUrl(token)</span></td></tr>
+<tr class=""><td class="num">35</td><td><code>customer_refund_completed</code></td><td><b>Download Receipt</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td>documentToken (64-char hex)</td><td>GET /trydood/v1/documents/:token — already live <span class="ok">✓</span><br/><span class="meta">documentUrl(token)</span></td></tr>
+<tr class="alt"><td class="num">37</td><td><code>customer_voucher_refunded</code></td><td><b>Download Receipt</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td>documentToken (64-char hex)</td><td>GET /trydood/v1/documents/:token — already live <span class="ok">✓</span><br/><span class="meta">documentUrl(token)</span></td></tr>
+</table>
+
+<h3>Vendor panel — 27 buttons</h3>
+<table>
+<tr><th class="num">#</th><th style="width:19%">Template</th><th style="width:13%">Button text</th><th style="width:8%">Type</th><th style="width:22%">Full URL</th><th style="width:14%">Dynamic part is</th><th>Front-end route</th></tr>
+<tr class=""><td class="num">1</td><td><code>vendor_subscription_activated</code></td><td><b>View Subscription</b></td><td>Static</td><td><code>https://vendor.trydood.com/subscription</code></td><td>—</td><td>The vendor's own subscription page — NOT the plan list <span class="new">CONFIRM</span><br/><span class="meta">PANEL_PATHS.SUBSCRIPTION</span></td></tr>
+<tr class="alt"><td class="num">2</td><td><code>vendor_subscription_renewed</code></td><td><b>View Subscription</b></td><td>Static</td><td><code>https://vendor.trydood.com/subscription</code></td><td>—</td><td>The vendor's own subscription page — NOT the plan list <span class="new">CONFIRM</span><br/><span class="meta">PANEL_PATHS.SUBSCRIPTION</span></td></tr>
+<tr class=""><td class="num">3</td><td><code>vendor_subscription_upgraded</code></td><td><b>View Subscription</b></td><td>Static</td><td><code>https://vendor.trydood.com/subscription</code></td><td>—</td><td>The vendor's own subscription page — NOT the plan list <span class="new">CONFIRM</span><br/><span class="meta">PANEL_PATHS.SUBSCRIPTION</span></td></tr>
+<tr class="alt"><td class="num">4</td><td><code>vendor_subscription_downgraded</code></td><td><b>View Subscription</b></td><td>Static</td><td><code>https://vendor.trydood.com/subscription</code></td><td>—</td><td>The vendor's own subscription page — NOT the plan list <span class="new">CONFIRM</span><br/><span class="meta">PANEL_PATHS.SUBSCRIPTION</span></td></tr>
+<tr class=""><td class="num">5</td><td><code>vendor_subscription_granted</code></td><td><b>View Subscription</b></td><td>Static</td><td><code>https://vendor.trydood.com/subscription</code></td><td>—</td><td>The vendor's own subscription page — NOT the plan list <span class="new">CONFIRM</span><br/><span class="meta">PANEL_PATHS.SUBSCRIPTION</span></td></tr>
+<tr class="alt"><td class="num">6</td><td><code>vendor_subscription_expiring</code></td><td><b>Renew Now</b></td><td>Static</td><td><code>https://vendor.trydood.com/subscription/plans</code></td><td>—</td><td>The plan list — correct here, the vendor is choosing <span class="ok">✓</span><br/><span class="meta">PANEL_PATHS.SUBSCRIPTION_PLANS</span></td></tr>
+<tr class=""><td class="num">7</td><td><code>vendor_subscription_expired</code></td><td><b>Renew Now</b></td><td>Static</td><td><code>https://vendor.trydood.com/subscription/plans</code></td><td>—</td><td>The plan list <span class="ok">✓</span><br/><span class="meta">PANEL_PATHS.SUBSCRIPTION_PLANS</span></td></tr>
+<tr class="alt"><td class="num">8</td><td><code>vendor_subscription_cancelled</code></td><td><b>Subscribe Again</b></td><td>Static</td><td><code>https://vendor.trydood.com/subscription/plans</code></td><td>—</td><td>The plan list <span class="ok">✓</span><br/><span class="meta">PANEL_PATHS.SUBSCRIPTION_PLANS</span></td></tr>
+<tr class=""><td class="num">9</td><td><code>brand_under_review</code></td><td><b>Track Application</b></td><td>Static</td><td><code>https://vendor.trydood.com/onboarding/status</code></td><td>—</td><td>onboarding/status <span class="ok">✓</span><br/><span class="meta">PANEL_PATHS.ONBOARDING_STATUS</span></td></tr>
+<tr class="alt"><td class="num">10</td><td><code>brand_resubmitted</code></td><td><b>Track Application</b></td><td>Static</td><td><code>https://vendor.trydood.com/onboarding/status</code></td><td>—</td><td>onboarding/status <span class="ok">✓</span><br/><span class="meta">PANEL_PATHS.ONBOARDING_STATUS</span></td></tr>
+<tr class=""><td class="num">11</td><td><code>brand_approved</code></td><td><b>Go to Dashboard</b></td><td>Static</td><td><code>https://vendor.trydood.com/dashboard</code></td><td>—</td><td>dashboard <span class="ok">✓</span><br/><span class="meta">PANEL_PATHS.DASHBOARD</span></td></tr>
+<tr class="alt"><td class="num">12</td><td><code>brand_rejected</code></td><td><b>Update and Resubmit</b></td><td>Static</td><td><code>https://vendor.trydood.com/onboarding/review</code></td><td>—</td><td>onboarding/review <span class="ok">✓</span><br/><span class="meta">PANEL_PATHS.ONBOARDING_FIX</span></td></tr>
+<tr class=""><td class="num">13</td><td><code>brand_approval_revoked</code></td><td><b>Review Details</b></td><td>Static</td><td><code>https://vendor.trydood.com/onboarding/review</code></td><td>—</td><td>onboarding/review <span class="ok">✓</span><br/><span class="meta">PANEL_PATHS.ONBOARDING_FIX</span></td></tr>
+<tr class="alt"><td class="num">15</td><td><code>brand_activated</code></td><td><b>Sign In</b></td><td>Static</td><td><code>https://vendor.trydood.com/dashboard</code></td><td>—</td><td>dashboard — the panel's own auth guard sends them to login first <span class="ok">✓</span><br/><span class="meta">PANEL_PATHS.DASHBOARD</span></td></tr>
+<tr class=""><td class="num">17</td><td><code>brand_visible_to_customers</code></td><td><b>Open Dashboard</b></td><td>Static</td><td><code>https://vendor.trydood.com/dashboard</code></td><td>—</td><td>dashboard <span class="ok">✓</span><br/><span class="meta">PANEL_PATHS.DASHBOARD</span></td></tr>
+<tr class="alt"><td class="num">18</td><td><code>vendor_voucher_claim_received</code></td><td><b>View Transaction</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/transactions/{{1}}</code></td><td>transactionId</td><td>transactions/:transactionId — this claim's full detail, not the list <span class="new">NEW</span><br/><span class="meta">PANEL_PATHS.transaction(id)</span></td></tr>
+<tr class=""><td class="num">19</td><td><code>vendor_plan_limit_reached</code></td><td><b>Upgrade Plan</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/subscription/plans/{{1}}</code></td><td>subscriptionId of the suggested plan</td><td>subscription/plans/:planId — opens that plan ready to buy <span class="new">NEW</span><br/><span class="meta">PANEL_PATHS.planCheckout(planId)</span></td></tr>
+<tr class="alt"><td class="num">20</td><td><code>vendor_settlement_paid</code></td><td><b>View Settlement</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/settlements/{{1}}</code></td><td>settlementId</td><td>settlements/:settlementId <span class="ok">✓</span><br/><span class="meta">PANEL_PATHS.settlement(id)</span></td></tr>
+<tr class=""><td class="num">21</td><td><code>vendor_settlement_failed</code></td><td><b>View Settlement</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/settlements/{{1}}</code></td><td>settlementId</td><td>settlements/:settlementId <span class="ok">✓</span><br/><span class="meta">PANEL_PATHS.settlement(id)</span></td></tr>
+<tr class="alt"><td class="num">22</td><td><code>vendor_settlement_on_hold</code></td><td><b>View Settlement</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/settlements/{{1}}</code></td><td>settlementId</td><td>settlements/:settlementId <span class="ok">✓</span><br/><span class="meta">PANEL_PATHS.settlement(id)</span></td></tr>
+<tr class=""><td class="num">23</td><td><code>vendor_settlement_carried_forward</code></td><td><b>View Statement</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/settlements/{{1}}</code></td><td>settlementId</td><td>settlements/:settlementId <span class="ok">✓</span><br/><span class="meta">PANEL_PATHS.settlement(id)</span></td></tr>
+<tr class="alt"><td class="num">24</td><td><code>vendor_refund_requested</code></td><td><b>Review Refund</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/refunds/{{1}}</code></td><td>refundRequestId</td><td>refunds/:refundRequestId — this request, opened ready to decide <span class="new">NEW</span><br/><span class="meta">PANEL_PATHS.refund(id)</span></td></tr>
+<tr class=""><td class="num">25</td><td><code>vendor_refund_reminder</code></td><td><b>Review Refund</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/refunds/{{1}}</code></td><td>refundRequestId</td><td>refunds/:refundRequestId <span class="new">NEW</span><br/><span class="meta">PANEL_PATHS.refund(id)</span></td></tr>
+<tr class="alt"><td class="num">26</td><td><code>vendor_refund_completed</code></td><td><b>View Refund</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/refunds/{{1}}</code></td><td>refundRequestId</td><td>refunds/:refundRequestId <span class="new">NEW</span><br/><span class="meta">PANEL_PATHS.refund(id)</span></td></tr>
+<tr class=""><td class="num">27</td><td><code>vendor_dispute_raised</code></td><td><b>Open Dispute</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/disputes/{{1}}</code></td><td>disputeId</td><td>disputes/:disputeId — where the vendor adds their evidence <span class="ok">✓</span><br/><span class="meta">PANEL_PATHS.dispute(id)</span></td></tr>
+<tr class="alt"><td class="num">28</td><td><code>vendor_dispute_resolved_won</code></td><td><b>Open Dispute</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/disputes/{{1}}</code></td><td>disputeId</td><td>disputes/:disputeId <span class="ok">✓</span><br/><span class="meta">PANEL_PATHS.dispute(id)</span></td></tr>
+<tr class=""><td class="num">29</td><td><code>vendor_dispute_resolved_lost</code></td><td><b>Open Dispute</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/disputes/{{1}}</code></td><td>disputeId</td><td>disputes/:disputeId <span class="ok">✓</span><br/><span class="meta">PANEL_PATHS.dispute(id)</span></td></tr>
+</table>
+
+<h3>Website — 8 buttons</h3>
+<table>
+<tr><th class="num">#</th><th style="width:19%">Template</th><th style="width:13%">Button text</th><th style="width:8%">Type</th><th style="width:22%">Full URL</th><th style="width:14%">Dynamic part is</th><th>Front-end route</th></tr>
+<tr class=""><td class="num">12</td><td><code>brand_rejected</code></td><td><b>Contact Support</b></td><td>Static</td><td><code>https://trydood.com/contact</code></td><td>—</td><td>trydood.com/contact <span class="new">CONFIRM</span><br/><span class="meta">— (external, fixed URL)</span></td></tr>
+<tr class="alt"><td class="num">13</td><td><code>brand_approval_revoked</code></td><td><b>Contact Support</b></td><td>Static</td><td><code>https://trydood.com/contact</code></td><td>—</td><td>trydood.com/contact <span class="new">CONFIRM</span><br/><span class="meta">— (external, fixed URL)</span></td></tr>
+<tr class=""><td class="num">14</td><td><code>brand_deactivated</code></td><td><b>Contact Support</b></td><td>Static</td><td><code>https://trydood.com/contact</code></td><td>—</td><td>trydood.com/contact <span class="new">CONFIRM</span><br/><span class="meta">— (external, fixed URL)</span></td></tr>
+<tr class="alt"><td class="num">16</td><td><code>brand_hidden_from_customers</code></td><td><b>Contact Support</b></td><td>Static</td><td><code>https://trydood.com/contact</code></td><td>—</td><td>trydood.com/contact <span class="new">CONFIRM</span><br/><span class="meta">— (external, fixed URL)</span></td></tr>
+<tr class=""><td class="num">21</td><td><code>vendor_settlement_failed</code></td><td><b>Contact Support</b></td><td>Static</td><td><code>https://trydood.com/contact</code></td><td>—</td><td>trydood.com/contact <span class="new">CONFIRM</span><br/><span class="meta">— (external, fixed URL)</span></td></tr>
+<tr class="alt"><td class="num">34</td><td><code>customer_refund_rejected</code></td><td><b>Contact Support</b></td><td>Static</td><td><code>https://trydood.com/contact</code></td><td>—</td><td>trydood.com/contact <span class="new">CONFIRM</span><br/><span class="meta">— (external, fixed URL)</span></td></tr>
+<tr class=""><td class="num">36</td><td><code>customer_refund_bank_details</code></td><td><b>Contact Support</b></td><td>Static</td><td><code>https://trydood.com/contact</code></td><td>—</td><td>trydood.com/contact <span class="new">CONFIRM</span><br/><span class="meta">— (external, fixed URL)</span></td></tr>
+<tr class="alt"><td class="num">38</td><td><code>customer_claim_expired</code></td><td><b>Contact Support</b></td><td>Static</td><td><code>https://trydood.com/contact</code></td><td>—</td><td>trydood.com/contact <span class="new">CONFIRM</span><br/><span class="meta">— (external, fixed URL)</span></td></tr>
+</table>
+
+<h3>Customer app — 9 buttons</h3>
+<table>
+<tr><th class="num">#</th><th style="width:19%">Template</th><th style="width:13%">Button text</th><th style="width:8%">Type</th><th style="width:22%">Full URL</th><th style="width:14%">Dynamic part is</th><th>Front-end route</th></tr>
+<tr class=""><td class="num">30</td><td><code>customer_payment_success</code></td><td><b>View Order</b></td><td>Dynamic</td><td><code>https://app.trydood.com/orders/{{1}}</code></td><td>claimId</td><td>orders/:claimId — this order, not the list <span class="ok">✓</span><br/><span class="meta">CUSTOMER_PATHS.order(claimId)</span></td></tr>
+<tr class="alt"><td class="num">31</td><td><code>customer_payment_failed</code></td><td><b>Try Again</b></td><td>Dynamic</td><td><code>https://app.trydood.com/vouchers/{{1}}</code></td><td>voucherId</td><td>vouchers/:voucherId — reopens the same voucher ready to pay <span class="ok">✓</span><br/><span class="meta">CUSTOMER_PATHS.voucher(voucherId)</span></td></tr>
+<tr class=""><td class="num">32</td><td><code>customer_refund_requested</code></td><td><b>Track Refund</b></td><td>Dynamic</td><td><code>https://app.trydood.com/refunds/{{1}}</code></td><td>refundRequestId</td><td>refunds/:refundRequestId <span class="ok">✓</span><br/><span class="meta">CUSTOMER_PATHS.refund(requestId)</span></td></tr>
+<tr class="alt"><td class="num">33</td><td><code>customer_refund_approved</code></td><td><b>Track Refund</b></td><td>Dynamic</td><td><code>https://app.trydood.com/refunds/{{1}}</code></td><td>refundRequestId</td><td>refunds/:refundRequestId <span class="ok">✓</span><br/><span class="meta">CUSTOMER_PATHS.refund(requestId)</span></td></tr>
+<tr class=""><td class="num">34</td><td><code>customer_refund_rejected</code></td><td><b>View Refund</b></td><td>Dynamic</td><td><code>https://app.trydood.com/refunds/{{1}}</code></td><td>refundRequestId</td><td>refunds/:refundRequestId <span class="ok">✓</span><br/><span class="meta">CUSTOMER_PATHS.refund(requestId)</span></td></tr>
+<tr class="alt"><td class="num">35</td><td><code>customer_refund_completed</code></td><td><b>View Refund</b></td><td>Dynamic</td><td><code>https://app.trydood.com/refunds/{{1}}</code></td><td>refundRequestId</td><td>refunds/:refundRequestId <span class="ok">✓</span><br/><span class="meta">CUSTOMER_PATHS.refund(requestId)</span></td></tr>
+<tr class=""><td class="num">36</td><td><code>customer_refund_bank_details</code></td><td><b>Add Bank Account</b></td><td>Dynamic</td><td><code>https://app.trydood.com/refunds/{{1}}</code></td><td>refundRequestId</td><td>refunds/:refundRequestId → the add-bank-account screen. App installed and signed in: straight there. Signed out: login, then there. Not installed: the store. <span class="ok">✓</span><br/><span class="meta">CUSTOMER_PATHS.refund(requestId)</span></td></tr>
+<tr class="alt"><td class="num">37</td><td><code>customer_voucher_refunded</code></td><td><b>View Refund</b></td><td>Dynamic</td><td><code>https://app.trydood.com/refunds/{{1}}</code></td><td>refundRequestId</td><td>refunds/:refundRequestId <span class="ok">✓</span><br/><span class="meta">CUSTOMER_PATHS.refund(requestId)</span></td></tr>
+<tr class=""><td class="num">38</td><td><code>customer_claim_expired</code></td><td><b>View Order</b></td><td>Dynamic</td><td><code>https://app.trydood.com/orders/{{1}}</code></td><td>claimId</td><td>orders/:claimId <span class="ok">✓</span><br/><span class="meta">CUSTOMER_PATHS.order(claimId)</span></td></tr>
+</table>
+
+<h3>Admin panel — 4 buttons</h3>
+<table>
+<tr><th class="num">#</th><th style="width:19%">Template</th><th style="width:13%">Button text</th><th style="width:8%">Type</th><th style="width:22%">Full URL</th><th style="width:14%">Dynamic part is</th><th>Front-end route</th></tr>
+<tr class=""><td class="num">39</td><td><code>admin_refund_failed</code></td><td><b>Open Refund</b></td><td>Dynamic</td><td><code>https://admin.trydood.com/refunds/{{1}}</code></td><td>refundRequestId</td><td>refunds/:refundRequestId <span class="ok">✓</span><br/><span class="meta">ADMIN_PATHS.refund(requestId)</span></td></tr>
+<tr class="alt"><td class="num">40</td><td><code>admin_settlement_ledger_drift</code></td><td><b>Open Settlement</b></td><td>Dynamic</td><td><code>https://admin.trydood.com/settlements/{{1}}</code></td><td>settlementId</td><td>settlements/:settlementId <span class="ok">✓</span><br/><span class="meta">ADMIN_PATHS.settlement(settlementId)</span></td></tr>
+<tr class=""><td class="num">41</td><td><code>admin_payment_disputed</code></td><td><b>Open Dispute</b></td><td>Dynamic</td><td><code>https://admin.trydood.com/disputes/{{1}}</code></td><td>transactionId — the admin worklist is keyed on the payment</td><td>disputes/:transactionId <span class="ok">✓</span><br/><span class="meta">ADMIN_PATHS.dispute(transactionId)</span></td></tr>
+<tr class="alt"><td class="num">42</td><td><code>admin_dispute_deadline</code></td><td><b>Open Dispute</b></td><td>Dynamic</td><td><code>https://admin.trydood.com/disputes/{{1}}</code></td><td>transactionId</td><td>disputes/:transactionId <span class="ok">✓</span><br/><span class="meta">ADMIN_PATHS.dispute(transactionId)</span></td></tr>
+</table>
+
+<h2>Backend constants</h2>
+<p>All of these live in one file — <code>server/helpers/notifications/panelLinks.js</code>. A route rename
+is one edit there and every channel follows: the WhatsApp button, the email button, the in-app row and
+the push payload.</p>
+<table>
+<tr><th style="width:34%">Constant</th><th style="width:16%">Status</th><th>Produces</th></tr>
+<tr class=""><td><code>documentUrl(token)</code></td><td><span class="ok">✓ exists</span></td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td></tr>
+<tr class="alt"><td><code>PANEL_PATHS.SUBSCRIPTION</code></td><td><span class="new">CONFIRM</span></td><td><code>https://vendor.trydood.com/subscription</code></td></tr>
+<tr class=""><td><code>PANEL_PATHS.SUBSCRIPTION_PLANS</code></td><td><span class="ok">✓ exists</span></td><td><code>https://vendor.trydood.com/subscription/plans</code></td></tr>
+<tr class="alt"><td><code>PANEL_PATHS.ONBOARDING_STATUS</code></td><td><span class="ok">✓ exists</span></td><td><code>https://vendor.trydood.com/onboarding/status</code></td></tr>
+<tr class=""><td><code>PANEL_PATHS.DASHBOARD</code></td><td><span class="ok">✓ exists</span></td><td><code>https://vendor.trydood.com/dashboard</code></td></tr>
+<tr class="alt"><td><code>PANEL_PATHS.ONBOARDING_FIX</code></td><td><span class="ok">✓ exists</span></td><td><code>https://vendor.trydood.com/onboarding/review</code></td></tr>
+<tr class=""><td><code>— (external, fixed URL)</code></td><td><span class="new">CONFIRM</span></td><td><code>https://trydood.com/contact</code></td></tr>
+<tr class="alt"><td><code>PANEL_PATHS.transaction(id)</code></td><td><span class="new">NEW</span></td><td><code>https://vendor.trydood.com/transactions/{{1}}</code></td></tr>
+<tr class=""><td><code>PANEL_PATHS.planCheckout(planId)</code></td><td><span class="new">NEW</span></td><td><code>https://vendor.trydood.com/subscription/plans/{{1}}</code></td></tr>
+<tr class="alt"><td><code>PANEL_PATHS.settlement(id)</code></td><td><span class="ok">✓ exists</span></td><td><code>https://vendor.trydood.com/settlements/{{1}}</code></td></tr>
+<tr class=""><td><code>PANEL_PATHS.refund(id)</code></td><td><span class="new">NEW</span></td><td><code>https://vendor.trydood.com/refunds/{{1}}</code></td></tr>
+<tr class="alt"><td><code>PANEL_PATHS.dispute(id)</code></td><td><span class="ok">✓ exists</span></td><td><code>https://vendor.trydood.com/disputes/{{1}}</code></td></tr>
+<tr class=""><td><code>CUSTOMER_PATHS.order(claimId)</code></td><td><span class="ok">✓ exists</span></td><td><code>https://app.trydood.com/orders/{{1}}</code></td></tr>
+<tr class="alt"><td><code>CUSTOMER_PATHS.voucher(voucherId)</code></td><td><span class="ok">✓ exists</span></td><td><code>https://app.trydood.com/vouchers/{{1}}</code></td></tr>
+<tr class=""><td><code>CUSTOMER_PATHS.refund(requestId)</code></td><td><span class="ok">✓ exists</span></td><td><code>https://app.trydood.com/refunds/{{1}}</code></td></tr>
+<tr class="alt"><td><code>ADMIN_PATHS.refund(requestId)</code></td><td><span class="ok">✓ exists</span></td><td><code>https://admin.trydood.com/refunds/{{1}}</code></td></tr>
+<tr class=""><td><code>ADMIN_PATHS.settlement(settlementId)</code></td><td><span class="ok">✓ exists</span></td><td><code>https://admin.trydood.com/settlements/{{1}}</code></td></tr>
+<tr class="alt"><td><code>ADMIN_PATHS.dispute(transactionId)</code></td><td><span class="ok">✓ exists</span></td><td><code>https://admin.trydood.com/disputes/{{1}}</code></td></tr>
+</table>
+<p class="meta">Trydood &nbsp;·&nbsp; 08 Sep 2026 &nbsp;·&nbsp; 58 buttons</p>
+
+</body></html>

@@ -148,4 +148,3 @@ exports.getDocumentByToken = async (token) => {
   return { url, documentNumber: snapshot.documentNumber, kind: snapshot.kind };
 };
 
-exports.DOCUMENT_SOURCES = SOURCES;

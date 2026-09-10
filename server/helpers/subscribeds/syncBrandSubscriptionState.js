@@ -2,7 +2,7 @@ const Brand = require("../../models/Brand");
 const Subscribed = require("../../models/Subscribed");
 const Subscription = require("../../models/Subscription");
 const { SUBSCRIBED_STATUS } = require("../../constants/subscription");
-const { applyPlanEntitlements } = require("../brands/applyPlanEntitlements");
+const { applyPlanEntitlements } = require("../brands");
 
 /**
  * Recompute a brand's cached subscription state from its Subscribed documents.

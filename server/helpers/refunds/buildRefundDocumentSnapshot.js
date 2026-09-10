@@ -240,5 +240,3 @@ exports.buildRefundDocumentSnapshot = ({
   };
 };
 
-exports.REFUND_REASON_TEXT = REASON_TEXT;
-exports.REFUND_METHOD_TEXT = METHOD_TEXT;

@@ -4,7 +4,7 @@ const { pagination } = require("../../utils");
 const {
   buildClaimTransactionPipeline,
   buildClaimPipeline,
-} = require("../../helpers/transactions/buildClaimReadPipeline");
+} = require("../../helpers/transactions");
 
 /**
  * A money listing, scoped to whoever is asking.

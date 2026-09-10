@@ -2451,7 +2451,7 @@ Har row pe `isSuggested` boolean aata hai — usse badge/highlight kar sakte hai
 | `bannerUrl` 🆕 | string\|null | Banner ka URL. `bannerType` ke saath hi aata hai — dono `null` ya dono set |
 | `isSuggested` 🆕 | boolean | Admin ne pin kiya hai ya nahi. Badge/highlight ke liye |
 | `brand` | object\|null | Brand summary. `isVerified` = brand approved hai ya nahi |
-| `brand.subscriptionPlan` | string\|null | `FREE`/`BASIC`/`PREMIUM`/`FAMILY` ya `null` |
+| `brand.subscriptionPlan` | string\|null | Brand ke live plan ka **naam**, jaisa admin ne rakha (`"Pro Plus"`, `"Starter"` — koi bhi text). Plan na ho to `null`. ⚠️ **Ye ek fixed enum nahi hai** — iske value par `switch`/`if` mat likhiye; ye sirf dikhane ke liye hai. Source: `Subscription.name` (free-text), via `helpers/vouchers/customerListing.js:1209` |
 | `version.bestOffer` | object\|null | **Display heuristic** — sabse zyada `discountValue` wala active offer. Ye actual discount nahi hai (bill amount ke bina calculate nahi ho sakta). Real discount ke liye endpoint #17 |
 | `version.images` | array | `_id`, `url`, `sortOrder`. `sortOrder` se sort karein |
 | `nearestOutlet` | object\|null | Customer ke sabse paas ka outlet |

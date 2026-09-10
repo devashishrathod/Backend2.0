@@ -23,28 +23,6 @@ const VOUCHER_CLAIM_STATUS = Object.freeze({
 });
 
 /**
- * Statuses in which the claim still holds its once-per-user slot.
- *
- * Not used in the partial index — `partialFilterExpression` accepts only
- * equality, `$exists`, comparisons and `$type`, never `$in`. The index keys on
- * the denormalised `holdsUsageSlot` boolean instead, and this list is what the
- * code that maintains that boolean is derived from.
- */
-const CLAIM_SLOT_HOLDING_STATUSES = Object.freeze([
-  VOUCHER_CLAIM_STATUS.PENDING,
-  VOUCHER_CLAIM_STATUS.PAID,
-  VOUCHER_CLAIM_STATUS.REDEEMED,
-]);
-
-/** ...and the ones that hand it back. */
-const CLAIM_SLOT_RELEASING_STATUSES = Object.freeze([
-  VOUCHER_CLAIM_STATUS.FAILED,
-  VOUCHER_CLAIM_STATUS.CANCELLED,
-  VOUCHER_CLAIM_STATUS.EXPIRED,
-  VOUCHER_CLAIM_STATUS.REFUNDED,
-]);
-
-/**
  * How the discount reaches the customer.
  *
  * `AUTO` is Phase 1: paying at the counter *is* the redemption. `OUTLET_SCAN`
@@ -220,8 +198,6 @@ const CLAIM_TIMELINE_INTERNAL_ACTIONS = Object.freeze([
 
 module.exports = {
   VOUCHER_CLAIM_STATUS,
-  CLAIM_SLOT_HOLDING_STATUSES,
-  CLAIM_SLOT_RELEASING_STATUSES,
   CLAIM_REDEMPTION_MODE,
   IMPLEMENTED_REDEMPTION_MODES,
   DEFAULT_REDEMPTION_MODE,

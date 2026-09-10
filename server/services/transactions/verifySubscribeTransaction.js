@@ -1,6 +1,6 @@
 const Transaction = require("../../models/Transaction");
 const Subscribed = require("../../models/Subscribed");
-const { invoiceUrl } = require("../../helpers/notifications/panelLinks");
+const { invoiceUrl } = require("../../helpers/notifications");
 const { ROLES } = require("../../constants");
 const {
   PAYMENT_GATEWAYS,

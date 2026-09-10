@@ -3,7 +3,6 @@ const router = express.Router();
 
 const {
   validateSchema,
-  verifyJwtToken,
   isVendorOrAdmin,
 } = require("../middlewares");
 const {

@@ -103,10 +103,16 @@ Ab dono theek hain:
 | Claims / Refunds / Bank Accounts folders | `lib/customerMoneyFolders.js` |
 | Search folder | `lib/customerSearchFolder.js` |
 
-`scripts/addClaimRequestsToPostman.js`, `addRefundRequestsToPostman.js`,
-`addSearchRequestsToPostman.js` aur `addLogoutRequestsToPostman.js` ab **customer ke liye
-zaroori nahi** hain — unka content generator me hai. (Vendor ke liye wo abhi bhi use hote
-hain; vendor generator port hona baaki hai.)
+⚠️ **`scripts/add*RequestsToPostman.js` ab kisi ke liye zaroori nahi hain.** Wo
+ek-baar ki patch scripts thin jo hand-written JSON me requests ghusaati thin.
+Unka content ab generator ke andar hai — customer ke liye
+`lib/customerMoneyFolders.js` + `lib/customerSearchFolder.js`, aur **vendor ke
+liye `lib/vendorMoneyFolders.js`** (`claimsFolder`, `refundsFolder`,
+`settlementsFolder`), jise `generate-vendor-collection.js` require karta hai.
+
+Ye line pehle kehti thi *"vendor generator port hona baaki hai"* — wo port ho
+chuka hai, aur line stale reh gayi thi. Un scripts ko chalane se ab kuch nahi
+hota; wo sirf apni skip-branch par pahunchti hain.
 
 ---
 

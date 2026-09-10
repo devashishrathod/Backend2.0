@@ -29,7 +29,16 @@
 >
 > ⚠️ Ye snippet `extraRoutes` aur `routePrefix` ko nahi ginta. Poora dump —
 > method, path, aur har route ka middleware chain — ke liye
-> `scripts/dumpRoutes.js` pattern use karo (Round 5 me isi se ye file bani).
+> **`postman/lib/routeInventory.js`** use karo: wo built Express routers walk
+> karta hai, isliye `extraRoutes` aur `routePrefix` dono sambhaal leta hai, aur
+> har route ka gate `postman/lib/routeGates.js` se nikaalta hai.
+>
+> ```bash
+> node scripts/verifyApiCoverage.js   # wahi inventory, aur har route ki coverage
+> ```
+>
+> *(Pehle yahan `scripts/dumpRoutes.js` likha tha — wo file kabhi commit nahi
+> hui aur ab exist nahi karti.)*
 
 ---
 

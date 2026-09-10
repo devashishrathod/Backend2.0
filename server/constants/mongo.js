@@ -30,16 +30,6 @@
  */
 const DUPLICATE_KEY = 11000;
 
-/**
- * An index whose options conflict with one already on the collection.
- *
- * Raised when a same-key-pattern index is created under a different name — and
- * Mongoose swallows it during `autoIndex`, so the index simply never appears and
- * nothing says why. `assertMoneyIndexes` exists because of this.
- */
-const INDEX_OPTIONS_CONFLICT = 85;
-
 module.exports = Object.freeze({
   DUPLICATE_KEY,
-  INDEX_OPTIONS_CONFLICT,
 });

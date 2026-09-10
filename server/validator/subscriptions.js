@@ -24,10 +24,10 @@ const flagEntitlement = Joi.object({
 const entitlements = Joi.object({
   subBrands: meteredEntitlement.optional(),
   franchises: meteredEntitlement.optional(),
-  vouchers: flagEntitlement.optional(),
+  vouchers: meteredEntitlement.optional(),
+  showcase: meteredEntitlement.optional(),
   dealPack: flagEntitlement.optional(),
   prioritySupport: flagEntitlement.optional(),
-  showcase: flagEntitlement.optional(),
 });
 
 const features = Joi.array()

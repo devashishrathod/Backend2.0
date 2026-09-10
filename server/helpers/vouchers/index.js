@@ -33,6 +33,9 @@ const {
   createVoucherHistory,
 } = require("./validateVersions");
 const {
+  syncAttachedSubBrandsCount,
+} = require("./syncAttachedSubBrandsCount");
+const {
   buildCustomerVoucherPipeline,
   buildCustomerVoucherDetailPipeline,
   mapCustomerVoucherDetail,
@@ -62,6 +65,8 @@ module.exports = {
   generateVoucherVersionCode,
   getNextVersionNumber,
   createVoucherHistory,
+  // Call after ANY VoucherSubBrand write, inside the same session.
+  syncAttachedSubBrandsCount,
   buildCustomerVoucherPipeline,
   buildCustomerVoucherDetailPipeline,
   mapCustomerVoucherDetail,

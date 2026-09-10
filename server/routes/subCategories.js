@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const { isAdmin, verifyJwtToken } = require("../middlewares");
+const { isAdmin } = require("../middlewares");
 const {
   createSubCategory,
   getAllSubCategories,

@@ -192,4 +192,3 @@ exports.postChargebackReversal = async ({ transaction, disputeId, amount }) => {
   return { ...result, posted: result.entry && !result.duplicate ? 1 : 0, amount };
 };
 
-exports.vendorShareOf = vendorShareOf;

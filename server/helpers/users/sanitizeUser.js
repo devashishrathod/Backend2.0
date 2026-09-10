@@ -50,4 +50,3 @@ exports.sanitizeUser = (user) => {
   return plain;
 };
 
-exports.SENSITIVE_USER_FIELDS = SENSITIVE_USER_FIELDS;

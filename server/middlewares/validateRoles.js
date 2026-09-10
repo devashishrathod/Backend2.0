@@ -4,14 +4,22 @@ const { buildAuthGate } = require("./authenticate");
 const validateRoles = (...allowedRoles) => buildAuthGate({ allowedRoles });
 
 /**
- * Role gate that lets a deactivated account through.
+ * ⚠️ There is deliberately no role gate that lets a deactivated account through.
  *
- * Only for endpoints a suspended user still has to reach — today that is reading
- * their notifications, which is where the notice explaining the suspension
- * lands. A killed session is still refused.
+ * There was one — `validateRolesEvenIfDeactivated`, and an
+ * `isVendorOrAdminEvenIfDeactivated` built from it — described as "notifications
+ * only". No route ever mounted either, and the one route that genuinely has to
+ * answer a suspended user (`routes/notifications.js`) reaches for
+ * `verifyJwtTokenEvenIfDeactivated` instead, which is role-agnostic and is the
+ * right shape for the job: a suspended user needs to *read the notice explaining
+ * the suspension*, and that is not a per-role question.
+ *
+ * `buildAuthGate({ allowDeactivated: true })` still exists for exactly that one
+ * caller. If a suspended-account route ever does need a role check, build it
+ * here rather than reviving a gate nothing pointed at — and add it to
+ * `postman/lib/routeGates.js` in the same commit, or the route documents itself
+ * as PUBLIC.
  */
-const validateRolesEvenIfDeactivated = (...allowedRoles) =>
-  buildAuthGate({ allowedRoles, allowDeactivated: true });
 
 const isAdmin = validateRoles(ROLES.ADMIN);
 const isCustomer = validateRoles(ROLES.CUSTOMER);
@@ -48,15 +56,8 @@ const isBrandSideOrAdmin = validateRoles(
  */
 const isVendorOrAdmin = validateRoles(ROLES.VENDOR, ROLES.ADMIN);
 
-/** `isVendorOrAdmin`, reachable by a deactivated vendor. Notifications only. */
-const isVendorOrAdminEvenIfDeactivated = validateRolesEvenIfDeactivated(
-  ROLES.VENDOR,
-  ROLES.ADMIN,
-);
-
 module.exports = {
   validateRoles,
-  validateRolesEvenIfDeactivated,
   isAdmin,
   isCustomer,
   isVendor,
@@ -64,5 +65,4 @@ module.exports = {
   isVendorOrSubVendor,
   isBrandSideOrAdmin,
   isVendorOrAdmin,
-  isVendorOrAdminEvenIfDeactivated,
 };

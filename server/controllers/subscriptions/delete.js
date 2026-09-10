@@ -1,7 +1,6 @@
 const {
   asyncWrapper,
   sendSuccess,
-  throwError,
   validateObjectId,
 } = require("../../utils");
 const { deleteSubscription } = require("../../services/subscriptions");

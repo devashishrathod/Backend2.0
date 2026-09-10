@@ -145,11 +145,16 @@ const formatDateTime = (value) => {
 const formatDateRange = (start, end) =>
   `${formatDate(start)} – ${formatDate(end)}`;
 
+/**
+ * The three formatters a notice actually renders with.
+ *
+ * ⚠️ `formatTime`, `TIME_ZONE` and `ABSENT` stay internal. They are the parts
+ * these three are built from, and a caller reaching for `TIME_ZONE` is a caller
+ * about to format a date itself — which is exactly the drift this module exists
+ * to prevent. Every user-facing timestamp goes through `formatDateTime`.
+ */
 module.exports = {
   formatDate,
-  formatTime,
   formatDateTime,
   formatDateRange,
-  TIME_ZONE,
-  ABSENT,
 };

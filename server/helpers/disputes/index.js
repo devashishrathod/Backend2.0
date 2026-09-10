@@ -1,5 +1,5 @@
 const { recordDispute, summariseDisputes } = require("./recordDispute");
-const { buildEvidencePack, buildNarrative } = require("./buildEvidencePack");
+const { buildEvidencePack } = require("./buildEvidencePack");
 const { issueChargebackDocument } = require("./issueChargebackDocument");
 const {
   buildChargebackDocumentSnapshot,
@@ -21,7 +21,6 @@ module.exports = {
    * **one** response, filed by a person in the dashboard.
    */
   buildEvidencePack,
-  buildNarrative,
   /**
    * ⚠️ The only place a dispute event is written. Razorpay redelivers these and
    * sends them out of order, so the event's own timestamp decides — in the

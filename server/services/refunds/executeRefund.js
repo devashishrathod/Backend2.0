@@ -546,5 +546,3 @@ const present = (request) => ({
   isOpen: REFUND_OPEN_STATUSES.includes(request.status),
 });
 
-exports.ADMIN_CAN_DECIDE = ADMIN_CAN_DECIDE;
-exports.OVERRIDE_FROM = OVERRIDE_FROM;

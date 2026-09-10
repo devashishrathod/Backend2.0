@@ -102,5 +102,3 @@ exports.recountBrandUsage = async (brandId, buckets) => {
   });
   return result;
 };
-
-exports.USAGE_COUNTERS = COUNTERS;

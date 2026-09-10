@@ -34,11 +34,6 @@ const PAYOUT_LEG_STATUS = Object.freeze({
   REVERSED: "REVERSED",
 });
 
-/** Legs that are still moving, or still owed a resolution. */
-const PAYOUT_OPEN_STATUSES = Object.freeze([
-  PAYOUT_LEG_STATUS.INITIATED,
-]);
-
 /** How the money went. Recorded, never inferred from the amount. */
 const PAYOUT_MODE = Object.freeze({
   IMPS: "IMPS",
@@ -80,7 +75,6 @@ const PAYOUT_INDEXES = Object.freeze({
 module.exports = {
   PAYOUT_TYPE,
   PAYOUT_LEG_STATUS,
-  PAYOUT_OPEN_STATUSES,
   PAYOUT_MODE,
   PAYOUT_INDEXES,
 };

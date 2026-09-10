@@ -521,4 +521,3 @@ exports.getCustomerStats = async (customerId, userId) => {
 
 exports.round2 = round2;
 exports.SPENDING_STATUSES = SPENDING_STATUSES;
-exports.REFUSED_STATUSES = REFUSED_STATUSES;

@@ -275,4 +275,3 @@ exports.getCustomerBrand = async (payload) => {
   return { ...brand, features, showcase, outlets };
 };
 
-exports.MEDIA_PREVIEW_PER_SECTION = MEDIA_PREVIEW_PER_SECTION;

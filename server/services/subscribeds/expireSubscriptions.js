@@ -118,14 +118,3 @@ exports.expireSubscriptions = async () => {
     stillSubscribed,
   };
 };
-
-// Kept for symmetry with the job registry, which reports counts.
-exports.countExpiringSoon = async (days = 7) => {
-  const now = new Date();
-  const until = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-  return Subscribed.countDocuments({
-    status: SUBSCRIBED_STATUS.ACTIVE,
-    endDate: { $gt: now, $lte: until },
-    isDeleted: false,
-  });
-};

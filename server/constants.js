@@ -86,12 +86,6 @@ module.exports = {
   BUSINESS_ENTITY_TYPE,
   GST_TO_BRAND_ENTITY_MAP,
 
-  PLATFORMS: Object.freeze({
-    WEB: "WEB",
-    ANDROID: "ANDROID",
-    IOS: "IOS",
-  }),
-
   PAN_TYPES: Object.freeze({
     INDIVIDUAL: "INDIVIDUAL",
     COMPANY: "COMPANY",
@@ -194,13 +188,6 @@ module.exports = {
     QUATERLY: 90,
     HALF_YEARLY: 180,
     YEARLY: 365,
-  }),
-
-  SUBSCRIPTION_PLANS: Object.freeze({
-    FREE: "FREE",
-    BASIC: "BASIC",
-    PREMIUM: "PREMIUM",
-    Family: "FAMILY",
   }),
 
   PAYMENT_STATUS: Object.freeze({

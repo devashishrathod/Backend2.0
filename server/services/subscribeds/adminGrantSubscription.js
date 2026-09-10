@@ -34,8 +34,8 @@ const {
   generateDocumentNumber,
   alertDocumentFailed,
 } = require("../../helpers/documents");
-const { invoiceUrl } = require("../../helpers/notifications/panelLinks");
 const {
+  invoiceUrl,
   notifySubscriptionActivated,
   ADMIN_PATHS,
 } = require("../../helpers/notifications");

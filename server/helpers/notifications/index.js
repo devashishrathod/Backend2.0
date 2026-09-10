@@ -16,7 +16,19 @@ const {
   vendorUrl,
   adminUrl,
   deepLink,
+  documentUrl,
+  invoiceUrl,
 } = require("./panelLinks");
+const {
+  formatDate,
+  formatDateTime,
+  formatDateRange,
+} = require("./formatDateTime");
+const {
+  resolveChannelPreferences,
+  describeChannelPreferences,
+} = require("./channelPreferences");
+const { resolveAudienceChannels } = require("./audienceChannels");
 const {
   notifySubscriptionActivated,
   notifySubscriptionExpiring,
@@ -63,6 +75,20 @@ module.exports = {
   vendorUrl,
   adminUrl,
   deepLink,
+  // The public document link, by token. One route serves all six document
+  // kinds, so every caller that hands somebody a download builds it from here.
+  documentUrl,
+  invoiceUrl,
+  // The one IST formatter. Every user-facing timestamp goes through it, so a
+  // caller reaching past this barrel is a caller about to invent a second
+  // date format — which is the bug this module was written to end.
+  formatDate,
+  formatDateTime,
+  formatDateRange,
+  // Who may be told what, and on which channel.
+  resolveChannelPreferences,
+  describeChannelPreferences,
+  resolveAudienceChannels,
   notifySubscriptionActivated,
   notifySubscriptionExpiring,
   notifySubscriptionExpired,

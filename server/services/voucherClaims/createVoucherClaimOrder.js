@@ -27,9 +27,11 @@ const {
 } = require("../../constants/voucherClaim");
 const { VOUCHER_USAGE_TYPE } = require("../../constants/voucher");
 const { PROMO_CODE_LIMITS } = require("../../constants/promoCode");
-const { PAYMENT_STATUS } = require("../../constants");
+const {
+  PAYMENT_STATUS,
+  ROLES,
+} = require("../../constants");
 const { PAYMENT_GATEWAYS } = require("../../constants/subscription");
-const { ROLES } = require("../../constants");
 
 const { DUPLICATE_KEY } = require("../../constants/mongo");
 const MINUTE_MS = 60 * 1000;

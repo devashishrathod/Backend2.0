@@ -6,7 +6,7 @@ const Customer = require("../../models/Customer");
 const { throwError } = require("../../utils");
 const { CUSTOMER_CURRENCY_DEFAULTS } = require("../../constants/customer");
 const { CLAIM_REDEMPTION_MODE } = require("../../constants/voucherClaim");
-const { invoiceUrl } = require("../notifications/panelLinks");
+const { invoiceUrl } = require("../notifications");
 
 const money = (amount) =>
   `${CUSTOMER_CURRENCY_DEFAULTS.currencySymbol}${Number(amount || 0).toLocaleString(
@@ -273,4 +273,3 @@ const buildNarrative = (pack) => {
   return lines.join(" ");
 };
 
-exports.buildNarrative = buildNarrative;

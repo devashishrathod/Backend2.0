@@ -8,10 +8,8 @@ const {
 } = require("../../constants/notification");
 const {
   describeChannelPreferences,
-} = require("../../helpers/notifications/channelPreferences");
-const {
   resolveAudienceChannels,
-} = require("../../helpers/notifications/audienceChannels");
+} = require("../../helpers/notifications");
 const { throwError } = require("../../utils");
 
 /**

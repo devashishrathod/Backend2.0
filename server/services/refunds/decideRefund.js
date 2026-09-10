@@ -392,4 +392,3 @@ const present = (request) => ({
   isOpen: REFUND_OPEN_STATUSES.includes(request.status),
 });
 
-exports.VENDOR_CAN_DECIDE = VENDOR_CAN_DECIDE;

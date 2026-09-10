@@ -976,6 +976,21 @@ Wahi `invoiceSnapshotSchema`, do naye blocks ke saath:
 >
 > `renderInvoicePdf` me `snapshot.kind` par branch lagegi. `SUBSCRIPTION` ka layout **bilkul jaisa hai waisa** rahega — usko chhedna nahi hai. `VOUCHER_CLAIM` ka apna layout: bill → offer discount → promo → convenience fee → (tax jab on ho) → paid, plus voucher/outlet/claim-code block.
 
+> 🔴 **Jo asal me bana wo iske ulta hai — ye plan yahan follow nahi hua.**
+>
+> `generateAndUploadInvoice.js` / `renderInvoicePdf` ab exist nahi karte. Unki
+> jagah `helpers/documents/renderDocument.js` hai, aur wo **kisi bhi kind par
+> branch nahi karta**. Uska apna comment: *"It branches on **nothing**. There is
+> no `if (kind === VOUCHER_CLAIM)` anywhere below, because there used to be and
+> that is what broke."*
+>
+> Har document apna **frozen snapshot** carry karta hai
+> (`models/documentSnapshotSchema.js`) jisme printed blocks — meta, timeline,
+> details, lineItems, taxLines, total, table, notes — pehle se worded hote hain.
+> Renderer unhe kram se draw karta hai. Isi wajah se payout statement, refund
+> receipt aur chargeback advice bina naye branch ke aa gaye — wo sirf alag blocks
+> bharte hain. `kind` ab sirf document ko dhoondhne aur title dene ke liye bacha hai.
+
 ### 9.2 Lazy PDF
 
 Settle par sirf **`invoiceSnapshot` freeze + invoice number allot**. PDF **pehli download request par** banti hai. Har claim par render + Cloudinary upload scale par nahi chalega, aur zyadatar invoices kabhi download hi nahi hoti.

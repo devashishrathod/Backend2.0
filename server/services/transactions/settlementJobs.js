@@ -6,8 +6,8 @@ const {
   ADMIN_PATHS,
   adminUrl,
   deepLink,
+  formatDateTime,
 } = require("../../helpers/notifications");
-const { formatDateTime } = require("../../helpers/notifications/formatDateTime");
 const {
   NOTIFICATION_TYPES,
   NOTIFICATION_SEVERITY,
@@ -239,4 +239,3 @@ exports.resumeIncompleteSettlements = async ({
   return { found: stranded.length, resumed, failed };
 };
 
-exports.describeFlows = describeFlows;

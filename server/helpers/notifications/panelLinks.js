@@ -280,7 +280,6 @@ const invoiceUrl = documentUrl;
 
 module.exports = {
   CUSTOMER_PATHS,
-  publicUrl,
   documentUrl,
   invoiceUrl,
   PANEL_PATHS,

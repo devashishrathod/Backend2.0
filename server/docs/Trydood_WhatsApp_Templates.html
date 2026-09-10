@@ -1,0 +1,2097 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:w="urn:schemas-microsoft-com:office:word"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8"/>
+<title>Trydood WhatsApp Templates</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
+<style>
+@page { size: A4; margin: 2cm 1.8cm; }
+body { font-family: Calibri, "Segoe UI", Arial, sans-serif; font-size: 10.5pt; color: #1a1a1a; line-height: 1.45; }
+h1 { font-size: 26pt; color: #0b6b3a; margin: 0 0 4pt 0; }
+h2 { font-size: 17pt; color: #0b6b3a; border-bottom: 2px solid #0b6b3a; padding-bottom: 3pt; margin: 24pt 0 10pt 0; }
+h3 { font-size: 13pt; color: #14532d; margin: 20pt 0 6pt 0; }
+h4 { font-size: 11pt; color: #1a1a1a; margin: 12pt 0 4pt 0; }
+p { margin: 0 0 7pt 0; }
+a { color: #0b6b3a; }
+.sub { font-size: 12pt; color: #555; margin-bottom: 2pt; }
+.meta { font-size: 9.5pt; color: #777; }
+table { border-collapse: collapse; width: 100%; margin: 6pt 0 10pt 0; }
+th { background: #0b6b3a; color: #fff; font-size: 9.5pt; text-align: left; padding: 5pt 6pt; border: 0.5pt solid #0b6b3a; }
+td { font-size: 9.5pt; padding: 5pt 6pt; border: 0.5pt solid #c8c8c8; vertical-align: top; }
+tr.alt td { background: #f4f8f5; }
+.num { width: 26pt; text-align: center; font-weight: bold; }
+.msg { border: 1pt solid #b8d8c4; background: #f7fcf9; padding: 9pt 11pt; margin: 4pt 0 10pt 0;
+       font-family: Consolas, "Courier New", monospace; font-size: 9.5pt; line-height: 1.5; }
+.tmpl { border-left: 3pt solid #0b6b3a; padding-left: 10pt; margin: 0 0 22pt 0; page-break-inside: avoid; }
+.hdr { background: #eaf4ee; padding: 6pt 9pt; margin-bottom: 8pt; }
+.tname { font-family: Consolas, "Courier New", monospace; font-size: 12pt; font-weight: bold; color: #0b6b3a; }
+.facts { font-size: 9.5pt; color: #444; margin-top: 2pt; }
+.note { border-left: 3pt solid #c99a06; background: #fffbea; padding: 7pt 10pt; margin: 4pt 0 10pt 0; font-size: 9.5pt; }
+.hold { border-left: 3pt solid #b91c1c; background: #fef4f4; padding: 7pt 10pt; margin: 4pt 0 10pt 0; font-size: 9.5pt; }
+.cap { display: inline-block; background: #b91c1c; color: #fff; font-size: 8pt; padding: 1pt 5pt; margin-left: 4pt; }
+.new { display: inline-block; background: #b45309; color: #fff; font-size: 8pt; padding: 1pt 5pt; }
+.ok { color: #0b6b3a; font-weight: bold; }
+.brk { page-break-before: always; }
+code { font-family: Consolas, "Courier New", monospace; background: #f0f0f0; padding: 0 2pt; }
+.lead { font-size: 11pt; }
+.back { font-size: 9pt; }
+</style>
+</head>
+<body>
+
+<h1>Trydood WhatsApp Templates</h1>
+<p class="sub">Content brief for template creation</p>
+<p class="meta">42 templates &nbsp;·&nbsp; Vendor: 29 · Customer: 9 · Admin: 4 &nbsp;·&nbsp; Prepared 08 Sep 2026</p>
+
+<h2>What this document is</h2>
+<p class="lead">Every WhatsApp message Trydood sends, written out exactly as it should be created in the
+WhatsApp template panel. For each template you get the message text, a numbered list of its variables
+with a sample value for each, and the buttons with their URLs.</p>
+<p><b>Copy the message text exactly</b> — the wording, the emojis and the line breaks are all deliberate.
+Where a line looks oddly specific, it is usually there to stop a support ticket, and the reason is noted
+underneath.</p>
+<p class="meta">In the full list below, click a template name to jump to it.</p>
+
+<h2>Rules that apply to every template</h2>
+<table>
+<tr><th style="width:32%">Rule</th><th>What to do</th></tr>
+<tr class=""><td><b>Category</b></td><td><b>Utility</b> for every template. Not Marketing — these are transactional messages, and Marketing would be blocked for anyone who opted out of promotions.</td></tr>
+<tr class="alt"><td><b>Language</b></td><td><b>English (en)</b>. One language for now.</td></tr>
+<tr class=""><td><b>Variable limit</b></td><td><b>10 variables maximum</b> in the message body. Two templates use all ten (#18 and #30) — they are marked, and nothing can be added to them.</td></tr>
+<tr class="alt"><td><b>Button variables are numbered separately</b></td><td>A button's URL variable is always <b>{{1}}</b>, even when the message body already has ten variables. Each button has its own numbering and its own sample box. This is the step people get wrong most often.</td></tr>
+<tr class=""><td><b>No commas in any sample value</b></td><td>Commas are stripped in transit. Write <b>1999.00</b>, not 1,999.00. Addresses are written with spaces, not commas.</td></tr>
+<tr class="alt"><td><b>Button text</b></td><td><b>25 characters maximum.</b> Every label in this document is already within it.</td></tr>
+<tr class=""><td><b>Rupee sign</b></td><td>Already written into the message text. A sample value of <b>₹1999.00</b> would render as ₹₹1999.00.</td></tr>
+<tr class="alt"><td><b>Do not reorder anything</b></td><td>Variable numbers are positional. Moving a line without moving its number sends the wrong value into the wrong place, and nothing warns you.</td></tr>
+<tr class=""><td><b>Sample values are required</b></td><td>Fill the sample for every variable and every dynamic button, using the values in this document.</td></tr>
+<tr class="alt"><td><b>The email address needs no link</b></td><td>WhatsApp makes <code>helpdesk@trydood.com</code> tappable by itself in the message text. A template body is plain text and cannot carry a link, and Meta does not allow a <code>mailto:</code> button — so the Contact Support button is the clickable route.</td></tr>
+</table>
+
+<h2>The standard fields</h2>
+<p>The same thing is written the same way everywhere. If a field below appears in a template, it looks
+like this — whether the reader is a vendor, a customer or an admin.</p>
+<table>
+<tr><th style="width:16%">Field</th><th style="width:28%">What it holds</th><th style="width:32%">Looks like</th><th>Used by</th></tr>
+<tr class=""><td><b>🏪 Brand</b></td><td>The business, with its Merchant ID in brackets</td><td><code>Cafe Mocha (TM-A3F9-K2M7-QX41)</code></td><td>Customer, Admin</td></tr>
+<tr class="alt"><td><b>🆔 Merchant ID</b></td><td>The same ID on its own row</td><td><code>TM-A3F9-K2M7-QX41</code></td><td>Vendor (the brand name is already the greeting)</td></tr>
+<tr class=""><td><b>📍 Store ID</b></td><td>The outlet, with its type</td><td><code>TS-A3F9-K2M7-QX41 · Franchise</code></td><td>All three</td></tr>
+<tr class="alt"><td><b>🏠 Address</b></td><td>The outlet's address, spaces not commas</td><td><code>Shop 4 Vijay Nagar Indore MP 452010</code></td><td>All three</td></tr>
+<tr class=""><td><b>🎟️ Voucher</b></td><td>The voucher's name</td><td><code>Luxury Stay Special</code></td><td>All three</td></tr>
+<tr class="alt"><td><b>🧾 Claim Code</b></td><td>The claim reference</td><td><code>TD-CLM-9001</code></td><td>All three</td></tr>
+<tr class=""><td><b>📅 &lt;Event&gt; On</b></td><td>Date and time, always IST</td><td><code>07 Sep 2026 08:35 PM</code></td><td>All three</td></tr>
+<tr class="alt"><td><b>🔎 Status</b></td><td>Fixed text unless the value genuinely varies</td><td><code>Payment Successful</code></td><td>All three</td></tr>
+</table>
+
+<h2>Read this before you start</h2>
+<p>A template's wording, variables and button URLs are <b>frozen once Meta approves it</b>. It cannot be
+edited afterwards — it has to be created again under a new name, while the old one keeps sending. So the
+order below matters.</p>
+
+<h3>Start with these 25</h3>
+<p>Every template except the ones listed next. Their content and URLs are final.</p>
+<p class="meta"><a href="#t6">#6</a> · <a href="#t7">#7</a> · <a href="#t8">#8</a> · <a href="#t9">#9</a> · <a href="#t10">#10</a> · <a href="#t11">#11</a> · <a href="#t14">#14</a> · <a href="#t15">#15</a> · <a href="#t16">#16</a> · <a href="#t17">#17</a> · <a href="#t18">#18</a> · <a href="#t22">#22</a> · <a href="#t23">#23</a> · <a href="#t24">#24</a> · <a href="#t25">#25</a> · <a href="#t26">#26</a> · <a href="#t27">#27</a> · <a href="#t28">#28</a> · <a href="#t31">#31</a> · <a href="#t32">#32</a> · <a href="#t33">#33</a> · <a href="#t39">#39</a> · <a href="#t40">#40</a> · <a href="#t41">#41</a> · <a href="#t42">#42</a></p>
+
+<h3>Do not create these 17 yet</h3>
+<table>
+<tr><th style="width:20%">Templates</th><th style="width:20%">What</th><th>Why to wait</th></tr>
+<tr><td><code>#1, #2, #3, #4, #5, #12, #13, #20, #21, #29, #30, #34, #35, #36, #37, #38</code></td>
+    <td><b>Every template with two buttons</b></td>
+    <td>Our messaging provider still has to confirm one setting before a two-button template can be sent. It is a single question to them, and it now blocks 16 templates — so it is worth chasing first.</td></tr>
+<tr class="alt"><td><code>#19</code></td><td><b>Plan Limit Reached</b></td><td>Its button points at a vendor panel page that does not exist yet.</td></tr>
+<tr><td><code>#38</code></td><td><b>Claim Expired</b></td><td>The feature it belongs to is not live, so nothing sends it. Create it last.</td></tr>
+</table>
+
+<h3>Create these, but they stay quiet for a while</h3>
+<table>
+<tr><th style="width:20%">Templates</th><th style="width:20%">What</th><th>Note</th></tr>
+<tr><td><code>#39, #40, #41, #42</code></td><td><b>The 4 Admin alerts</b></td><td>Create them now — the content is final. They simply will not start sending until admin WhatsApp alerts are switched on at our end.</td></tr>
+</table>
+
+<h2>What the Type column means</h2>
+<table>
+<tr><th style="width:18%">Type</th><th>Meaning</th><th style="width:28%">Sample looks like</th></tr>
+<tr class=""><td><b>Text</b></td><td>A short word or phrase.</td><td><code>Cafe Mocha</code></td></tr>
+<tr class="alt"><td><b>Long Text</b></td><td>A sentence. Some have a character limit — it is noted on the variable.</td><td><code>Shop 4 Vijay Nagar Indore</code></td></tr>
+<tr class=""><td><b>Number</b></td><td>A plain whole number.</td><td><code>7</code></td></tr>
+<tr class="alt"><td><b>Amount</b></td><td>Rupees with two decimals. The ₹ sign is already in the message text — never include it in the sample.</td><td><code>1999.00</code></td></tr>
+<tr class=""><td><b>Date</b></td><td>Day, short month, year.</td><td><code>29 Aug 2026</code></td></tr>
+<tr class="alt"><td><b>Date & Time</b></td><td>The same, plus a 12-hour time. Always Indian Standard Time.</td><td><code>07 Sep 2026 08:35 PM</code></td></tr>
+<tr class=""><td><b>Reference</b></td><td>An ID or code that people quote to support.</td><td><code>TD-CLM-9001</code></td></tr>
+<tr class="alt"><td><b>Status</b></td><td>One value from a fixed list. The list is given on the variable.</td><td><code>Under review</code></td></tr>
+</table>
+
+<h2 class="brk"><a name="list" id="list"></a>Full list</h2>
+<p class="meta">Click a template name to jump to its details.</p>
+<table>
+<tr><th class="num">#</th><th>Template name</th><th style="width:14%">Role</th><th style="width:16%">Group</th><th style="width:9%">Vars</th><th style="width:9%">Buttons</th></tr>
+<tr class=""><td class="num">1</td><td><a href="#t1"><code>vendor_subscription_activated</code></a></td><td>Vendor</td><td>Subscription</td><td>5</td><td>2</td></tr>
+<tr class="alt"><td class="num">2</td><td><a href="#t2"><code>vendor_subscription_renewed</code></a></td><td>Vendor</td><td>Subscription</td><td>5</td><td>2</td></tr>
+<tr class=""><td class="num">3</td><td><a href="#t3"><code>vendor_subscription_upgraded</code></a></td><td>Vendor</td><td>Subscription</td><td>6</td><td>2</td></tr>
+<tr class="alt"><td class="num">4</td><td><a href="#t4"><code>vendor_subscription_downgraded</code></a></td><td>Vendor</td><td>Subscription</td><td>5</td><td>2</td></tr>
+<tr class=""><td class="num">5</td><td><a href="#t5"><code>vendor_subscription_granted</code></a></td><td>Vendor</td><td>Subscription</td><td>5</td><td>2</td></tr>
+<tr class="alt"><td class="num">6</td><td><a href="#t6"><code>vendor_subscription_expiring</code></a></td><td>Vendor</td><td>Subscription</td><td>4</td><td>1</td></tr>
+<tr class=""><td class="num">7</td><td><a href="#t7"><code>vendor_subscription_expired</code></a></td><td>Vendor</td><td>Subscription</td><td>3</td><td>1</td></tr>
+<tr class="alt"><td class="num">8</td><td><a href="#t8"><code>vendor_subscription_cancelled</code></a></td><td>Vendor</td><td>Subscription</td><td>4</td><td>1</td></tr>
+<tr class=""><td class="num">9</td><td><a href="#t9"><code>brand_under_review</code></a></td><td>Vendor</td><td>Brand Verification</td><td>3</td><td>1</td></tr>
+<tr class="alt"><td class="num">10</td><td><a href="#t10"><code>brand_resubmitted</code></a></td><td>Vendor</td><td>Brand Verification</td><td>4</td><td>1</td></tr>
+<tr class=""><td class="num">11</td><td><a href="#t11"><code>brand_approved</code></a></td><td>Vendor</td><td>Brand Verification</td><td>3</td><td>1</td></tr>
+<tr class="alt"><td class="num">12</td><td><a href="#t12"><code>brand_rejected</code></a></td><td>Vendor</td><td>Brand Verification</td><td>4</td><td>2</td></tr>
+<tr class=""><td class="num">13</td><td><a href="#t13"><code>brand_approval_revoked</code></a></td><td>Vendor</td><td>Brand Verification</td><td>4</td><td>2</td></tr>
+<tr class="alt"><td class="num">14</td><td><a href="#t14"><code>brand_deactivated</code></a></td><td>Vendor</td><td>Brand Status</td><td>5</td><td>1</td></tr>
+<tr class=""><td class="num">15</td><td><a href="#t15"><code>brand_activated</code></a></td><td>Vendor</td><td>Brand Status</td><td>3</td><td>1</td></tr>
+<tr class="alt"><td class="num">16</td><td><a href="#t16"><code>brand_hidden_from_customers</code></a></td><td>Vendor</td><td>Brand Status</td><td>4</td><td>1</td></tr>
+<tr class=""><td class="num">17</td><td><a href="#t17"><code>brand_visible_to_customers</code></a></td><td>Vendor</td><td>Brand Status</td><td>3</td><td>1</td></tr>
+<tr class="alt"><td class="num">18</td><td><a href="#t18"><code>vendor_voucher_claim_received</code></a></td><td>Vendor</td><td>Voucher Claim</td><td>10</td><td>1</td></tr>
+<tr class=""><td class="num">19</td><td><a href="#t19"><code>vendor_plan_limit_reached</code></a></td><td>Vendor</td><td>Plan Limit</td><td>7</td><td>1</td></tr>
+<tr class="alt"><td class="num">20</td><td><a href="#t20"><code>vendor_settlement_paid</code></a></td><td>Vendor</td><td>Settlement</td><td>7</td><td>2</td></tr>
+<tr class=""><td class="num">21</td><td><a href="#t21"><code>vendor_settlement_failed</code></a></td><td>Vendor</td><td>Settlement</td><td>6</td><td>2</td></tr>
+<tr class="alt"><td class="num">22</td><td><a href="#t22"><code>vendor_settlement_on_hold</code></a></td><td>Vendor</td><td>Settlement</td><td>5</td><td>1</td></tr>
+<tr class=""><td class="num">23</td><td><a href="#t23"><code>vendor_settlement_carried_forward</code></a></td><td>Vendor</td><td>Settlement</td><td>6</td><td>1</td></tr>
+<tr class="alt"><td class="num">24</td><td><a href="#t24"><code>vendor_refund_requested</code></a></td><td>Vendor</td><td>Refund</td><td>9</td><td>1</td></tr>
+<tr class=""><td class="num">25</td><td><a href="#t25"><code>vendor_refund_reminder</code></a></td><td>Vendor</td><td>Refund</td><td>7</td><td>1</td></tr>
+<tr class="alt"><td class="num">26</td><td><a href="#t26"><code>vendor_refund_completed</code></a></td><td>Vendor</td><td>Refund</td><td>9</td><td>1</td></tr>
+<tr class=""><td class="num">27</td><td><a href="#t27"><code>vendor_dispute_raised</code></a></td><td>Vendor</td><td>Dispute</td><td>8</td><td>1</td></tr>
+<tr class="alt"><td class="num">28</td><td><a href="#t28"><code>vendor_dispute_resolved_won</code></a></td><td>Vendor</td><td>Dispute</td><td>5</td><td>1</td></tr>
+<tr class=""><td class="num">29</td><td><a href="#t29"><code>vendor_dispute_resolved_lost</code></a></td><td>Vendor</td><td>Dispute</td><td>6</td><td>2</td></tr>
+<tr class="alt"><td class="num">30</td><td><a href="#t30"><code>customer_payment_success</code></a></td><td>Customer</td><td>Payment</td><td>10</td><td>2</td></tr>
+<tr class=""><td class="num">31</td><td><a href="#t31"><code>customer_payment_failed</code></a></td><td>Customer</td><td>Payment</td><td>7</td><td>1</td></tr>
+<tr class="alt"><td class="num">32</td><td><a href="#t32"><code>customer_refund_requested</code></a></td><td>Customer</td><td>Refund</td><td>8</td><td>1</td></tr>
+<tr class=""><td class="num">33</td><td><a href="#t33"><code>customer_refund_approved</code></a></td><td>Customer</td><td>Refund</td><td>9</td><td>1</td></tr>
+<tr class="alt"><td class="num">34</td><td><a href="#t34"><code>customer_refund_rejected</code></a></td><td>Customer</td><td>Refund</td><td>8</td><td>2</td></tr>
+<tr class=""><td class="num">35</td><td><a href="#t35"><code>customer_refund_completed</code></a></td><td>Customer</td><td>Refund</td><td>9</td><td>2</td></tr>
+<tr class="alt"><td class="num">36</td><td><a href="#t36"><code>customer_refund_bank_details</code></a></td><td>Customer</td><td>Refund</td><td>7</td><td>2</td></tr>
+<tr class=""><td class="num">37</td><td><a href="#t37"><code>customer_voucher_refunded</code></a></td><td>Customer</td><td>Refund</td><td>8</td><td>2</td></tr>
+<tr class="alt"><td class="num">38</td><td><a href="#t38"><code>customer_claim_expired</code></a></td><td>Customer</td><td>Payment</td><td>6</td><td>2</td></tr>
+<tr class=""><td class="num">39</td><td><a href="#t39"><code>admin_refund_failed</code></a></td><td>Admin</td><td>Alerts</td><td>9</td><td>1</td></tr>
+<tr class="alt"><td class="num">40</td><td><a href="#t40"><code>admin_settlement_ledger_drift</code></a></td><td>Admin</td><td>Alerts</td><td>6</td><td>1</td></tr>
+<tr class=""><td class="num">41</td><td><a href="#t41"><code>admin_payment_disputed</code></a></td><td>Admin</td><td>Alerts</td><td>8</td><td>1</td></tr>
+<tr class="alt"><td class="num">42</td><td><a href="#t42"><code>admin_dispute_deadline</code></a></td><td>Admin</td><td>Alerts</td><td>6</td><td>1</td></tr>
+</table>
+
+<h2 class="brk">Section A — Vendor templates (29)</h2>
+<p class="lead">Sent to the business — the brand owner or outlet operator. Every one greets them by their brand name.</p>
+
+<h3>A.1 &nbsp; Subscription (8)</h3>
+
+<div class="tmpl">
+  <a name="t1" id="t1"></a>
+  <div class="hdr">
+    <span class="tname">#1 &nbsp; vendor_subscription_activated</span>
+    <div class="facts"><b>Subscription Activated</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 5 &nbsp;|&nbsp; Buttons: 2</div>
+  </div>
+
+  <p><b>When it is sent:</b> A vendor pays for a subscription for the first time.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">🎉 Subscription Activated Successfully!<br/>
+Hello {{1}},<br/>
+Your Trydood subscription has been successfully activated. ✅<br/>
+📋 Plan: {{2}}<br/>
+📅 Start Date: {{3}}<br/>
+📅 Expiry Date: {{4}}<br/>
+💰 Amount Paid: ₹{{5}}<br/>
+Thank you for choosing Trydood! We're happy to have you with us. 💚<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Plan Name</b></td><td>Text</td><td><code>Prime Plus</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Start Date</b></td><td>Date</td><td><code>29 Aug 2026</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Expiry Date</b></td><td>Date</td><td><code>29 Aug 2027</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Amount Paid</b></td><td>Amount</td><td><code>1999.00</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Download Invoice</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td><code>a3f9c1e8b2d47c05</code></td></tr>
+  <tr class="alt"><td class="num">2</td><td>Visit Website</td><td><b>View Subscription</b></td><td>Static</td><td><code>https://vendor.trydood.com/subscription</code></td><td><code>—</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t2" id="t2"></a>
+  <div class="hdr">
+    <span class="tname">#2 &nbsp; vendor_subscription_renewed</span>
+    <div class="facts"><b>Subscription Renewed</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 5 &nbsp;|&nbsp; Buttons: 2</div>
+  </div>
+
+  <p><b>When it is sent:</b> A vendor renews the same plan.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">🎉 Subscription Renewed Successfully!<br/>
+Hello {{1}},<br/>
+Your Trydood subscription has been successfully renewed. ✅<br/>
+📋 Plan: {{2}}<br/>
+📅 Renewal Date: {{3}}<br/>
+📅 New Expiry Date: {{4}}<br/>
+💰 Amount Paid: ₹{{5}}<br/>
+Thank you for continuing with Trydood! 💚<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Plan Name</b></td><td>Text</td><td><code>Prime Plus</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Renewal Date</b></td><td>Date</td><td><code>29 Aug 2026</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>New Expiry Date</b></td><td>Date</td><td><code>29 Aug 2027</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Amount Paid</b></td><td>Amount</td><td><code>1999.00</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Download Invoice</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td><code>a3f9c1e8b2d47c05</code></td></tr>
+  <tr class="alt"><td class="num">2</td><td>Visit Website</td><td><b>View Subscription</b></td><td>Static</td><td><code>https://vendor.trydood.com/subscription</code></td><td><code>—</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t3" id="t3"></a>
+  <div class="hdr">
+    <span class="tname">#3 &nbsp; vendor_subscription_upgraded</span>
+    <div class="facts"><b>Subscription Upgraded</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 6 &nbsp;|&nbsp; Buttons: 2</div>
+  </div>
+
+  <p><b>When it is sent:</b> A vendor moves to a costlier plan.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">🎉 Subscription Upgraded Successfully!<br/>
+Hello {{1}},<br/>
+Great news! Your Trydood subscription has been successfully upgraded. ✅<br/>
+📋 Previous Plan: {{2}}<br/>
+🚀 New Plan: {{3}}<br/>
+📅 Upgrade Date: {{4}}<br/>
+📅 Expiry Date: {{5}}<br/>
+💰 Amount Paid: ₹{{6}}<br/>
+You can now enjoy the benefits and features included in your new plan. 💚<br/>
+Thank you for choosing Trydood!<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Previous Plan</b></td><td>Text</td><td><code>Pro Lite</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>New Plan</b></td><td>Text</td><td><code>Prime Plus</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Upgrade Date</b></td><td>Date</td><td><code>29 Aug 2026</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Expiry Date</b></td><td>Date</td><td><code>29 Aug 2027</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Amount Paid</b></td><td>Amount</td><td><code>1999.00</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Download Invoice</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td><code>a3f9c1e8b2d47c05</code></td></tr>
+  <tr class="alt"><td class="num">2</td><td>Visit Website</td><td><b>View Subscription</b></td><td>Static</td><td><code>https://vendor.trydood.com/subscription</code></td><td><code>—</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t4" id="t4"></a>
+  <div class="hdr">
+    <span class="tname">#4 &nbsp; vendor_subscription_downgraded</span>
+    <div class="facts"><b>Subscription Downgraded</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 5 &nbsp;|&nbsp; Buttons: 2</div>
+  </div>
+
+  <p><b>When it is sent:</b> A vendor moves to a cheaper plan.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">🔄 Subscription Downgraded Successfully<br/>
+Hello {{1}},<br/>
+Your Trydood subscription has been successfully downgraded. ✅<br/>
+📋 Previous Plan: {{2}}<br/>
+📉 New Plan: {{3}}<br/>
+📅 Effective Date: {{4}}<br/>
+📅 Expiry Date: {{5}}<br/>
+Your subscription will now continue with the features and benefits available in your new plan.<br/>
+Thank you for choosing Trydood. 💚<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Previous Plan</b></td><td>Text</td><td><code>Prime Plus</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>New Plan</b></td><td>Text</td><td><code>Pro Lite</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Effective Date</b></td><td>Date</td><td><code>29 Aug 2026</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Expiry Date</b></td><td>Date</td><td><code>29 Aug 2027</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Download Invoice</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td><code>a3f9c1e8b2d47c05</code></td></tr>
+  <tr class="alt"><td class="num">2</td><td>Visit Website</td><td><b>View Subscription</b></td><td>Static</td><td><code>https://vendor.trydood.com/subscription</code></td><td><code>—</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> A downgrade is still a purchase — the vendor buys the cheaper plan, so a payment is taken and an invoice is issued exactly as on an upgrade. It gets the same two buttons.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t5" id="t5"></a>
+  <div class="hdr">
+    <span class="tname">#5 &nbsp; vendor_subscription_granted</span>
+    <div class="facts"><b>Subscription Granted</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 5 &nbsp;|&nbsp; Buttons: 2</div>
+  </div>
+
+  <p><b>When it is sent:</b> An admin gives a vendor a subscription — complimentary, or paid outside the app.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">🎉 Subscription Granted Successfully!<br/>
+Hello {{1}},<br/>
+Your Trydood subscription has been granted successfully. ✅<br/>
+📋 Plan: {{2}}<br/>
+📅 Start Date: {{3}}<br/>
+📅 Expiry Date: {{4}}<br/>
+🎁 Access Type: {{5}}<br/>
+You can now enjoy the features and benefits included in your subscription. 💚<br/>
+Thank you for choosing Trydood!<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Plan Name</b></td><td>Text</td><td><code>Prime Plus</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Start Date</b></td><td>Date</td><td><code>29 Aug 2026</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Expiry Date</b></td><td>Date</td><td><code>29 Aug 2027</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Access Type</b></td><td>Text</td><td><code>Complimentary</code></td><td>Either “Complimentary” or “Paid offline”</td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Download Advice</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td><code>b7c2e91f4a83d610</code></td></tr>
+  <tr class="alt"><td class="num">2</td><td>Visit Website</td><td><b>View Subscription</b></td><td>Static</td><td><code>https://vendor.trydood.com/subscription</code></td><td><code>—</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> The document here is a grant advice, not an invoice — no money was collected through the app.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t6" id="t6"></a>
+  <div class="hdr">
+    <span class="tname">#6 &nbsp; vendor_subscription_expiring</span>
+    <div class="facts"><b>Subscription Expiring Soon</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 4 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> A reminder sent in the days before a subscription expires.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">⏰ Subscription Expiring Soon!<br/>
+Hello {{1}},<br/>
+Your Trydood subscription is expiring soon. ⚠️<br/>
+📋 Plan: {{2}}<br/>
+📅 Expiry Date: {{3}}<br/>
+⏳ Days Remaining: {{4}}<br/>
+To continue enjoying your subscription benefits without interruption, please renew your plan before the expiry date.<br/>
+💚 Thank you for being with Trydood!<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Plan Name</b></td><td>Text</td><td><code>Prime Plus</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Expiry Date</b></td><td>Date</td><td><code>29 Aug 2027</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Days Remaining</b></td><td>Number</td><td><code>7</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Renew Now</b></td><td>Static</td><td><code>https://vendor.trydood.com/subscription/plans</code></td><td><code>—</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t7" id="t7"></a>
+  <div class="hdr">
+    <span class="tname">#7 &nbsp; vendor_subscription_expired</span>
+    <div class="facts"><b>Subscription Expired</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 3 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> The subscription has lapsed and the vendor's benefits are off.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">⚠️ Subscription Expired<br/>
+Hello {{1}},<br/>
+Your Trydood subscription has expired.<br/>
+📋 Plan: {{2}}<br/>
+📅 Expiry Date: {{3}}<br/>
+🔒 Status: Expired<br/>
+Your subscription benefits are no longer active. Renew your subscription to continue enjoying Trydood features and benefits. 🚀<br/>
+Thank you for choosing Trydood. 💚<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Plan Name</b></td><td>Text</td><td><code>Prime Plus</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Expiry Date</b></td><td>Date</td><td><code>29 Aug 2027</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Renew Now</b></td><td>Static</td><td><code>https://vendor.trydood.com/subscription/plans</code></td><td><code>—</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t8" id="t8"></a>
+  <div class="hdr">
+    <span class="tname">#8 &nbsp; vendor_subscription_cancelled</span>
+    <div class="facts"><b>Subscription Cancelled</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 4 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> A subscription is cancelled. Benefits continue until the access end date.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">❌ Subscription Cancelled<br/>
+Hello {{1}},<br/>
+Your Trydood subscription has been successfully cancelled.<br/>
+📋 Plan: {{2}}<br/>
+📅 Cancellation Date: {{3}}<br/>
+📅 Access Until: {{4}}<br/>
+🔒 Status: Cancelled<br/>
+Your subscription benefits will remain available until the access end date mentioned above.<br/>
+We're sorry to see you go. 💚 You can subscribe again anytime to continue enjoying Trydood benefits.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Plan Name</b></td><td>Text</td><td><code>Prime Plus</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Cancellation Date</b></td><td>Date</td><td><code>07 Sep 2026</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Access Until</b></td><td>Date</td><td><code>29 Aug 2027</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Subscribe Again</b></td><td>Static</td><td><code>https://vendor.trydood.com/subscription/plans</code></td><td><code>—</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<h3>A.2 &nbsp; Brand Verification (5)</h3>
+
+<div class="tmpl">
+  <a name="t9" id="t9"></a>
+  <div class="hdr">
+    <span class="tname">#9 &nbsp; brand_under_review</span>
+    <div class="facts"><b>Brand Under Review</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 3 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> A vendor submits their brand for verification.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">🔍 Your Brand Is Under Review<br/>
+Hello {{1}},<br/>
+We have received your brand details and our team has started verifying them. ✅<br/>
+🆔 Merchant ID: {{2}}<br/>
+📅 Submitted On: {{3}}<br/>
+🔎 Status: Under Review<br/>
+📄 What happens next: our team checks your GST, PAN and bank details.<br/>
+⏳ Most reviews are completed within a few working days.<br/>
+You do not need to do anything right now — we will message you the moment the review is complete. 💚<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Merchant ID</b></td><td>Reference</td><td><code>TM-A3F9-K2M7-QX41</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Submitted On</b></td><td>Date &amp; Time</td><td><code>07 Sep 2026 04:12 PM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Track Application</b></td><td>Static</td><td><code>https://vendor.trydood.com/onboarding/status</code></td><td><code>—</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> “Most reviews are completed within a few working days” is fixed text on purpose — it answers the vendor's first question without committing to a number we would have to resubmit to change.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t10" id="t10"></a>
+  <div class="hdr">
+    <span class="tname">#10 &nbsp; brand_resubmitted</span>
+    <div class="facts"><b>Brand Details Resubmitted</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 4 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> A vendor corrects and resubmits after a rejection.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">🔄 Updated Details Received<br/>
+Hello {{1}},<br/>
+Thank you — we have received your updated brand details and they are back with our verification team. ✅<br/>
+🆔 Merchant ID: {{2}}<br/>
+📅 Resubmitted On: {{3}}<br/>
+🔁 Attempt: {{4}}<br/>
+🔎 Status: Under Review<br/>
+⏳ Most reviews are completed within a few working days.<br/>
+Your earlier submission has been replaced by this one. There is nothing further to send.<br/>
+We will message you as soon as the review is complete. 💚<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Merchant ID</b></td><td>Reference</td><td><code>TM-A3F9-K2M7-QX41</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Resubmitted On</b></td><td>Date &amp; Time</td><td><code>07 Sep 2026 06:40 PM</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Attempt Number</b></td><td>Number</td><td><code>2</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Track Application</b></td><td>Static</td><td><code>https://vendor.trydood.com/onboarding/status</code></td><td><code>—</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t11" id="t11"></a>
+  <div class="hdr">
+    <span class="tname">#11 &nbsp; brand_approved</span>
+    <div class="facts"><b>Brand Approved</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 3 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> An admin approves the brand. The vendor can now start selling.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">🎉 Your Brand Is Approved!<br/>
+Hello {{1}},<br/>
+Great news — your brand has been verified and approved on Trydood. ✅<br/>
+🆔 Merchant ID: {{2}}<br/>
+📅 Approved On: {{3}}<br/>
+🔎 Status: Approved<br/>
+You can now sign in and start selling:<br/>
+🏪 Add your outlets — customers find you through these<br/>
+🎟️ Publish your vouchers, and every new Trydood service as we launch it<br/>
+💬 Quote your Merchant ID whenever you contact us<br/>
+Welcome to Trydood. We're glad to have you. 💚<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Merchant ID</b></td><td>Reference</td><td><code>TM-A3F9-K2M7-QX41</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Approved On</b></td><td>Date &amp; Time</td><td><code>08 Sep 2026 11:20 AM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Go to Dashboard</b></td><td>Static</td><td><code>https://vendor.trydood.com/dashboard</code></td><td><code>—</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> The services line is worded to survive new features. Dealpacks, memberships, delivery and anything else launched later are already covered by “every new Trydood service as we launch it”, so this template never has to be rebuilt to mention them.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t12" id="t12"></a>
+  <div class="hdr">
+    <span class="tname">#12 &nbsp; brand_rejected</span>
+    <div class="facts"><b>Brand Verification Rejected</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 4 &nbsp;|&nbsp; Buttons: 2</div>
+  </div>
+
+  <p><b>When it is sent:</b> Verification fails. The vendor can correct the details and resubmit.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">📋 Brand Verification Update<br/>
+Hello {{1}},<br/>
+We were not able to verify your brand with the details provided.<br/>
+🆔 Merchant ID: {{2}}<br/>
+📅 Reviewed On: {{3}}<br/>
+🔎 Status: Not Approved<br/>
+📝 Reason: {{4}}<br/>
+This is not final. Please correct the details above and resubmit — your application stays open and nothing has been deleted.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Merchant ID</b></td><td>Reference</td><td><code>TM-A3F9-K2M7-QX41</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Reviewed On</b></td><td>Date &amp; Time</td><td><code>08 Sep 2026 11:20 AM</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Reason</b></td><td>Long Text</td><td><code>The GST certificate is registered to a different legal name than the PAN.</code></td><td>Written by an admin. Up to 180 characters.</td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Update and Resubmit</b></td><td>Static</td><td><code>https://vendor.trydood.com/onboarding/review</code></td><td><code>—</code></td></tr>
+  <tr class="alt"><td class="num">2</td><td>Visit Website</td><td><b>Contact Support</b></td><td>Static</td><td><code>https://trydood.com/contact</code></td><td><code>—</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t13" id="t13"></a>
+  <div class="hdr">
+    <span class="tname">#13 &nbsp; brand_approval_revoked</span>
+    <div class="facts"><b>Brand Approval Withdrawn</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 4 &nbsp;|&nbsp; Buttons: 2</div>
+  </div>
+
+  <p><b>When it is sent:</b> An already-approved brand has its approval withdrawn.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">⚠️ Brand Approval Withdrawn<br/>
+Hello {{1}},<br/>
+Your brand's approval on Trydood has been withdrawn.<br/>
+🆔 Merchant ID: {{2}}<br/>
+📅 Withdrawn On: {{3}}<br/>
+🔎 Status: Approval Withdrawn<br/>
+📝 Reason: {{4}}<br/>
+Your vouchers are no longer available to customers while this is in place.<br/>
+Nothing has been deleted. Please review the details above and resubmit, or contact us if you believe this is a mistake.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Merchant ID</b></td><td>Reference</td><td><code>TM-A3F9-K2M7-QX41</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Withdrawn On</b></td><td>Date &amp; Time</td><td><code>08 Sep 2026 11:20 AM</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Reason</b></td><td>Long Text</td><td><code>The GST registration has been cancelled at the portal.</code></td><td>Written by an admin. Up to 180 characters.</td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Review Details</b></td><td>Static</td><td><code>https://vendor.trydood.com/onboarding/review</code></td><td><code>—</code></td></tr>
+  <tr class="alt"><td class="num">2</td><td>Visit Website</td><td><b>Contact Support</b></td><td>Static</td><td><code>https://trydood.com/contact</code></td><td><code>—</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<h3>A.3 &nbsp; Brand Status (4)</h3>
+
+<div class="tmpl">
+  <a name="t14" id="t14"></a>
+  <div class="hdr">
+    <span class="tname">#14 &nbsp; brand_deactivated</span>
+    <div class="facts"><b>Vendor Account Deactivated</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 5 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> An admin deactivates the vendor's account. They cannot sign in.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">🔒 Account Deactivated<br/>
+Hello {{1}},<br/>
+Your Trydood vendor account has been deactivated.<br/>
+🆔 Merchant ID: {{2}}<br/>
+📅 Deactivated On: {{3}}<br/>
+🔎 Status: Deactivated<br/>
+📝 Reason: {{4}}<br/>
+👁️ Customer Visibility: {{5}}<br/>
+What this means: you cannot sign in to the vendor panel while this is in place.<br/>
+Your outlets, vouchers and settlement records are all safe and nothing has been deleted.<br/>
+Please contact us and we will help you resolve it.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Merchant ID</b></td><td>Reference</td><td><code>TM-A3F9-K2M7-QX41</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Deactivated On</b></td><td>Date &amp; Time</td><td><code>08 Sep 2026 03:05 PM</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Reason</b></td><td>Long Text</td><td><code>Please contact support for details.</code></td><td>The admin's reason when one was written; otherwise the default shown here. Up to 180 characters.</td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Customer Visibility</b></td><td>Status</td><td><code>Active — your vouchers and other services are still running and customers can still use them</code></td><td>Exactly one of two sentences. Hidden: “Hidden — customers cannot see or use your services right now”. Visible: the sample shown here.</td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Contact Support</b></td><td>Static</td><td><code>https://trydood.com/contact</code></td><td><code>—</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> Variable 5 is a full sentence rather than one word, because the account switch and customer visibility are separate. A deactivated vendor's brand can still be selling to customers, and a template body cannot branch — so the difference has to live inside the variable.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t15" id="t15"></a>
+  <div class="hdr">
+    <span class="tname">#15 &nbsp; brand_activated</span>
+    <div class="facts"><b>Vendor Account Reactivated</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 3 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> The account is switched back on.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">✅ Account Reactivated<br/>
+Hello {{1}},<br/>
+Good news — your Trydood vendor account is active again.<br/>
+🆔 Merchant ID: {{2}}<br/>
+📅 Reactivated On: {{3}}<br/>
+🔎 Status: Active<br/>
+Everything is exactly as you left it — your outlets, vouchers and settlement records are all intact.<br/>
+🔐 Please note: you will need to sign in again, as your earlier sessions were closed.<br/>
+Welcome back. 💚<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Merchant ID</b></td><td>Reference</td><td><code>TM-A3F9-K2M7-QX41</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Reactivated On</b></td><td>Date &amp; Time</td><td><code>09 Sep 2026 10:15 AM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Sign In</b></td><td>Static</td><td><code>https://vendor.trydood.com/dashboard</code></td><td><code>—</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> The sign-in note must stay. Every session ends on reactivation, so a vendor who taps the button lands on a login screen — without the warning that reads as still broken.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t16" id="t16"></a>
+  <div class="hdr">
+    <span class="tname">#16 &nbsp; brand_hidden_from_customers</span>
+    <div class="facts"><b>Brand Hidden From Customers</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 4 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> The brand is de-listed from the customer app. The vendor panel still works.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">👁️ Brand Hidden From Customers<br/>
+Hello {{1}},<br/>
+Your brand is temporarily not being shown to customers on Trydood.<br/>
+🆔 Merchant ID: {{2}}<br/>
+📅 Hidden On: {{3}}<br/>
+🔎 Status: Hidden From Customers<br/>
+📝 Reason: {{4}}<br/>
+What this means: your brand page, directory listing and showcase are not visible to customers right now.<br/>
+Your vendor panel still works normally and nothing has been deleted.<br/>
+Please contact us and we will help you resolve it.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Merchant ID</b></td><td>Reference</td><td><code>TM-A3F9-K2M7-QX41</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Hidden On</b></td><td>Date &amp; Time</td><td><code>08 Sep 2026 03:05 PM</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Reason</b></td><td>Long Text</td><td><code>Please contact support for details.</code></td><td>The deactivation reason when the account is also off; otherwise the default shown here.</td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Contact Support</b></td><td>Static</td><td><code>https://trydood.com/contact</code></td><td><code>—</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t17" id="t17"></a>
+  <div class="hdr">
+    <span class="tname">#17 &nbsp; brand_visible_to_customers</span>
+    <div class="facts"><b>Brand Visible To Customers Again</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 3 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> The brand is listed for customers again.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">🎉 Brand Visible to Customers Again!<br/>
+Hello {{1}},<br/>
+Good news — your brand is being shown to customers on Trydood again. ✅<br/>
+🆔 Merchant ID: {{2}}<br/>
+📅 Restored On: {{3}}<br/>
+🔎 Status: Visible to Customers<br/>
+Your brand page, directory listing and showcase are all live again, exactly as they were.<br/>
+Nothing was deleted while it was hidden. 💚<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Merchant ID</b></td><td>Reference</td><td><code>TM-A3F9-K2M7-QX41</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Restored On</b></td><td>Date &amp; Time</td><td><code>09 Sep 2026 10:15 AM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Open Dashboard</b></td><td>Static</td><td><code>https://vendor.trydood.com/dashboard</code></td><td><code>—</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<h3>A.4 &nbsp; Voucher Claim (1)</h3>
+
+<div class="tmpl">
+  <a name="t18" id="t18"></a>
+  <div class="hdr">
+    <span class="tname">#18 &nbsp; vendor_voucher_claim_received</span><span class="cap">USES ALL 10 VARIABLES</span>
+    <div class="facts"><b>New Voucher Claim At Your Outlet</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 10 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> A customer pays at the vendor's outlet through Trydood.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">💰 New Voucher Claim at Your Outlet<br/>
+Hello {{1}},<br/>
+A customer has just paid at your outlet through Trydood. ✅<br/>
+🎟️ Voucher: {{2}}<br/>
+🎁 Offer Applied: {{3}}<br/>
+🏷️ Promo Code: {{4}}<br/>
+📍 Store ID: {{5}}<br/>
+🏠 Address: {{6}}<br/>
+🧾 Claim Code: {{7}}<br/>
+📅 Paid On: {{8}}<br/>
+💰 Bill Amount: ₹{{9}}<br/>
+💚 You Will Receive: ₹{{10}}<br/>
+🔎 Status: Payment Successful<br/>
+This amount will be included in your next settlement.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Voucher Name</b></td><td>Text</td><td><code>Luxury Stay Special</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Offer Applied</b></td><td>Text</td><td><code>20% off up to ₹200</code></td><td>“No offer” when none applied</td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Promo Code</b></td><td>Text</td><td><code>MONSOON20</code></td><td>“—” when none used</td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Store ID and Type</b></td><td>Reference</td><td><code>TS-A3F9-K2M7-QX41 · Franchise</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Outlet Address</b></td><td>Long Text</td><td><code>Shop 4 Vijay Nagar Indore MP 452010</code></td><td></td></tr>
+  <tr class=""><td class="num">{{7}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{8}}</td><td><b>Paid On</b></td><td>Date &amp; Time</td><td><code>07 Sep 2026 08:35 PM</code></td><td></td></tr>
+  <tr class=""><td class="num">{{9}}</td><td><b>Bill Amount</b></td><td>Amount</td><td><code>1000.00</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{10}}</td><td><b>Vendor Payable</b></td><td>Amount</td><td><code>700.00</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>View Transaction</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/transactions/{{1}}</code></td><td><code>68b1d4f0c27a9e35</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> This template uses all 10 permitted variables. Nothing can be added without removing something else — the store type shares variable 5 with the Store ID for exactly this reason.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<h3>A.5 &nbsp; Plan Limit (1)</h3>
+
+<div class="tmpl">
+  <a name="t19" id="t19"></a>
+  <div class="hdr">
+    <span class="tname">#19 &nbsp; vendor_plan_limit_reached</span>
+    <div class="facts"><b>Plan Limit Reached</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 7 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> A vendor hits the cap on outlets, franchises, vouchers or showcase items for their plan.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">🚦 Plan Limit Reached<br/>
+Hello {{1}},<br/>
+You have reached the {{2}} limit on your {{3}} plan.<br/>
+📊 Used: {{4}} of {{5}}<br/>
+🚀 On {{6}} you get: {{7}}<br/>
+Upgrade your plan to keep adding without interruption.<br/>
+Everything you have already created stays exactly as it is. 💚<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Limit Type</b></td><td>Text</td><td><code>vouchers</code></td><td>One of: outlets, franchises, vouchers, showcase items</td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Current Plan</b></td><td>Text</td><td><code>Pro Lite</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Used</b></td><td>Number</td><td><code>10</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Current Limit</b></td><td>Number</td><td><code>10</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Suggested Plan</b></td><td>Text</td><td><code>Prime Plus</code></td><td></td></tr>
+  <tr class=""><td class="num">{{7}}</td><td><b>New Limit</b></td><td>Text</td><td><code>50 vouchers</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Upgrade Plan</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/subscription/plans/{{1}}</code></td><td><code>64f1a2b7c9e04d38</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<h3>A.6 &nbsp; Settlement (4)</h3>
+
+<div class="tmpl">
+  <a name="t20" id="t20"></a>
+  <div class="hdr">
+    <span class="tname">#20 &nbsp; vendor_settlement_paid</span>
+    <div class="facts"><b>Payout Sent To Bank</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 7 &nbsp;|&nbsp; Buttons: 2</div>
+  </div>
+
+  <p><b>When it is sent:</b> A vendor's payout has been transferred to their bank.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">💸 Payout Sent to Your Bank<br/>
+Hello {{1}},<br/>
+Your Trydood payout has been sent to your bank account. ✅<br/>
+🧾 Settlement No: {{2}}<br/>
+📅 Period: {{3}}<br/>
+💰 Amount: ₹{{4}}<br/>
+🏦 Account: {{5}}<br/>
+🔖 Bank Reference (UTR): {{6}}<br/>
+📅 Sent On: {{7}}<br/>
+🔎 Status: Paid<br/>
+Funds usually reflect within 24 hours depending on your bank.<br/>
+Thank you for growing with Trydood. 💚<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Settlement Number</b></td><td>Reference</td><td><code>TD/STL/26-27/000123</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Settlement Period</b></td><td>Text</td><td><code>1 Aug 2026 – 31 Aug 2026</code></td><td>Uses a dash, never a comma</td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Amount</b></td><td>Amount</td><td><code>4523.75</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Bank Account</b></td><td>Text</td><td><code>ending 7890</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Bank Reference (UTR)</b></td><td>Reference</td><td><code>HDFCN52026090412345</code></td><td></td></tr>
+  <tr class=""><td class="num">{{7}}</td><td><b>Sent On</b></td><td>Date &amp; Time</td><td><code>05 Sep 2026 02:40 PM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Download Statement</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td><code>c4d8e0f2a6b19375</code></td></tr>
+  <tr class="alt"><td class="num">2</td><td>Visit Website</td><td><b>View Settlement</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/settlements/{{1}}</code></td><td><code>31ac7e05b2f8d649</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> The bank reference is the point of this message — without it, “we paid you” and “we did not pay you” look identical on a bank statement.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t21" id="t21"></a>
+  <div class="hdr">
+    <span class="tname">#21 &nbsp; vendor_settlement_failed</span>
+    <div class="facts"><b>Payout Failed</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 6 &nbsp;|&nbsp; Buttons: 2</div>
+  </div>
+
+  <p><b>When it is sent:</b> The bank returned the payout.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">⚠️ Payout Could Not Be Completed<br/>
+Hello {{1}},<br/>
+Your Trydood payout was returned by the bank.<br/>
+🧾 Settlement No: {{2}}<br/>
+💰 Amount: ₹{{3}}<br/>
+🏦 Account: {{4}}<br/>
+📝 Reason: {{5}}<br/>
+📅 Attempted On: {{6}}<br/>
+🔎 Status: Payout Failed<br/>
+We are on it. Please check that the account above is still open and the details are correct.<br/>
+Your money is safe and will be paid once this is resolved. 💚<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Settlement Number</b></td><td>Reference</td><td><code>TD/STL/26-27/000123</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Amount</b></td><td>Amount</td><td><code>4523.75</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Bank Account</b></td><td>Text</td><td><code>ending 7890</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Reason</b></td><td>Text</td><td><code>Beneficiary account closed</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Attempted On</b></td><td>Date &amp; Time</td><td><code>05 Sep 2026 02:40 PM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>View Settlement</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/settlements/{{1}}</code></td><td><code>31ac7e05b2f8d649</code></td></tr>
+  <tr class="alt"><td class="num">2</td><td>Visit Website</td><td><b>Contact Support</b></td><td>Static</td><td><code>https://trydood.com/contact</code></td><td><code>—</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t22" id="t22"></a>
+  <div class="hdr">
+    <span class="tname">#22 &nbsp; vendor_settlement_on_hold</span>
+    <div class="facts"><b>Payout On Hold</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 5 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> A payout is being reviewed before it goes out.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">⏸️ Payout On Hold<br/>
+Hello {{1}},<br/>
+Your Trydood payout is being reviewed before it goes out.<br/>
+🧾 Settlement No: {{2}}<br/>
+📅 Period: {{3}}<br/>
+💰 Amount: ₹{{4}}<br/>
+📅 On Hold Since: {{5}}<br/>
+🔎 Status: On Hold<br/>
+Nothing is lost. It will either be released or carried into your next payout.<br/>
+Our team will complete the review shortly. 💚<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Settlement Number</b></td><td>Reference</td><td><code>TD/STL/26-27/000123</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Settlement Period</b></td><td>Text</td><td><code>1 Aug 2026 – 31 Aug 2026</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Amount</b></td><td>Amount</td><td><code>4523.75</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>On Hold Since</b></td><td>Date &amp; Time</td><td><code>05 Sep 2026 09:00 AM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>View Settlement</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/settlements/{{1}}</code></td><td><code>31ac7e05b2f8d649</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> There is deliberately no “what is being checked” variable, and no Contact Support button. It is usually a disputed payment, and inviting the conversation turns a two-day delay into an argument about something nobody has ruled on yet.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t23" id="t23"></a>
+  <div class="hdr">
+    <span class="tname">#23 &nbsp; vendor_settlement_carried_forward</span>
+    <div class="facts"><b>No Payout This Cycle</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 6 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> Deductions came to more than the period's sales, so there is nothing to pay out.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">📋 No Payout This Cycle<br/>
+Hello {{1}},<br/>
+There is no payout for this settlement period.<br/>
+🧾 Settlement No: {{2}}<br/>
+📅 Period: {{3}}<br/>
+💰 Sales This Period: ₹{{4}}<br/>
+↩️ Refunds Deducted: ₹{{5}}<br/>
+⚖️ Chargebacks Deducted: ₹{{6}}<br/>
+🔎 Status: Carried Forward<br/>
+Your deductions came to more than this period's sales, so there is nothing to pay out.<br/>
+The remaining balance carries into your next settlement and comes off future sales.<br/>
+There is nothing to pay us and nothing you need to do. 💚<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Settlement Number</b></td><td>Reference</td><td><code>TD/STL/26-27/000123</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Settlement Period</b></td><td>Text</td><td><code>1 Aug 2026 – 31 Aug 2026</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Sales This Period</b></td><td>Amount</td><td><code>3200.00</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Refunds Deducted</b></td><td>Amount</td><td><code>2450.00</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Chargebacks Deducted</b></td><td>Amount</td><td><code>1200.00</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>View Statement</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/settlements/{{1}}</code></td><td><code>31ac7e05b2f8d649</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> “There is nothing to pay us” must stay — the reading people jump to is that they now owe money.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<h3>A.7 &nbsp; Refund (3)</h3>
+
+<div class="tmpl">
+  <a name="t24" id="t24"></a>
+  <div class="hdr">
+    <span class="tname">#24 &nbsp; vendor_refund_requested</span>
+    <div class="facts"><b>Refund Requested</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 9 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> A customer asks for a refund on a claim at the vendor's outlet.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">↩️ Refund Requested<br/>
+Hello {{1}},<br/>
+A customer has requested a refund on a claim at your outlet.<br/>
+🎟️ Voucher: {{2}}<br/>
+🧾 Claim Code: {{3}}<br/>
+📍 Store ID: {{4}}<br/>
+🏠 Address: {{5}}<br/>
+💰 Amount Requested: ₹{{6}}<br/>
+📝 Customer's Reason: {{7}}<br/>
+📅 Requested On: {{8}}<br/>
+⏳ Please Respond By: {{9}}<br/>
+🔎 Status: Awaiting Your Response<br/>
+If nobody responds by then, the decision passes to the Trydood team.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Voucher Name</b></td><td>Text</td><td><code>Luxury Stay Special</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Store ID and Type</b></td><td>Reference</td><td><code>TS-A3F9-K2M7-QX41 · Franchise</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Outlet Address</b></td><td>Long Text</td><td><code>Shop 4 Vijay Nagar Indore MP 452010</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Amount Requested</b></td><td>Amount</td><td><code>810.00</code></td><td></td></tr>
+  <tr class=""><td class="num">{{7}}</td><td><b>Customer's Reason</b></td><td>Long Text</td><td><code>Outlet was closed when I reached.</code></td><td>Written by the customer. Up to 150 characters.</td></tr>
+  <tr class="alt"><td class="num">{{8}}</td><td><b>Requested On</b></td><td>Date &amp; Time</td><td><code>08 Sep 2026 07:15 PM</code></td><td></td></tr>
+  <tr class=""><td class="num">{{9}}</td><td><b>Respond By</b></td><td>Date &amp; Time</td><td><code>09 Sep 2026 09:30 PM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Review Refund</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/refunds/{{1}}</code></td><td><code>66df1b8e0a94c273</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> Both timestamps are shown together on purpose. A deadline with no start is just pressure; the pair lets the vendor see how long they actually have.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t25" id="t25"></a>
+  <div class="hdr">
+    <span class="tname">#25 &nbsp; vendor_refund_reminder</span>
+    <div class="facts"><b>Refund Still Awaiting Response</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 7 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> A reminder while a refund request is still undecided.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">⏳ Refund Still Waiting on You<br/>
+Hello {{1}},<br/>
+A refund request at your outlet is still waiting for your decision.<br/>
+🎟️ Voucher: {{2}}<br/>
+🧾 Claim Code: {{3}}<br/>
+📍 Store ID: {{4}}<br/>
+💰 Amount: ₹{{5}}<br/>
+⏳ Respond By: {{6}}<br/>
+⌛ Time Left: {{7}}<br/>
+🔎 Status: Awaiting Your Response<br/>
+If nobody responds by then, the decision passes to the Trydood team.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Voucher Name</b></td><td>Text</td><td><code>Luxury Stay Special</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Store ID and Type</b></td><td>Reference</td><td><code>TS-A3F9-K2M7-QX41 · Franchise</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Amount</b></td><td>Amount</td><td><code>810.00</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Respond By</b></td><td>Date &amp; Time</td><td><code>09 Sep 2026 09:30 PM</code></td><td></td></tr>
+  <tr class=""><td class="num">{{7}}</td><td><b>Time Left</b></td><td>Text</td><td><code>4 hours</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Review Refund</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/refunds/{{1}}</code></td><td><code>66df1b8e0a94c273</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t26" id="t26"></a>
+  <div class="hdr">
+    <span class="tname">#26 &nbsp; vendor_refund_completed</span>
+    <div class="facts"><b>Refund Completed</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 9 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> A refund has been paid to the customer and the vendor's share is being recovered.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">↩️ Refund Completed<br/>
+Hello {{1}},<br/>
+A refund on one of your sales has been completed.<br/>
+🎟️ Voucher: {{2}}<br/>
+🧾 Claim Code: {{3}}<br/>
+📍 Store ID: {{4}}<br/>
+🏠 Address: {{5}}<br/>
+💰 Refunded to Customer: ₹{{6}}<br/>
+📉 Deducted From Your Payout: ₹{{7}}<br/>
+♻️ Commission Returned to You: ₹{{8}}<br/>
+📅 Completed On: {{9}}<br/>
+🔎 Status: Refund Completed<br/>
+Only your share of the sale is deducted — the commission we charged on it is returned to you.<br/>
+This will appear on your next settlement statement.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Voucher Name</b></td><td>Text</td><td><code>Luxury Stay Special</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Store ID and Type</b></td><td>Reference</td><td><code>TS-A3F9-K2M7-QX41 · Franchise</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Outlet Address</b></td><td>Long Text</td><td><code>Shop 4 Vijay Nagar Indore MP 452010</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Refunded To Customer</b></td><td>Amount</td><td><code>810.00</code></td><td></td></tr>
+  <tr class=""><td class="num">{{7}}</td><td><b>Deducted From Payout</b></td><td>Amount</td><td><code>700.00</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{8}}</td><td><b>Commission Returned</b></td><td>Amount</td><td><code>110.00</code></td><td></td></tr>
+  <tr class=""><td class="num">{{9}}</td><td><b>Completed On</b></td><td>Date &amp; Time</td><td><code>10 Sep 2026 01:05 PM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>View Refund</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/refunds/{{1}}</code></td><td><code>66df1b8e0a94c273</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> Variables 6, 7 and 8 must add up on screen — 810 = 700 + 110. That is the whole reason this template exists: it stops the “why 700 and not 810?” question.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<h3>A.8 &nbsp; Dispute (3)</h3>
+
+<div class="tmpl">
+  <a name="t27" id="t27"></a>
+  <div class="hdr">
+    <span class="tname">#27 &nbsp; vendor_dispute_raised</span>
+    <div class="facts"><b>Chargeback Raised</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 8 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> A customer's bank pulls back a payment on one of the vendor's sales.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">⚖️ Chargeback Raised on Your Sale<br/>
+Hello {{1}},<br/>
+A customer's bank has pulled back a payment on one of your sales.<br/>
+🎟️ Voucher: {{2}}<br/>
+🧾 Claim Code: {{3}}<br/>
+📍 Store ID: {{4}}<br/>
+🏠 Address: {{5}}<br/>
+💰 Amount: ₹{{6}}<br/>
+📝 Reason: {{7}}<br/>
+⏳ We Must Respond By: {{8}}<br/>
+🔎 Status: Under Dispute<br/>
+This payment is held out of your payouts until it is settled — it is not lost.<br/>
+We are contesting it with the payment and redemption records we hold.<br/>
+If you have anything from that visit — a bill or KOT number, a camera timestamp, what the staff remember — adding it helps.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Voucher Name</b></td><td>Text</td><td><code>Luxury Stay Special</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Store ID and Type</b></td><td>Reference</td><td><code>TS-A3F9-K2M7-QX41 · Franchise</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Outlet Address</b></td><td>Long Text</td><td><code>Shop 4 Vijay Nagar Indore MP 452010</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Amount</b></td><td>Amount</td><td><code>810.00</code></td><td></td></tr>
+  <tr class=""><td class="num">{{7}}</td><td><b>Dispute Reason</b></td><td>Text</td><td><code>Product not received</code></td><td>Up to 120 characters.</td></tr>
+  <tr class="alt"><td class="num">{{8}}</td><td><b>Respond By</b></td><td>Date &amp; Time</td><td><code>13 Sep 2026 11:59 PM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Open Dispute</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/disputes/{{1}}</code></td><td><code>5b8e02a7c1f3d940</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> The wording invites evidence rather than demanding it. Filing never waits on the outlet, so telling them a reply is required would be untrue.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t28" id="t28"></a>
+  <div class="hdr">
+    <span class="tname">#28 &nbsp; vendor_dispute_resolved_won</span>
+    <div class="facts"><b>Chargeback Decided In Vendor's Favour</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 5 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> The bank rules in Trydood's favour. The held money is released.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">✅ Chargeback Decided in Your Favour<br/>
+Hello {{1}},<br/>
+Good news! The bank has ruled in our favour on a disputed sale.<br/>
+🧾 Claim Code: {{2}}<br/>
+📍 Store ID: {{3}}<br/>
+💰 Amount: ₹{{4}}<br/>
+📅 Resolved On: {{5}}<br/>
+🔎 Status: Decided in Your Favour<br/>
+The money stays yours. The payment is being released back into your payouts — you will see it in an upcoming settlement.<br/>
+Thank you for your patience. 💚<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Store ID and Type</b></td><td>Reference</td><td><code>TS-A3F9-K2M7-QX41 · Franchise</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Amount</b></td><td>Amount</td><td><code>810.00</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Resolved On</b></td><td>Date &amp; Time</td><td><code>07 Sep 2026 03:22 PM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Open Dispute</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/disputes/{{1}}</code></td><td><code>5b8e02a7c1f3d940</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> It says “an upcoming settlement”, not a date. Releasing the hold is a separate manual step, and promising a day we then miss is worse than saying nothing.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t29" id="t29"></a>
+  <div class="hdr">
+    <span class="tname">#29 &nbsp; vendor_dispute_resolved_lost</span>
+    <div class="facts"><b>Chargeback Upheld</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 6 &nbsp;|&nbsp; Buttons: 2</div>
+  </div>
+
+  <p><b>When it is sent:</b> The bank rules for the customer. The vendor's share is recovered from a future payout.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">⚖️ Chargeback Upheld<br/>
+Hello {{1}},<br/>
+The bank has ruled for the customer on a disputed sale.<br/>
+🧾 Claim Code: {{2}}<br/>
+📍 Store ID: {{3}}<br/>
+💰 Amount: ₹{{4}}<br/>
+📄 Advice No: {{5}}<br/>
+📅 Resolved On: {{6}}<br/>
+🔎 Status: Upheld for the Customer<br/>
+Your share of that sale will be deducted from an upcoming payout, shown on your statement as "chargebacks recovered".<br/>
+Only your share is deducted — our fee and our part of any promotion are not.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand Name</b></td><td>Text</td><td><code>Cafe Mocha</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Store ID and Type</b></td><td>Reference</td><td><code>TS-A3F9-K2M7-QX41 · Franchise</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Amount</b></td><td>Amount</td><td><code>810.00</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Advice Number</b></td><td>Reference</td><td><code>TD/DBN/26-27/000004</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Resolved On</b></td><td>Date &amp; Time</td><td><code>07 Sep 2026 03:22 PM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Download Advice</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td><code>e1f5a9c37b204d68</code></td></tr>
+  <tr class="alt"><td class="num">2</td><td>Visit Website</td><td><b>Open Dispute</b></td><td>Dynamic</td><td><code>https://vendor.trydood.com/disputes/{{1}}</code></td><td><code>5b8e02a7c1f3d940</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> This is the message that stops a deduction appearing from nowhere on a statement.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<h2 class="brk">Section B — Customer templates (9)</h2>
+<p class="lead">Sent to the person who paid. Plain language, no internal codes beyond what they need.</p>
+
+<h3>B.1 &nbsp; Payment (3)</h3>
+
+<div class="tmpl">
+  <a name="t30" id="t30"></a>
+  <div class="hdr">
+    <span class="tname">#30 &nbsp; customer_payment_success</span><span class="cap">USES ALL 10 VARIABLES</span>
+    <div class="facts"><b>Payment Successful</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 10 &nbsp;|&nbsp; Buttons: 2</div>
+  </div>
+
+  <p><b>When it is sent:</b> A customer's payment at an outlet goes through. This is their receipt.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">✅ Payment Successful<br/>
+Hello {{1}},<br/>
+Your payment went through. 🎉<br/>
+🏪 Brand: {{2}}<br/>
+📍 Store ID: {{3}}<br/>
+🏠 Address: {{4}}<br/>
+🎟️ Voucher: {{5}}<br/>
+🧾 Claim Code: {{6}}<br/>
+📅 Paid On: {{7}}<br/>
+💰 Bill Amount: ₹{{8}}<br/>
+💚 You Saved: ₹{{9}}<br/>
+💳 Amount Paid: ₹{{10}}<br/>
+🔎 Status: Payment Successful<br/>
+Show your claim code at the counter if asked.<br/>
+Your receipt is available below — keep it for your records.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Trydood – Save More, Every Time 💚<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Customer Name</b></td><td>Text</td><td><code>Priya</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Brand and Merchant ID</b></td><td>Text</td><td><code>Cafe Mocha (TM-A3F9-K2M7-QX41)</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Store ID and Type</b></td><td>Reference</td><td><code>TS-A3F9-K2M7-QX41 · Franchise</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Outlet Address</b></td><td>Long Text</td><td><code>Shop 4 Vijay Nagar Indore MP 452010</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Voucher Name</b></td><td>Text</td><td><code>Luxury Stay Special</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class=""><td class="num">{{7}}</td><td><b>Paid On</b></td><td>Date &amp; Time</td><td><code>07 Sep 2026 08:35 PM</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{8}}</td><td><b>Bill Amount</b></td><td>Amount</td><td><code>1000.00</code></td><td></td></tr>
+  <tr class=""><td class="num">{{9}}</td><td><b>You Saved</b></td><td>Amount</td><td><code>190.00</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{10}}</td><td><b>Amount Paid</b></td><td>Amount</td><td><code>810.00</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Download Receipt</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td><code>f2a7b4c81d3e5069</code></td></tr>
+  <tr class="alt"><td class="num">2</td><td>Visit Website</td><td><b>View Order</b></td><td>Dynamic</td><td><code>https://app.trydood.com/orders/{{1}}</code></td><td><code>7c02e4b98a1d6350</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> Uses all 10 permitted variables. Variables 8 minus 9 must equal 10 — the arithmetic is visible to the customer, so it has to hold.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t31" id="t31"></a>
+  <div class="hdr">
+    <span class="tname">#31 &nbsp; customer_payment_failed</span>
+    <div class="facts"><b>Payment Failed</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 7 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> A customer's payment does not go through.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">⚠️ Payment Could Not Be Completed<br/>
+Hello {{1}},<br/>
+Your payment did not go through.<br/>
+🏪 Brand: {{2}}<br/>
+📍 Store ID: {{3}}<br/>
+🏠 Address: {{4}}<br/>
+🎟️ Voucher: {{5}}<br/>
+💰 Amount: ₹{{6}}<br/>
+📅 Attempted On: {{7}}<br/>
+🔎 Status: Payment Failed<br/>
+🔒 Nothing has been charged to your account.<br/>
+If money was deducted, your bank will return it automatically within 5–7 working days.<br/>
+You can try again from the app.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Thank you for choosing Trydood 💚<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Customer Name</b></td><td>Text</td><td><code>Priya</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Brand and Merchant ID</b></td><td>Text</td><td><code>Cafe Mocha (TM-A3F9-K2M7-QX41)</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Store ID and Type</b></td><td>Reference</td><td><code>TS-A3F9-K2M7-QX41 · Franchise</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Outlet Address</b></td><td>Long Text</td><td><code>Shop 4 Vijay Nagar Indore MP 452010</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Voucher Name</b></td><td>Text</td><td><code>Luxury Stay Special</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Amount</b></td><td>Amount</td><td><code>810.00</code></td><td></td></tr>
+  <tr class=""><td class="num">{{7}}</td><td><b>Attempted On</b></td><td>Date &amp; Time</td><td><code>07 Sep 2026 08:35 PM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Try Again</b></td><td>Dynamic</td><td><code>https://app.trydood.com/vouchers/{{1}}</code></td><td><code>68b1d4f0c27a9e35</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> “Nothing has been charged” is the whole message. No Contact Support button here — “Try Again” is the action, and offering support instead sends people down a slower path than the one that works.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t38" id="t38"></a>
+  <div class="hdr">
+    <span class="tname">#38 &nbsp; customer_claim_expired</span>
+    <div class="facts"><b>Claim Expired</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 6 &nbsp;|&nbsp; Buttons: 2</div>
+  </div>
+
+  <p><b>When it is sent:</b> A claim was not redeemed within its window.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">⌛ Your Claim Has Expired<br/>
+Hello {{1}},<br/>
+Your claim was not redeemed within its window.<br/>
+🏪 Brand: {{2}}<br/>
+📍 Store ID: {{3}}<br/>
+🎟️ Voucher: {{4}}<br/>
+🧾 Claim Code: {{5}}<br/>
+📅 Expired On: {{6}}<br/>
+🔎 Status: Expired<br/>
+If you believe this is a mistake, please contact our support team and we will look into it.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Thank you for choosing Trydood 💚<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Customer Name</b></td><td>Text</td><td><code>Priya</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Brand and Merchant ID</b></td><td>Text</td><td><code>Cafe Mocha (TM-A3F9-K2M7-QX41)</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Store ID and Type</b></td><td>Reference</td><td><code>TS-A3F9-K2M7-QX41 · Franchise</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Voucher Name</b></td><td>Text</td><td><code>Luxury Stay Special</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Expired On</b></td><td>Date &amp; Time</td><td><code>09 Sep 2026 08:35 PM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>View Order</b></td><td>Dynamic</td><td><code>https://app.trydood.com/orders/{{1}}</code></td><td><code>7c02e4b98a1d6350</code></td></tr>
+  <tr class="alt"><td class="num">2</td><td>Visit Website</td><td><b>Contact Support</b></td><td>Static</td><td><code>https://trydood.com/contact</code></td><td><code>—</code></td></tr>
+  </table>
+  <div class="hold"><b>Hold this one:</b> Create this template last. The feature it belongs to is not live yet, so nothing sends it today.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<h3>B.2 &nbsp; Refund (6)</h3>
+
+<div class="tmpl">
+  <a name="t32" id="t32"></a>
+  <div class="hdr">
+    <span class="tname">#32 &nbsp; customer_refund_requested</span>
+    <div class="facts"><b>Refund Request Received</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 8 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> A customer raises a refund request and we acknowledge it.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">↩️ We Have Your Refund Request<br/>
+Hello {{1}},<br/>
+We have received your refund request and asked the outlet about it.<br/>
+🏪 Brand: {{2}}<br/>
+📍 Store ID: {{3}}<br/>
+🎟️ Voucher: {{4}}<br/>
+🧾 Claim Code: {{5}}<br/>
+💰 Amount: ₹{{6}}<br/>
+📅 Requested On: {{7}}<br/>
+🔎 Status: {{8}}<br/>
+We will let you know as soon as there is an answer.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Thank you for choosing Trydood 💚<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Customer Name</b></td><td>Text</td><td><code>Priya</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Brand and Merchant ID</b></td><td>Text</td><td><code>Cafe Mocha (TM-A3F9-K2M7-QX41)</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Store ID and Type</b></td><td>Reference</td><td><code>TS-A3F9-K2M7-QX41 · Franchise</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Voucher Name</b></td><td>Text</td><td><code>Luxury Stay Special</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Amount</b></td><td>Amount</td><td><code>810.00</code></td><td></td></tr>
+  <tr class=""><td class="num">{{7}}</td><td><b>Requested On</b></td><td>Date &amp; Time</td><td><code>08 Sep 2026 07:15 PM</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{8}}</td><td><b>Status</b></td><td>Status</td><td><code>Refund requested</code></td><td>One of: Refund requested, Under review by Trydood, Awaiting outlet response</td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Track Refund</b></td><td>Dynamic</td><td><code>https://app.trydood.com/refunds/{{1}}</code></td><td><code>a9c3e7f15b8d0264</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> This is the one customer template where status is a variable — a refund genuinely passes through several states the customer should see.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t33" id="t33"></a>
+  <div class="hdr">
+    <span class="tname">#33 &nbsp; customer_refund_approved</span>
+    <div class="facts"><b>Refund Approved</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 9 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> A refund is approved. The money has not moved yet.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">✅ Your Refund Is Approved<br/>
+Hello {{1}},<br/>
+Good news — your refund has been approved.<br/>
+🏪 Brand: {{2}}<br/>
+📍 Store ID: {{3}}<br/>
+🎟️ Voucher: {{4}}<br/>
+🧾 Claim Code: {{5}}<br/>
+💰 Amount Requested: ₹{{6}}<br/>
+💚 Amount Approved: ₹{{7}}<br/>
+🏦 Refund Method: {{8}}<br/>
+📅 Approved On: {{9}}<br/>
+🔎 Status: Approved<br/>
+It should reach your account in 5–7 working days.<br/>
+We will message you again once it has been sent.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Thank you for choosing Trydood 💚<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Customer Name</b></td><td>Text</td><td><code>Priya</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Brand and Merchant ID</b></td><td>Text</td><td><code>Cafe Mocha (TM-A3F9-K2M7-QX41)</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Store ID and Type</b></td><td>Reference</td><td><code>TS-A3F9-K2M7-QX41 · Franchise</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Voucher Name</b></td><td>Text</td><td><code>Luxury Stay Special</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Amount Requested</b></td><td>Amount</td><td><code>810.00</code></td><td></td></tr>
+  <tr class=""><td class="num">{{7}}</td><td><b>Amount Approved</b></td><td>Amount</td><td><code>400.00</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{8}}</td><td><b>Refund Method</b></td><td>Text</td><td><code>Back to your original payment method</code></td><td>Either that, or “To your bank account”</td></tr>
+  <tr class=""><td class="num">{{9}}</td><td><b>Approved On</b></td><td>Date &amp; Time</td><td><code>09 Sep 2026 11:40 AM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Track Refund</b></td><td>Dynamic</td><td><code>https://app.trydood.com/refunds/{{1}}</code></td><td><code>a9c3e7f15b8d0264</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> Both amounts are always shown. A customer who asked for 810 and quietly receives 400 opens a second request and a support ticket.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t34" id="t34"></a>
+  <div class="hdr">
+    <span class="tname">#34 &nbsp; customer_refund_rejected</span>
+    <div class="facts"><b>Refund Not Approved</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 8 &nbsp;|&nbsp; Buttons: 2</div>
+  </div>
+
+  <p><b>When it is sent:</b> A refund request is declined.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">📋 About Your Refund Request<br/>
+Hello {{1}},<br/>
+Your refund request was not approved.<br/>
+🏪 Brand: {{2}}<br/>
+📍 Store ID: {{3}}<br/>
+🎟️ Voucher: {{4}}<br/>
+🧾 Claim Code: {{5}}<br/>
+💰 Amount Requested: ₹{{6}}<br/>
+📅 Decided On: {{7}}<br/>
+🔎 Status: Not Approved<br/>
+📝 Reason: {{8}}<br/>
+If you think that is wrong, write to us and we will look at it ourselves.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Thank you for choosing Trydood 💚<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Customer Name</b></td><td>Text</td><td><code>Priya</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Brand and Merchant ID</b></td><td>Text</td><td><code>Cafe Mocha (TM-A3F9-K2M7-QX41)</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Store ID and Type</b></td><td>Reference</td><td><code>TS-A3F9-K2M7-QX41 · Franchise</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Voucher Name</b></td><td>Text</td><td><code>Luxury Stay Special</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Amount Requested</b></td><td>Amount</td><td><code>810.00</code></td><td></td></tr>
+  <tr class=""><td class="num">{{7}}</td><td><b>Decided On</b></td><td>Date &amp; Time</td><td><code>09 Sep 2026 11:40 AM</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{8}}</td><td><b>Reason</b></td><td>Status</td><td><code>The service was provided as described</code></td><td>Chosen by the admin from a fixed list. One of: The service was provided as described / The request was made after the refund window closed / The outlet confirmed the order was collected / The claim was already refunded earlier / We could not verify the issue with the outlet</td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>View Refund</b></td><td>Dynamic</td><td><code>https://app.trydood.com/refunds/{{1}}</code></td><td><code>a9c3e7f15b8d0264</code></td></tr>
+  <tr class="alt"><td class="num">2</td><td>Visit Website</td><td><b>Contact Support</b></td><td>Static</td><td><code>https://trydood.com/contact</code></td><td><code>—</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> Variable 8 comes from a fixed list the admin picks from — never from whatever the vendor or admin typed internally. A note written between staff, shown to the customer it is about, reads as an accusation.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t35" id="t35"></a>
+  <div class="hdr">
+    <span class="tname">#35 &nbsp; customer_refund_completed</span>
+    <div class="facts"><b>Refund Sent</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 9 &nbsp;|&nbsp; Buttons: 2</div>
+  </div>
+
+  <p><b>When it is sent:</b> The refund has actually left and is on its way to the customer's account.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">💚 Your Refund Has Been Sent<br/>
+Hello {{1}},<br/>
+Your refund has been processed and sent to your account. ✅<br/>
+🏪 Brand: {{2}}<br/>
+📍 Store ID: {{3}}<br/>
+🎟️ Voucher: {{4}}<br/>
+🧾 Claim Code: {{5}}<br/>
+💰 Amount Refunded: ₹{{6}}<br/>
+📄 Refund No: {{7}}<br/>
+🔖 Bank Reference: {{8}}<br/>
+📅 Sent On: {{9}}<br/>
+🔎 Status: Refund Completed<br/>
+It should reflect in your account within 5–7 working days depending on your bank.<br/>
+Quote the bank reference above if you need to check with them.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Thank you for choosing Trydood 💚<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Customer Name</b></td><td>Text</td><td><code>Priya</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Brand and Merchant ID</b></td><td>Text</td><td><code>Cafe Mocha (TM-A3F9-K2M7-QX41)</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Store ID and Type</b></td><td>Reference</td><td><code>TS-A3F9-K2M7-QX41 · Franchise</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Voucher Name</b></td><td>Text</td><td><code>Luxury Stay Special</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Amount Refunded</b></td><td>Amount</td><td><code>810.00</code></td><td></td></tr>
+  <tr class=""><td class="num">{{7}}</td><td><b>Refund Number</b></td><td>Reference</td><td><code>TD/REF/26-27/000012</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{8}}</td><td><b>Bank Reference</b></td><td>Reference</td><td><code>HDFCR52026090498765</code></td><td></td></tr>
+  <tr class=""><td class="num">{{9}}</td><td><b>Sent On</b></td><td>Date &amp; Time</td><td><code>10 Sep 2026 01:05 PM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Download Receipt</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td><code>a9c3e7f15b8d0264</code></td></tr>
+  <tr class="alt"><td class="num">2</td><td>Visit Website</td><td><b>View Refund</b></td><td>Dynamic</td><td><code>https://app.trydood.com/refunds/{{1}}</code></td><td><code>a9c3e7f15b8d0264</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> The bank reference is what a customer quotes to their own bank when the money has not appeared. This template is the only place they get it.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t36" id="t36"></a>
+  <div class="hdr">
+    <span class="tname">#36 &nbsp; customer_refund_bank_details</span>
+    <div class="facts"><b>Bank Details Needed For Refund</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 7 &nbsp;|&nbsp; Buttons: 2</div>
+  </div>
+
+  <p><b>When it is sent:</b> The refund could not go back the way the customer paid, so we need their bank account.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">🏦 We Need Your Bank Account to Send Your Refund<br/>
+Hello {{1}},<br/>
+Your refund could not be sent back the way you paid.<br/>
+🏪 Brand: {{2}}<br/>
+🎟️ Voucher: {{3}}<br/>
+🧾 Claim Code: {{4}}<br/>
+💰 Amount: ₹{{5}}<br/>
+📝 Reason: {{6}}<br/>
+📅 Requested On: {{7}}<br/>
+🔎 Status: Waiting for Your Bank Details<br/>
+💚 The money is still yours.<br/>
+Please open the Trydood app and add your bank account, and we will transfer it.<br/>
+🔒 We will never ask you for your bank details over a call, a message or a link.<br/>
+Add them only inside the Trydood app.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Thank you for choosing Trydood 💚<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Customer Name</b></td><td>Text</td><td><code>Priya</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Brand and Merchant ID</b></td><td>Text</td><td><code>Cafe Mocha (TM-A3F9-K2M7-QX41)</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Voucher Name</b></td><td>Text</td><td><code>Luxury Stay Special</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Amount</b></td><td>Amount</td><td><code>810.00</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Reason</b></td><td>Text</td><td><code>the original card is no longer reachable</code></td><td>Up to 120 characters.</td></tr>
+  <tr class=""><td class="num">{{7}}</td><td><b>Requested On</b></td><td>Date &amp; Time</td><td><code>10 Sep 2026 09:00 AM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Add Bank Account</b></td><td>Dynamic</td><td><code>https://app.trydood.com/refunds/{{1}}</code></td><td><code>a9c3e7f15b8d0264</code></td></tr>
+  <tr class="alt"><td class="num">2</td><td>Visit Website</td><td><b>Contact Support</b></td><td>Static</td><td><code>https://trydood.com/contact</code></td><td><code>—</code></td></tr>
+  </table>
+  <div class="note"><b>Why it is written this way:</b> TREAT THIS ONE CAREFULLY. It is the only customer message that asks them to act, and it asks for exactly what a scam message asks for. Four things must survive any edit: it names their claim, voucher and brand; it says the money is still theirs; it gives the reason; and it says we never ask over a call, message or link. There is no Store ID here on purpose — a raw code reads like machine-generated spam. The Contact Support button makes it safer, not riskier: a suspicious customer can check with us through our own website instead of replying to the message.</div>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t37" id="t37"></a>
+  <div class="hdr">
+    <span class="tname">#37 &nbsp; customer_voucher_refunded</span>
+    <div class="facts"><b>Refund Issued</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 8 &nbsp;|&nbsp; Buttons: 2</div>
+  </div>
+
+  <p><b>When it is sent:</b> A refund issued outside the request flow — an admin refund, or a cancelled claim.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">↩️ Refund Issued<br/>
+Hello {{1}},<br/>
+A refund has been issued for your claim.<br/>
+🏪 Brand: {{2}}<br/>
+📍 Store ID: {{3}}<br/>
+🎟️ Voucher: {{4}}<br/>
+🧾 Claim Code: {{5}}<br/>
+💰 Amount Refunded: ₹{{6}}<br/>
+📄 Refund No: {{7}}<br/>
+📅 Issued On: {{8}}<br/>
+🔎 Status: Refund Issued<br/>
+It usually reaches your account in 5–7 working days.<br/>
+For any assistance, contact us at helpdesk@trydood.com.<br/>
+Thank you for choosing Trydood 💚<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Customer Name</b></td><td>Text</td><td><code>Priya</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Brand and Merchant ID</b></td><td>Text</td><td><code>Cafe Mocha (TM-A3F9-K2M7-QX41)</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Store ID and Type</b></td><td>Reference</td><td><code>TS-A3F9-K2M7-QX41 · Franchise</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Voucher Name</b></td><td>Text</td><td><code>Luxury Stay Special</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Amount Refunded</b></td><td>Amount</td><td><code>810.00</code></td><td></td></tr>
+  <tr class=""><td class="num">{{7}}</td><td><b>Refund Number</b></td><td>Reference</td><td><code>TD/REF/26-27/000012</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{8}}</td><td><b>Issued On</b></td><td>Date &amp; Time</td><td><code>10 Sep 2026 01:05 PM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Download Receipt</b></td><td>Dynamic</td><td><code>https://api.trydood.com/trydood/v1/documents/{{1}}</code></td><td><code>d6b0f28ac41e7539</code></td></tr>
+  <tr class="alt"><td class="num">2</td><td>Visit Website</td><td><b>View Refund</b></td><td>Dynamic</td><td><code>https://app.trydood.com/refunds/{{1}}</code></td><td><code>a9c3e7f15b8d0264</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<h2 class="brk">Section C — Admin templates (4)</h2>
+<p class="lead">Sent to the Trydood operations team. These are alerts, not customer-facing copy.</p>
+
+<h3>C.1 &nbsp; Alerts (4)</h3>
+
+<div class="tmpl">
+  <a name="t39" id="t39"></a>
+  <div class="hdr">
+    <span class="tname">#39 &nbsp; admin_refund_failed</span>
+    <div class="facts"><b>Refund Failed</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 9 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> A customer refund could not be completed and someone has to act.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">🔴 Refund Failed<br/>
+A customer refund could not be completed and needs attention.<br/>
+👤 Customer: {{1}}<br/>
+🏪 Brand: {{2}}<br/>
+🧾 Claim Code: {{3}}<br/>
+🎟️ Voucher: {{4}}<br/>
+💰 Amount: ₹{{5}}<br/>
+🏦 Method: {{6}}<br/>
+📝 Reason: {{7}}<br/>
+🔁 Attempt: {{8}}<br/>
+📅 Failed On: {{9}}<br/>
+The customer has been told their money is coming. Only a retry or a bank transfer will fix this.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Customer Name</b></td><td>Text</td><td><code>Priya</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Brand and Merchant ID</b></td><td>Text</td><td><code>Cafe Mocha (TM-A3F9-K2M7-QX41)</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Voucher Name</b></td><td>Text</td><td><code>Luxury Stay Special</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Amount</b></td><td>Amount</td><td><code>810.00</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Refund Method</b></td><td>Text</td><td><code>Back to source</code></td><td></td></tr>
+  <tr class=""><td class="num">{{7}}</td><td><b>Reason</b></td><td>Text</td><td><code>instrument does not accept refunds</code></td><td>Up to 120 characters.</td></tr>
+  <tr class="alt"><td class="num">{{8}}</td><td><b>Attempt Number</b></td><td>Number</td><td><code>3</code></td><td></td></tr>
+  <tr class=""><td class="num">{{9}}</td><td><b>Failed On</b></td><td>Date &amp; Time</td><td><code>10 Sep 2026 01:05 PM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Open Refund</b></td><td>Dynamic</td><td><code>https://admin.trydood.com/refunds/{{1}}</code></td><td><code>66df1b8e0a94c273</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t40" id="t40"></a>
+  <div class="hdr">
+    <span class="tname">#40 &nbsp; admin_settlement_ledger_drift</span>
+    <div class="facts"><b>Ledger Drift On A Payout</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 6 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> The payout records and the ledger disagree about money that has already moved.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">🔴 Ledger Drift on a Payout<br/>
+The payout legs and the ledger disagree about money that has physically moved.<br/>
+🧾 Settlement: {{1}}<br/>
+🏪 Brand: {{2}}<br/>
+💸 Legs Paid: ₹{{3}}<br/>
+📒 Ledger Booked: ₹{{4}}<br/>
+⚠️ Gap: ₹{{5}}<br/>
+📅 Detected On: {{6}}<br/>
+One of the two is wrong about a transfer that has already happened.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Settlement Number</b></td><td>Reference</td><td><code>TD/STL/26-27/000123</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Brand and Merchant ID</b></td><td>Text</td><td><code>Cafe Mocha (TM-A3F9-K2M7-QX41)</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Legs Paid</b></td><td>Amount</td><td><code>4523.75</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Ledger Booked</b></td><td>Amount</td><td><code>4000.00</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Gap</b></td><td>Amount</td><td><code>523.75</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Detected On</b></td><td>Date &amp; Time</td><td><code>10 Sep 2026 02:00 AM</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Open Settlement</b></td><td>Dynamic</td><td><code>https://admin.trydood.com/settlements/{{1}}</code></td><td><code>31ac7e05b2f8d649</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t41" id="t41"></a>
+  <div class="hdr">
+    <span class="tname">#41 &nbsp; admin_payment_disputed</span>
+    <div class="facts"><b>Chargeback Raised</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 8 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> A customer's bank pulls back a payment. There is a response deadline.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">🔴 Chargeback Raised<br/>
+A customer's bank has pulled back a payment. There is a response deadline.<br/>
+🏪 Brand: {{1}}<br/>
+🧾 Claim Code: {{2}}<br/>
+💰 Amount: ₹{{3}}<br/>
+📝 Reason: {{4}}<br/>
+⚖️ Phase: {{5}}<br/>
+📅 Raised On: {{6}}<br/>
+⏳ Respond By: {{7}}<br/>
+🔢 Disputes on This Payment: {{8}}<br/>
+Missing the deadline forfeits the money. Nothing will chase this but us.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Brand and Merchant ID</b></td><td>Text</td><td><code>Cafe Mocha (TM-A3F9-K2M7-QX41)</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Amount</b></td><td>Amount</td><td><code>810.00</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Dispute Reason</b></td><td>Text</td><td><code>product_not_received</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Dispute Phase</b></td><td>Text</td><td><code>Chargeback</code></td><td>Tells a first chargeback from an escalation</td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Raised On</b></td><td>Date &amp; Time</td><td><code>10 Sep 2026 04:30 PM</code></td><td></td></tr>
+  <tr class=""><td class="num">{{7}}</td><td><b>Respond By</b></td><td>Date &amp; Time</td><td><code>13 Sep 2026 11:59 PM</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{8}}</td><td><b>Dispute Count</b></td><td>Number</td><td><code>1</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Open Dispute</b></td><td>Dynamic</td><td><code>https://admin.trydood.com/disputes/{{1}}</code></td><td><code>5b8e02a7c1f3d940</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<div class="tmpl">
+  <a name="t42" id="t42"></a>
+  <div class="hdr">
+    <span class="tname">#42 &nbsp; admin_dispute_deadline</span>
+    <div class="facts"><b>Dispute Deadline Approaching</b> &nbsp;|&nbsp; Category: Utility &nbsp;|&nbsp; Language: English (en)
+    &nbsp;|&nbsp; Variables: 6 &nbsp;|&nbsp; Buttons: 1</div>
+  </div>
+
+  <p><b>When it is sent:</b> A dispute response is due and the money is forfeited if the deadline passes.</p>
+
+  <h4>Message body</h4>
+  <div class="msg">🔴 Dispute Deadline Approaching<br/>
+A dispute response is due and the money is forfeited if it passes.<br/>
+🧾 Claim Code: {{1}}<br/>
+💳 Payment: {{2}}<br/>
+💰 Amount: ₹{{3}}<br/>
+🔎 Status: {{4}}<br/>
+⏳ Respond By: {{5}}<br/>
+⌛ Time Left: {{6}}<br/>
+An unanswered dispute is lost by default. The bank does not ask twice.<br/>
+Trydood – Grow Your Business Faster 🚀<br/></div>
+
+  <h4>Variables</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:22%">Variable name</th><th style="width:12%">Type</th><th style="width:26%">Sample value</th><th>Notes</th></tr>
+  <tr class=""><td class="num">{{1}}</td><td><b>Claim Code</b></td><td>Reference</td><td><code>TD-CLM-9001</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{2}}</td><td><b>Payment ID</b></td><td>Reference</td><td><code>pay_QxTest0000001</code></td><td></td></tr>
+  <tr class=""><td class="num">{{3}}</td><td><b>Amount</b></td><td>Amount</td><td><code>810.00</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{4}}</td><td><b>Dispute Status</b></td><td>Status</td><td><code>Under review</code></td><td></td></tr>
+  <tr class=""><td class="num">{{5}}</td><td><b>Respond By</b></td><td>Date &amp; Time</td><td><code>13 Sep 2026 11:59 PM</code></td><td></td></tr>
+  <tr class="alt"><td class="num">{{6}}</td><td><b>Time Left</b></td><td>Text</td><td><code>19 hours</code></td><td></td></tr>
+  </table>
+
+  <h4>Buttons</h4>
+  <table>
+  <tr><th class="num">#</th><th style="width:14%">Type of action</th><th style="width:18%">Button text</th><th style="width:10%">URL type</th><th>Website URL</th><th style="width:16%">Sample for {{1}}</th></tr>
+  <tr class=""><td class="num">1</td><td>Visit Website</td><td><b>Open Dispute</b></td><td>Dynamic</td><td><code>https://admin.trydood.com/disputes/{{1}}</code></td><td><code>5b8e02a7c1f3d940</code></td></tr>
+  </table>
+  <p class="back"><a href="#list">↑ Back to the full list</a></p>
+</div>
+
+<h2 class="brk">Checklist for each template</h2>
+<table>
+<tr><th style="width:26pt"></th><th>Before you save</th></tr>
+<tr class=""><td style="text-align:center">☐</td><td>Category is set to <b>Utility</b> and language to <b>English</b></td></tr>
+<tr class="alt"><td style="text-align:center">☐</td><td>Message text copied exactly — wording, emojis and line breaks</td></tr>
+<tr class=""><td style="text-align:center">☐</td><td>Every variable numbered in the same order as this document</td></tr>
+<tr class="alt"><td style="text-align:center">☐</td><td>A sample value filled for every variable, taken from this document</td></tr>
+<tr class=""><td style="text-align:center">☐</td><td>No commas anywhere in the sample values</td></tr>
+<tr class="alt"><td style="text-align:center">☐</td><td>No ₹ sign in an amount sample — it is already in the message text</td></tr>
+<tr class=""><td style="text-align:center">☐</td><td>Button text is 25 characters or fewer</td></tr>
+<tr class="alt"><td style="text-align:center">☐</td><td>Each button's URL variable is <b>{{1}}</b>, numbered separately from the body</td></tr>
+<tr class=""><td style="text-align:center">☐</td><td>A sample filled for every dynamic button URL</td></tr>
+</table>
+
+<h2>Questions</h2>
+<p>Anything unclear about a message's wording, a variable or a button — ask before creating the
+template rather than after. A template cannot be edited once Meta approves it; it has to be created
+again under a new name, and the old one keeps sending in the meantime.</p>
+<p class="meta">Trydood &nbsp;·&nbsp; 08 Sep 2026 &nbsp;·&nbsp; 42 templates</p>
+
+</body></html>
