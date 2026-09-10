@@ -1,5 +1,9 @@
 const mongoose = require("mongoose");
-const { BANNER_TYPE, BANNER_MEDIA_FIELD } = require("../constants/banner");
+const {
+  BANNER_TYPE,
+  BANNER_MEDIA_FIELD,
+  BANNER_REDIRECT_TYPE,
+} = require("../constants/banner");
 
 const bannerSchema = new mongoose.Schema(
   {
@@ -15,9 +19,13 @@ const bannerSchema = new mongoose.Schema(
     },
     redirect: {
       type: {
+        // Defaulted to NONE rather than null: null is not one of the enum's own
+        // values, so a banner created without a redirect used to answer with a
+        // `type` the client could not match against anything. Documents already
+        // holding null still validate — mongoose skips the enum check on it.
         type: String,
-        enum: ["NONE", "CATEGORY", "DEAL", "BRAND", "OFFER", "EXTERNAL_URL"],
-        default: null,
+        enum: Object.values(BANNER_REDIRECT_TYPE),
+        default: BANNER_REDIRECT_TYPE.NONE,
       },
       targetId: {
         type: mongoose.Schema.Types.ObjectId,

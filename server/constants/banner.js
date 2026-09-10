@@ -34,10 +34,26 @@ const BANNER_SORT_BY = {
   TITLE: "title",
 };
 
+// How many banners the home screen carries at one moment.
+//
+// There are two pools and this caps each of them separately, because they never
+// compete for the same slot at write time:
+//
+//   - scheduled — a start/end date pair. At most this many may be live at any
+//     single instant, which is a peak, not a count of overlaps with the new
+//     range (see `helpers/banners/validate.js`).
+//   - evergreen — no dates at all. At most this many active.
+//
+// The customer response is scheduled first, evergreen filling whatever is left,
+// truncated to this many in total — so 4 scheduled banners today are followed by
+// 6 evergreen ones, and 10 scheduled banners hide the evergreen pool entirely.
+const BANNER_ACTIVE_LIMIT = 10;
+
 module.exports = {
   BANNER_TYPE,
   BANNER_MEDIA_FIELD,
   BANNER_ALLOWED_MIME_TYPES,
   BANNER_REDIRECT_TYPE,
   BANNER_SORT_BY,
+  BANNER_ACTIVE_LIMIT,
 };

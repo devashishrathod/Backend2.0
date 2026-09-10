@@ -248,8 +248,13 @@ const bannerListRequest = req({
     { key: "search", value: "", disabled: true },
   ],
   token: ADM,
-  description:
-    "Admin ki poori list — customer wali `/banners/customer/active` sirf live banners deti hai, ye draft aur band kiye hue bhi.",
+  description: [
+    "Admin ki poori list — customer wali `/banners/customer/active` sirf live",
+    "banners deti hai (10 tak), ye draft aur band kiye hue bhi deti hai.",
+    "",
+    "`sortBy=startDate` scheduling calendar ke liye hai: 10 slots kis din bharte",
+    "hain ye yahin se dikhta hai, aur `409` milne pe sabse pehle yahi dekhna hai.",
+  ].join("\n"),
   assert: [...A.status(200), ...A.ok()],
 });
 

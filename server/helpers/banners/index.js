@@ -1,8 +1,8 @@
 const { uploadBannerMedia, deleteBannerMedia } = require("./media");
-const { assertNoActiveOverlap } = require("./validate");
+const { assertActiveBannerCapacity } = require("./validate");
 
 module.exports = {
   uploadBannerMedia,
   deleteBannerMedia,
-  assertNoActiveOverlap,
+  assertActiveBannerCapacity,
 };
