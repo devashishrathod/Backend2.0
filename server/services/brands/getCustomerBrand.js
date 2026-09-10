@@ -73,6 +73,8 @@ const brandPipeline = (_id) => [
       description: 1,
       logo: 1,
       coverImage: 1,
+      whatsappNumber: 1,
+      mobile: 1,
       uniqueId: 1,
       followersCount: 1,
       joinedDate: 1,
@@ -121,6 +123,8 @@ const brandPipeline = (_id) => [
       description: 1,
       logo: 1,
       coverImage: 1,
+      whatsappNumber: 1,
+      mobile: 1,
       uniqueId: 1,
       followersCount: 1,
       joinedDate: 1,
@@ -212,6 +216,8 @@ const fetchOutlets = (_id) =>
     { $match: { brandId: _id, isActive: true, isDeleted: false } },
     {
       $project: {
+        whatsappNumber: 1,
+        mobile: 1,
         storeId: 1,
         uniqueId: 1,
         description: 1,
@@ -234,6 +240,8 @@ const fetchOutlets = (_id) =>
     }),
     {
       $project: {
+        whatsappNumber: 1,
+        mobile: 1,
         storeId: 1,
         uniqueId: 1,
         description: 1,
@@ -274,4 +282,3 @@ exports.getCustomerBrand = async (payload) => {
 
   return { ...brand, features, showcase, outlets };
 };
-
