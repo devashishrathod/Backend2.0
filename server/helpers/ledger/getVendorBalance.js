@@ -4,7 +4,7 @@ const {
   LEDGER_ACCOUNT,
   LEDGER_DIRECTION,
 } = require("../../constants/ledger");
-const { round2 } = require("../subscribeds/calculatePricing");
+const { round2 } = require("../subscribeds");
 
 /**
  * What a brand still has coming.

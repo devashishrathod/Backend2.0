@@ -3948,7 +3948,12 @@ Vouchers **immutable versioning** pe chalte hain — har edit naya version banat
 ```
 DRAFT ──submit-review──> UNDER_REVIEW ──admin review──> APPROVED ──publish──> PUBLISHED
                                               │                                    │
-                                              └──> REJECTED                        └──> EXPIRED (job)
+                                              └──> REJECTED          naya version ──┤
+                                                                     publish hua    │
+                                                                                    ▼
+                                                            ARCHIVED ──endAt (job)──> EXPIRED
+                                                                                    ▲
+                                                                    endAt (job) ────┘
 ```
 
 | Status | Kaun set karta hai | Editable? |
@@ -3958,9 +3963,23 @@ DRAFT ──submit-review──> UNDER_REVIEW ──admin review──> APPROVED
 | `APPROVED` | **Admin** | ✅ Naya version banta hai |
 | `REJECTED` | **Admin** | ✅ Haan |
 | `PUBLISHED` | Vendor ya Admin | ⚠️ Naya version banana padta hai |
-| `EXPIRED` | Background job | ❌ `409` |
+| `ARCHIVED` | **Publish** — jab naya version live hota hai | ❌ `409` |
+| `EXPIRED` | Background job — `endAt` nikalne par | ❌ `409` |
 | `PAUSED` | – | ❌ Pehle resume karein |
-| `ARCHIVED` | – | ❌ `409` |
+
+### ⚠️ `ARCHIVED` aur `EXPIRED` do alag cheezein hain
+
+| | Kab | Field |
+|---|---|---|
+| **`ARCHIVED`** | Vendor ne **naya version publish** kiya, ye purana replace ho gaya | `archivedAt` |
+| **`EXPIRED`** | Version ki apni **`endAt` nikal gayi** | `expiredAt` |
+
+Ek archived version ki validity abhi chal rahi ho sakti hai — wo circulation se
+jaldi nikla, waqt khatam hone se nahi. Jab uski `endAt` aayegi, `expireVouchers`
+job use `ARCHIVED → EXPIRED` kar degi.
+
+Dono customer listing se bahar hain (wo sirf `PUBLISHED` dikhati hai) aur dono
+plan ka voucher slot chhod dete hain.
 
 ---
 

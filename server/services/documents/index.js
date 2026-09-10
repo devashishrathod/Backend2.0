@@ -1,6 +1,5 @@
 const {
   getDocumentByToken,
-  DOCUMENT_SOURCES,
 } = require("./getDocumentByToken");
 
 module.exports = {
@@ -11,5 +10,4 @@ module.exports = {
    * the caller having to know.
    */
   getDocumentByToken,
-  DOCUMENT_SOURCES,
 };

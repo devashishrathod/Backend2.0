@@ -3,7 +3,7 @@ const {
   NOTIFICATION_SEVERITY,
 } = require("../../constants/notification");
 const { notify } = require("./notify");
-const { resolveBrandIdentity } = require("../brands/resolveBrandIdentity");
+const { resolveBrandIdentity } = require("../brands");
 const {
   PANEL_PATHS,
   vendorUrl,

@@ -320,20 +320,20 @@ const table = (doc, { columns = [], rows = [], emptyText, size = SIZE.small } = 
   }
 };
 
+/**
+ * What a document issuer actually draws with.
+ *
+ * ⚠️ Only the primitives with a reader are exported. `FONT`, `COLOR`, `RIGHT`,
+ * `CONTENT_WIDTH`, `LABEL_WIDTH`, `VALUE_X`, `VALUE_WIDTH`, `ensureSpace` and
+ * `applyStyle` are the internals those primitives are built from — they stay
+ * `const`s in this file. Publishing them invited a caller to draw a document by
+ * hand from half-primitives, which is how two renderers diverged the last time.
+ */
 module.exports = {
-  FONT,
   SIZE,
-  COLOR,
   PAGE,
   LEFT,
-  RIGHT,
   BOTTOM,
-  CONTENT_WIDTH,
-  LABEL_WIDTH,
-  VALUE_X,
-  VALUE_WIDTH,
-  ensureSpace,
-  applyStyle,
   row,
   field,
   paragraph,

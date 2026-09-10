@@ -8,7 +8,6 @@ const {
 const { validateSchema } = require("./validateSchema");
 const {
   validateRoles,
-  validateRolesEvenIfDeactivated,
   isAdmin,
   isVendor,
   isCustomer,
@@ -16,7 +15,6 @@ const {
   isVendorOrSubVendor,
   isBrandSideOrAdmin,
   isVendorOrAdmin,
-  isVendorOrAdminEvenIfDeactivated,
 } = require("./validateRoles");
 
 // ---------------------------------------------------------------------------
@@ -41,7 +39,6 @@ module.exports = {
   verifyJwtTokenEvenIfDeactivated,
   optionalAuth,
   validateRoles,
-  validateRolesEvenIfDeactivated,
   validateSchema,
   isAdmin,
   isVendor,
@@ -50,5 +47,4 @@ module.exports = {
   isVendorOrSubVendor,
   isBrandSideOrAdmin,
   isVendorOrAdmin,
-  isVendorOrAdminEvenIfDeactivated,
 };

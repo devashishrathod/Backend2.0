@@ -8,8 +8,6 @@ const { applyRefundCompletion } = require("./applyRefundCompletion");
 const { issueRefundDocument } = require("./issueRefundDocument");
 const {
   buildRefundDocumentSnapshot,
-  REFUND_REASON_TEXT,
-  REFUND_METHOD_TEXT,
 } = require("./buildRefundDocumentSnapshot");
 const {
   buildRefundListFilter,
@@ -47,8 +45,6 @@ module.exports = {
    */
   issueRefundDocument,
   buildRefundDocumentSnapshot,
-  REFUND_REASON_TEXT,
-  REFUND_METHOD_TEXT,
   // One projection per audience, decided once. `split` carries our promo share
   // and the MDR we swallow on the same sub-document the vendor legitimately
   // needs — which is exactly why this is not remembered at each call site.

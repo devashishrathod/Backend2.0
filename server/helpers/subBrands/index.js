@@ -4,7 +4,6 @@ const { syncSubBrandLocAndGeo } = require("./syncSubBrandLocAndGeo");
 const {
   reserveOutletSlot,
   bucketFor,
-  bucketNoun,
 } = require("./reserveOutletSlot");
 const { releaseOutletSlot } = require("./releaseOutletSlot");
 const { switchOutletType } = require("./switchOutletType");
@@ -17,5 +16,4 @@ module.exports = {
   releaseOutletSlot,
   switchOutletType,
   bucketFor,
-  bucketNoun,
 };

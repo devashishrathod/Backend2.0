@@ -2,7 +2,6 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
-const ngrok = require("ngrok");
 const fileUpload = require("express-fileupload");
 const compression = require("compression");
 const helmet = require("helmet");
@@ -201,7 +200,18 @@ app.use(errorHandler);
     startJobs().catch((error) =>
       console.error("❌ [jobs] failed to start:", error?.message),
     );
+    /**
+     * A public tunnel so Razorpay's webhooks can reach a laptop. Development
+     * only — there is nothing for it to do once this runs on a real host.
+     *
+     * ⚠️ `require`d **here**, not at the top of the file. `ngrok` lives in
+     * `devDependencies`, so a production install (`npm ci --omit=dev`) does not
+     * have it — and a top-level require would then throw before the server ever
+     * listened. Inside this branch it is only reached when somebody has asked
+     * for a tunnel, which can only be true where the package is installed.
+     */
     if (process.env.ENABLE_NGROK === "true") {
+      const ngrok = require("ngrok");
       const url = await ngrok.connect({
         addr: port,
         authtoken: process.env.NGROK_AUTH_TOKEN,

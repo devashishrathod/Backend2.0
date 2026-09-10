@@ -1,7 +1,6 @@
 const {
   normalizeQuery,
   searchRegex,
-  searchPrefixRegex,
 } = require("./searchTerm");
 const { matchRankExpression } = require("./matchRank");
 const { buildBrandSection } = require("./buildBrandSection");
@@ -16,7 +15,6 @@ const {
 module.exports = {
   normalizeQuery,
   searchRegex,
-  searchPrefixRegex,
   matchRankExpression,
   buildBrandSection,
   buildVoucherSection,

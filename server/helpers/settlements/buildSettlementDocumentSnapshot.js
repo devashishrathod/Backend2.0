@@ -4,10 +4,7 @@ const {
   istDateShort,
   money,
 } = require("../documents");
-const {
-  DOCUMENT_KIND,
-  DOCUMENT_TITLE,
-} = require("../../constants/document");
+const { DOCUMENT_KIND } = require("../../constants/document");
 const { GST_TAX_TYPES } = require("../../constants/subscription");
 
 /**
@@ -329,5 +326,3 @@ exports.buildSettlementDocumentSnapshot = ({
   };
 };
 
-exports.SETTLEMENT_DOCUMENT_TITLE = DOCUMENT_TITLE.PAYOUT_STATEMENT;
-exports.commissionTaxLines = commissionTaxLines;

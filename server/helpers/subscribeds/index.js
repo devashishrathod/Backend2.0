@@ -1,5 +1,4 @@
 const { calculateEndDate } = require("./calculateEndDate");
-const { calculateDuration } = require("./calculateDuration");
 const { calculatePricing, round2 } = require("./calculatePricing");
 const {
   formatDuration,
@@ -30,7 +29,6 @@ const {
 
 module.exports = {
   calculateEndDate,
-  calculateDuration,
   calculatePricing,
   round2,
   formatDuration,

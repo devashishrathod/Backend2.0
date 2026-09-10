@@ -1,4 +1,4 @@
-const { switchSlot } = require("../brands/entitlementSlots");
+const { switchSlot } = require("../brands");
 const { bucketFor } = require("./reserveOutletSlot");
 
 /**

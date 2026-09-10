@@ -367,31 +367,6 @@ const DEVICE_PLATFORMS = Object.freeze({
   WEB: "WEB",
 });
 
-/**
- * How a notification's recipients are described.
- *
- * Deliberately declarative and role-agnostic: the same shape addresses one user,
- * every user of a role, the owners of specific brands, or everybody. Nothing in
- * here is subscription-specific, so customer-facing and future-role
- * notifications use exactly the same targeting.
- *
- * Resolved by `helpers/notifications/resolveAudience.js`.
- */
-const AUDIENCE_TARGETS = Object.freeze({
-  // Specific users, by id.
-  USER_IDS: "userIds",
-  // Every active user holding one of these roles.
-  ROLES: "roles",
-  // The owning user of each brand.
-  BRAND_IDS: "brandIds",
-  // The user behind each customer profile.
-  CUSTOMER_IDS: "customerIds",
-  // The sub-vendor user of each outlet.
-  SUB_BRAND_IDS: "subBrandIds",
-  // Everyone active. Guarded — see resolveAudience.
-  ALL: "all",
-});
-
 // A single dispatch cannot exceed this many recipients. A broadcast beyond it
 // should go through a job rather than a request, so one call cannot tie up the
 // process or the provider quota.
@@ -424,7 +399,6 @@ const NOTIFICATION_DEFAULTS = Object.freeze({
 module.exports = {
   NOTIFICATION_AUDIENCE,
   DEVICE_PLATFORMS,
-  AUDIENCE_TARGETS,
   AUDIENCE_LIMITS,
   NOTIFICATION_TYPES,
   NOTIFICATION_CHANNELS,

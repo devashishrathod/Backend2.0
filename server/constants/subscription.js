@@ -23,14 +23,6 @@ const SUBSCRIBED_STATUS = Object.freeze({
   CANCELLED: "CANCELLED", // revoked by an admin before endDate
 });
 
-// A Subscribed doc in any of these states can never be the brand's live plan.
-const SUBSCRIBED_TERMINAL_STATUSES = Object.freeze([
-  SUBSCRIBED_STATUS.EXPIRED,
-  SUBSCRIBED_STATUS.UPGRADED,
-  SUBSCRIBED_STATUS.DOWNGRADED,
-  SUBSCRIBED_STATUS.CANCELLED,
-]);
-
 // What the vendor/admin is about to do, derived by comparing the requested plan
 // against whatever is currently active. Drives the checkout copy and the gates.
 const SUBSCRIPTION_ACTION = Object.freeze({
@@ -282,19 +274,6 @@ const SUBSCRIPTION_DEFAULTS = Object.freeze({
   isWhatsAppNotificationEnabled: false,
 });
 
-/**
- * Upgrading ends the current plan immediately and starts the new one from that
- * date — the remaining days are forfeited, and the policy states so upfront.
- *
- * No proration is applied, but every forfeit is recorded (`forfeitedDays` /
- * `forfeitedValue` on the superseded Subscribed doc and on its history row) so
- * those vendors can be found later and compensated with credit or a goodwill
- * extension. See `GET /subscribeds/admin/forfeited`.
- */
-const FORFEIT_POLICY = Object.freeze({
-  RECORD_ONLY: "RECORD_ONLY",
-});
-
 // Order-summary row keys. The checkout page renders these in order and does no
 // arithmetic of its own — see helpers/subscribeds/buildOrderSummary.js
 const ORDER_SUMMARY_ROWS = Object.freeze({
@@ -307,7 +286,6 @@ const ORDER_SUMMARY_ROWS = Object.freeze({
 
 module.exports = {
   SUBSCRIBED_STATUS,
-  SUBSCRIBED_TERMINAL_STATUSES,
   SUBSCRIPTION_ACTION,
   SUBSCRIPTION_SOURCE,
   PAYMENT_GATEWAYS,
@@ -320,7 +298,6 @@ module.exports = {
   ENTITLEMENT_BUCKETS,
   BUCKET_BRAND_FIELDS,
   BUCKET_LABELS,
-  FORFEIT_POLICY,
   DEFAULT_ENTITLEMENTS,
   EXPIRED_ENTITLEMENTS,
   METERED_ENTITLEMENTS,

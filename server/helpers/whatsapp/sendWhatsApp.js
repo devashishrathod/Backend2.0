@@ -179,5 +179,3 @@ exports.sendWhatsApp = async ({ phone, type, params = [], urlParam }) => {
 
 // Exported for the notification layer and for tests. `sanitise` is exported so
 // the comma/newline rules can be verified without sending a real message.
-exports.normalisePhone = normalisePhone;
-exports.sanitiseParam = sanitise;

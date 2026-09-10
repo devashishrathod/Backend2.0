@@ -12,7 +12,6 @@ const SettlementHistory = require("../../models/SettlementHistory");
 const {
   claimTransactions,
   claimRefundAdjustments,
-  releaseSettlementClaims,
   countClaimedRows,
   transitionSettlement,
 } = require("../../helpers/settlements");

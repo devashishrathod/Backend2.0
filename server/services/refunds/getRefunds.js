@@ -140,4 +140,3 @@ const assertRefundAccess = (actor = {}, request) => {
   throwError(403, "You are not authorized to view this refund.");
 };
 
-exports.assertRefundAccess = assertRefundAccess;

@@ -4,8 +4,8 @@ const { PROMO_APPLIES_TO } = require("../../constants/promoCode");
 const {
   CUSTOMER_CURRENCY_DEFAULTS,
 } = require("../../constants/customer");
-const { round2 } = require("../subscribeds/calculatePricing");
-const { calculateConvenienceFee } = require("../voucherOffers/calculateConvenienceFee");
+const { round2 } = require("../subscribeds");
+const { calculateConvenienceFee } = require("../voucherOffers");
 
 /**
  * What one voucher offer is worth against a bill.

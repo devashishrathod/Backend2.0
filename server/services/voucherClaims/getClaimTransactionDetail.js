@@ -10,7 +10,7 @@ const {
   claimRecordProjection,
   pickByProjection,
 } = require("../../helpers/transactions");
-const { invoiceUrl } = require("../../helpers/notifications/panelLinks");
+const { invoiceUrl } = require("../../helpers/notifications");
 
 /**
  * One payment, told to whoever opened it.

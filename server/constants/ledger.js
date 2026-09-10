@@ -256,14 +256,6 @@ const LEDGER_INDEXES = Object.freeze({
   ONCE_PER_PAYOUT_LEG: "ledger_type_payoutleg_unique",
 });
 
-/** What `reconcileLedger` reports when the books disagree. */
-const LEDGER_DRIFT_KIND = Object.freeze({
-  BALANCE_MISMATCH: "BALANCE_MISMATCH",
-  MISSING_COLLECTION: "MISSING_COLLECTION",
-  ORPHAN_PAYOUT: "ORPHAN_PAYOUT",
-  SETTLEMENT_MISMATCH: "SETTLEMENT_MISMATCH",
-});
-
 module.exports = {
   LEDGER_ACCOUNT,
   LEDGER_DIRECTION,
@@ -271,5 +263,4 @@ module.exports = {
   ONCE_PER_TRANSACTION_TYPES,
   LEDGER_ENTRY_RULES,
   LEDGER_INDEXES,
-  LEDGER_DRIFT_KIND,
 };

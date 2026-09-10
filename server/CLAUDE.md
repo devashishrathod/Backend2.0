@@ -280,7 +280,7 @@ Server boots from `index.js`, mounts everything under `/trydood/v1`, and connect
 | `helpers/<domain>/` | Small reusable domain utilities |
 | `models/` | Mongoose schemas (PascalCase, singular) |
 | `validator/` | Joi schemas |
-| `database/` | Mongo connection, `dbServices`, `buildAggregateLookup` |
+| `database/` | Mongo connection, `buildAggregateLookup`, `otpRepository` |
 | `utils/` | `asyncWrapper`, `CustomError`, `response`, `pagination` |
 | `configs/` | Third-party SDK clients (Cloudinary, Razorpay, CGPey, OTP) |
 | `docs/` | API documentation |

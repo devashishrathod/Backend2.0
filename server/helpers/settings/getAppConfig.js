@@ -154,4 +154,3 @@ exports.getAppConfig = async (query = {}) => {
   };
 };
 
-exports.compareVersions = compareVersions;

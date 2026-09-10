@@ -3,7 +3,6 @@ const { acceptPartnership } = require("./acceptPartnership");
 const { getBrand } = require("./getBrand");
 const {
   getCustomerBrand,
-  MEDIA_PREVIEW_PER_SECTION,
 } = require("./getCustomerBrand");
 const { getAllCustomerBrands } = require("./getAllCustomerBrands");
 const { getAllAdminBrands } = require("./getAllAdminBrands");
@@ -22,6 +21,5 @@ module.exports = {
   getTopBrands,
   reviewTopBrand,
   toggleBrandStatus,
-  MEDIA_PREVIEW_PER_SECTION,
   updateBrand,
 };

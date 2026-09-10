@@ -21,7 +21,6 @@ const {
 } = require("./buildSettlementReadPipeline");
 const {
   buildSettlementDocumentSnapshot,
-  commissionTaxLines,
 } = require("./buildSettlementDocumentSnapshot");
 const { issueSettlementDocument } = require("./issueSettlementDocument");
 const { computeVendorDebt, brandsWithAgedDebt } = require("./vendorDebt");
@@ -90,7 +89,6 @@ module.exports = {
    */
   buildSettlementDocumentSnapshot,
   issueSettlementDocument,
-  commissionTaxLines,
   /**
    * ⚠️ What a brand owes that no cycle can reach.
    *

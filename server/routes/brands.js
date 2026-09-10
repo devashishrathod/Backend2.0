@@ -4,7 +4,6 @@ const {
   validateSchema,
   isVendor,
   isAdmin,
-  isCustomer,
   isVendorOrAdmin,
 } = require("../middlewares");
 const { validateAddPanDetails } = require("../validator/pan");

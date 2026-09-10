@@ -1,6 +1,9 @@
 const Joi = require("joi");
 const objectId = require("./validJoiObjectId");
-const { REFUND_REASON } = require("../constants/refund");
+const {
+  REFUND_REASON,
+  REFUND_REQUEST_STATUS,
+} = require("../constants/refund");
 const { PAYOUT_MODE } = require("../constants/payout");
 
 /**
@@ -193,7 +196,6 @@ exports.validateFailRefundBankPayout = {
   }),
 };
 
-const { REFUND_REQUEST_STATUS } = require("../constants/refund");
 
 /**
  * Listing refunds.

@@ -353,4 +353,3 @@ const present = (request, { reused, askedFor } = {}) => ({
   ...(askedFor === undefined ? {} : { askedFor }),
 });
 
-exports.REFUNDABLE_CLAIM_STATUSES = REFUNDABLE_CLAIM_STATUSES;

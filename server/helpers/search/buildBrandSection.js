@@ -2,12 +2,14 @@ const Brand = require("../../models/Brand");
 const { buildAggregateLookup } = require("../../database");
 const { pagination } = require("../../utils");
 const { SYSTEM_VERIFICATION_STATUS } = require("../../constants");
-const { customerVisibleBrandFilter } = require("../brands");
+const {
+  customerVisibleBrandFilter,
+  outletDistanceExpression,
+} = require("../brands");
 const {
   SEARCH_RESULT_TYPES,
   SEARCH_TARGET_SCREENS,
 } = require("../../constants/search");
-const { outletDistanceExpression } = require("../brands");
 const { matchRankExpression } = require("./matchRank");
 const { searchRegex } = require("./searchTerm");
 

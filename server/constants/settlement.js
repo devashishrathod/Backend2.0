@@ -237,13 +237,6 @@ const SETTLEMENT_INDEXES = Object.freeze({
   DOCUMENT_TOKEN: "settlement_documentToken_unique",
 });
 
-/** `TD/STL/26-27/000123`. The `Counter` pattern, same as invoices. */
-const SETTLEMENT_NUMBER = Object.freeze({
-  PREFIX: "TD/STL",
-  PAD: 6,
-  COUNTER_KEY: "settlementNumber",
-});
-
 module.exports = {
   SETTLEMENT_STATUS,
   ALLOWED_SETTLEMENT_TRANSITIONS,
@@ -253,5 +246,4 @@ module.exports = {
   SETTLEMENT_ACTOR,
   SETTLEMENT_FAILURE_REASON,
   SETTLEMENT_INDEXES,
-  SETTLEMENT_NUMBER,
 };

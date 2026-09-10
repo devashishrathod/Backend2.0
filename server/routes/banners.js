@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const { validateSchema, isAdmin, isCustomer } = require("../middlewares");
+const { validateSchema, isAdmin } = require("../middlewares");
 const {
   create,
   get,

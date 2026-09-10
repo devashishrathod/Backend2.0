@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const { validateSchema, verifyJwtToken, isVendorOrAdmin } = require("../middlewares");
+const { validateSchema, isVendorOrAdmin } = require("../middlewares");
 const { signUp, update, getAll } = require("../controllers/subBrands");
 const {
   validateWhatsappSubBrandSignUp,

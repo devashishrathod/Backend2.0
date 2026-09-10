@@ -54,9 +54,3 @@ exports.resolveCustomerId = (actor) => {
 
   return null;
 };
-
-/** The same value as a string, for logging and response bodies. */
-exports.resolveCustomerIdString = (actor) => {
-  const id = exports.resolveCustomerId(actor);
-  return id ? String(id) : null;
-};

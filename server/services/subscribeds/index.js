@@ -11,7 +11,6 @@ const { markForfeitCompensated } = require("./markForfeitCompensated");
 const { sendExpiryReminders } = require("./sendExpiryReminders");
 const {
   expireSubscriptions,
-  countExpiringSoon,
 } = require("./expireSubscriptions");
 
 module.exports = {
@@ -25,5 +24,4 @@ module.exports = {
   markForfeitCompensated,
   sendExpiryReminders,
   expireSubscriptions,
-  countExpiringSoon,
 };

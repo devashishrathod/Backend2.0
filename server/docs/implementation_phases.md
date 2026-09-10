@@ -156,7 +156,7 @@ M1–M3 Phase 0 me hi ban gaye the (M8 aur M7), to asli kaam M4 se shuru hua.
 |---|---|
 | **G1** | `req.customerId` sach me populated **document** nikla — live DB par dekha, `String()` "[object Object]" deta hai. `helpers/customers/resolveCustomerId.js` har jagah normalise karta hai, aur stringified document ko **mana** karta hai bajaye galat query banane ke |
 | **G2** | Seed me `isApproved` kabhi set nahi hota tha aur `Subscribed` sirf `brands[0]` ko milta tha — dono theek. Ab approval `verified` flag se bandhi hai (brand B jaan-boojh kar unapproved rehta hai, "blocked" example uske against capture hoga) aur **har** brand ko live plan milta hai |
-| **G3** | 400-vs-422 ka jawab **code padh kar** nikla, chun kar nahi: validator me `billAmount` `.positive()` hai aur `validateSchema` controller se pehle chalta hai — Joi pehle jawab deta hai, aur 422 deta hai. Yaani `calculateVoucherOffer` ka apna 400 API se **pahunch hi nahi sakta**. Security collection me pinned 400 hata, dono collections ab sehmat |
+| **G3** | 400-vs-422 ka jawab **code padh kar** nikla, chun kar nahi: validator me `billAmount` `.positive()` hai aur `validateSchema` controller se pehle chalta hai — Joi pehle jawab deta hai, aur 422 deta hai. Yaani `calculateVoucherOffer` ka apna 400 API se **pahunch hi nahi sakta**. *(Wo function ab `resolveClaimOffer` + `computeOfferDiscount` me bant chuka hai; niyam wahi hai.)* Security collection me pinned 400 hata, dono collections ab sehmat |
 | **G13** | `buildClaimPreview` me `VOUCHER_STATUSES.PUBLISHED` — naya code purani magic string leke nahi aaya |
 
 ### ⚠️ `pricing` ka aakaar badla — aur wo "additive" nahi tha
@@ -1031,13 +1031,15 @@ to pata na chale.
 ### M2 kyun nahi bana — aur uski jagah kya hua
 
 Alag `trydood-money` collection banane ki jagah, money requests **maujooda collections
-me** joda gaya — teen chhote scripts se jo **sirf add karte hain, regenerate nahi**:
+me** joda gaya — pehle teen chhote scripts se jo **sirf add karte the, regenerate
+nahi**: `addClaimRequestsToPostman.js`, `addRefundRequestsToPostman.js`,
+`addSettlementRequestsToPostman.js`.
 
-```bash
-node scripts/addClaimRequestsToPostman.js
-node scripts/addRefundRequestsToPostman.js
-node scripts/addSettlementRequestsToPostman.js
-```
+> ⚠️ **Ab wo scripts mat chalaiye — unka kaam generator ke andar aa chuka hai.**
+> `postman/lib/customerMoneyFolders.js` aur `postman/lib/vendorMoneyFolders.js`
+> wahi folders (`claimsFolder`, `refundsFolder`, `settlementsFolder`) banate hain,
+> aur dono generators unhe require karte hain. Chalane par ye scripts sirf apni
+> skip-branch par pahunchti hain. Details: [postman/README.md](../postman/README.md).
 
 ⚠️ **Wajah seedhi hai aur mehngi thi.** `trydood-customer` aur `trydood-vendor` me
 **live-captured examples** hain jo generator dobara nahi banata. Ek regenerate ne
@@ -1158,6 +1160,12 @@ Manifest ke baad ek adversarial gap-hunt chala (sirf 1A par pura ho paya — baa
 | **G1** | **`req.customerId` ek populated Customer document hai, ObjectId nahi.** `middlewares/authenticate.js:82` set karta hai aur `services/users/getUserById.js:8-11` use **populate** karta hai. `String(actor.customerId)`, response me echo, ya aggregation `$expr` — teeno chup-chaap galat chalenge | Har jagah `._id` normalise karo. Ek helper — `resolveCustomerId(actor)`. Aur populate `-isDeleted` select karta hai, to §7 case 7 (customer deleted) ke liye alag Customer read chahiye |
 | **G2** | **Seed fixtures 1A ke din se toot jayenge.** `models/Brand.js:161` `isApproved` default `false`, aur `scripts/seedPostmanFixtures.js:208-222` use kabhi set nahi karta. `Subscribed.create` sirf ek baar (line 554), hard-wired `brands[0]` par | Seed me `isApproved: true` + har brand ko `Subscribed`. Warna har seeded preview `canClaim: false` dega aur regenerated collection "blocked" ko hi happy path bana degi |
 | **G3** | **Doosra Postman generator bhi hai.** `generate-security-collection.js` me apne preview examples hain purane shape ke (lines ~1429, ~1481). Aur **dono committed collections aapas me virodh karte hain**: security wala `billAmount ≤ 0` par **400** pin karta hai, customer wala **422** | Dono regenerate. Aur 400-vs-422 ka ek jawab: **422** — Joi (`validateCustomerVoucherPreview` `.positive()`) pehle chalta hai, to `calculateVoucherOffer` ka 400 branch API se reachable hi nahi |
+
+> ⚠️ **G3 ki do cheezein ab exist nahi karti**, par uska nateeja (422) aaj bhi wahi hai:
+> - `generate-security-collection.js` — wo generator aur uski `trydood-security-changes`
+>   collection dono hata di gayin. Ab sirf teen panel collections hain; wajah `CLAUDE.md`
+>   ke *"Three feature-slice collections were deleted"* me hai.
+> - `calculateVoucherOffer` — ab `resolveClaimOffer` + `computeOfferDiscount`.
 
 ### Important
 

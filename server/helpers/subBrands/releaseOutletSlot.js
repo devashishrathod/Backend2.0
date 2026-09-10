@@ -1,4 +1,4 @@
-const { releaseSlot } = require("../brands/entitlementSlots");
+const { releaseSlot } = require("../brands");
 const { bucketFor } = require("./reserveOutletSlot");
 
 /**

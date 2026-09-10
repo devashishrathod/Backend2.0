@@ -3,16 +3,13 @@ const Settlement = require("../../models/Settlement");
 const Transaction = require("../../models/Transaction");
 const Brand = require("../../models/Brand");
 const Bank = require("../../models/Bank");
-const { TRANSACTION_PURPOSE } = require("../../constants/transaction");
 const {
   DOCUMENT_KIND,
   DOCUMENT_SERIES,
 } = require("../../constants/document");
-const { PAYMENT_STATUS } = require("../../constants");
 const { SETTLEMENT_STATUS } = require("../../constants/settlement");
 const { DUPLICATE_KEY } = require("../../constants/mongo");
 const { getCustomerConfig } = require("../../helpers/settings");
-const { buildTransactionFilter } = require("../../helpers/transactions");
 const { generateDocumentNumber } = require("../../helpers/documents");
 const {
   settlementPeriodStart,
@@ -702,4 +699,3 @@ const freezeBankSnapshot = async (brandId) => {
 };
 
 exports.computeTotals = computeTotals;
-exports.freezeBankSnapshot = freezeBankSnapshot;

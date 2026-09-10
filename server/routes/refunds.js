@@ -18,6 +18,11 @@ const {
   payRefund,
   listRefunds,
   refundDetail,
+  requestRefundBankDetails,
+  chooseRefundBankAccount,
+  payRefundToBankAccount,
+  confirmRefundBankPayout,
+  failRefundBankPayout,
 } = require("../controllers/refunds");
 const {
   validateRequestRefund,
@@ -35,13 +40,6 @@ const {
   validateConfirmRefundBankPayout,
   validateFailRefundBankPayout,
 } = require("../validator/refunds");
-const {
-  requestRefundBankDetails,
-  chooseRefundBankAccount,
-  payRefundToBankAccount,
-  confirmRefundBankPayout,
-  failRefundBankPayout,
-} = require("../controllers/refunds");
 
 /**
  * The customer asks for their money back.

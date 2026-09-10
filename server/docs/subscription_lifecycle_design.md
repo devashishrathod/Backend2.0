@@ -1071,7 +1071,7 @@ added; a push layer that assumes "vendor" would have to be rewritten for each.
 Nothing in here knows what a subscription is.
 
 ```
-constants/notification.js     DEVICE_PLATFORMS · AUDIENCE_TARGETS · AUDIENCE_LIMITS
+constants/notification.js     DEVICE_PLATFORMS · AUDIENCE_LIMITS
 models/DeviceToken.js         userId + role + token, no brand, no vendor assumption
 configs/fcm.js                service-account credentials from env
 helpers/push/fcmClient.js     JWT -> OAuth -> send, cached token, dead-token codes

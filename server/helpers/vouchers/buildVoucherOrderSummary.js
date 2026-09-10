@@ -4,7 +4,7 @@ const { CUSTOMER_CURRENCY_DEFAULTS } = require("../../constants/customer");
 const {
   formatMoney,
   formatPercent,
-} = require("../subscribeds/buildOrderSummary");
+} = require("../subscribeds");
 
 /**
  * Tax rows for the convenience fee.

@@ -16,6 +16,7 @@ const {
   ADMIN_PATHS,
   adminUrl,
   deepLink,
+  invoiceUrl,
 } = require("../notifications");
 const {
   NOTIFICATION_TYPES,
@@ -26,7 +27,6 @@ const {
   detectDoubleCapture,
 } = require("../transactions");
 const { generateDocumentNumber, alertDocumentFailed } = require("../documents");
-const { invoiceUrl } = require("../notifications/panelLinks");
 const { DOCUMENT_KIND, DOCUMENT_SERIES } = require("../../constants/document");
 const { SETTLEMENT_STAGE } = require("../../constants/transaction");
 const { calculateEndDate } = require("./calculateEndDate");
@@ -510,5 +510,3 @@ exports.settleSubscriptionPayment = async ({
     alreadySettled: false,
   };
 };
-
-exports.mapRazorpayPayment = mapPayment;

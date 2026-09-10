@@ -14,6 +14,7 @@ const {
   generateVoucherVersionCode,
   getNextVersionNumber,
   createVoucherHistory,
+  syncAttachedSubBrandsCount,
 } = require("../../helpers/vouchers");
 const {
   validateVoucherOffers,
@@ -393,6 +394,8 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
       if (subBrandDocs.length) {
         await VoucherSubBrand.insertMany(subBrandDocs, { session });
       }
+      // A fork carries the outlets over, so the new version needs its own count.
+      await syncAttachedSubBrandsCount(targetVersion._id, session);
 
       const masterUpdate = await Voucher.updateOne(
         {
@@ -507,6 +510,9 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
         );
         await VoucherSubBrand.insertMany(newMappings, { session });
       }
+      // One recount after both the removals and the additions — the count is
+      // read from the rows, so it does not matter which of the two ran.
+      await syncAttachedSubBrandsCount(targetVersion._id, session);
 
       const masterUpdate = { updatedBy: userId };
       if (payload.name !== undefined) {

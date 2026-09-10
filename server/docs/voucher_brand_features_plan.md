@@ -1,8 +1,11 @@
 # Voucher & Brand Features — Design Plan
 
 **Date:** 2026-08-26
-**Status:** 🟢 **Approved — implement ho raha hai**
-**Next phase (abhi nahi):** customer voucher claim / transaction flow
+**Status:** ✅ **Ban chuka hai** — par ye doc *"kya banana tha"* hai, *"kya hai"* nahi.
+Aaj ka sach ke liye [vendor_panel_api_doc.md](./vendor_panel_api_doc.md) aur
+[super_admin_panel_api_doc.md](./super_admin_panel_api_doc.md) padhein.
+**Next phase:** ~~customer voucher claim / transaction flow~~ — **wo bhi ho chuka hai**,
+dekhein [customer_voucher_claim_plan.md](./customer_voucher_claim_plan.md)
 
 ## ✅ Confirmed decisions
 
@@ -237,6 +240,10 @@ Isse admin `PUT /settings/update` se slab badal sakta hai, code change kiye bina
 ### Pricing model
 
 `calculateVoucherOffer` ka return shape badlega — ab ek **saaf breakdown**:
+
+> ⚠️ Ye plan likhne ke baad wo function do hisson me bant gaya — `resolveClaimOffer`
+> (kaun sa offer) aur `computeOfferDiscount` (kitna discount). `calculateVoucherOffer`
+> naam ka koi function ab code me nahi hai. Neeche ka shape aaj bhi wahi hai.
 
 ```json
 {

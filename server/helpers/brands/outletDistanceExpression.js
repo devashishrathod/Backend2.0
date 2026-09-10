@@ -79,4 +79,3 @@ exports.outletDistanceExpression = (latitude, longitude) => ({
   },
 });
 
-exports.EARTH_RADIUS_METERS = EARTH_RADIUS_METERS;

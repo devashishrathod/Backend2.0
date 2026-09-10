@@ -451,8 +451,14 @@ Code length 3–40 · Description max 300 · Reservation TTL 30 min
 
 **Admin-audience:** `WEBHOOK_FAILED` · `PAYMENT_DISPUTED` · `BRAND_SUBSCRIPTION_LAPSED` · `PROMO_LIMIT_EXCEEDED`
 
-### AUDIENCE_TARGETS — broadcast targeting
+### Broadcast targeting — `target` ke valid keys
 `userIds` · `roles` · `brandIds` · `customerIds` · `subBrandIds` · `all`
+
+> Ye keys `validator/notifications.js` ke Joi schema me enforce hoti hain aur
+> `helpers/notifications/resolveAudience.js` seedha inhi naamon se destructure
+> karta hai. (Pehle ek `AUDIENCE_TARGETS` enum bhi tha jo yahi naam dohraata tha
+> par jise koi code nahi padhta tha — wo hata diya gaya, taaki valid keys ki
+> ek hi jagah rahe.)
 > Targets **union** hote hain. Kam se kam ek chahiye. `all: true` explicitly likhna padta hai.
 
 ### AUDIENCE_LIMITS
@@ -2448,7 +2454,11 @@ Koi ownership check nahi — admin ke liye theek, par sabke liye khula hai.
 
 # Showcase APIs
 
-Admin ke liye showcase me sirf 2 endpoints relevant hain — list aur reorder. Section/media CRUD vendor ka kaam hai (`validateBrandVendor` token se brand resolve karta hai, jo admin ke paas nahi hota).
+Admin showcase ke **saare 11 endpoints** chala sakta hai — section/media CRUD samet. Sab `routes/showcase.js` me `isVendorOrAdmin` ke peeche hain, aur `helpers/showcases/resolveSectionForActor.js:46` admin ke liye ownership check chhod deta hai (*"Admins moderate every brand's content"*).
+
+Neeche sirf do ke apne section hain — `get-all` (#36) aur `reorder` (#37), kyunki baaki nau ki request aur saved example [vendor collection](./vendor_panel_api_doc.md) ke `10 — Showcase` folder me hain. Unki list [Showcase — admin bhi kar sakta hai](#showcase--admin-bhi-kar-sakta-hai) me hai.
+
+> ⚠️ Yahan pehle likha tha ki admin CRUD nahi kar sakta, wajah `validateBrandVendor`. Wo helper hata diya gaya hai — `resolveSectionForActor` ne uski jagah li, jo admin ko allow karta hai.
 
 ## 36. GET /showcase/section/get-all
 
@@ -4636,8 +4646,13 @@ GET /subscribeds/admin/forfeited?compensated=false&minDays=7&sortBy=forfeitedVal
 
 **1. Ye kyun exist karta hai:** upgrade karne pe purana plan **turant** khatam ho jaata hai aur bache hue din **forfeit** ho jaate hain — koi proration nahi hoti.
 
-`FORFEIT_POLICY` constant ka comment:
+Policy, jaisa `helpers/subscribeds/settleSubscriptionPayment.js` isko lagu karta hai:
 > *"Upgrading ends the current plan immediately and starts the new one from that date — the remaining days are forfeited, and the policy states so upfront. No proration is applied, but every forfeit is recorded (`forfeitedDays` / `forfeitedValue`) so those vendors can be found later and compensated with credit or a goodwill extension."*
+
+> ⚠️ Ye pehle `constants/subscription.js` ke `FORFEIT_POLICY` constant ka comment
+> tha. Wo constant ek enum tha jise kabhi koi code nahi padhta tha — policy hamesha
+> `forfeitedDays` / `forfeitedValue` ke seedhe hisaab se lagti thi, aur ab bhi
+> wahi lagti hai. Constant hata diya gaya; policy waisi ki waisi hai.
 
 **2. Ye ek worklist hai, report nahi.** Default view uncompensated forfeits dikhata hai — jinpe action lena hai.
 
@@ -7429,10 +7444,13 @@ Ek hi jawab, do mount — `/disputes` naya saaf raasta, `/transactions/disputes/
 
 ## Showcase — admin bhi kar sakta hai
 
-Ye aath endpoints `isVendorOrAdmin` hain, yaani admin bhi kisi brand ka showcase chala sakta hai. **Request aur saved example [vendor collection](./vendor_panel_api_doc.md) ke `10 — Showcase` folder me hai** — yahan dobara nahi rakhe gaye, kyunki ek hi request ki do copy matlab do jagah badalna, aur ek badli-doosri-reh-gayi hi drift ki shuruaat hai.
+Ye **nau** endpoints `isVendorOrAdmin` hain, yaani admin bhi kisi brand ka showcase chala sakta hai. **Request aur saved example [vendor collection](./vendor_panel_api_doc.md) ke `10 — Showcase` folder me hai** — yahan dobara nahi rakhe gaye, kyunki ek hi request ki do copy matlab do jagah badalna, aur ek badli-doosri-reh-gayi hi drift ki shuruaat hai.
+
+Inke alawa `GET /showcase/section/get-all` (#36) aur `PUT /showcase/section/:brandId/reorder` (#37) ke apne section hain — kul **11**.
 
 | Endpoint | Kya |
 |---|---|
+| `POST /showcase/section/add` | Naya section. `brandId` body me — admin kisi bhi brand ka bana sakta hai |
 | `GET /showcase/section/get/:sectionId` | Ek section, media ke saath |
 | `PUT /showcase/section/update/:sectionId` | Section ka naam/visibility |
 | `DELETE /showcase/section/delete/:sectionId` | Soft delete |
@@ -7515,11 +7533,25 @@ Admin ke paas platform ka sabse zyada access hai, par **33 endpoints** aise hain
 
 > ⚠️ Ye sab `isVendor` ke peeche hain — admin call kare to `403 "Forbidden: You do not have permission to perform this action."`
 
-### Showcase content management (11) — service-level vendor-only
+### ~~Showcase content management — vendor-only~~ ❌ ye ab galat hai
 
-`POST /showcase/section/add` · `GET /section/get/:sectionId` · `PUT /section/update/:sectionId` · `DELETE /section/delete/:sectionId` · `POST /section/:sectionId/add-media` · `PATCH /media/update/:mediaId` · `PUT /media/replace/:mediaId` · `PUT /media/reorder` · `DELETE /media/delete/:mediaId`
-
-> `POST /showcase/section/add` `validateBrandVendor(userId)` use karta hai — **token se brand resolve hota hai**, jo admin ke paas nahi hota. Admin ke liye sirf `get-all` (#36) aur `reorder` (#37) hain.
+> 🔴 **Ye section hata diya gaya, kyunki ab sach nahi hai.**
+>
+> Yahan likha tha ki showcase section/media CRUD admin ke liye band hai, aur
+> wajah `validateBrandVendor(userId)` batayi gayi thi — *"token se brand resolve
+> hota hai, jo admin ke paas nahi hota"*.
+>
+> **Wo helper ab exist hi nahi karta.** Uski jagah
+> `helpers/showcases/resolveSectionForActor.js` aaya, jo saaf kehta hai
+> *"Admins moderate every brand's content"* aur admin ke liye seedha section
+> return kar deta hai (line 46). Saare 11 CRUD routes `routes/showcase.js` me
+> **`isVendorOrAdmin`** ke peeche hain, `isVendor` ke nahi.
+>
+> Yaani **admin ye sab kar sakta hai.** Poori list upar
+> [Showcase — admin bhi kar sakta hai](#showcase--admin-bhi-kar-sakta-hai) me hai;
+> `get-all` (#36) aur `reorder` (#37) ke apne section bhi hain.
+>
+> Is doc me dono baatein ek saath likhi hui thin — ek sahi, ek purani.
 
 ### Customer-facing (10)
 
@@ -7916,10 +7948,19 @@ band ho gayi.
 `jobs/index.js` me naya job chahiye — `JobLock` ke saath, warna do instance ek hi
 claim ko do baar expire karenge.
 
-⚠️ `EXPIRED` `CLAIM_SLOT_RELEASING_STATUSES` me hai
-(`constants/voucherClaim.js:40-45`), to expire karte waqt **`holdsUsageSlot`
-false karna hi padega** — warna customer ka once-per-user slot hamesha ke liye
-phansa rahega aur wo dobara claim nahi kar payega.
+⚠️ Expire karte waqt **`holdsUsageSlot` false karna hi padega** — warna customer
+ka once-per-user slot hamesha ke liye phansa rahega aur wo dobara claim nahi kar
+payega.
+
+> `EXPIRED` ek slot-releasing status hai. Ye rule kisi status-list se nahi,
+> **`VoucherClaim.holdsUsageSlot` boolean se** chalta hai — kyunki Mongo
+> `partialFilterExpression` me `$in` nahi leta, to "in one of these statuses" ko
+> ek denormalised boolean banana pada aur unique index usi par hai. Jo status
+> arrays pehle yahan named the (`CLAIM_SLOT_HOLDING_STATUSES` /
+> `CLAIM_SLOT_RELEASING_STATUSES`) unhe koi code nahi padhta tha; wo hata diye
+> gaye. Boolean har status change ke saath khud set hota hai —
+> `createVoucherClaimOrder.js`, `settleVoucherClaimPayment.js`, `claimJobs.js`,
+> `applyRefundCompletion.js`.
 
 Job ko `notifyClaimExpired` bhi bulana hai — wo function bana hua hai.
 
