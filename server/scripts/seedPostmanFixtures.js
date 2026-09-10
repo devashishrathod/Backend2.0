@@ -18,7 +18,9 @@
  *   brand features              10, to exercise the profile cap
  *   showcase section            visible, with a video marked for the clips feed
  *   2 vouchers                  one with an IMAGE banner, one pinned as suggested
- *   banner + 2 tickers          home screen
+ *   2 banners + 2 tickers       home screen — one scheduled banner and one
+ *                               evergreen, so the customer list proves both the
+ *                               ordering and the fill, not just that it answers
  *   terms + privacy             legal reads
  *
  * Re-runnable: it clears its own documents first (matched by the seed marker in
@@ -38,7 +40,7 @@ const {
 } = require("../constants");
 const { VOUCHER_STATUSES, VOUCHER_DISCOUNT_TYPES } = require("../constants/voucher");
 const { VOUCHER_BANNER_TYPE } = require("../constants/voucherBanner");
-const { BANNER_TYPE } = require("../constants/banner");
+const { BANNER_TYPE, BANNER_REDIRECT_TYPE } = require("../constants/banner");
 const {
   PROMO_AUDIENCE,
   PROMO_DISCOUNT_TYPES,
@@ -845,15 +847,42 @@ const run = async () => {
     return "2 (1 suggested + banner, 1 plain)";
   });
 
-  step("home screen — banner + tickers", async () => {
+  step("home screen — banners + tickers", async () => {
+    // Evergreen — no dates, so it is live for ever and fills whatever slot the
+    // schedule leaves.
     await Banner.create({
       title: "postman seed banner",
       description: "seeded for the postman collections",
       type: BANNER_TYPE.IMAGE,
       image: { url: "https://res.cloudinary.com/demo/image/upload/sample.jpg" },
-      redirect: { type: "NONE" },
+      redirect: { type: BANNER_REDIRECT_TYPE.NONE },
       startDate: null,
       endDate: null,
+      createdBy: admin._id,
+      isActive: true,
+    });
+
+    /**
+     * ⚠️ A scheduled banner as well, and it earns its place.
+     *
+     * `GET /banners/customer/active` returns scheduled banners **first** and
+     * lets evergreen ones fill the rest. With only the evergreen row seeded, a
+     * captured example showed a one-item array and proved nothing about the
+     * ordering or the fill — the half of the contract most likely to break.
+     *
+     * Dates are relative to the run, not literals: a fixed window would quietly
+     * expire and turn this back into a one-item array months later, with the
+     * capture still reporting success.
+     */
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    await Banner.create({
+      title: "postman seed scheduled banner",
+      description: "Date window abhi chal rahi hai — customer list me pehle aata hai.",
+      type: BANNER_TYPE.IMAGE,
+      image: { url: "https://res.cloudinary.com/demo/image/upload/sale.jpg" },
+      redirect: { type: BANNER_REDIRECT_TYPE.CATEGORY, targetId: category._id },
+      startDate: new Date(Date.now() - DAY_MS),
+      endDate: new Date(Date.now() + 90 * DAY_MS),
       createdBy: admin._id,
       isActive: true,
     });
@@ -911,7 +940,7 @@ const run = async () => {
       }),
     };
 
-    return "1 banner + 2 tickers (+ 2 throwaway for the admin collection)";
+    return "2 banners (1 scheduled + 1 evergreen) + 2 tickers (+ 2 throwaway for the admin collection)";
   });
 
   step("customer promo code (+ the setting that makes it usable)", async () => {

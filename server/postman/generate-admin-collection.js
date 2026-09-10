@@ -40,7 +40,11 @@ require("dotenv").config({ quiet: true });
 const fs = require("fs");
 const path = require("path");
 
-const { A, req, folder, countTree } = require("./lib/builders");
+const { json, err, A, req, folder, countTree } = require("./lib/builders");
+const {
+  BANNER_REDIRECT_TYPE,
+  BANNER_ACTIVE_LIMIT,
+} = require("../constants/banner");
 const { refundsFolder, settlementsFolder } = require("./lib/adminMoneyFolders");
 const {
   emailVerificationFolder,
@@ -445,14 +449,46 @@ const subCategoryFolder = folder(
  */
 const bannerFolder = folder(
   "06 — Banners",
-  "Home screen ka banner. Create ke liye multipart chahiye — dekho upar wala note.",
+  [
+    "Home screen ke banners. Create ke liye multipart chahiye — dekho upar wala note.",
+    "",
+    `⚠️ Ek waqt pe **${BANNER_ACTIVE_LIMIT}** banners active ho sakte hain, aur limit`,
+    "do pool pe **alag-alag** lagti hai:",
+    "",
+    "| Pool | Kya hai | Limit |",
+    "|---|---|---|",
+    `| Scheduled | \`startDate\` + \`endDate\` dono set | kisi bhi ek instant pe ${BANNER_ACTIVE_LIMIT} |`,
+    `| Evergreen | dono \`null\` | ${BANNER_ACTIVE_LIMIT} active |`,
+    "",
+    "Scheduled wali limit ek **peak** hai, overlap ka count nahi — Jan ke 5 aur Feb",
+    "ke 5 banners ek Jan–Feb window se overlap karte hain par ek saath sirf 5 hote",
+    "hain, isliye woh refuse nahi hote. `409` aaye to message me wo **timestamp**",
+    "hota hai jahan peak hua.",
+    "",
+    "⚠️ `startDate` aur `endDate` **jodi me** chalte hain. Sirf ek bhejna `422` hai —",
+    "pehle allowed tha aur aisa banner kisi ko dikhta hi nahi tha.",
+  ].join("\n"),
   [
     req({
       name: "Ek Banner",
       method: "GET",
       segments: ["banners", "get", "{{admin_banner_id}}"],
       token: ADM,
-      assert: [...A.status(200), ...A.ok()],
+      assert: [
+        ...A.status(200),
+        ...A.ok(),
+        ...A.custom("redirect.type kabhi null nahi — set na ho to NONE", [
+          `const allowed = ${json(Object.values(BANNER_REDIRECT_TYPE))};`,
+          `const d = pm.response.json().data;`,
+          `pm.expect(allowed, "redirect.type").to.include(d.redirect.type);`,
+        ]),
+        ...A.custom("dates jodi me hain — dono set ya dono null", [
+          `const d = pm.response.json().data;`,
+          `const hasStart = d.startDate !== null && d.startDate !== undefined;`,
+          `const hasEnd = d.endDate !== null && d.endDate !== undefined;`,
+          `pm.expect(hasStart, "half-open banner kisi ko nahi dikhta").to.eql(hasEnd);`,
+        ]),
+      ],
     }),
     req({
       name: "Banner badlo",
@@ -460,17 +496,84 @@ const bannerFolder = folder(
       segments: ["banners", "update", "{{admin_banner_id}}"],
       token: ADM,
       body: { title: "postman seed throwaway banner (updated)", isActive: false },
-      description:
+      description: [
         "Update JSON leta hai — file sirf create par zaroori hai, kyunki tab tak koi image hoti hi nahi.",
+        "",
+        `\`isActive: false\` banner ka slot turant free kar deta hai — pool bhara ho to`,
+        "delete karne ki jagah yahi sabse aasan tareeka hai.",
+        "",
+        "Capacity check sirf tab chalta hai jab dates ya `isActive` badle, isliye",
+        "sirf `title` badalna pool bhara hone pe bhi kaam karta hai.",
+      ].join("\n"),
       assert: [...A.status(200), ...A.ok()],
+      examples: [
+        {
+          name: `409 — scheduled pool bhara (${BANNER_ACTIVE_LIMIT} already active)`,
+          code: 409,
+          status: "Conflict",
+          body: err(
+            `Only ${BANNER_ACTIVE_LIMIT} banners can be active at once, and ${BANNER_ACTIVE_LIMIT} already are on 2026-09-15T00:00:00.000Z. Shift this banner's dates or deactivate one of those.`,
+          ),
+        },
+        {
+          name: "409 — evergreen pool bhara",
+          code: 409,
+          status: "Conflict",
+          body: err(
+            `Only ${BANNER_ACTIVE_LIMIT} active banners without a date range are allowed. Deactivate one first.`,
+          ),
+        },
+      ],
+    }),
+    /**
+     * ⚠️ The one rejection worth its own request. A banner carrying a single
+     * date used to be accepted and then rendered to nobody — the customer query
+     * asks for both dates on a scheduled banner and both nulls on an evergreen
+     * one, so it fell out of both pools. The admin saw a 200 and the home screen
+     * did not change, which is precisely the shape of bug a collection exists to
+     * pin down.
+     */
+    req({
+      name: "Banner — sirf startDate → 422",
+      method: "PUT",
+      segments: ["banners", "update", "{{admin_banner_id}}"],
+      token: ADM,
+      body: { startDate: "2026-12-01T00:00:00.000Z" },
+      description: [
+        "`startDate` aur `endDate` jodi me chalte hain. Akela bhejna `422` hai,",
+        "kyunki aisa half-open banner na scheduled pool me aata hai na evergreen me —",
+        "save ho jaata aur kisi ko dikhta nahi.",
+      ].join("\n"),
+      assert: [
+        ...A.status(422),
+        ...A.custom("message dono dates maangta hai", [
+          `const b = pm.response.json();`,
+          `pm.expect(b.success).to.eql(false);`,
+          `pm.expect(b.message).to.match(/startDate and endDate/);`,
+        ]),
+      ],
+      examples: [
+        {
+          name: "422 — sirf ek date bheji",
+          code: 422,
+          status: "Unprocessable Entity",
+          body: err(
+            "Please provide both startDate and endDate, or neither — a banner with only one of them is never shown.",
+          ),
+        },
+      ],
     }),
     req({
       name: "Banner mitao",
       method: "DELETE",
       segments: ["banners", "delete", "{{admin_banner_id}}"],
       token: ADM,
-      description:
+      description: [
         "Soft delete — `isDeleted: true`. Seeder har run par nayi throwaway row banata hai, to ye dobara chalane layak rehta hai.",
+        "",
+        "Delete `isActive: false` bhi set karta hai, to slot free ho jaata hai.",
+        "Capacity check yahan chalta hi nahi — slot khaali karna kabhi refuse nahi hota.",
+      ].join("\n"),
       assert: [...A.status(200), ...A.ok()],
     }),
   ],

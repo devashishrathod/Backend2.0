@@ -24,6 +24,10 @@ const path = require("path");
 const { ROLES, ADDRESS_TYPES } = require("../constants");
 const { VOUCHER_SORT_BY, VOUCHER_DISCOUNT_TYPES } = require("../constants/voucher");
 const { VOUCHER_BANNER_TYPE } = require("../constants/voucherBanner");
+const {
+  BANNER_REDIRECT_TYPE,
+  BANNER_ACTIVE_LIMIT,
+} = require("../constants/banner");
 const { CONVENIENCE_FEE_DEFAULTS } = require("../constants/customer");
 const { DEVICE_PLATFORMS } = require("../constants/notification");
 const { FOLLOW_SORT_BY } = require("../constants/follow");
@@ -951,21 +955,31 @@ const homeFolder = folder(
   ].join("\n"),
   [
     req({
-      name: "Active banner",
+      name: "Active banners",
       method: "GET",
       segments: ["banners", "customer", "active"],
       token: CUST,
       gate: "`isCustomer`",
       description: [
-        "Ek hi banner aata hai, resolution do steps me:",
+        "**Array** aata hai — zyada se zyada **10** banners.",
         "",
-        "1. Aisa active banner jiski date window **abhi chal rahi** hai (latest `startDate` pehle)",
-        "2. Warna aisa active banner jiski **koi date set hi nahi** (evergreen fallback, newest first)",
-        "3. Warna `null`",
+        "Do pool, aur order matter karta hai:",
         "",
-        "⚠️ **`data` `null` ho sakta hai** aur message bhi badal jaata hai —",
-        "`\"No active banner found.\"`. App ko dono handle karne hain; `data.image` ko",
-        "seedha access mat karein.",
+        "1. **Scheduled** — jinki `startDate`–`endDate` window abhi chal rahi hai,",
+        "   `startDate` descending. Ye pehle slots lete hain.",
+        "2. **Evergreen** — jinki dono dates `null` hain, `createdAt` descending.",
+        "   Ye sirf bache hue slots bharte hain.",
+        "",
+        "Yaani 3 scheduled live hon to array = 3 scheduled + 7 evergreen. 12",
+        "scheduled live hon to sirf 10 scheduled, evergreen bilkul nahi.",
+        "",
+        "⚠️ **Breaking change.** Pehle `data` ek poora banner document tha; ab har",
+        "item me sirf `_id`, `type`, `url` aur `redirect` hain — `url` **flat** hai,",
+        "`image`/`video`/`gif` object nahi. `title`, dates aur `storage` public",
+        "response se hata diye gaye hain.",
+        "",
+        "⚠️ **Kuch na ho to `data` abhi bhi `null` hai**, `[]` nahi, aur message",
+        "`\"No active banner found.\"` ho jaata hai. Dono handle karne hain.",
       ].join("\n"),
       assert: [
         ...A.status(200),
@@ -974,17 +988,71 @@ const homeFolder = folder(
           `pm.expect(b.success).to.eql(true);`,
           `pm.expect(b).to.have.property("data");`,
         ]),
-        ...A.custom("banner ho to shape sahi, warna null", [
+        ...A.custom("banners ho to array, warna null", [
           `const d = pm.response.json().data;`,
           `if (d === null) {`,
           `  pm.expect(pm.response.json().message).to.eql("No active banner found.");`,
           `} else {`,
-          `  pm.expect(d._id, "_id").to.be.a("string");`,
-          `  pm.expect(d.isActive, "isActive").to.eql(true);`,
+          `  pm.expect(d, "data").to.be.an("array");`,
+          `  pm.expect(d.length, "at most ${BANNER_ACTIVE_LIMIT}").to.be.at.most(${BANNER_ACTIVE_LIMIT});`,
+          `  pm.expect(d.length, "at least 1").to.be.above(0);`,
           `}`,
+        ]),
+        ...A.custom("har item me sirf _id, type, url, redirect", [
+          `const d = pm.response.json().data;`,
+          `if (d !== null) d.forEach(function (banner) {`,
+          `  pm.expect(Object.keys(banner).sort()).to.eql(["_id", "redirect", "type", "url"]);`,
+          `  pm.expect(banner._id, "_id").to.be.a("string");`,
+          `  pm.expect(["IMAGE", "VIDEO", "GIF"], "type").to.include(banner.type);`,
+          `});`,
+        ]),
+        ...A.custom("redirect.type kabhi null nahi — set na ho to NONE", [
+          `const allowed = ${json(Object.values(BANNER_REDIRECT_TYPE))};`,
+          `const d = pm.response.json().data;`,
+          `if (d !== null) d.forEach(function (banner) {`,
+          `  pm.expect(allowed, "redirect.type").to.include(banner.redirect.type);`,
+          `  pm.expect(banner.redirect).to.have.property("targetId");`,
+          `  pm.expect(banner.redirect).to.have.property("url");`,
+          `});`,
+        ]),
+        // ⚠️ `storage` carries the Cloudinary publicId of every asset. It used to
+        // ride along on this public endpoint; this assertion is what stops it
+        // coming back the next time the shaper is edited.
+        ...A.custom("internal fields public response me nahi hain", [
+          `const raw = pm.response.text();`,
+          `["storage", "publicId", "createdBy", "isDeleted"].forEach(function (field) {`,
+          `  pm.expect(raw, field + " leaked").to.not.include('"' + field + '"');`,
+          `});`,
         ]),
       ],
       examples: [
+        {
+          name: "200 — scheduled + evergreen, dono",
+          code: 200,
+          status: "OK",
+          body: ok("Active banners fetched successfully.", [
+            {
+              redirect: {
+                type: BANNER_REDIRECT_TYPE.CATEGORY,
+                targetId: "6a9c77f28615a24768c7be71",
+                url: null,
+              },
+              _id: "6a9c77f48615a24768c7be9b",
+              type: "IMAGE",
+              url: "https://res.cloudinary.com/demo/image/upload/sale.jpg",
+            },
+            {
+              redirect: {
+                type: BANNER_REDIRECT_TYPE.NONE,
+                targetId: null,
+                url: null,
+              },
+              _id: "6a9c77f48615a24768c7be9a",
+              type: "IMAGE",
+              url: "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+            },
+          ]),
+        },
         {
           name: "200 — koi banner nahi",
           code: 200,
@@ -2810,7 +2878,7 @@ const pushFolder = folder(
 // Built from the route table rather than a hand-kept list: `guestGet` asserts
 // that the endpoint really is reachable without a token, so if someone puts a
 // gate back on one of these the test fails here instead of in the app.
-const guestGet = ({ name, segments, query, description, assert = [] }) =>
+const guestGet = ({ name, segments, query, description, assert = [], examples }) =>
   req({
     // Prefixed because several of these exercise the same endpoint as a
     // signed-in request elsewhere, and example capture keys on the request
@@ -2827,6 +2895,7 @@ const guestGet = ({ name, segments, query, description, assert = [] }) =>
       ]),
       ...assert,
     ],
+    examples,
   });
 
 const guestFolder = folder(
@@ -2969,11 +3038,47 @@ const guestFolder = folder(
     }),
 
     guestGet({
-      name: "Home banner",
+      name: "Home banners",
       segments: ["banners", "customer", "active"],
-      description:
-        "Ek hi banner aata hai (ya `null`). Dated banner pehle, warna undated fallback.",
-      assert: [...A.status(200)],
+      description: [
+        `Array, ${BANNER_ACTIVE_LIMIT} tak (ya \`null\`). Scheduled banners pehle`,
+        "(`startDate` desc), phir evergreen bache hue slots bharte hain.",
+        "",
+        "Guest ko wahi milta hai jo logged-in customer ko — ye endpoint public hai,",
+        "isliye home screen login se pehle bhi bhari dikhti hai.",
+      ].join("\n"),
+      assert: [
+        ...A.status(200),
+        ...A.custom("array ya null, aur 4-field shape", [
+          `const d = pm.response.json().data;`,
+          `if (d !== null) {`,
+          `  pm.expect(d, "data").to.be.an("array");`,
+          `  pm.expect(d.length).to.be.at.most(${BANNER_ACTIVE_LIMIT});`,
+          `  d.forEach(function (banner) {`,
+          `    pm.expect(Object.keys(banner).sort()).to.eql(["_id", "redirect", "type", "url"]);`,
+          `  });`,
+          `}`,
+        ]),
+      ],
+      examples: [
+        {
+          name: "200 — guest ko bhi wahi array milta hai",
+          code: 200,
+          status: "OK",
+          body: ok("Active banners fetched successfully.", [
+            {
+              redirect: {
+                type: BANNER_REDIRECT_TYPE.NONE,
+                targetId: null,
+                url: null,
+              },
+              _id: "6a9c77f48615a24768c7be9a",
+              type: "IMAGE",
+              url: "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+            },
+          ]),
+        },
+      ],
     }),
 
     guestGet({
@@ -3226,7 +3331,7 @@ const collection = {
       "| Chahiye | Kis liye |",
       "|---|---|",
       "| Kam se kam ek category + sub-category | `03` |",
-      "| Ek active banner aur ticker | `04` (na ho to bhi 200 aayega) |",
+      "| Ek active banner aur ticker | `04` (na ho to bhi 200 aayega — banner `null`) |",
       "| Ek PUBLISHED voucher, active outlet ke saath, Indore ke paas | `05` |",
       "| Ek active brand, showcase + features ke saath | `06`, `07` |",
       "| Ek terms aur ek privacy document | `08` |",
@@ -3237,8 +3342,8 @@ const collection = {
       "",
       "- **List endpoints khaali pe `404` dete hain**, empty array nahi — shared",
       "  `pagination` utility throw karti hai. Isko empty state samajhein.",
-      "  Do exceptions: `/banners/customer/active` (`null` deta hai) aur",
-      "  `/promotionalTickers/customer/active` (`[]` deta hai).",
+      "  Do exceptions: `/banners/customer/active` (banners ka **array**, ya",
+      "  khaali hone pe `null`) aur `/promotionalTickers/customer/active` (`[]` deta hai).",
       "- **`coordinates` `[longitude, latitude]`** order me hain — Maps APIs se ulta.",
       "- **WhatsApp OTP abhi verify nahi hota** (deliberate, deferred) — koi bhi 6-digit chalega.",
       "- **`DELETE /users/delete` kuch nahi karta** — folder `01` dekhein.",
