@@ -688,6 +688,11 @@ Brand ke highlight points. Max **10 active** per brand.
 > ⚠️ **Poori file pehle bare `verifyJwtToken` par thi**, matlab customer ka apna
 > token wo banners create, edit ya delete karne ke liye kaafi tha **jo app ka har
 > user home screen par dekhta hai**.
+>
+> Home screen ab **10 tak** banners dikhati hai, ek nahi. Do pool hain —
+> scheduled (`startDate` + `endDate`) aur evergreen (dono `null`) — aur limit
+> har pool par alag lagti hai. Scheduled pehle slots lete hain, evergreen bache
+> hue bharte hain.
 
 | # | Method | Endpoint | Access | Cat |
 |---|---|---|---|---|
@@ -697,6 +702,10 @@ Brand ke highlight points. Max **10 active** per brand.
 | 91 | GET | `/banners/get/:id` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 |
 | 92 | DELETE | `/banners/delete/:id` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 |
 | 93 | GET | `/banners/customer/active` | Intended: Guest + Customer · Enforced: **Public** | 🟠 |
+
+> ⚠️ #93 ka response **breaking change** hai — pehle ek poora banner document
+> (ya `null`), ab `_id` · `type` · `url` · `redirect` wale objects ka array.
+> Khaali case abhi bhi `null` hai.
 
 > **Guest surface me:** #93 · **Customer doc me:** #93 · **Admin doc me:** #88–#92 (5)
 
@@ -1333,7 +1342,7 @@ jo baaki blocks use karte hain).
 | 85 ⭐ | GET | `/vouchers/customer/get-all` | **optionalAuth** | Voucher listing (guest ko `latitude`+`longitude` dena hoga) |
 | 86 ⭐ | GET | `/vouchers/customer/get/:voucherId` | **optionalAuth** | Voucher detail |
 | 87 ⭐ | POST | `/vouchers/customer/voucher/preview` | **optionalAuth** | **Daam** — guest ko price milta hai, order nahi |
-| 93 | GET | `/banners/customer/active` | Public | Home banner |
+| 93 | GET | `/banners/customer/active` | Public | Home banners — 10 tak, array |
 | 99 | GET | `/promotionalTickers/customer/active` | Public | Home ticker strip |
 | 101 | GET | `/categories/getAll` | Public | Category list + stats |
 | 102 | GET | `/categories/get/:id` | Public | Ek category |

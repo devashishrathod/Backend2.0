@@ -3,7 +3,9 @@ const { getBanner } = require("./getBanner");
 const { getAllBanners } = require("./getAllBanners");
 const { updateBanner } = require("./updateBanner");
 const { deleteBanner } = require("./deleteBanner");
-const { getActiveBannerForCustomer } = require("./getActiveBannerForCustomer");
+const {
+  getActiveBannersForCustomer,
+} = require("./getActiveBannersForCustomer");
 
 module.exports = {
   createBanner,
@@ -11,5 +13,5 @@ module.exports = {
   getAllBanners,
   updateBanner,
   deleteBanner,
-  getActiveBannerForCustomer,
+  getActiveBannersForCustomer,
 };

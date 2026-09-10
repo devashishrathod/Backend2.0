@@ -371,6 +371,14 @@ exports.validateUpdateBrand = {
       "string.empty": "Email can't be empty",
       "string.email": "Please enter a valid email address",
     }),
+    mobile: Joi.string()
+      .trim()
+      .pattern(/^[0-9]{10}$/)
+      .optional()
+      .messages({
+        "string.empty": "Mobile number can't be empty",
+        "string.pattern.base": "Please enter a valid 10-digit mobile number",
+      }),
     joinedDate: Joi.date().optional().messages({
       "date.base": "Please enter a valid joined date",
     }),

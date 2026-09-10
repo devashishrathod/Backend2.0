@@ -41,7 +41,7 @@ const mongoose = require("mongoose");
 jest.mock("../../helpers/banners", () => ({
   uploadBannerMedia: jest.fn(),
   deleteBannerMedia: jest.fn(),
-  assertNoActiveOverlap: jest.fn(),
+  assertActiveBannerCapacity: jest.fn(),
 }));
 
 jest.mock("../../helpers/promotionalTickers", () => ({
@@ -57,7 +57,7 @@ const PromotionalTicker = require("../../models/PromotionalTicker");
 const {
   uploadBannerMedia,
   deleteBannerMedia,
-  assertNoActiveOverlap,
+  assertActiveBannerCapacity,
 } = require("../../helpers/banners");
 const {
   uploadTickerIcon,
@@ -74,7 +74,7 @@ const file = () => ({ name: "a.png", tempFilePath: "/tmp/a.png", size: 67 });
 
 beforeEach(() => {
   jest.clearAllMocks();
-  assertNoActiveOverlap.mockResolvedValue(undefined);
+  assertActiveBannerCapacity.mockResolvedValue(undefined);
   uploadBannerMedia.mockResolvedValue(UPLOADED);
   uploadTickerIcon.mockResolvedValue(UPLOADED);
   deleteBannerMedia.mockResolvedValue(undefined);
@@ -122,13 +122,13 @@ describe("createBanner — the file is required, and named by the type", () => {
   });
 
   /**
-   * The overlap guard runs **before** the upload, deliberately: an overlapping
-   * schedule is a refusal, and paying Cloudinary for a file that is about to be
+   * The capacity guard runs **before** the upload, deliberately: a full home
+   * screen is a refusal, and paying Cloudinary for a file that is about to be
    * refused is money spent on nothing.
    */
-  test("an overlapping active banner is refused before anything uploads", async () => {
-    assertNoActiveOverlap.mockRejectedValue(
-      Object.assign(new Error("Another banner is already active"), { statusCode: 409 }),
+  test("a banner over the active limit is refused before anything uploads", async () => {
+    assertActiveBannerCapacity.mockRejectedValue(
+      Object.assign(new Error("Only 10 banners can be active at once"), { statusCode: 409 }),
     );
 
     await expect(

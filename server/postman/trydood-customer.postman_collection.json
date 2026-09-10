@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b41d7e60-9a2c-4f18-8d33-trydood-customer",
     "name": "Trydood — Customer Mobile App",
-    "description": "# Customer Mobile App API\n\nCustomer app ke **35 endpoints**, 140 requests me — happy paths,\nbehaviour-changing edge cases, aur access-control negative tests.\n\nCompanion doc: `docs/customer_mobile_api_doc.md`\n\n---\n\n## Shuru kaise karein\n\n1. `environments/customer-*.postman_environment.json` import karein aur top-right\n   se **select** karein.\n2. Sirf **`customer_whatsapp`** bharein. Baaki sab `00 — Setup & Auth` se aage\n   apne aap bharta jaata hai.\n3. Poora collection **Collection Runner** me chalayein, ya folder-wise. Order\n   matter karta hai — baad wale folders pehle wale ke capture kiye ids use karte hain.\n\n```bash\n# CLI se\nnewman run postman/trydood-customer.postman_collection.json \\\n  -e postman/environments/customer-local.postman_environment.json\n```\n\n## Ye collection kaise likhi gayi hai\n\n- **Happy path aur behaviour badalne wale edge cases alag requests hain** — poora\n  folder runnable hai aur waqai API test karta hai, sirf document nahi karta.\n- **Per-field Joi rejections saved examples hain**, jo unhi requests pe lage hain\n  jinse wo belong karte hain.\n- **Har request pe assertions hain** — total 494 `pm.test` blocks.\n  Status, response envelope, aur documented field shape.\n\n## Fixture kya chahiye\n\nEk chalta hua environment jisme:\n\n| Chahiye | Kis liye |\n|---|---|\n| Kam se kam ek category + sub-category | `03` |\n| Ek active banner aur ticker | `04` (na ho to bhi 200 aayega) |\n| Ek PUBLISHED voucher, active outlet ke saath, Indore ke paas | `05` |\n| Ek active brand, showcase + features ke saath | `06`, `07` |\n| Ek terms aur ek privacy document | `08` |\n\nFixture na ho to un folders me `404` aayega — jo empty state hai, bug nahi.\n\n## Dhyan rakhne layak\n\n- **List endpoints khaali pe `404` dete hain**, empty array nahi — shared\n  `pagination` utility throw karti hai. Isko empty state samajhein.\n  Do exceptions: `/banners/customer/active` (`null` deta hai) aur\n  `/promotionalTickers/customer/active` (`[]` deta hai).\n- **`coordinates` `[longitude, latitude]`** order me hain — Maps APIs se ulta.\n- **WhatsApp OTP abhi verify nahi hota** (deliberate, deferred) — koi bhi 6-digit chalega.\n- **`DELETE /users/delete` kuch nahi karta** — folder `01` dekhein.\n- **Convenience fee client-side calculate mat karein** — `pricing.convenienceFee` use karein.\n\n## Regenerate\n\n```bash\nnode postman/generate-customer-collection.js\n```\n\n**JSON hand-edit mat karein** — enums aur limits `constants/` se seedhe padhe jaate\nhain, to hand-edit karne se collection API ke baare me jhooth bolna shuru kar deti hai.",
+    "description": "# Customer Mobile App API\n\nCustomer app ke **35 endpoints**, 140 requests me — happy paths,\nbehaviour-changing edge cases, aur access-control negative tests.\n\nCompanion doc: `docs/customer_mobile_api_doc.md`\n\n---\n\n## Shuru kaise karein\n\n1. `environments/customer-*.postman_environment.json` import karein aur top-right\n   se **select** karein.\n2. Sirf **`customer_whatsapp`** bharein. Baaki sab `00 — Setup & Auth` se aage\n   apne aap bharta jaata hai.\n3. Poora collection **Collection Runner** me chalayein, ya folder-wise. Order\n   matter karta hai — baad wale folders pehle wale ke capture kiye ids use karte hain.\n\n```bash\n# CLI se\nnewman run postman/trydood-customer.postman_collection.json \\\n  -e postman/environments/customer-local.postman_environment.json\n```\n\n## Ye collection kaise likhi gayi hai\n\n- **Happy path aur behaviour badalne wale edge cases alag requests hain** — poora\n  folder runnable hai aur waqai API test karta hai, sirf document nahi karta.\n- **Per-field Joi rejections saved examples hain**, jo unhi requests pe lage hain\n  jinse wo belong karte hain.\n- **Har request pe assertions hain** — total 498 `pm.test` blocks.\n  Status, response envelope, aur documented field shape.\n\n## Fixture kya chahiye\n\nEk chalta hua environment jisme:\n\n| Chahiye | Kis liye |\n|---|---|\n| Kam se kam ek category + sub-category | `03` |\n| Ek active banner aur ticker | `04` (na ho to bhi 200 aayega — banner `null`) |\n| Ek PUBLISHED voucher, active outlet ke saath, Indore ke paas | `05` |\n| Ek active brand, showcase + features ke saath | `06`, `07` |\n| Ek terms aur ek privacy document | `08` |\n\nFixture na ho to un folders me `404` aayega — jo empty state hai, bug nahi.\n\n## Dhyan rakhne layak\n\n- **List endpoints khaali pe `404` dete hain**, empty array nahi — shared\n  `pagination` utility throw karti hai. Isko empty state samajhein.\n  Do exceptions: `/banners/customer/active` (banners ka **array**, ya\n  khaali hone pe `null`) aur `/promotionalTickers/customer/active` (`[]` deta hai).\n- **`coordinates` `[longitude, latitude]`** order me hain — Maps APIs se ulta.\n- **WhatsApp OTP abhi verify nahi hota** (deliberate, deferred) — koi bhi 6-digit chalega.\n- **`DELETE /users/delete` kuch nahi karta** — folder `01` dekhein.\n- **Convenience fee client-side calculate mat karein** — `pricing.convenienceFee` use karein.\n\n## Regenerate\n\n```bash\nnode postman/generate-customer-collection.js\n```\n\n**JSON hand-edit mat karein** — enums aur limits `constants/` se seedhe padhe jaate\nhain, to hand-edit karne se collection API ke baare me jhooth bolna shuru kar deti hai.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -3964,7 +3964,7 @@
       "description": "Banner aur promotional tickers — dono `isCustomer` gated hain.\n\nDono me se koi bhi **`404` nahi deta** — kuch na ho to `200` + `null` / `[]`. Ye\nbaaki list endpoints se alag hai, aur deliberately: home screen ek missing banner\npe error nahi dikha sakti.",
       "item": [
         {
-          "name": "Active banner",
+          "name": "Active banners",
           "request": {
             "method": "GET",
             "header": [],
@@ -3989,56 +3989,36 @@
                 }
               ]
             },
-            "description": "**Access:** 🌐 **Public — token ki zarurat nahi** (guest browsing)\n\nEk hi banner aata hai, resolution do steps me:\n\n1. Aisa active banner jiski date window **abhi chal rahi** hai (latest `startDate` pehle)\n2. Warna aisa active banner jiski **koi date set hi nahi** (evergreen fallback, newest first)\n3. Warna `null`\n\n⚠️ **`data` `null` ho sakta hai** aur message bhi badal jaata hai —\n`\"No active banner found.\"`. App ko dono handle karne hain; `data.image` ko\nseedha access mat karein."
+            "description": "**Access:** 🌐 **Public — token ki zarurat nahi** (guest browsing)\n\n**Array** aata hai — zyada se zyada **10** banners.\n\nDo pool, aur order matter karta hai:\n\n1. **Scheduled** — jinki `startDate`–`endDate` window abhi chal rahi hai,\n   `startDate` descending. Ye pehle slots lete hain.\n2. **Evergreen** — jinki dono dates `null` hain, `createdAt` descending.\n   Ye sirf bache hue slots bharte hain.\n\nYaani 3 scheduled live hon to array = 3 scheduled + 7 evergreen. 12\nscheduled live hon to sirf 10 scheduled, evergreen bilkul nahi.\n\n⚠️ **Breaking change.** Pehle `data` ek poora banner document tha; ab har\nitem me sirf `_id`, `type`, `url` aur `redirect` hain — `url` **flat** hai,\n`image`/`video`/`gif` object nahi. `title`, dates aur `storage` public\nresponse se hata diye gaye hain.\n\n⚠️ **Kuch na ho to `data` abhi bhi `null` hai**, `[]` nahi, aur message\n`\"No active banner found.\"` ho jaata hai. Dono handle karne hain."
           },
           "response": [
             {
-              "name": "200 · Active banner",
+              "name": "200 — scheduled + evergreen, dono",
               "originalRequest": {
                 "method": "GET",
-                "header": [
-                  {
-                    "key": "User-Agent",
-                    "value": "PostmanRuntime/7.39.1"
-                  },
-                  {
-                    "key": "Accept",
-                    "value": "*/*"
-                  },
-                  {
-                    "key": "Cache-Control",
-                    "value": "no-cache"
-                  },
-                  {
-                    "key": "Postman-Token",
-                    "value": "42117299-7e73-4771-9975-07bc42e71214"
-                  },
-                  {
-                    "key": "Host",
-                    "value": "localhost:8080"
-                  },
-                  {
-                    "key": "Accept-Encoding",
-                    "value": "gzip, deflate, br"
-                  },
-                  {
-                    "key": "Connection",
-                    "value": "keep-alive"
-                  }
-                ],
+                "header": [],
                 "url": {
-                  "raw": "http://localhost:8080/trydood/v1/banners/customer/active",
+                  "raw": "{{base_url}}/banners/customer/active",
                   "host": [
                     "{{base_url}}"
                   ],
                   "path": [
-                    "trydood",
-                    "v1",
                     "banners",
                     "customer",
                     "active"
                   ]
-                }
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "**Access:** 🌐 **Public — token ki zarurat nahi** (guest browsing)\n\n**Array** aata hai — zyada se zyada **10** banners.\n\nDo pool, aur order matter karta hai:\n\n1. **Scheduled** — jinki `startDate`–`endDate` window abhi chal rahi hai,\n   `startDate` descending. Ye pehle slots lete hain.\n2. **Evergreen** — jinki dono dates `null` hain, `createdAt` descending.\n   Ye sirf bache hue slots bharte hain.\n\nYaani 3 scheduled live hon to array = 3 scheduled + 7 evergreen. 12\nscheduled live hon to sirf 10 scheduled, evergreen bilkul nahi.\n\n⚠️ **Breaking change.** Pehle `data` ek poora banner document tha; ab har\nitem me sirf `_id`, `type`, `url` aur `redirect` hain — `url` **flat** hai,\n`image`/`video`/`gif` object nahi. `title`, dates aur `storage` public\nresponse se hata diye gaye hain.\n\n⚠️ **Kuch na ho to `data` abhi bhi `null` hai**, `[]` nahi, aur message\n`\"No active banner found.\"` ho jaata hai. Dono handle karne hain."
               },
               "status": "OK",
               "code": 200,
@@ -4050,55 +4030,35 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"message\": \"Active banner fetched successfully.\",\n  \"data\": {\n    \"redirect\": {\n      \"type\": \"NONE\",\n      \"targetId\": null,\n      \"url\": null\n    },\n    \"image\": {\n      \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\"\n    },\n    \"_id\": \"6a9c77f48615a24768c7be9a\",\n    \"title\": \"postman seed banner\",\n    \"description\": \"seeded for the postman collections\",\n    \"type\": \"IMAGE\",\n    \"startDate\": null,\n    \"endDate\": null,\n    \"createdBy\": \"6a9c77f18615a24768c7be67\",\n    \"updatedBy\": null,\n    \"isActive\": true,\n    \"isDeleted\": false,\n    \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n    \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"message\": \"Active banners fetched successfully.\",\n  \"data\": [\n    {\n      \"redirect\": {\n        \"type\": \"CATEGORY\",\n        \"targetId\": \"6a9c77f28615a24768c7be71\",\n        \"url\": null\n      },\n      \"_id\": \"6a9c77f48615a24768c7be9b\",\n      \"type\": \"IMAGE\",\n      \"url\": \"https://res.cloudinary.com/demo/image/upload/sale.jpg\"\n    },\n    {\n      \"redirect\": {\n        \"type\": \"NONE\",\n        \"targetId\": null,\n        \"url\": null\n      },\n      \"_id\": \"6a9c77f48615a24768c7be9a\",\n      \"type\": \"IMAGE\",\n      \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\"\n    }\n  ]\n}"
             },
             {
-              "name": "200 · Guest — Home banner",
+              "name": "200 — koi banner nahi",
               "originalRequest": {
                 "method": "GET",
-                "header": [
-                  {
-                    "key": "User-Agent",
-                    "value": "PostmanRuntime/7.39.1"
-                  },
-                  {
-                    "key": "Accept",
-                    "value": "*/*"
-                  },
-                  {
-                    "key": "Cache-Control",
-                    "value": "no-cache"
-                  },
-                  {
-                    "key": "Postman-Token",
-                    "value": "7c6bdbd3-16ca-4c6b-ac20-bf8053a4c951"
-                  },
-                  {
-                    "key": "Host",
-                    "value": "localhost:8080"
-                  },
-                  {
-                    "key": "Accept-Encoding",
-                    "value": "gzip, deflate, br"
-                  },
-                  {
-                    "key": "Connection",
-                    "value": "keep-alive"
-                  }
-                ],
+                "header": [],
                 "url": {
-                  "raw": "http://localhost:8080/trydood/v1/banners/customer/active",
+                  "raw": "{{base_url}}/banners/customer/active",
                   "host": [
                     "{{base_url}}"
                   ],
                   "path": [
-                    "trydood",
-                    "v1",
                     "banners",
                     "customer",
                     "active"
                   ]
-                }
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "**Access:** 🌐 **Public — token ki zarurat nahi** (guest browsing)\n\n**Array** aata hai — zyada se zyada **10** banners.\n\nDo pool, aur order matter karta hai:\n\n1. **Scheduled** — jinki `startDate`–`endDate` window abhi chal rahi hai,\n   `startDate` descending. Ye pehle slots lete hain.\n2. **Evergreen** — jinki dono dates `null` hain, `createdAt` descending.\n   Ye sirf bache hue slots bharte hain.\n\nYaani 3 scheduled live hon to array = 3 scheduled + 7 evergreen. 12\nscheduled live hon to sirf 10 scheduled, evergreen bilkul nahi.\n\n⚠️ **Breaking change.** Pehle `data` ek poora banner document tha; ab har\nitem me sirf `_id`, `type`, `url` aur `redirect` hain — `url` **flat** hai,\n`image`/`video`/`gif` object nahi. `title`, dates aur `storage` public\nresponse se hata diye gaye hain.\n\n⚠️ **Kuch na ho to `data` abhi bhi `null` hai**, `[]` nahi, aur message\n`\"No active banner found.\"` ho jaata hai. Dono handle karne hain."
               },
               "status": "OK",
               "code": 200,
@@ -4110,7 +4070,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"message\": \"Active banner fetched successfully.\",\n  \"data\": {\n    \"redirect\": {\n      \"type\": \"NONE\",\n      \"targetId\": null,\n      \"url\": null\n    },\n    \"image\": {\n      \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\"\n    },\n    \"_id\": \"6a9c77f48615a24768c7be9a\",\n    \"title\": \"postman seed banner\",\n    \"description\": \"seeded for the postman collections\",\n    \"type\": \"IMAGE\",\n    \"startDate\": null,\n    \"endDate\": null,\n    \"createdBy\": \"6a9c77f18615a24768c7be67\",\n    \"updatedBy\": null,\n    \"isActive\": true,\n    \"isDeleted\": false,\n    \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n    \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"message\": \"No active banner found.\",\n  \"data\": null\n}"
             }
           ],
           "event": [
@@ -4129,14 +4089,41 @@
                   "  pm.expect(b).to.have.property(\"data\");",
                   "});",
                   "",
-                  "pm.test(\"banner ho to shape sahi, warna null\", function () {",
+                  "pm.test(\"banners ho to array, warna null\", function () {",
                   "  const d = pm.response.json().data;",
                   "  if (d === null) {",
                   "    pm.expect(pm.response.json().message).to.eql(\"No active banner found.\");",
                   "  } else {",
-                  "    pm.expect(d._id, \"_id\").to.be.a(\"string\");",
-                  "    pm.expect(d.isActive, \"isActive\").to.eql(true);",
+                  "    pm.expect(d, \"data\").to.be.an(\"array\");",
+                  "    pm.expect(d.length, \"at most 10\").to.be.at.most(10);",
+                  "    pm.expect(d.length, \"at least 1\").to.be.above(0);",
                   "  }",
+                  "});",
+                  "",
+                  "pm.test(\"har item me sirf _id, type, url, redirect\", function () {",
+                  "  const d = pm.response.json().data;",
+                  "  if (d !== null) d.forEach(function (banner) {",
+                  "    pm.expect(Object.keys(banner).sort()).to.eql([\"_id\", \"redirect\", \"type\", \"url\"]);",
+                  "    pm.expect(banner._id, \"_id\").to.be.a(\"string\");",
+                  "    pm.expect([\"IMAGE\", \"VIDEO\", \"GIF\"], \"type\").to.include(banner.type);",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test(\"redirect.type kabhi null nahi — set na ho to NONE\", function () {",
+                  "  const allowed = [\n  \"NONE\",\n  \"CATEGORY\",\n  \"DEAL\",\n  \"BRAND\",\n  \"OFFER\",\n  \"EXTERNAL_URL\"\n];",
+                  "  const d = pm.response.json().data;",
+                  "  if (d !== null) d.forEach(function (banner) {",
+                  "    pm.expect(allowed, \"redirect.type\").to.include(banner.redirect.type);",
+                  "    pm.expect(banner.redirect).to.have.property(\"targetId\");",
+                  "    pm.expect(banner.redirect).to.have.property(\"url\");",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test(\"internal fields public response me nahi hain\", function () {",
+                  "  const raw = pm.response.text();",
+                  "  [\"storage\", \"publicId\", \"createdBy\", \"isDeleted\"].forEach(function (field) {",
+                  "    pm.expect(raw, field + \" leaked\").to.not.include('\"' + field + '\"');",
+                  "  });",
                   "});",
                   ""
                 ]
@@ -14081,7 +14068,7 @@
           ]
         },
         {
-          "name": "Guest — Home banner",
+          "name": "Guest — Home banners",
           "request": {
             "method": "GET",
             "header": [],
@@ -14099,56 +14086,29 @@
             "auth": {
               "type": "noauth"
             },
-            "description": "**Access:** 🌐 **Public — token ki zarurat nahi** (guest browsing)\n\nEk hi banner aata hai (ya `null`). Dated banner pehle, warna undated fallback."
+            "description": "**Access:** 🌐 **Public — token ki zarurat nahi** (guest browsing)\n\nArray, 10 tak (ya `null`). Scheduled banners pehle\n(`startDate` desc), phir evergreen bache hue slots bharte hain.\n\nGuest ko wahi milta hai jo logged-in customer ko — ye endpoint public hai,\nisliye home screen login se pehle bhi bhari dikhti hai."
           },
           "response": [
             {
-              "name": "200 — Active banner fetched successfully.",
+              "name": "200 — guest ko bhi wahi array milta hai",
               "originalRequest": {
                 "method": "GET",
-                "header": [
-                  {
-                    "key": "User-Agent",
-                    "value": "PostmanRuntime/7.39.1"
-                  },
-                  {
-                    "key": "Accept",
-                    "value": "*/*"
-                  },
-                  {
-                    "key": "Cache-Control",
-                    "value": "no-cache"
-                  },
-                  {
-                    "key": "Postman-Token",
-                    "value": "7c6bdbd3-16ca-4c6b-ac20-bf8053a4c951"
-                  },
-                  {
-                    "key": "Host",
-                    "value": "localhost:8080"
-                  },
-                  {
-                    "key": "Accept-Encoding",
-                    "value": "gzip, deflate, br"
-                  },
-                  {
-                    "key": "Connection",
-                    "value": "keep-alive"
-                  }
-                ],
+                "header": [],
                 "url": {
-                  "raw": "http://localhost:8080/trydood/v1/banners/customer/active",
+                  "raw": "{{base_url}}/banners/customer/active",
                   "host": [
                     "{{base_url}}"
                   ],
                   "path": [
-                    "trydood",
-                    "v1",
                     "banners",
                     "customer",
                     "active"
                   ]
-                }
+                },
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "**Access:** 🌐 **Public — token ki zarurat nahi** (guest browsing)\n\nArray, 10 tak (ya `null`). Scheduled banners pehle\n(`startDate` desc), phir evergreen bache hue slots bharte hain.\n\nGuest ko wahi milta hai jo logged-in customer ko — ye endpoint public hai,\nisliye home screen login se pehle bhi bhari dikhti hai."
               },
               "status": "OK",
               "code": 200,
@@ -14160,7 +14120,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"message\": \"Active banner fetched successfully.\",\n  \"data\": {\n    \"redirect\": {\n      \"type\": \"NONE\",\n      \"targetId\": null,\n      \"url\": null\n    },\n    \"image\": {\n      \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\"\n    },\n    \"_id\": \"6a9c77f48615a24768c7be9a\",\n    \"title\": \"postman seed banner\",\n    \"description\": \"seeded for the postman collections\",\n    \"type\": \"IMAGE\",\n    \"startDate\": null,\n    \"endDate\": null,\n    \"createdBy\": \"6a9c77f18615a24768c7be67\",\n    \"updatedBy\": null,\n    \"isActive\": true,\n    \"isDeleted\": false,\n    \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n    \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"message\": \"Active banners fetched successfully.\",\n  \"data\": [\n    {\n      \"redirect\": {\n        \"type\": \"NONE\",\n        \"targetId\": null,\n        \"url\": null\n      },\n      \"_id\": \"6a9c77f48615a24768c7be9a\",\n      \"type\": \"IMAGE\",\n      \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\"\n    }\n  ]\n}"
             }
           ],
           "event": [
@@ -14175,6 +14135,17 @@
                   "",
                   "pm.test(\"HTTP 200\", function () {",
                   "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"array ya null, aur 4-field shape\", function () {",
+                  "  const d = pm.response.json().data;",
+                  "  if (d !== null) {",
+                  "    pm.expect(d, \"data\").to.be.an(\"array\");",
+                  "    pm.expect(d.length).to.be.at.most(10);",
+                  "    d.forEach(function (banner) {",
+                  "      pm.expect(Object.keys(banner).sort()).to.eql([\"_id\", \"redirect\", \"type\", \"url\"]);",
+                  "    });",
+                  "  }",
                   "});",
                   ""
                 ]

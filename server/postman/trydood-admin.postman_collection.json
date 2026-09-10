@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b41e7c92-6d3a-4f18-93b2-trydood-admin",
     "name": "Trydood — Super Admin Panel",
-    "description": "# Super Admin Panel API\n\n**114 requests · 261 assertions**\n\nYe collection un **49 admin endpoints** ko cover karti hai jinke liye\nkahin koi request thi hi nahi. Baaki 35 admin routes\n`trydood-brand-verification`, `trydood-security-changes` aur\n`trydood-subscription` me pehle se hain — unki chauthi copy yahan banane\nka matlab hota ek aur jagah jise badalna padta.\n\n## Chalane se pehle\n\n```bash\nnode postman/generate-admin-collection.js\nnode scripts/seedPostmanFixtures.js --db Trydood2_postman --apply\nMONGO_URL=\"<...>/Trydood2_postman\" ENABLE_JOBS=false npm run dev\n```\n\n## ⚠️ Ye collection likhti hai\n\nCRUD folders apni row **khud banati hain** aur usi ko mitati hain, to\nkuch peeche nahi chhutta. Par money folders seeded rows par chalte hain\naur unhe **aage badha dete hain** — ek settlement approve hokar pay ho\njaata hai. Dobara chalane se pehle seeder chalao, warna doosri baar har\nmoney request `422` degi ek transition ka naam lekar jo usne maanga hi\nnahi tha.",
+    "description": "# Super Admin Panel API\n\n**115 requests · 265 assertions**\n\nYe collection un **49 admin endpoints** ko cover karti hai jinke liye\nkahin koi request thi hi nahi. Baaki 35 admin routes\n`trydood-brand-verification`, `trydood-security-changes` aur\n`trydood-subscription` me pehle se hain — unki chauthi copy yahan banane\nka matlab hota ek aur jagah jise badalna padta.\n\n## Chalane se pehle\n\n```bash\nnode postman/generate-admin-collection.js\nnode scripts/seedPostmanFixtures.js --db Trydood2_postman --apply\nMONGO_URL=\"<...>/Trydood2_postman\" ENABLE_JOBS=false npm run dev\n```\n\n## ⚠️ Ye collection likhti hai\n\nCRUD folders apni row **khud banati hain** aur usi ko mitati hain, to\nkuch peeche nahi chhutta. Par money folders seeded rows par chalte hain\naur unhe **aage badha dete hain** — ek settlement approve hokar pay ho\njaata hai. Dobara chalane se pehle seeder chalao, warna doosri baar har\nmoney request `422` degi ek transition ka naam lekar jo usne maanga hi\nnahi tha.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -2400,7 +2400,7 @@
     },
     {
       "name": "06 — Banners",
-      "description": "Home screen ka banner. Create ke liye multipart chahiye — dekho upar wala note.",
+      "description": "Home screen ke banners. Create ke liye multipart chahiye — dekho upar wala note.\n\n⚠️ Ek waqt pe **10** banners active ho sakte hain, aur limit\ndo pool pe **alag-alag** lagti hai:\n\n| Pool | Kya hai | Limit |\n|---|---|---|\n| Scheduled | `startDate` + `endDate` dono set | kisi bhi ek instant pe 10 |\n| Evergreen | dono `null` | 10 active |\n\nScheduled wali limit ek **peak** hai, overlap ka count nahi — Jan ke 5 aur Feb\nke 5 banners ek Jan–Feb window se overlap karte hain par ek saath sirf 5 hote\nhain, isliye woh refuse nahi hote. `409` aaye to message me wo **timestamp**\nhota hai jahan peak hua.\n\n⚠️ `startDate` aur `endDate` **jodi me** chalte hain. Sirf ek bhejna `422` hai —\npehle allowed tha aur aisa banner kisi ko dikhta hi nahi tha.",
       "item": [
         {
           "name": "Ek Banner",
@@ -2508,6 +2508,19 @@
                   "  pm.expect(b.message, \"message\").to.be.a(\"string\").and.not.empty;",
                   "  pm.expect(b, \"data key\").to.have.property(\"data\");",
                   "});",
+                  "",
+                  "pm.test(\"redirect.type kabhi null nahi — set na ho to NONE\", function () {",
+                  "  const allowed = [\n  \"NONE\",\n  \"CATEGORY\",\n  \"DEAL\",\n  \"BRAND\",\n  \"OFFER\",\n  \"EXTERNAL_URL\"\n];",
+                  "  const d = pm.response.json().data;",
+                  "  pm.expect(allowed, \"redirect.type\").to.include(d.redirect.type);",
+                  "});",
+                  "",
+                  "pm.test(\"dates jodi me hain — dono set ya dono null\", function () {",
+                  "  const d = pm.response.json().data;",
+                  "  const hasStart = d.startDate !== null && d.startDate !== undefined;",
+                  "  const hasEnd = d.endDate !== null && d.endDate !== undefined;",
+                  "  pm.expect(hasStart, \"half-open banner kisi ko nahi dikhta\").to.eql(hasEnd);",
+                  "});",
                   ""
                 ]
               }
@@ -2554,7 +2567,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isAdmin` — admin only\n\nUpdate JSON leta hai — file sirf create par zaroori hai, kyunki tab tak koi image hoti hi nahi."
+            "description": "**Access:** `isAdmin` — admin only\n\nUpdate JSON leta hai — file sirf create par zaroori hai, kyunki tab tak koi image hoti hi nahi.\n\n`isActive: false` banner ka slot turant free kar deta hai — pool bhara ho to\ndelete karne ki jagah yahi sabse aasan tareeka hai.\n\nCapacity check sirf tab chalta hai jab dates ya `isActive` badle, isliye\nsirf `title` badalna pool bhara hone pe bhi kaam karta hai."
           },
           "response": [
             {
@@ -2658,6 +2671,125 @@
           ]
         },
         {
+          "name": "Banner — sirf startDate → 422",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startDate\": \"2026-12-01T00:00:00.000Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/banners/update/{{admin_banner_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "banners",
+                "update",
+                "{{admin_banner_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `isAdmin` — admin only\n\n`startDate` aur `endDate` jodi me chalte hain. Akela bhejna `422` hai,\nkyunki aisa half-open banner na scheduled pool me aata hai na evergreen me —\nsave ho jaata aur kisi ko dikhta nahi."
+          },
+          "response": [
+            {
+              "name": "422 — sirf ek date bheji",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"startDate\": \"2026-12-01T00:00:00.000Z\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/banners/update/{{admin_banner_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "banners",
+                    "update",
+                    "{{admin_banner_id}}"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "**Access:** `isAdmin` — admin only\n\n`startDate` aur `endDate` jodi me chalte hain. Akela bhejna `422` hai,\nkyunki aisa half-open banner na scheduled pool me aata hai na evergreen me —\nsave ho jaata aur kisi ko dikhta nahi."
+              },
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Please provide both startDate and endDate, or neither — a banner with only one of them is never shown.\"\n}"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 422\", function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test(\"message dono dates maangta hai\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.success).to.eql(false);",
+                  "  pm.expect(b.message).to.match(/startDate and endDate/);",
+                  "});",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Banner mitao",
           "request": {
             "method": "DELETE",
@@ -2683,7 +2815,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isAdmin` — admin only\n\nSoft delete — `isDeleted: true`. Seeder har run par nayi throwaway row banata hai, to ye dobara chalane layak rehta hai."
+            "description": "**Access:** `isAdmin` — admin only\n\nSoft delete — `isDeleted: true`. Seeder har run par nayi throwaway row banata hai, to ye dobara chalane layak rehta hai.\n\nDelete `isActive: false` bhi set karta hai, to slot free ho jaata hai.\nCapacity check yahan chalta hi nahi — slot khaali karna kabhi refuse nahi hota."
           },
           "response": [
             {
@@ -2794,7 +2926,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isAdmin` — admin only\n\n### 🔄 Kya badla\n\n`verifyJwtToken` → **`isAdmin`**. Pehle customer bhi app ka home banner bana sakta tha.\n\n---\n\nMultipart request — `type` ke hisaab se file field:\n`IMAGE` → `image` · `VIDEO` → `video` · `GIF` → `gif`\n\nText fields: `title`, `description`, `type`, `redirect[type]`, `redirect[targetId]`, `redirect[url]`, `startDate`, `endDate`, `isActive`\n\n_(security-changes collection se migrate kiya gaya)_"
+            "description": "**Access:** `isAdmin` — admin only\n\n### 🔄 Kya badla\n\n`verifyJwtToken` → **`isAdmin`**. Pehle customer bhi app ka home banner bana sakta tha.\n\n---\n\nMultipart request — `type` ke hisaab se file field:\n`IMAGE` → `image` · `VIDEO` → `video` · `GIF` → `gif`\n\nText fields: `title`, `description`, `type`, `redirect[type]`, `redirect[targetId]`, `redirect[url]`, `startDate`, `endDate`, `isActive`\n\n⚠️ **`startDate` aur `endDate` jodi me chalte hain** — dono bhejein ya dono\nchhod dein. Akela bhejna `422` hai.\n\n⚠️ **10 ki capacity limit hai** aur wo upload se *pehle* check hoti hai, to\n`409` milne pe file Cloudinary pe gayi hi nahi. Dono pool alag ginte hain —\nscheduled (dono dates) aur evergreen (dono `null`) — folder ka description\ndekhein.\n\n_(security-changes collection se migrate kiya gaya)_"
           },
           "response": [
             {
@@ -2930,7 +3062,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isAdmin` — admin only\n\nAdmin ki poori list — customer wali `/banners/customer/active` sirf live banners deti hai, ye draft aur band kiye hue bhi."
+            "description": "**Access:** `isAdmin` — admin only\n\nAdmin ki poori list — customer wali `/banners/customer/active` sirf live\nbanners deti hai (10 tak), ye draft aur band kiye hue bhi deti hai.\n\n`sortBy=startDate` scheduling calendar ke liye hai: 10 slots kis din bharte\nhain ye yahin se dikhta hai, aur `409` milne pe sabse pehle yahi dekhna hai."
           },
           "response": [
             {
@@ -10274,7 +10406,7 @@
             "auth": {
               "type": "noauth"
             },
-            "description": "**Access:** 🌐 **Public — token ki zarurat nahi** (guest browsing)\n\n⚠️ **Poori settlements module me ekmatra public route.** Koi bearer\nnahi — path ka token hi credential hai.\n\nWahi token vendor ke email/WhatsApp me jaane wale statement link me hota\nhai. Isliye ye us aadmi ke liye kaam karta hai jo abhi login nahi hai —\naur isiliye token ka guess na hona hi poori suraksha hai.\n\n⚠️ Iska matlab ye bhi hai ki galat token par `404` aata hai, `401` nahi:\n`401` ye bata deta ki token maujood hai par aapka nahi."
+            "description": "**Access:** 🌐 **Public — token ki zarurat nahi** (guest browsing)\n\n⚠️ **Public document route.** Koi bearer\nnahi — path ka token hi credential hai.\n\nWahi token vendor ke email/WhatsApp me jaane wale statement link me hota\nhai. Isliye ye us aadmi ke liye kaam karta hai jo abhi login nahi hai —\naur isiliye token ka guess na hona hi poori suraksha hai.\n\n⚠️ Iska matlab ye bhi hai ki galat token par `404` aata hai, `401` nahi:\n`401` ye bata deta ki token maujood hai par aapka nahi."
           },
           "response": [
             {

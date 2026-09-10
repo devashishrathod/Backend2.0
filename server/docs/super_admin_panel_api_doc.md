@@ -299,7 +299,7 @@ Ye endpoints scoped nahi hain — `brandId` sirf ek **query filter** hai. Admin 
 | `401` | Unauthorized | Token missing/expired, galat current password |
 | `403` | Forbidden | Role not permitted, deactivated account |
 | `404` | Not Found | Resource nahi mila **ya empty list** |
-| `409` | Conflict | Duplicate (promo code, banner overlap, section title), concurrent modification |
+| `409` | Conflict | Duplicate (promo code, section title), banner capacity full, concurrent modification |
 | `422` | Unprocessable Entity | Joi validation, invalid ObjectId, **`brandId` missing for admin** |
 | `500` | Server Error | Unexpected |
 | `503` | Service Unavailable | Razorpay down |
@@ -2795,13 +2795,43 @@ Poori request/response detail vendor doc me hai (identical behaviour); admin ke 
 
 App-level home banners — **brand se linked nahi**, poore customer app pe dikhte hain.
 
-⚠️ Global middleware: `router.use(verifyJwtToken)` — **koi `isAdmin` gate nahi** ([Appendix B](#appendix-b--known-issues))
+Har route pe `isAdmin` lagta hai. (Pehle poori file sirf `verifyJwtToken` ke
+peeche thi, yaani ek customer ka apna token home screen ke banners create, edit
+ya delete karne ke liye kaafi tha — [Appendix B](#appendix-b--known-issues).)
+
+> ### 🔴 Ek nahi, **10** banners — aur do alag pool
+>
+> Pehle ek waqt pe sirf **ek** banner active ho sakta tha aur customer ko wahi
+> ek dikhta tha. Ab **10 tak** dikhte hain, aur limit do pool pe alag-alag
+> lagti hai:
+>
+> | Pool | Kya hai | Limit |
+> |---|---|---|
+> | **Scheduled** | `startDate` + `endDate` dono set | Kisi bhi **ek instant** pe max 10 |
+> | **Evergreen** | `startDate` aur `endDate` dono `null` | Max 10 active |
+>
+> Customer ko scheduled pehle jaate hain (`startDate` desc), phir evergreen
+> bache hue slots bharte hain, total 10 pe cut — [customer doc
+> #13](./customer_mobile_api_doc.md).
+>
+> **Limit ek peak hai, overlap ka count nahi.** Janu me chalne wale 5 banners
+> aur Feb me chalne wale 5 — dono ek Jan–Feb window se overlap karte hain, par
+> ek saath sirf 5 hi screen pe hote hain, isliye 11th banner allowed hai. Server
+> boundaries pe sweep karke asli peak nikaalta hai, aur refuse karte waqt **wo
+> exact timestamp bhi batata hai** jahan peak hua — taaki admin ko apni dates me
+> se kaunsi hilani hai ye guess na karna pade.
+>
+> ⚠️ **`startDate` aur `endDate` ab dono chahiye, ya dono nahi.** Sirf ek bhejna
+> `422` hai. Pehle allowed tha aur us banner ko **koi kabhi nahi dekhta tha**:
+> customer query scheduled pool ke liye dono dates maangti hai aur evergreen pool
+> ke liye dono `null` — half-open banner dono se bahar gir jaata tha. Admin ko
+> `201` milta tha aur home screen jaisi thi waisi rehti thi.
 
 ## 46. POST /banners/create
 
 **Multipart** — type ke hisaab se file field.
 
-**Access:** Intended: ADMIN · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: ADMIN · Enforced: **ADMIN**
 
 ### Body (multipart)
 | Field | Type | Required | Default | Validation |
@@ -2811,8 +2841,8 @@ App-level home banners — **brand se linked nahi**, poore customer app pe dikht
 | *(file)* | file | ✅ | – | **`type` ke hisaab se field name** — niche table |
 | `description` | string | ❌ | – | Max 1000, `""` allowed |
 | `redirect` | object | ❌ | – | JSON string bhi chalta hai |
-| `startDate` | ISO date | ❌ | `null` | |
-| `endDate` | ISO date | ❌ | `null` | **`startDate` se baad** |
+| `startDate` | ISO date | ⚠️ | `null` | **`endDate` ke saath hi** — akela bhejna `422` |
+| `endDate` | ISO date | ⚠️ | `null` | **`startDate` ke saath hi**, aur usse baad ka |
 | `isActive` | boolean | ❌ | `true` | |
 
 **File field naam:**
@@ -2868,8 +2898,9 @@ isActive:    true
 ### Errors
 | Status | Message | Kab |
 |---|---|---|
-| `409` | `An active banner without a date range already exists.` | ⚠️ Evergreen banner already hai |
-| `409` | `Already active banner in this date range.` | ⚠️ Date overlap |
+| `409` | `Only 10 active banners without a date range are allowed. Deactivate one first.` | Evergreen pool bhar chuka |
+| `409` | `Only 10 banners can be active at once, and 10 already are on <ISO timestamp>. Shift this banner's dates or deactivate one of those.` | Scheduled pool us instant pe bhara hua |
+| `422` | `Please provide both startDate and endDate, or neither — a banner with only one of them is never shown.` | Sirf ek date bheji |
 | `422` | `Please upload a image file for this banner type.` | File field naam galat/missing |
 | `422` | `Title is required.` | |
 | `422` | `Banner type is required.` / `Type must be one of: IMAGE, VIDEO, GIF.` | |
@@ -2881,27 +2912,36 @@ isActive:    true
 
 ### ⚠️ Edge cases & notes
 
-**1. ⚠️ Overlap check hai — ek waqt me ek hi active banner.** Do rules:
-- **Evergreen** (`startDate`/`endDate` dono `null`): sirf **ek** ho sakta hai active
-- **Dated**: overlapping date range me doosra active nahi ban sakta
+**1. Capacity check upload se *pehle* chalta hai.** 409 milne pe file Cloudinary
+pe gayi hi nahi — jo file reject honi hai uske liye paisa dena galat kram hai.
 
-Naya banner banane se pehle purane ko `isActive: false` karein ya date range adjust karein.
+**2. 409 ka timestamp hi asli information hai.** Scheduled pool wala message
+batata hai ki peak **kis instant pe** hua. Us din ke aas-paas apni dates hilaiye,
+ya us window ke kisi banner ko `isActive: false` kar dijiye (#47) — delete karne
+ki zarurat nahi.
 
-**2. Customer ko sirf ek banner dikhta hai** (`GET /banners/customer/active`) — pehle date-range wala, warna evergreen fallback, warna `null`.
+**3. Dono bounds inclusive hain.** 30 Sept pe khatam hone wala banner aur 30
+Sept se shuru hone wala banner us din **ek saath** count hote hain, back-to-back
+nahi. Ek din ka gap chhod dijiye agar dono ko alag rakhna hai.
 
-**3. File field ka naam `type` se match karna chahiye** — `type: "VIDEO"` ke saath `image` field bhejoge to `422`.
+**4. `isActive: false` ke saath create karne pe koi capacity check nahi hota** —
+draft banaya ja sakta hai. Check tab lagega jab #47 se use activate karenge.
 
-**4. Create fail hone pe uploaded media delete ho jaata hai** (rollback).
+**5. File field ka naam `type` se match karna chahiye** — `type: "VIDEO"` ke saath `image` field bhejoge to `422`.
 
-**5. `redirect` JSON string ho sakta hai** — multipart me object bhejna mushkil hai, validator parse kar leta hai.
+**6. Create fail hone pe uploaded media delete ho jaata hai** (rollback).
 
-**6. Legacy lowercase types handle hote hain** — model me setter hai jo `"image"` ko `"IMAGE"` bana deta hai.
+**7. `redirect` JSON string ho sakta hai** — multipart me object bhejna mushkil
+hai, validator parse kar leta hai. Na bhejein to `redirect.type` **`NONE`** set
+hota hai (pehle `null` set hota tha, jo enum ki koi value hi nahi thi).
+
+**8. Legacy lowercase types handle hote hain** — model me setter hai jo `"image"` ko `"IMAGE"` bana deta hai.
 
 ---
 
 ## 47. PUT /banners/update/:id
 
-**Access:** Intended: ADMIN · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: ADMIN · Enforced: **ADMIN**
 
 ### Path Params
 | Param | Type | Required |
@@ -2915,7 +2955,7 @@ Naya banner banane se pehle purane ko `isActive: false` karein ya date range adj
 | `description` | string | Max 1000, `""` allowed |
 | `type` | string | `IMAGE` \| `VIDEO` \| `GIF` — ⚠️ badalne pe nayi file chahiye |
 | `redirect` | object | Create jaisa |
-| `startDate` · `endDate` | ISO date | `null` allowed |
+| `startDate` · `endDate` | ISO date | ⚠️ **jodi me** — dono bhejein ya dono `null`, akela `422` |
 | `isActive` | boolean | |
 | *(file)* | file | `type` ke hisaab se field name |
 
@@ -2936,25 +2976,44 @@ Naya banner banane se pehle purane ko `isActive: false` karein ya date range adj
 | Status | Message | Kab |
 |---|---|---|
 | `404` | `Banner not found.` | |
-| `409` | `An active banner without a date range already exists.` | Activate karne pe overlap |
-| `409` | `Already active banner in this date range.` | |
+| `409` | `Only 10 active banners without a date range are allowed. Deactivate one first.` | Activate karne pe evergreen pool bhara |
+| `409` | `Only 10 banners can be active at once, and 10 already are on <ISO timestamp>.` | Activate/re-schedule karne pe scheduled pool bhara |
+| `422` | `Please provide both startDate and endDate, or clear both — a banner with only one of them is never shown.` | Merge ke baad sirf ek date bachi |
+| `422` | `Please provide both startDate and endDate, or neither — …` | Body me hi sirf ek date bheji |
 | `422` | `Please upload a <field> file for this banner type.` | Type badla par file nahi |
 | `422` | `End date must be after start date.` | |
 | `422` | *(min-1 message)* | Body khali |
 
 ### ⚠️ Notes
 
-**1. `isActive: false` sabse aasan tareeka hai banner hatane ka** — delete karne ki zarurat nahi, aur overlap bhi free ho jaata hai.
+**1. `isActive: false` sabse aasan tareeka hai banner hatane ka** — delete karne
+ki zarurat nahi, aur uska slot turant free ho jaata hai.
 
-**2. `type` badalne pe nayi file mandatory hai** — purana media field khali ho jaayega.
+**2. Capacity check sirf tab chalta hai jab dates ya `isActive` badle.** Sirf
+`title` ya file update karne pe pool nahi ginha jaata, isliye pool bhara hone pe
+bhi ye edits kaam karte hain.
 
-**3. Media replace hone pe purana Cloudinary se delete hota hai.**
+**3. Banner khud ko count nahi karta** — pool me 10 me se 10 slot bhare hain aur
+unme se ek ko edit kar rahe hain, to `409` nahi aayega. Sirf baaki 9 gine jaate
+hain.
+
+**4. ⚠️ Do date `422` hain, aur dono zaroori hain.** Validator sirf **body** dekh
+sakta hai. Agar aap ek scheduled banner pe sirf `{"startDate": null}` bhejein to
+body me ek hi date hai hi nahi — check pass ho jaata, aur banner `endDate` ke
+saath half-open bach jaata: na scheduled pool me, na evergreen me, yaani kisi ko
+nahi dikhta. Isliye service **merge ke baad** dubara check karti hai. Purane
+half-open documents bhi isi tarah pakde jaate hain — unhe theek karne ke liye
+dono dates bhejein, ya dono `null`.
+
+**5. `type` badalne pe nayi file mandatory hai** — purana media field khali ho jaayega.
+
+**6. Media replace hone pe purana Cloudinary se delete hota hai.**
 
 ---
 
 ## 48. GET /banners/get-all
 
-**Access:** Intended: ADMIN · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: ADMIN · Enforced: **ADMIN**
 
 ### Query Params
 | Param | Type | Required | Default | Validation |
@@ -3013,7 +3072,7 @@ GET /banners/get-all?isActive=true&sortBy=startDate&sortOrder=desc
 
 ## 49. GET /banners/get/:id
 
-**Access:** Intended: ADMIN · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: ADMIN · Enforced: **ADMIN**
 
 ### Path Params
 | Param | Type | Required |
@@ -3050,7 +3109,7 @@ GET /banners/get-all?isActive=true&sortBy=startDate&sortOrder=desc
 
 ## 50. DELETE /banners/delete/:id
 
-**Access:** Intended: ADMIN · Enforced: **Any authenticated** ⚠️
+**Access:** Intended: ADMIN · Enforced: **ADMIN**
 
 ### Path Params
 | Param | Type | Required |
@@ -3068,14 +3127,22 @@ GET /banners/get-all?isActive=true&sortBy=startDate&sortOrder=desc
 | `404` | `Banner not found.` |
 | `422` | `Invalid banner ID.` |
 
-### ⚠️ Note
-Soft delete hai. **Zyada tar cases me `isActive: false` (#47) behtar hai** — banner history rehti hai aur wapas la sakte hain.
+### ⚠️ Notes
+
+**1. Soft delete hai. Zyada tar cases me `isActive: false` (#47) behtar hai** —
+banner history rehti hai aur wapas la sakte hain. Dono ka slot pe ek hi asar
+hota hai: delete `isActive: false` bhi set karta hai, isliye capacity dono
+tarike se free hoti hai.
+
+**2. Delete pe capacity check nahi chalta** — slot khaali karna kabhi refuse
+nahi hota.
 
 ---
 
 # Promotional Ticker APIs
 
-Home screen ka scrolling ticker strip. Banner se different — **multiple tickers ek saath dikhte hain**, `displayOrder` se sorted.
+Home screen ka scrolling ticker strip. Tickers `displayOrder` se sorted aate
+hain aur unpe koi count limit nahi hai — banners pe 10 ki limit hai (#46).
 
 ⚠️ Global middleware: `router.use(verifyJwtToken)` — **koi `isAdmin` gate nahi**
 
@@ -3140,7 +3207,7 @@ endDate:      2026-09-30T23:59:59.000Z
 
 ### ⚠️ Notes
 
-**1. ⚠️ Banner ki tarah overlap check **nahi** hai** — jitne chaho active tickers rakh sakte hain. Ye by design hai, ticker strip me multiple chalte hain.
+**1. ⚠️ Banner ki tarah 10 ka capacity check **nahi** hai** — jitne chaho active tickers rakh sakte hain. Ye by design hai: ticker strip scroll karti hai, banner carousel ki tarah fixed slots nahi hain.
 
 **2. `displayOrder` se customer ko order milta hai** (ascending). Duplicate values allowed hain par order unpredictable ho jaayega — unique rakhein.
 
