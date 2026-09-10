@@ -29,6 +29,7 @@ exports.updateBrand = async (brandId, payload = {}, logo = null) => {
       const {
         brandName,
         email,
+        mobile,
         description,
         joinedDate,
         subCategoryId,
@@ -37,7 +38,8 @@ exports.updateBrand = async (brandId, payload = {}, logo = null) => {
 
       if (brandName) brand.brandName = brandName.trim().toLowerCase();
       if (email) brand.email = email;
-      if (description) brand.description = description
+      if (mobile) brand.mobile = mobile;
+      if (description) brand.description = description;
       if (joinedDate) brand.joinedDate = new Date(joinedDate);
       // `isActive` is deliberately not settable here. Switching a brand off is a
       // moderation action that has to be recorded and notified, so it lives on

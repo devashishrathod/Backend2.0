@@ -773,10 +773,11 @@ exports.buildCustomerVoucherDetailPipeline = ({
               isDeleted: false,
             },
           },
-
           {
             $project: {
               _id: 1,
+              whatsappNumber: 1,
+              mobile: 1,
 
               uniqueId: 1,
 
@@ -1134,6 +1135,8 @@ exports.mapCustomerVoucherOutlet = (outlet) => {
   if (!outlet) return null;
   return {
     id: outlet._id,
+    mobile: outlet.mobile || null,
+    whatsappNumber: outlet.whatsappNumber || null,
     uniqueId: outlet.uniqueId || null,
     storeId: outlet.storeId || null,
     logo: outlet.logo || null,
