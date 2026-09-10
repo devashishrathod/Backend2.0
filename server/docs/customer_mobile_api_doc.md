@@ -263,7 +263,7 @@ Customer mobile app 10 functional areas cover karta hai:
 | User Profile | 3 | Profile fetch, update, delete |
 | Location | 2 | Customer ka single saved address |
 | Master Data | 4 | Categories + Sub-categories |
-| Home Screen | 2 | Active banner + promotional tickers |
+| Home Screen | 2 | Active banners (10 tak) + promotional tickers |
 | Vouchers | 3 | Nearby vouchers list, detail, discount preview |
 | Brand Profile | 6 | Brand list, brand detail, showcase gallery, video clips, features |
 | Engagement | 4 | Follow / Avoid brand + unki lists |
@@ -341,7 +341,7 @@ Ye ginti [`postman/lib/routeGates.js`](../postman/lib/routeGates.js) se nikli ha
 
 | Screen | Endpoints |
 |---|---|
-| **Home** | Banner · tickers · categories · sub-categories |
+| **Home** | Banners (10 tak) · tickers · categories · sub-categories |
 | **Search** 🆕 | Global search · popular searches. Poora search box guest ke liye khula hai |
 | **Voucher feed** | Feed · voucher detail · discount preview |
 | **Brand** | Directory · profile · showcase gallery · video clips · features |
@@ -530,7 +530,7 @@ Saare enum values **UPPERCASE** hain (payment ke alawa).
 
 ### BANNER_TYPE
 `IMAGE` · `VIDEO` · `GIF`
-> Banner ka media field type ke hisaab se aata hai: `IMAGE` → `image`, `VIDEO` → `video`, `GIF` → `gif`
+> `GET /banners/customer/active` (#13) pe `url` **flat** aata hai — `type` sirf ye batata hai ki use image view, video player ya animated view me render karna hai. Voucher banner (`bannerType`/`bannerUrl`) bhi yahi enum use karta hai.
 
 ### BANNER_REDIRECT_TYPE / TICKER_REDIRECT_TYPE
 `NONE` · `CATEGORY` · `DEAL` · `BRAND` · `OFFER` · `EXTERNAL_URL`
@@ -1668,48 +1668,72 @@ GET /subCategories/getAll?categoryId=68f1a2b3c4d5e6f7a8b9c0e1&isActive=true&limi
 
 ## 13. GET /banners/customer/active
 
-Home screen ka **ek** active banner. App-level banner hai (kisi brand ka nahi).
+Home screen ke active banners — **ek array, zyada se zyada 10**. App-level banners hain (kisi brand ke nahi).
+
+> ### 🔴 Breaking change — pehle ye ek object deta tha
+>
+> Pehle `data` ek **poora banner document** hota tha (ya `null`). Ab `data` ek
+> **array** hai jisme sirf 4 fields hain, aur banner ki jagah **10 tak** aa
+> sakte hain.
+>
+> | | Pehle | Ab |
+> |---|---|---|
+> | `data` | ek object, ya `null` | **array** (1–10 items), ya `null` |
+> | Fields | poora document — `title`, `description`, `startDate`, `endDate`, `image.storage`, `createdBy`, timestamps | sirf `_id`, `type`, `url`, `redirect` |
+> | Media | `image` / `video` / `gif` object, `type` dekh kar padhna padta tha | **flat `url`** — `type` sirf render decide karne ke liye |
+>
+> ⚠️ `data === null` wala check **waisa hi rehta hai** — khaali case abhi bhi
+> `null` deta hai, `[]` nahi. Par jab data aata hai to app ko ab **loop** karna
+> hai, ek object render nahi karna. Purana code `data.image.url` padhega to
+> `undefined` milega — ab `data[i].url` hai.
 
 **Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
 
 ### Headers
 | Header | Value | Required |
 |---|---|---|
-| `Authorization` | `Bearer <token>` | ✅ |
+| `Authorization` | `Bearer <token>` | ❌ Optional |
 
 ### Query Params
 Koi nahi.
 
-### Success — `200` (banner mila)
+### Success — `200` (banners mile)
 ```json
 {
   "success": true,
-  "message": "Active banner fetched successfully.",
-  "data": {
-    "_id": "68f1a2b3c4d5e6f7a8b9c1a1",
-    "title": "monsoon mega sale",
-    "description": "up to 50% off at partner outlets",
-    "type": "IMAGE",
-    "redirect": {
-      "type": "CATEGORY",
-      "targetId": "68f1a2b3c4d5e6f7a8b9c0e1",
-      "url": null
+  "message": "Active banners fetched successfully.",
+  "data": [
+    {
+      "redirect": {
+        "type": "CATEGORY",
+        "targetId": "68f1a2b3c4d5e6f7a8b9c0e1",
+        "url": null
+      },
+      "_id": "68f1a2b3c4d5e6f7a8b9c1a1",
+      "type": "IMAGE",
+      "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/monsoon.jpg"
     },
-    "startDate": "2026-08-01T00:00:00.000Z",
-    "endDate": "2026-08-31T23:59:59.000Z",
-    "image": {
-      "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/monsoon.jpg",
-      "storage": {
-        "provider": "CLOUDINARY",
-        "publicId": "banners/monsoon"
-      }
+    {
+      "redirect": {
+        "type": "NONE",
+        "targetId": null,
+        "url": null
+      },
+      "_id": "68f1a2b3c4d5e6f7a8b9c1a2",
+      "type": "VIDEO",
+      "url": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/banners/teaser.mp4"
     },
-    "isActive": true,
-    "isDeleted": false,
-    "createdBy": "68f1a2b3c4d5e6f7a8b9c000",
-    "createdAt": "2026-07-28T10:00:00.000Z",
-    "updatedAt": "2026-07-28T10:00:00.000Z"
-  }
+    {
+      "redirect": {
+        "type": "EXTERNAL_URL",
+        "targetId": null,
+        "url": "https://trydood.com/offers"
+      },
+      "_id": "68f1a2b3c4d5e6f7a8b9c1a3",
+      "type": "GIF",
+      "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/flash.gif"
+    }
+  ]
 }
 ```
 
@@ -1729,17 +1753,36 @@ Sirf [common auth errors](#common-errors).
 
 ### ⚠️ Edge cases & notes
 
-**1. Sirf ek banner aata hai, array nahi.** Selection logic:
-1. Pehle wo banner jiska aaj ka date `startDate`–`endDate` range me hai (latest `startDate` wala jeetega)
-2. Nahi mila to wo banner jisme `startDate` aur `endDate` dono `null` hain — "evergreen" banner (latest `createdAt`)
-3. Kuch bhi nahi mila to `null`
+**1. Zyada se zyada 10 banners, aur order matter karta hai.** Do pool hain:
 
-**2. Media field `type` pe depend karta hai.** Response me sirf ek media field hoga:
-- `type: "IMAGE"` → `image.url`
-- `type: "VIDEO"` → `video.url`
-- `type: "GIF"` → `gif.url`
+| Pool | Kya hai | Order |
+|---|---|---|
+| **Scheduled** | `startDate`–`endDate` range me aaj ki date aati hai | `startDate` **descending** — sabse naya schedule pehle |
+| **Evergreen** | `startDate` aur `endDate` dono `null` — hamesha chalne wala fallback | `createdAt` descending |
 
-Frontend ko `type` dekh kar right field padhna hai. Baaki fields absent ya empty honge.
+Scheduled pehle slots lete hain, phir evergreen bache hue slots bharte hain,
+total 10 pe cut. Yaani:
+
+- 3 scheduled live hain → array me 3 scheduled + 7 evergreen = **10**
+- 12 scheduled live hain → sirf **10 scheduled**, evergreen bilkul nahi aayenge
+- 0 scheduled → **10 tak evergreen**
+- kuch bhi nahi → `data: null`
+
+⚠️ Array ki length **10 se kam bhi ho sakti hai** — 2 banners hain to 2 hi
+aayenge. App ko fixed 10 slots assume nahi karne hain.
+
+**2. `url` flat hai — `type` sirf render ke liye hai.** Backend `type` dekh kar
+sahi media field (`image`/`video`/`gif`) khud resolve karta hai aur uska `url`
+bhejta hai. App ko ab field choose nahi karni:
+
+| `type` | Kaise render karein |
+|---|---|
+| `IMAGE` | image view |
+| `VIDEO` | video player (autoplay/muted) |
+| `GIF` | animated image view |
+
+⚠️ `url` theoretically `null` ho sakta hai agar banner ka media missing ho —
+render se pehle null-check kar lein, blank slot dikhane se behtar hai skip karna.
 
 **3. `redirect` handling:**
 | `redirect.type` | Kya karna |
@@ -1750,11 +1793,19 @@ Frontend ko `type` dekh kar right field padhna hai. Baaki fields absent ya empty
 | `DEAL` / `OFFER` | `targetId` = voucherId → voucher detail |
 | `EXTERNAL_URL` | `url` → browser / webview |
 
-⚠️ `redirect` object hamesha aata hai par uske fields `null` ho sakte hain — navigate karne se pehle `targetId`/`url` null-check karein.
+⚠️ `redirect` object hamesha aata hai aur `redirect.type` hamesha koi valid enum
+value hoti hai — **kabhi `null` nahi**, redirect set na ho to `NONE`. `targetId`
+aur `url` `null` ho sakte hain, navigate karne se pehle check karein.
 
-**4. `storage` field internal hai** (Cloudinary publicId) — frontend ko sirf `url` chahiye. Ye field customer response se strip nahi hota.
+**4. `storage` ab customer ko nahi jaata.** Cloudinary `publicId` ek internal
+detail hai — public endpoint pe usme se kuch nahi bhejte. `title`,
+`description`, dates, `createdBy` aur timestamps bhi hata diye gaye hain: home
+screen har cold start pe ye call karti hai aur in fields ka koi renderer nahi
+tha.
 
-**5. Legacy lowercase types handle hote hain** — model me setter hai jo purane `"image"` ko `"IMAGE"` bana deta hai. Response me hamesha uppercase aayega.
+**5. Legacy lowercase types handle hote hain** — purane documents jinme `"image"`
+likha hai, response me `"IMAGE"` ban kar aate hain aur unka `url` bhi sahi
+resolve hota hai.
 
 ---
 
@@ -5858,7 +5909,7 @@ Doc padhne ke baad ye points dhyaan me rakhein:
 **Display**
 - [ ] **Sab text lowercase** aata hai DB se — display pe capitalize karein
 - [ ] **`bestOffer` real discount nahi hai** — actual ke liye preview endpoint (#17)
-- [ ] **Banner ka media `type` pe depend karta hai** — `image`/`video`/`gif`
+- [ ] **Banners ab array hain, 10 tak** (#13) — `data` object nahi, loop karein; `url` flat hai aur `type` sirf renderer choose karta hai
 - [ ] **`redirect.targetId`/`url` null ho sakte hain** — navigate se pehle check
 - [ ] **HTML content** terms/privacy `description` me — WebView use karein
 
