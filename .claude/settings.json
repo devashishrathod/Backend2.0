@@ -1,19 +1,4 @@
 {
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/verify-api-sync.js\"",
-            "timeout": 120,
-            "statusMessage": "Checking routes/docs/Postman are in sync…"
-          }
-        ]
-      }
-    ]
-  },
   "permissions": {
     "allow": [
       "Bash(node -e ' *)",
@@ -227,11 +212,58 @@
       "Bash(grep -nE \"^\\\\s*\\(const|//|\\\\*|[a-zA-Z]+:\\)\" jobs/index.js)",
       "Bash(awk -F: '$1>7300')",
       "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/f08cb959-50a7-4617-bfc2-c543c2c7a6f6/scratchpad/ovl.js\")",
-      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/f08cb959-50a7-4617-bfc2-c543c2c7a6f6/scratchpad/patchCollections.js\")"
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/f08cb959-50a7-4617-bfc2-c543c2c7a6f6/scratchpad/patchCollections.js\")",
+      "Bash(node -e \"const p=require\\('./package.json'\\);console.log\\(JSON.stringify\\(p.scripts,null,1\\)\\);console.log\\('jest:',JSON.stringify\\(p.jest||null\\)\\)\")",
+      "Bash(node -e \"const T=require\\('2factor'\\); console.log\\('2factor loads OK:', typeof T\\)\")",
+      "Bash(grep -rn \"require\\(\\\\`\\\\|require\\(path\\\\.\\\\|require\\(dir\\\\|readdirSync\" --include=\"*.js\" .)",
+      "Bash(node -e \"const l=require\\('./package-lock.json'\\);for\\(const [k,v] of Object.entries\\(l.packages||{}\\)\\){const d={...\\(v.dependencies||{}\\),...\\(v.devDependencies||{}\\),...\\(v.peerDependencies||{}\\)};if\\(d['2factor']\\)console.log\\('dependent:',k||'<root>'\\);}\")",
+      "Bash(grep -v '^\\\\./\\\\.claude/settings')",
+      "Bash(grep -rn --hidden -i \"nodemon\" . --exclude-dir=node_modules --exclude=package-lock.json)",
+      "Bash(echo \"--- exit $? ---\")",
+      "Bash(grep -v \"^\\\\.\\\\./\\\\.git/\")",
+      "Bash(grep -rn --hidden -i \"nodemon\" . --exclude-dir=node_modules --exclude-dir=.git --exclude=package-lock.json)",
+      "Bash(rg -rn \"twofactor\" --glob '*.js' .)",
+      "Bash(echo \"--- exit: $? \\(no hits above = none\\) ---\")",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./package.json'\\).scripts,null,2\\)\\)\")",
+      "Bash(grep -rn \"readFileSync\\(.*\\\\.env\\\\|\\\\\"\\\\\\\\.env\\\\\"\\\\|'\\\\\\\\.env'\\\\|\\\\\\\\.env\\\\\\\\.example\" --include=*.js --exclude-dir=node_modules .)",
+      "Bash(node -e \"try{require\\('./helpers/otps/twofactor.js'\\);console.log\\('LOADS OK, exports:',Object.keys\\(require\\('./helpers/otps/twofactor.js'\\)\\)\\)}catch\\(e\\){console.log\\('LOAD FAILURE:',e.message\\)}\")",
+      "Bash(grep -rIn --exclude-dir=node_modules --exclude-dir=.git -i -E \"require\\\\\\(.{0,80}twofactor|from ['\\\\\"].{0,80}twofactor\" .)",
+      "Bash(grep -rn --exclude-dir=node_modules --exclude-dir=.git \"helpers/otps\\\\|helpers\\\\\\\\\\\\\\\\otps\" --include=*.js .)",
+      "Bash(node -e \"const p=require\\('./package.json'\\);console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\);console.log\\('DEPS 2factor:',p.dependencies&&p.dependencies['2factor']\\)\")",
+      "Bash(grep -rn --exclude-dir=node_modules --exclude-dir=.git --exclude=package-lock.json -iE \"otps/twofactor|require\\\\\\(\\\\s*[\\\\\"'\\\\`]2factor|\\\\\"2factor\\\\\"|'2factor'\" .)",
+      "Bash(echo \"---EXIT:$?---\")",
+      "Bash(grep -rn --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.code-review-graph -E \"require\\\\\\(\\([^\\\\\"'\\\\\\)]|\\\\`\\)\" .)",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./server/package.json'\\).scripts,null,2\\)\\)\")",
+      "Bash(grep -v \"require\\(\\\\`\")",
+      "Bash(grep -rIn --exclude-dir=node_modules --exclude-dir=.git -E \"require\\\\\\(\\\\s*[\\\\`]|require\\\\\\(\\\\s*[A-Za-z_$][A-Za-z0-9_$.]*\\\\s*\\\\\\)|require\\\\\\(\\\\s*['\\\\\"][^'\\\\\"]*['\\\\\"]\\\\s*\\\\+|require\\\\\\(\\\\s*path\\\\.\\(join|resolve\\)\" .)",
+      "Bash(grep -rn --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.code-review-graph -E \"['\\\\\"\\\\`][^'\\\\\"\\\\`]*twofactor\" .)",
+      "Bash(grep -rIn --exclude-dir=node_modules --exclude-dir=.git -E \"['\\\\\"\\\\`][^'\\\\\"\\\\`]*suite[^'\\\\\"\\\\`]*\\\\.\\(log|txt|out\\)\" .)",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./package.json'\\).scripts,null,2\\)\\); console.log\\('name:', require\\('./package.json'\\).name\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(grep -rn 'require\\(\"\\\\.\\\\./\\\\.\\\\./services/transactions\"\\)\\\\|require\\(\"\\\\.\\\\./services/transactions\"\\)\\\\|require\\(\"\\\\./services/transactions\"\\)' --include=*.js . --exclude-dir=node_modules)",
+      "Bash(awk 'NR>=31{print}' constants.js)",
+      "Bash(grep -nP \"^\\\\s{2,4}\\(status|archivedAt|isImmutable|isActive|isDeleted|versionNumber|attachedSubBrandsCount|expiredAt|endAt\\)\" models/VoucherVersion.js)",
+      "Bash(python \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/92c95983-293a-44a5-872a-2cb712c95651/scratchpad/barrels.py\")",
+      "Bash(python \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/92c95983-293a-44a5-872a-2cb712c95651/scratchpad/cycles.py\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\acar\\OneDrive\\Documents\\GitHub\\Backend2.0\\server",
       "C:\\Users\\acar\\AppData\\Local\\Temp\\claude\\c--Users-acar-OneDrive-Documents-GitHub-Backend2-0\\3f5cbb04-9cde-4b99-a692-f5a1c6f1304d"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/verify-api-sync.js\"",
+            "timeout": 120,
+            "statusMessage": "Checking routes/docs/Postman are in sync…"
+          }
+        ]
+      }
     ]
   }
 }
