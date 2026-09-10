@@ -59,11 +59,35 @@ const jsonTolerantObject = (objectSchema, { label = "Field" } = {}) =>
     return validated;
   });
 
+/**
+ * A banner is either scheduled (both dates) or evergreen (neither) — never
+ * half-open.
+ *
+ * ⚠️ A single bound used to be accepted and then rendered to nobody: the
+ * customer query asks for both dates on a scheduled banner and for both to be
+ * null on an evergreen one, so a banner carrying only a `startDate` fell out of
+ * both pools. The admin got a `201` and the home screen stayed exactly as it
+ * was, with nothing anywhere reporting a fault.
+ *
+ * Checked on the **value**, not on whether the key was sent, so `endDate: null`
+ * alongside a real `startDate` is refused too. `updateBanner` repeats the check
+ * against the merged document, which is the only place a half-open pair can
+ * still form.
+ */
 const withDateRangeCheck = (schema) =>
   schema.custom((value, helpers) => {
+    const hasStart = value.startDate !== undefined && value.startDate !== null;
+    const hasEnd = value.endDate !== undefined && value.endDate !== null;
+
+    if (hasStart !== hasEnd) {
+      return helpers.message({
+        custom:
+          "Please provide both startDate and endDate, or neither — a banner with only one of them is never shown.",
+      });
+    }
     if (
-      value.startDate &&
-      value.endDate &&
+      hasStart &&
+      hasEnd &&
       new Date(value.endDate) <= new Date(value.startDate)
     ) {
       return helpers.message({ custom: "End date must be after start date." });

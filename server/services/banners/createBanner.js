@@ -4,7 +4,7 @@ const { BANNER_MEDIA_FIELD } = require("../../constants/banner");
 const {
   uploadBannerMedia,
   deleteBannerMedia,
-  assertNoActiveOverlap,
+  assertActiveBannerCapacity,
 } = require("../../helpers/banners");
 
 exports.createBanner = async (userId, payload, files) => {
@@ -23,7 +23,9 @@ exports.createBanner = async (userId, payload, files) => {
   if (!file)
     throwError(422, `Please upload a ${field} file for this banner type.`);
 
-  await assertNoActiveOverlap({ isActive, startDate, endDate });
+  // Before the upload, deliberately: a refusal here is a full home screen, and
+  // paying Cloudinary for a file that is about to be rejected is the wrong order.
+  await assertActiveBannerCapacity({ isActive, startDate, endDate });
 
   const media = await uploadBannerMedia(type, file);
 

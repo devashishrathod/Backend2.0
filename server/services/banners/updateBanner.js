@@ -4,7 +4,7 @@ const { BANNER_MEDIA_FIELD } = require("../../constants/banner");
 const {
   uploadBannerMedia,
   deleteBannerMedia,
-  assertNoActiveOverlap,
+  assertActiveBannerCapacity,
 } = require("../../helpers/banners");
 
 exports.updateBanner = async (userId, id, payload, files) => {
@@ -26,13 +26,27 @@ exports.updateBanner = async (userId, id, payload, files) => {
   const nextIsActive =
     typeof payload.isActive === "boolean" ? payload.isActive : banner.isActive;
 
+  // ⚠️ The validator can only see the request body, so it catches a half-open
+  // pair that was *sent*. It cannot catch one that is half-open only after the
+  // merge — clearing `startDate` alone on a banner that has an `endDate`, or
+  // editing a legacy document that was stored half-open before the rule existed.
+  // Either way the result belongs to neither pool: the scheduled query wants
+  // both dates and the evergreen query wants neither, so the banner is saved,
+  // returns 200, and is never rendered for anybody.
+  if (Boolean(nextStartDate) !== Boolean(nextEndDate)) {
+    throwError(
+      422,
+      "Please provide both startDate and endDate, or clear both — a banner with only one of them is never shown.",
+    );
+  }
+
   const dateOrStatusChanged =
     nextIsActive !== banner.isActive ||
     String(nextStartDate) !== String(banner.startDate) ||
     String(nextEndDate) !== String(banner.endDate);
 
   if (dateOrStatusChanged) {
-    await assertNoActiveOverlap({
+    await assertActiveBannerCapacity({
       isActive: nextIsActive,
       startDate: nextStartDate,
       endDate: nextEndDate,
