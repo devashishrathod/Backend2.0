@@ -12,8 +12,8 @@
     "sampleResponse": "server/docs/setting_default_response.json",
     "documentIsSingleton": "One document for the whole platform. `helpers/settings/getSetting.js` upserts it on first read, so GET never 404s.",
     "updateIsAMerge": "PUT merges block by block — a payload carrying one field leaves its siblings alone. Omitting a field is NOT the same as clearing it.",
-    "totalLeafFields": 126,
-    "writableFields": 122,
+    "totalLeafFields": 125,
+    "writableFields": 121,
     "readOnlyFields": 4
   },
   "enums": {
@@ -131,15 +131,6 @@
       "min": 1,
       "writableViaApi": true,
       "description": "Radius in km used to decide which outlets a customer is shown as nearby."
-    },
-    "vendor.showcase.maxSections": {
-      "type": "number",
-      "default": 5,
-      "integer": true,
-      "min": 1,
-      "requiredInSchema": true,
-      "writableViaApi": true,
-      "description": "⚠️ READ BY NOTHING. Returned by getShowcaseConfig but no service consults it — section count is metered by the plan entitlement instead (createSection.js calls reserveSlot with ENTITLEMENT_BUCKETS.SHOWCASE). Deliberately left unwired: metering one limit from two places is two sources of truth, and the day they disagree nothing says which won. Either remove it or make it a platform ceiling above the plan limit — a product decision."
     },
     "vendor.showcase.maxItemsPerSection": {
       "type": "number",

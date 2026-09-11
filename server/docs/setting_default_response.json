@@ -2,8 +2,9 @@
   "success": true,
   "message": "Settings fetched successfully.",
   "data": {
+    "isActive": true,
+    "updatedBy": null,
     "_id": "000000000000000000000000",
-
     "vendor": {
       "voucher": {
         "maxOffers": 10,
@@ -11,7 +12,6 @@
         "maxDistanceKm": 25
       },
       "showcase": {
-        "maxSections": 5,
         "maxItemsPerSection": 15,
         "maxImagesPerSection": 15,
         "maxVideosPerSection": 5,
@@ -49,15 +49,18 @@
         "pendingOrderReuseMinutes": 15,
         "expiryJobIntervalMinutes": 60,
         "isPromoCodeEnabled": true,
-        "expiryReminderDays": [7, 3, 1],
         "reminderJobIntervalMinutes": 180,
         "isEmailNotificationEnabled": true,
         "isPushNotificationEnabled": true,
         "isWhatsAppNotificationEnabled": false,
-        "isActive": true
+        "isActive": true,
+        "expiryReminderDays": [
+          7,
+          3,
+          1
+        ]
       }
     },
-
     "customer": {
       "convenienceFee": {
         "isEnabled": true,
@@ -104,6 +107,9 @@
         "minPayoutAmount": 100,
         "payoutProvider": "MANUAL_BANK",
         "commissionPercent": 0,
+        "newVendorReserveDays": 0,
+        "notReceivedAlertHours": 96,
+        "gatewayFeeBearer": "PLATFORM",
         "reserve": {
           "isEnabled": false,
           "percent": 5,
@@ -114,10 +120,7 @@
           "riskDisputeRatePercent": 1,
           "riskPercent": 15,
           "maxPercent": 25
-        },
-        "newVendorReserveDays": 0,
-        "notReceivedAlertHours": 96,
-        "gatewayFeeBearer": "PLATFORM"
+        }
       },
       "refund": {
         "method": "SOURCE",
@@ -131,12 +134,18 @@
         "maxOpenRequests": 1,
         "maxRejectedPerWindow": 3,
         "requestWindowDays": 30,
-        "bankDetailsReminderHours": [24, 96],
-        "bankDetailsStaleDays": 30
+        "bankDetailsStaleDays": 30,
+        "bankDetailsReminderHours": [
+          24,
+          96
+        ]
       },
       "chargeback": {
         "writeOffDays": 90,
-        "deadlineAlertHours": [72, 24]
+        "deadlineAlertHours": [
+          72,
+          24
+        ]
       },
       "search": {
         "isEnabled": true,
@@ -146,14 +155,12 @@
         "popularQueries": []
       }
     },
-
     "security": {
       "otp": {
         "resendCooldownSeconds": 60,
         "maxPerHour": 5
       }
     },
-
     "admin": {
       "notification": {
         "isEmailNotificationEnabled": true,
@@ -162,8 +169,9 @@
         "maxRecipientsPerDispatch": 5000
       }
     },
-
     "app": {
+      "forceUpdate": false,
+      "updateMessage": "A newer version of Trydood is available. Please update to continue.",
       "minVersion": {
         "android": "1.0.0",
         "ios": "1.0.0"
@@ -172,8 +180,6 @@
         "android": "1.0.0",
         "ios": "1.0.0"
       },
-      "forceUpdate": false,
-      "updateMessage": "A newer version of Trydood is available. Please update to continue.",
       "storeUrl": {
         "android": "",
         "ios": ""
@@ -190,9 +196,6 @@
         "search": true
       }
     },
-
-    "isActive": true,
-    "updatedBy": null,
     "createdAt": "2026-01-01T00:00:00.000Z",
     "updatedAt": "2026-01-01T00:00:00.000Z"
   }

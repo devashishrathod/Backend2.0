@@ -26,7 +26,12 @@ exports.getShowcaseConfig = async () => {
      * already published rather than making a brand's profile look broken.
      */
     isActive: showcase.isActive ?? true,
-    maxSections: showcase.maxSections ?? 5,
+    /**
+     * ⚠️ No `maxSections`. It was returned here and consulted by nothing — the
+     * plan's `showcase` entitlement meters section count, via `reserveSlot` in
+     * `createSection.js`. Returning it invited a second caller to enforce it and
+     * gave the admin panel a limit that did nothing.
+     */
     maxItems: showcase.maxItemsPerSection ?? SHOWCASE_MEDIA_CONFIG.maxItems,
     maxImages: showcase.maxImagesPerSection ?? SHOWCASE_MEDIA_CONFIG.maxImages,
     maxVideos: showcase.maxVideosPerSection ?? SHOWCASE_MEDIA_CONFIG.maxVideos,

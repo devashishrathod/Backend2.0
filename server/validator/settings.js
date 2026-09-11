@@ -20,8 +20,9 @@ const voucherSettingSchema = Joi.object({
   maxDistanceKm: Joi.number().integer().min(1).optional(),
 });
 
+// ⚠️ No `maxSections` — the plan's `showcase` entitlement meters section count,
+// not this block. See the note on `showcaseSettingSchema` in models/Setting.js.
 const showcaseSettingSchema = Joi.object({
-  maxSections: Joi.number().integer().min(1).optional(),
   maxItemsPerSection: Joi.number().integer().min(1).optional(),
   maxImagesPerSection: Joi.number().integer().min(1).optional(),
   maxVideosPerSection: Joi.number().integer().min(1).optional(),

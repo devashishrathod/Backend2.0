@@ -6531,7 +6531,6 @@ Platform-wide configuration. **Ek singleton document.**
     "vendor": {
       "voucher": { "maxOffers": 10, "maxImages": 5, "maxDistanceKm": 25 },
       "showcase": {
-        "maxSections": 5,
         "maxItemsPerSection": 15,
         "maxImagesPerSection": 15,
         "maxVideosPerSection": 5,
@@ -6660,7 +6659,7 @@ Sirf [common auth errors](#common-errors) + `403` role check.
 | Block | Fields |
 |---|---|
 | `vendor.voucher` | `maxOffers` (1–100) · `maxImages` (≥1) · `maxDistanceKm` (≥1) |
-| `vendor.showcase` | `maxItemsPerSection` · `maxImagesPerSection` · `maxVideosPerSection` · `maxImageSizeMB` · `maxVideoSizeMB` (sab ≥1) · `allowedImages[]` · `allowedVideos[]` (min 1 item) · `isActive` (showcase **edit** ka kill switch — neeche) · `maxSections` (⚠️ abhi koi nahi padhta, dekho neeche) |
+| `vendor.showcase` | `maxItemsPerSection` · `maxImagesPerSection` · `maxVideosPerSection` · `maxImageSizeMB` · `maxVideoSizeMB` (sab ≥1) · `allowedImages[]` · `allowedVideos[]` (min 1 item) · `isActive` (showcase **edit** ka kill switch — neeche) |
 | `vendor.subscription` | Niche full table |
 | `customer` | Niche full table — **naya**, pehle pahunch me hi nahi tha |
 | `admin.notification` | 🆕 `isEmailNotificationEnabled` · `isPushNotificationEnabled` · `isWhatsAppNotificationEnabled` |
@@ -6689,11 +6688,13 @@ Gate `middlewares/requireShowcaseEnabled.js` hai, route file me `isVendorOrAdmin
 >
 > Wahi shape jo `admin` block, refund ki teen abuse limits, aur `reserve` ke paanch risk fields ka tha.
 
-> ### ⚠️ `maxSections` abhi bhi kuch nahi karta
+> ### 🔴 `maxSections` **hata diya gaya hai**
 >
-> `getShowcaseConfig()` ise return karta hai par **koi service nahi padhti**. Section ki ginti plan ke entitlement se meter hoti hai — `createSection.js` me `reserveSlot(brand._id, ENTITLEMENT_BUCKETS.SHOWCASE)` — is setting se nahi.
+> Ye field pehle is block me thi aur **koi service nahi padhti thi**. Section ki ginti plan ke entitlement se meter hoti hai — `createSection.js` me `reserveSlot(brand._id, ENTITLEMENT_BUCKETS.SHOWCASE)` — is setting se nahi. Matlab admin panel ek aisi limit dikhata tha jo kuch nahi karti.
 >
-> Jaan-bujh kar wire nahi kiya: do jagah se ek hi limit tay karna matlab do sources of truth, aur jis din dono alag keh dein us din kaun jeeta ye code padhe bina pata nahi chalta. Ya to ise hata dena chahiye, ya plan-limit ke **upar** ek platform ceiling ke roop me likhna chahiye — ye product ka faisla hai.
+> Wire karne ke bajaye hataya gaya: ek hi limit do jagah se meter karna matlab do sources of truth, aur jis din plan 10 kahe aur ye 3, us din kaun jeeta ye code padhe bina pata nahi chalta. Limit plan ki hai.
+>
+> ⚠️ Purane settings documents me `vendor.showcase.maxSections` abhi bhi **stored** ho sakta hai. Schema strict hai, to mongoose use read par ignore kar deta hai — koi error nahi, response me bhi nahi aata. Koi migration nahi chahiye.
 
 ### 🆕 `app` — mobile app ka force-update aur support contact
 
@@ -6853,7 +6854,7 @@ DB me row pehli write par banti hai. Koi migration nahi chahiye.
 
 **Showcase limits badhana:**
 ```json
-{ "vendor": { "showcase": { "maxSections": 10, "maxVideosPerSection": 8 } } }
+{ "vendor": { "showcase": { "maxImagesPerSection": 20, "maxVideosPerSection": 8 } } }
 ```
 
 ---
