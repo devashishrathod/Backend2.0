@@ -10,6 +10,22 @@ exports.getShowcaseConfig = async () => {
   const setting = await getSetting();
   const showcase = setting?.vendor?.showcase || {};
   return {
+    /**
+     * ⚠️ Returned, because for a long time it was not — and this function is the
+     * only read path there is. The field was on the model and settable from the
+     * admin panel, so switching the showcase off saved cleanly, came back in
+     * `GET /settings/get`, and changed nothing at all: vendors carried on
+     * creating sections and uploading media as though it were still on.
+     *
+     * `??` and not `||`: `false` is the whole point of the field.
+     *
+     * A kill switch for the **vendor's writes** — see
+     * `middlewares/requireShowcaseEnabled.js`. Deliberately not a gate on
+     * reading: a vendor has to be able to see the gallery they are being stopped
+     * from editing, and the customer-facing endpoints keep serving what was
+     * already published rather than making a brand's profile look broken.
+     */
+    isActive: showcase.isActive ?? true,
     maxSections: showcase.maxSections ?? 5,
     maxItems: showcase.maxItemsPerSection ?? SHOWCASE_MEDIA_CONFIG.maxItems,
     maxImages: showcase.maxImagesPerSection ?? SHOWCASE_MEDIA_CONFIG.maxImages,

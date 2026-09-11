@@ -1,7 +1,11 @@
 const express = require("express");
 const router = express.Router();
 
-const { validateSchema, isVendorOrAdmin } = require("../middlewares");
+const {
+  validateSchema,
+  isVendorOrAdmin,
+  requireShowcaseEnabled,
+} = require("../middlewares");
 const {
   create,
   get,
@@ -59,6 +63,7 @@ const {
 router.post(
   "/section/add",
   isVendorOrAdmin,
+  requireShowcaseEnabled,
   validateSchema(validateCreateSection),
   create,
 );
@@ -77,18 +82,21 @@ router.get(
 router.put(
   "/section/update/:sectionId",
   isVendorOrAdmin,
+  requireShowcaseEnabled,
   validateSchema(validateUpdateSection),
   update,
 );
 router.put(
   "/section/:brandId/reorder",
   isVendorOrAdmin,
+  requireShowcaseEnabled,
   validateSchema(validateReorderSections),
   reorderSections,
 );
 router.delete(
   "/section/delete/:sectionId",
   isVendorOrAdmin,
+  requireShowcaseEnabled,
   validateSchema(validateDeleteSection),
   deleteSection,
 );
@@ -97,30 +105,35 @@ router.delete(
 router.post(
   "/section/:sectionId/add-media",
   isVendorOrAdmin,
+  requireShowcaseEnabled,
   validateSchema(validateAddMedia),
   addMedia,
 );
 router.patch(
   "/section/:sectionId/media/update/:mediaId",
   isVendorOrAdmin,
+  requireShowcaseEnabled,
   validateSchema(validateUpdateMedia),
   updateMedia,
 );
 router.put(
   "/section/:sectionId/media/replace/:mediaId",
   isVendorOrAdmin,
+  requireShowcaseEnabled,
   validateSchema(validateReplaceMedia),
   replaceMedia,
 );
 router.put(
   "/section/:sectionId/media/reorder",
   isVendorOrAdmin,
+  requireShowcaseEnabled,
   validateSchema(validateReorderMedias),
   reorderMedia,
 );
 router.delete(
   "/section/:sectionId/media/delete/:mediaId",
   isVendorOrAdmin,
+  requireShowcaseEnabled,
   validateSchema(validateDeleteMedia),
   deleteMedia,
 );

@@ -6,6 +6,7 @@ const {
   optionalAuth,
 } = require("./verifyJwtToken");
 const { validateSchema } = require("./validateSchema");
+const { requireShowcaseEnabled } = require("./requireShowcaseEnabled");
 const {
   validateRoles,
   isAdmin,
@@ -40,6 +41,7 @@ module.exports = {
   optionalAuth,
   validateRoles,
   validateSchema,
+  requireShowcaseEnabled,
   isAdmin,
   isVendor,
   isCustomer,

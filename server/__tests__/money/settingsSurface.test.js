@@ -210,3 +210,82 @@ describe("updateSetting knows how to merge every block", () => {
     expect(UPDATE_SOURCE).toContain(`payload.app.${key}`);
   });
 });
+
+/**
+ * ⚠️ A setting that is stored, returned, and read by nothing.
+ *
+ * The mirror of the gap above, and just as quiet: `vendor.showcase.isActive` was
+ * on the model and settable from the panel, so switching the showcase off saved
+ * cleanly and came back in `GET /settings/get` — while `getShowcaseConfig` never
+ * returned it and no caller ever asked. Vendors carried on creating sections and
+ * uploading media as though nothing had happened.
+ *
+ * Read off the built Express router rather than the source text, so a route that
+ * exists is checked whether or not anybody remembered it — the same reasoning
+ * `postman/lib/routeInventory.js` is built on.
+ */
+describe("the showcase kill switch reaches every write", () => {
+  const showcaseRouter = require("../../routes/showcase");
+  const { requireShowcaseEnabled } = require("../../middlewares");
+
+  const routes = showcaseRouter.stack
+    .filter((layer) => layer.route)
+    .map((layer) => ({
+      path: layer.route.path,
+      methods: Object.keys(layer.route.methods).filter(
+        (m) => layer.route.methods[m],
+      ),
+      gated: layer.route.stack.some(
+        (handler) => handler.handle === requireShowcaseEnabled,
+      ),
+    }));
+
+  const writes = routes.filter((r) => r.methods.some((m) => m !== "get"));
+  const reads = routes.filter((r) => r.methods.every((m) => m === "get"));
+
+  it("the router actually yielded routes to check", () => {
+    expect(writes.length).toBeGreaterThan(0);
+    expect(reads.length).toBeGreaterThan(0);
+  });
+
+  it("every showcase write is behind the switch", () => {
+    const ungated = writes.filter((r) => !r.gated).map((r) => r.path);
+
+    expect(ungated).toEqual([]);
+  });
+
+  /**
+   * ⚠️ Deliberately open, and this asserts it stays that way.
+   *
+   * A vendor has to be able to see the gallery they are being stopped from
+   * editing, and the customer-facing reads keep serving what a brand already
+   * published — emptying a gallery people are browsing is a bigger change than
+   * freezing edits, and not what this switch is for.
+   */
+  it("no showcase read is behind the switch", () => {
+    const gated = reads.filter((r) => r.gated).map((r) => r.path);
+
+    expect(gated).toEqual([]);
+  });
+
+  /**
+   * The middleware is the only thing that reads it, and it reads it off
+   * `getShowcaseConfig`. A getter that stops returning the field puts the switch
+   * straight back to doing nothing, with the gate still in place on every route.
+   */
+  it("getShowcaseConfig still returns isActive", () => {
+    const source = require("fs").readFileSync(
+      require("path").join(
+        __dirname,
+        "..",
+        "..",
+        "helpers",
+        "settings",
+        "getShowcaseConfig.js",
+      ),
+      "utf8",
+    );
+
+    expect(source).toMatch(/isActive:\s*showcase\.isActive/);
+  });
+});
