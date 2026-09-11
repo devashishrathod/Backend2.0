@@ -245,11 +245,42 @@ const settlementSettingSchema = Joi.object({
       "any.only": `payoutProvider must be one of: ${Object.values(PAYOUT_PROVIDERS).join(", ")}`,
     }),
   commissionPercent: Joi.number().min(0).max(100).optional(),
+  /**
+   * ⚠️ All **nine** reserve fields, not the four this block used to name.
+   *
+   * `buildReserveRiskMap` reads every one of them to decide how much of a
+   * vendor's payout is held back, but five — `riskLookbackDays`,
+   * `riskMinPayments`, `riskDisputeRatePercent`, `riskPercent` and `maxPercent` —
+   * were on the model, returned by `getCustomerConfig`, and missing from here.
+   * `stripUnknown` removed them before the service saw the payload, so an admin
+   * tuning the risk rules got a `200`, a response carrying the **old** numbers,
+   * and a platform that carried on holding at the defaults. No error anywhere.
+   *
+   * The third time this exact gap has shipped — see the `admin` block at the
+   * bottom of this file and the three refund abuse limits above. What lets it
+   * keep happening is that a field is added to the model and to the config
+   * getter, and this file is the one place nothing forces you to touch.
+   * `__tests__/money/settingsSurface.test.js` now walks the schema to the leaf
+   * and fails on any path with no key here, at any depth.
+   *
+   * Bounds follow the model, and the day counts follow `holdDays` and
+   * `newVendorReserveDays` above in taking a `max(365)`: a dispute window is
+   * about 120 days, so a lookback beyond a year is measuring nothing.
+   */
   reserve: Joi.object({
     isEnabled: Joi.boolean().optional(),
     percent: Joi.number().min(0).max(100).optional(),
     holdDays: Joi.number().integer().min(0).max(365).optional(),
     riskChargebackCount: Joi.number().integer().min(1).optional(),
+    riskLookbackDays: Joi.number().integer().min(1).max(365).optional(),
+    /**
+     * ⚠️ `min(1)`. A floor of zero means every brand with one chargeback and one
+     * sale reads as 100% risky on their first day — the model says the same.
+     */
+    riskMinPayments: Joi.number().integer().min(1).optional(),
+    riskDisputeRatePercent: Joi.number().min(0).max(100).optional(),
+    riskPercent: Joi.number().min(0).max(100).optional(),
+    maxPercent: Joi.number().min(0).max(100).optional(),
   }).optional(),
   newVendorReserveDays: Joi.number().integer().min(0).max(365).optional(),
   notReceivedAlertHours: Joi.number().integer().min(1).max(720).optional(),
