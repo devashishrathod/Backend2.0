@@ -56,6 +56,7 @@ exports.getAllAdminCustomers = async (query = {}) => {
     isActive,
     isSignUpCompleted,
     isOnBoardingCompleted,
+    isWhatsappVerified,
     isMobileVerified,
     isEmailVerified,
     isLoggedIn,
@@ -145,6 +146,16 @@ exports.getAllAdminCustomers = async (query = {}) => {
         isOnline: 1,
         isEmailVerified: 1,
         isMobileVerified: 1,
+        /**
+         * ⚠️ The one that actually means "confirmed" for a customer.
+         *
+         * Customers sign up with a WhatsApp OTP and most never add a `mobile` at
+         * all, so `isMobileVerified` is `false` for nearly all of them — it used
+         * to be `true` only because `verifyOtpWithWhatsapp` wrote to the wrong
+         * flag. Without this field the directory would show every customer as
+         * unverified and give an admin no way to see otherwise.
+         */
+        isWhatsappVerified: 1,
         isSignUpCompleted: 1,
         isOnBoardingCompleted: 1,
         createdAt: 1,
@@ -177,6 +188,25 @@ exports.getAllAdminCustomers = async (query = {}) => {
       $match: {
         "account.isOnBoardingCompleted": falseDefaultFilter(
           toBoolean(isOnBoardingCompleted),
+        ),
+      },
+    });
+  }
+  /**
+   * ⚠️ Three separate filters, because there are three separate keys.
+   *
+   * Before the flags were untangled, `isMobileVerified` was the *only* one an
+   * admin could filter on and it doubled as "verified at all" — every WhatsApp
+   * signup carried it. Now that it means what it says, filtering on it returns
+   * almost no customers, and a directory that silently answers "none" is worse
+   * than one that cannot answer: nothing errors, so nobody learns the filter
+   * stopped meaning what they thought.
+   */
+  if (isWhatsappVerified !== undefined) {
+    pipeline.push({
+      $match: {
+        "account.isWhatsappVerified": falseDefaultFilter(
+          toBoolean(isWhatsappVerified),
         ),
       },
     });

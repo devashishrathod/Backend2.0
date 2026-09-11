@@ -533,3 +533,87 @@ exports.notifyAdminVendorDebtAged = async ({
     },
   });
 };
+
+/**
+ * To the **admin**: the gateway has not paid us, so nobody can be paid onward.
+ *
+ * ### ⚠️ The absence nothing else was looking for
+ *
+ * Every other alert in this file describes a `Settlement` that exists and is in
+ * the wrong place. This one describes settlements that were **never built**, and
+ * that is why it had to be written separately: a payment the gateway has not
+ * settled never reaches `buildEligibilityFilter`, so no `Settlement` row is
+ * created, so `alertLateSettlements` — which reads `Settlement` rows — has
+ * nothing to find. `buildSettlements` reports `brandsChecked: 0` and **succeeds**.
+ *
+ * The result is a system that is green everywhere while no vendor is ever paid.
+ * It stayed that way until a person asked, weeks in, with ₹2.1L of captured
+ * payments sitting unsettled at the gateway.
+ *
+ * ### CRITICAL, and it means us rather than them
+ *
+ * There is nothing to fix in this codebase when this fires. `fundsReceivedAt` is
+ * *observed*, never inferred — the whole point is that we do not guess the money
+ * has arrived. So the action is to open the gateway dashboard: settlements
+ * paused, a schedule that never runs, an account under review, a batch held over
+ * a bank holiday. Only a person can tell which.
+ *
+ * ⚠️ Day-bucketed `dedupeKey`, like `VENDOR_DEBT_AGED`. The condition is static —
+ * a backlog stuck at the gateway is still stuck three hours later — so one
+ * notice a day keeps it visible without training anybody to mute the type.
+ *
+ * @param {object} args
+ * @param {number} args.count     captured claim payments still unsettled
+ * @param {number} args.total     their value
+ * @param {Date}   args.oldestAt  when the oldest of them was captured
+ * @param {number} args.hours     the threshold that was crossed
+ * @param {string} args.account   which gateway account holds them
+ */
+exports.notifyAdminGatewayFundsNotReceived = async ({
+  count,
+  total,
+  oldestAt,
+  hours,
+  account,
+}) => {
+  const oldestDays = oldestAt
+    ? Math.floor((Date.now() - new Date(oldestAt).getTime()) / (24 * 60 * 60 * 1000))
+    : null;
+
+  return notifyAdmins({
+    severity: NOTIFICATION_SEVERITY.CRITICAL,
+    type: NOTIFICATION_TYPES.GATEWAY_FUNDS_NOT_RECEIVED,
+    title: `${count} payment(s) still not settled by the gateway`,
+    body:
+      `${money(total)} was captured from customers more than ${hours}h ago and the ` +
+      `gateway has not settled it to our bank, so none of it can reach a vendor. ` +
+      `No settlement is built for money that has not arrived, which is why nothing ` +
+      `else reports this. Check the ${account} account's settlement schedule and ` +
+      `whether settlements are paused.`,
+    meta: {
+      count,
+      total,
+      oldestAt,
+      oldestDays,
+      thresholdHours: hours,
+      gatewayAccount: account,
+    },
+    deepLink: deepLink(ADMIN_PATHS.TRANSACTIONS),
+    // One a day while it lasts — the state is static, so anything tighter is noise.
+    dedupeKey: `GATEWAY_FUNDS_NOT_RECEIVED:${account}:${new Date().toISOString().slice(0, 10)}`,
+    mail: {
+      lines: [
+        ["Gateway account", account],
+        ["Payments waiting", String(count)],
+        ["Value", money(total)],
+        ["Oldest", oldestDays === null ? "-" : `${oldestDays} days`],
+        ["Threshold", `${hours}h`],
+      ],
+      ctaLabel: "Open payments",
+      ctaUrl: adminUrl(ADMIN_PATHS.TRANSACTIONS),
+      footnote:
+        "Nothing is broken in the platform — the money simply has not reached our bank yet, " +
+        "and vendor payouts deliberately wait for that. The fix is on the gateway dashboard.",
+    },
+  });
+};

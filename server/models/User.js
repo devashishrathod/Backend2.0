@@ -11,11 +11,12 @@ const {
   subBrandField,
   userField,
 } = require("./validObjectId");
+const { isValidUsername } = require("../validator/common");
 const {
-  isValidEmail,
-  isValidUsername,
-  isValidPhoneNumber,
-} = require("../validator/common");
+  emailField,
+  mobileField,
+  whatsappField,
+} = require("./contactFields");
 
 const userSchema = new mongoose.Schema(
   {
@@ -41,29 +42,14 @@ const userSchema = new mongoose.Schema(
     password: { type: String },
     // When the user actually chose their own password. Absent = never set.
     passwordSetAt: { type: Date },
-    email: {
-      type: String,
-      lowercase: true,
-      trim: true,
-      validate: {
-        validator: (email) => isValidEmail(email),
-        message: (props) => `${props.value} is not a valid email address`,
-      },
-    },
-    mobile: {
-      type: String,
-      validate: {
-        validator: (mobile) => isValidPhoneNumber(mobile),
-        message: (props) => `${props.value} is not a valid mobile number`,
-      },
-    },
-    whatsappNumber: {
-      type: String,
-      validate: {
-        validator: (whatsappNumber) => isValidPhoneNumber(whatsappNumber),
-        message: (props) => `${props.value} is not a valid WhatsApp number`,
-      },
-    },
+    // All three from `models/contactFields.js` — one declaration shared with
+    // Customer, Brand and SubBrand, so the mirror written by
+    // `applyIdentityChange` cannot be validated differently at either end. The
+    // phone descriptors also carry the `normalisePhone` setter; see that file
+    // for why it is a setter and not a step inside a service.
+    email: emailField,
+    mobile: mobileField,
+    whatsappNumber: whatsappField,
     username: {
       type: String,
       validate: {
@@ -170,6 +156,7 @@ const userSchema = new mongoose.Schema(
     },
     image: { type: String },
     currentScreen: { type: String, enum: Object.values(SCREENS) },
+    isWhatsappVerified: { type: Boolean, default: false },
     isEmailVerified: { type: Boolean, default: false },
     isMobileVerified: { type: Boolean, default: false },
     isSignUpCompleted: { type: Boolean, default: false },

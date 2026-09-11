@@ -1,0 +1,202 @@
+{
+  "success": true,
+  "message": "Settings fetched successfully.",
+  "data": {
+    "isActive": true,
+    "updatedBy": null,
+    "_id": "000000000000000000000000",
+    "vendor": {
+      "voucher": {
+        "maxOffers": 10,
+        "maxImages": 5,
+        "maxDistanceKm": 25
+      },
+      "showcase": {
+        "maxItemsPerSection": 15,
+        "maxImagesPerSection": 15,
+        "maxVideosPerSection": 5,
+        "maxImageSizeMB": 10,
+        "maxVideoSizeMB": 50,
+        "allowedImages": [
+          "image/jpeg",
+          "image/jpg",
+          "image/png",
+          "image/webp"
+        ],
+        "allowedVideos": [
+          "video/mp4",
+          "video/webm",
+          "video/quicktime"
+        ],
+        "isActive": true
+      },
+      "subscription": {
+        "gstPercentage": 18,
+        "isGstInclusive": false,
+        "hsnSacCode": "998315",
+        "companyName": "Trydood",
+        "companyGstin": "",
+        "companyAddress": "",
+        "companyStateCode": "",
+        "companyState": "",
+        "currency": "INR",
+        "allowVendorUpgrade": true,
+        "allowVendorDowngrade": false,
+        "allowVendorRenewal": true,
+        "allowAdminDowngrade": true,
+        "allowAdminFreeGrant": true,
+        "gracePeriodDays": 0,
+        "pendingOrderReuseMinutes": 15,
+        "expiryJobIntervalMinutes": 60,
+        "isPromoCodeEnabled": true,
+        "reminderJobIntervalMinutes": 180,
+        "isEmailNotificationEnabled": true,
+        "isPushNotificationEnabled": true,
+        "isWhatsAppNotificationEnabled": false,
+        "isActive": true,
+        "expiryReminderDays": [
+          7,
+          3,
+          1
+        ]
+      }
+    },
+    "customer": {
+      "convenienceFee": {
+        "isEnabled": true,
+        "slabSize": 500,
+        "feePerSlab": 5,
+        "maxFee": 50,
+        "chargeWhenNoOffer": false
+      },
+      "tax": {
+        "isGstEnabled": false,
+        "gstPercentage": 18,
+        "isGstInclusive": true,
+        "sacCode": "998599"
+      },
+      "promoCode": {
+        "isEnabled": true,
+        "allowWhenNoOffer": false,
+        "allowForGuestPreview": true
+      },
+      "claim": {
+        "isEnabled": true,
+        "allowWhenNoOffer": true,
+        "maxBillAmount": 100000,
+        "pendingOrderReuseMinutes": 10,
+        "quoteTtlMinutes": 30,
+        "allowWhenVendorPlanExpired": false,
+        "vendorPlanExpiredGraceDays": 0,
+        "redemptionWindowHours": 24
+      },
+      "notification": {
+        "isEmailNotificationEnabled": true,
+        "isPushNotificationEnabled": true,
+        "isWhatsAppNotificationEnabled": false
+      },
+      "invoice": {
+        "seriesPrefix": "VCH"
+      },
+      "settlement": {
+        "isEnabled": true,
+        "delayDays": 3,
+        "payoutBufferHours": 6,
+        "cycleType": "DAILY",
+        "requiresAdminApproval": true,
+        "minPayoutAmount": 100,
+        "payoutProvider": "MANUAL_BANK",
+        "commissionPercent": 0,
+        "newVendorReserveDays": 0,
+        "notReceivedAlertHours": 96,
+        "gatewayFeeBearer": "PLATFORM",
+        "reserve": {
+          "isEnabled": false,
+          "percent": 5,
+          "holdDays": 30,
+          "riskChargebackCount": 2,
+          "riskLookbackDays": 180,
+          "riskMinPayments": 20,
+          "riskDisputeRatePercent": 1,
+          "riskPercent": 15,
+          "maxPercent": 25
+        }
+      },
+      "refund": {
+        "method": "SOURCE",
+        "windowHours": 24,
+        "vendorApprovalHours": 24,
+        "adminBufferHours": 12,
+        "onVendorTimeout": "ESCALATE",
+        "allowPartial": true,
+        "releasePromoOnRefund": false,
+        "authorizedAlertMinutes": 30,
+        "maxOpenRequests": 1,
+        "maxRejectedPerWindow": 3,
+        "requestWindowDays": 30,
+        "bankDetailsStaleDays": 30,
+        "bankDetailsReminderHours": [
+          24,
+          96
+        ]
+      },
+      "chargeback": {
+        "writeOffDays": 90,
+        "deadlineAlertHours": [
+          72,
+          24
+        ]
+      },
+      "search": {
+        "isEnabled": true,
+        "minQueryLength": 2,
+        "sectionLimit": 5,
+        "historyLimit": 20,
+        "popularQueries": []
+      }
+    },
+    "security": {
+      "otp": {
+        "resendCooldownSeconds": 60,
+        "maxPerHour": 5
+      }
+    },
+    "admin": {
+      "notification": {
+        "isEmailNotificationEnabled": true,
+        "isPushNotificationEnabled": true,
+        "isWhatsAppNotificationEnabled": false,
+        "maxRecipientsPerDispatch": 5000
+      }
+    },
+    "app": {
+      "forceUpdate": false,
+      "updateMessage": "A newer version of Trydood is available. Please update to continue.",
+      "minVersion": {
+        "android": "1.0.0",
+        "ios": "1.0.0"
+      },
+      "latestVersion": {
+        "android": "1.0.0",
+        "ios": "1.0.0"
+      },
+      "storeUrl": {
+        "android": "",
+        "ios": ""
+      },
+      "support": {
+        "email": "",
+        "phone": "",
+        "whatsapp": ""
+      },
+      "features": {
+        "promoCodes": true,
+        "refunds": true,
+        "voucherClaims": true,
+        "search": true
+      }
+    },
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  }
+}

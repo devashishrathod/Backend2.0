@@ -1,6 +1,7 @@
 const {
   getSetting,
   assertSettlementTimingRule,
+  assertReserveRateRule,
 } = require("../../helpers/settings");
 
 /**
@@ -35,6 +36,25 @@ const CUSTOMER_BLOCKS = Object.freeze([
 const NESTED_BLOCKS = Object.freeze({
   settlement: ["reserve"],
 });
+
+/**
+ * The sub-blocks under `app`, merged one at a time.
+ *
+ * Named rather than left inline for the same reason `CUSTOMER_BLOCKS` is: a
+ * block missing from the list validates cleanly, returns `200` and saves
+ * nothing, and the only thing that can notice is a test comparing the list
+ * against the schema — which needs the list to have a name.
+ *
+ * `forceUpdate` and `updateMessage` are scalars and are assigned below on their
+ * own; everything else under `app` is an object.
+ */
+const APP_BLOCKS = Object.freeze([
+  "minVersion",
+  "latestVersion",
+  "storeUrl",
+  "support",
+  "features",
+]);
 
 /**
  * Merge a payload block onto the stored sub-document.
@@ -100,6 +120,18 @@ exports.updateSetting = async (userId, payload = {}) => {
     // break silently. Throws 422 — a wrong value here only shows up as a broken
     // reconciliation weeks later.
     assertSettlementTimingRule(setting.customer);
+
+    /**
+     * ⚠️ The same shape of rule, one block down: a reserve rate that could never
+     * be applied.
+     *
+     * `buildReserveRiskMap` caps every rate with `Math.min(percent, maxPercent)`,
+     * so `maxPercent: 3` beside `percent: 5` holds 3% from everybody while the
+     * panel, the stored document and `GET /settings/get` all keep saying 5. Same
+     * reason it cannot live in Joi: a PATCH carrying only `maxPercent` has no
+     * `percent` to compare against.
+     */
+    assertReserveRateRule(setting.customer);
   }
 
   /**
@@ -150,13 +182,7 @@ exports.updateSetting = async (userId, payload = {}) => {
    */
   if (payload.app) {
     if (!setting.app) setting.app = {};
-    for (const key of [
-      "minVersion",
-      "latestVersion",
-      "storeUrl",
-      "support",
-      "features",
-    ]) {
+    for (const key of APP_BLOCKS) {
       if (payload.app[key]) mergeBlock(setting.app, key, payload.app[key]);
     }
     if (typeof payload.app.forceUpdate === "boolean") {
@@ -175,3 +201,13 @@ exports.updateSetting = async (userId, payload = {}) => {
   await setting.save();
   return setting;
 };
+
+/**
+ * Exported for the surface guard in `__tests__/money/settingsSurface.test.js`,
+ * which compares each list against the schema it is supposed to mirror. Every
+ * one of them is a hand-written list whose failure mode is a silent `200`, so
+ * comparing them to the schema is the only thing that can catch a drift.
+ */
+exports.CUSTOMER_BLOCKS = CUSTOMER_BLOCKS;
+exports.NESTED_BLOCKS = NESTED_BLOCKS;
+exports.APP_BLOCKS = APP_BLOCKS;

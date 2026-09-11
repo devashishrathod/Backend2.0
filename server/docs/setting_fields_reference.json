@@ -1,0 +1,1171 @@
+{
+  "$schema": "Field-by-field reference for the Trydood Setting document.",
+  "meta": {
+    "generatedFrom": [
+      "server/models/Setting.js",
+      "server/validator/settings.js",
+      "server/constants/{customer,subscription,otp,app,notification,search,transaction,document}.js"
+    ],
+    "readEndpoint": "GET  /trydood/v1/settings/get      (isAdmin)",
+    "writeEndpoint": "PUT  /trydood/v1/settings/update   (isAdmin)",
+    "publicSubset": "GET  /trydood/v1/app-config        (public) — serves only the `app.*` block, from a whitelist",
+    "sampleResponse": "server/docs/setting_default_response.json",
+    "documentIsSingleton": "One document for the whole platform. `helpers/settings/getSetting.js` upserts it on first read, so GET never 404s.",
+    "updateIsAMerge": "PUT merges block by block — a payload carrying one field leaves its siblings alone. Omitting a field is NOT the same as clearing it.",
+    "totalLeafFields": 125,
+    "writableFields": 121,
+    "readOnlyFields": 4
+  },
+  "enums": {
+    "customer.settlement.cycleType": [
+      "DAILY",
+      "WEEKLY"
+    ],
+    "customer.settlement.payoutProvider": [
+      "MANUAL_BANK",
+      "RAZORPAY_X",
+      "RAZORPAY_ROUTE"
+    ],
+    "customer.settlement.gatewayFeeBearer": [
+      "PLATFORM",
+      "VENDOR",
+      "SHARED"
+    ],
+    "customer.refund.method": [
+      "SOURCE",
+      "MANUAL_BANK"
+    ],
+    "customer.refund.onVendorTimeout": [
+      "ESCALATE",
+      "AUTO_APPROVE"
+    ],
+    "vendor.subscription.currency": [
+      "INR"
+    ]
+  },
+  "sharedLimits": {
+    "SEARCH_LIMITS": {
+      "MAX_QUERY_LENGTH": 100,
+      "MAX_SECTION_LIMIT": 20,
+      "MAX_TYPE_LIMIT": 50,
+      "MAX_POPULAR_QUERIES": 10,
+      "MAX_POPULAR_QUERY_LENGTH": 100
+    },
+    "DOCUMENT_SERIES": {
+      "pattern": "/^[A-Z]{2,6}$/",
+      "minLength": 2,
+      "maxLength": 6,
+      "reserved": [
+        "SUB",
+        "GRT",
+        "STL",
+        "REF",
+        "DBN",
+        "CMN"
+      ]
+    }
+  },
+  "crossFieldRules": [
+    {
+      "name": "settlement timing rule",
+      "rule": "customer.settlement.delayDays * 24  >=  customer.refund.windowHours + customer.refund.vendorApprovalHours + customer.refund.adminBufferHours",
+      "enforcedBy": "helpers/settings/assertSettlementTimingRule.js, on the MERGED document in services/settings/updateSetting.js",
+      "failsWith": "422, naming both totals and the delayDays value that would satisfy it",
+      "why": "A refund reduces its own cycle's payable. Break this and the platform is clawing back money the vendor has already banked — and it surfaces weeks later in reconciliation, not at save time.",
+      "withDefaults": "3 * 24 = 72h  >=  24 + 24 + 12 = 60h  ✓ (12h of headroom)"
+    },
+    {
+      "name": "reserve rate reachability",
+      "rule": "customer.settlement.reserve: percent <= maxPercent, riskPercent <= maxPercent, riskPercent >= percent",
+      "enforcedBy": "helpers/settings/assertReserveRateRule.js, on the MERGED document in services/settings/updateSetting.js",
+      "failsWith": "422, naming both numbers and which one to move",
+      "why": "buildReserveRiskMap ends on Math.min(percent, maxPercent). A ceiling under the base rate holds everybody at the ceiling while the stored document, the panel and GET /settings/get all keep reporting the base rate — correct arithmetic on the vendor's statement that cannot be reproduced from the settings screen. And riskPercent below percent would hold back LESS from a brand with chargebacks than from a clean one.",
+      "withDefaults": "5 <= 25, 15 <= 25, 15 >= 5  ✓"
+    },
+    {
+      "name": "GSTIN vs state code",
+      "rule": "vendor.subscription.companyStateCode blank => every supply is taxed as inter-state (IGST)",
+      "enforcedBy": "the tax builder, not a validator",
+      "why": "Without our own state code there is no way to prove an intra-state supply, so the single IGST line is the safe answer rather than a wrong CGST+SGST split."
+    },
+    {
+      "name": "WhatsApp needs templates, not just a toggle",
+      "rule": "is*WhatsAppNotificationEnabled = true is necessary but not sufficient",
+      "enforcedBy": "the notification senders",
+      "why": "Every message type needs its own Meta-approved template in the WHATSAPP_TEMPLATE_* env vars. With the toggle on and no template, that type still does not send."
+    },
+    {
+      "name": "app.features hides screens, it does not close endpoints",
+      "rule": "app.features.* = false only tells the mobile app not to show the screen",
+      "enforcedBy": "each endpoint enforces independently",
+      "why": "Turning promoCodes off here still leaves create-order returning its hard 422. The flag is a UI hint, never a security control."
+    }
+  ],
+  "notWritableViaApi": {
+    "$note": "None. Every field on the model except the four system fields has a key in validator/settings.js, so nothing can be sent, accepted with a 200, and silently dropped. `__tests__/money/settingsSurface.test.js` walks the schema to the leaf and fails if that stops being true.",
+    "paths": []
+  },
+  "validatorKeysWithNoModelPath": [],
+  "fields": {
+    "vendor.voucher.maxOffers": {
+      "type": "number",
+      "default": 10,
+      "integer": true,
+      "min": 1,
+      "max": 100,
+      "writableViaApi": true,
+      "description": "How many offers one voucher may carry. Enforced when a vendor creates or edits a voucher."
+    },
+    "vendor.voucher.maxImages": {
+      "type": "number",
+      "default": 5,
+      "integer": true,
+      "min": 1,
+      "writableViaApi": true,
+      "description": "How many images one voucher may carry."
+    },
+    "vendor.voucher.maxDistanceKm": {
+      "type": "number",
+      "default": 25,
+      "integer": true,
+      "min": 1,
+      "writableViaApi": true,
+      "description": "Radius in km used to decide which outlets a customer is shown as nearby."
+    },
+    "vendor.showcase.maxItemsPerSection": {
+      "type": "number",
+      "default": 15,
+      "integer": true,
+      "min": 1,
+      "requiredInSchema": true,
+      "writableViaApi": true,
+      "description": "Items (images + videos together) allowed in one section."
+    },
+    "vendor.showcase.maxImagesPerSection": {
+      "type": "number",
+      "default": 15,
+      "integer": true,
+      "min": 1,
+      "requiredInSchema": true,
+      "writableViaApi": true,
+      "description": "Images allowed in one section."
+    },
+    "vendor.showcase.maxVideosPerSection": {
+      "type": "number",
+      "default": 5,
+      "integer": true,
+      "min": 1,
+      "requiredInSchema": true,
+      "writableViaApi": true,
+      "description": "Videos allowed in one section."
+    },
+    "vendor.showcase.maxImageSizeMB": {
+      "type": "number",
+      "default": 10,
+      "integer": true,
+      "min": 1,
+      "requiredInSchema": true,
+      "writableViaApi": true,
+      "description": "Per-image upload ceiling in MB."
+    },
+    "vendor.showcase.maxVideoSizeMB": {
+      "type": "number",
+      "default": 50,
+      "integer": true,
+      "min": 1,
+      "requiredInSchema": true,
+      "writableViaApi": true,
+      "description": "Per-video upload ceiling in MB."
+    },
+    "vendor.showcase.allowedImages": {
+      "type": "array of string",
+      "default": [
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/webp"
+      ],
+      "itemType": "string",
+      "minItems": 1,
+      "itemRules": {
+        "type": "string",
+        "trimmed": true
+      },
+      "writableViaApi": true,
+      "description": "Accepted image MIME types. The upload is refused on anything not in this list — sending [] blocks every image upload."
+    },
+    "vendor.showcase.allowedVideos": {
+      "type": "array of string",
+      "default": [
+        "video/mp4",
+        "video/webm",
+        "video/quicktime"
+      ],
+      "itemType": "string",
+      "minItems": 1,
+      "itemRules": {
+        "type": "string",
+        "trimmed": true
+      },
+      "writableViaApi": true,
+      "description": "Accepted video MIME types. Same rule: [] blocks every video upload."
+    },
+    "vendor.showcase.isActive": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Kill switch for showcase EDITING. false makes all nine write routes answer 422 (create/update/reorder/delete a section, and add/update/replace/reorder/delete media) via middlewares/requireShowcaseEnabled.js. Reads stay open on purpose: the vendor must be able to see the gallery they are stopped from editing, and the two public endpoints keep serving what a brand already published. It used to do NOTHING — the field saved cleanly and getShowcaseConfig never returned it, so vendors carried on editing."
+    },
+    "vendor.subscription.gstPercentage": {
+      "type": "number",
+      "default": 18,
+      "min": 0,
+      "max": 100,
+      "writableViaApi": true,
+      "description": "GST rate applied to a subscription plan price."
+    },
+    "vendor.subscription.isGstInclusive": {
+      "type": "boolean",
+      "default": false,
+      "writableViaApi": true,
+      "description": "false = GST is added on top of the plan price (the usual case). true = the price already contains GST and it is back-calculated."
+    },
+    "vendor.subscription.hsnSacCode": {
+      "type": "string",
+      "default": "998315",
+      "max": 20,
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "SAC code printed on the subscription invoice. 998315 is 'other support services'."
+    },
+    "vendor.subscription.companyName": {
+      "type": "string",
+      "default": "Trydood",
+      "max": 160,
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "Seller name in the invoice header — Trydood's own legal entity, not the vendor's."
+    },
+    "vendor.subscription.companyGstin": {
+      "type": "string",
+      "default": "",
+      "max": 15,
+      "alsoAccepts": [
+        ""
+      ],
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "Our GSTIN on the invoice. Blank is allowed and is the honest state until somebody fills it in."
+    },
+    "vendor.subscription.companyAddress": {
+      "type": "string",
+      "default": "",
+      "max": 500,
+      "alsoAccepts": [
+        ""
+      ],
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "Our registered address in the invoice header."
+    },
+    "vendor.subscription.companyStateCode": {
+      "type": "string",
+      "default": "",
+      "alsoAccepts": [
+        ""
+      ],
+      "pattern": "/^\\d{2}$/",
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "Two-digit GST state code, compared against the first two digits of the brand's GSTIN to choose CGST+SGST vs IGST. BLANK => intra-state cannot be proved, so every supply falls back to a single IGST line."
+    },
+    "vendor.subscription.companyState": {
+      "type": "string",
+      "default": "",
+      "max": 80,
+      "alsoAccepts": [
+        ""
+      ],
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "Our state by name. Used only as a fallback when the brand has no GSTIN and the state has to be matched by name instead."
+    },
+    "vendor.subscription.currency": {
+      "type": "string",
+      "default": "INR",
+      "allowedValues": [
+        "INR"
+      ],
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "Billing currency. Only INR is accepted — the gateway accounts and the invoice templates both assume it."
+    },
+    "vendor.subscription.allowVendorUpgrade": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "May a vendor move themselves to a higher-priced plan."
+    },
+    "vendor.subscription.allowVendorDowngrade": {
+      "type": "boolean",
+      "default": false,
+      "writableViaApi": true,
+      "description": "May a vendor move themselves to a lower-priced plan. Off by default — a downgrade can strand outlets or vouchers above the new plan's limits."
+    },
+    "vendor.subscription.allowVendorRenewal": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "May a vendor renew the same plan themselves."
+    },
+    "vendor.subscription.allowAdminDowngrade": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "May an admin downgrade a vendor. On, because an admin can also grandfather whatever overflows."
+    },
+    "vendor.subscription.allowAdminFreeGrant": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "May an admin grant a plan with no online payment (ADMIN_MANUAL)."
+    },
+    "vendor.subscription.gracePeriodDays": {
+      "type": "number",
+      "default": 0,
+      "integer": true,
+      "min": 0,
+      "max": 90,
+      "writableViaApi": true,
+      "description": "Extra days a plan keeps working after endDate before the expiry job retires it. 0 = expires exactly on endDate."
+    },
+    "vendor.subscription.pendingOrderReuseMinutes": {
+      "type": "number",
+      "default": 15,
+      "integer": true,
+      "min": 0,
+      "max": 1440,
+      "writableViaApi": true,
+      "description": "How long a still-open Razorpay order is reused instead of creating a duplicate for the same vendor and plan."
+    },
+    "vendor.subscription.expiryJobIntervalMinutes": {
+      "type": "number",
+      "default": 60,
+      "integer": true,
+      "min": 1,
+      "max": 1440,
+      "writableViaApi": true,
+      "description": "How often the expiry sweep runs."
+    },
+    "vendor.subscription.isPromoCodeEnabled": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Master switch for vendor-side promo codes. While false, passing a promoCode returns 422 rather than silently charging full price — so a campaign can be pulled in one call with no deploy."
+    },
+    "vendor.subscription.expiryReminderDays": {
+      "type": "array of number",
+      "default": [
+        7,
+        3,
+        1
+      ],
+      "itemType": "number",
+      "minItems": 1,
+      "maxItems": 6,
+      "itemRules": {
+        "type": "number",
+        "integer": true,
+        "min": 1,
+        "max": 365
+      },
+      "writableViaApi": true,
+      "description": "Days before endDate on which a renewal reminder is sent, e.g. [7,3,1]. At least one entry is required by the validator."
+    },
+    "vendor.subscription.reminderJobIntervalMinutes": {
+      "type": "number",
+      "default": 180,
+      "integer": true,
+      "min": 1,
+      "max": 1440,
+      "writableViaApi": true,
+      "description": "How often the reminder sweep runs."
+    },
+    "vendor.subscription.isEmailNotificationEnabled": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Vendor email delivery. The in-app notification row is always written regardless — this governs outbound delivery only."
+    },
+    "vendor.subscription.isPushNotificationEnabled": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Vendor push delivery. On by default: push costs nothing per message, so this is a kill switch rather than an opt-in."
+    },
+    "vendor.subscription.isWhatsAppNotificationEnabled": {
+      "type": "boolean",
+      "default": false,
+      "writableViaApi": true,
+      "description": "Vendor WhatsApp delivery. Off by default — WhatsApp Business charges per message and every message type needs its own Meta-approved template. Turning this on without the template still sends nothing."
+    },
+    "vendor.subscription.isActive": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Master switch for the subscription block."
+    },
+    "customer.convenienceFee.isEnabled": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Master switch for the platform fee a customer pays on top of a discounted bill."
+    },
+    "customer.convenienceFee.slabSize": {
+      "type": "number",
+      "default": 500,
+      "integer": true,
+      "min": 1,
+      "writableViaApi": true,
+      "description": "Rupees per slab. Charged in slabs, not as a percentage — with 500/5, a 600 bill sits in the second slab and pays 10."
+    },
+    "customer.convenienceFee.feePerSlab": {
+      "type": "number",
+      "default": 5,
+      "min": 0,
+      "writableViaApi": true,
+      "description": "Rupees charged for each slab of the bill."
+    },
+    "customer.convenienceFee.maxFee": {
+      "type": "number",
+      "default": 50,
+      "min": 0,
+      "alsoAccepts": [
+        null
+      ],
+      "writableViaApi": true,
+      "description": "Ceiling on the fee. null is accepted and means NO ceiling — but it is deliberately not the default, because reaching it by never touching the setting once put a Rs.100 fee on a Rs.10,000 bill."
+    },
+    "customer.convenienceFee.chargeWhenNoOffer": {
+      "type": "boolean",
+      "default": false,
+      "writableViaApi": true,
+      "description": "Charge the fee even when the claim carries no offer/discount. Off — charging a fee on a bill nobody discounted is hard to justify to the customer."
+    },
+    "customer.tax.isGstEnabled": {
+      "type": "boolean",
+      "default": false,
+      "writableViaApi": true,
+      "description": "GST on the convenience fee — Trydood's own service income, not the vendor's. Off until the registration is in place."
+    },
+    "customer.tax.gstPercentage": {
+      "type": "number",
+      "default": 18,
+      "min": 0,
+      "max": 100,
+      "writableViaApi": true,
+      "description": "Rate applied to the convenience fee when isGstEnabled is true."
+    },
+    "customer.tax.isGstInclusive": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "true = the slab amounts already contain the tax and it is back-calculated, so turning the master switch on does not silently raise what the customer is charged."
+    },
+    "customer.tax.sacCode": {
+      "type": "string",
+      "default": "998599",
+      "max": 20,
+      "alsoAccepts": [
+        ""
+      ],
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "SAC code printed on the customer receipt for the fee line."
+    },
+    "customer.promoCode.isEnabled": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Master switch for customer-side promo codes. A separate switch from the vendor one on purpose."
+    },
+    "customer.promoCode.allowWhenNoOffer": {
+      "type": "boolean",
+      "default": false,
+      "writableViaApi": true,
+      "description": "May a promo code be applied to a claim that carries no offer."
+    },
+    "customer.promoCode.allowForGuestPreview": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "May a signed-out visitor see the discounted price before logging in."
+    },
+    "customer.claim.isEnabled": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Master switch for the whole voucher-claim flow. Off refuses new claims; it does not touch claims already in flight."
+    },
+    "customer.claim.allowWhenNoOffer": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "May a customer claim at an outlet with no active offer (pays the fee, gets a record of the visit)."
+    },
+    "customer.claim.maxBillAmount": {
+      "type": "number",
+      "default": 100000,
+      "integer": true,
+      "min": 1,
+      "max": 10000000,
+      "writableViaApi": true,
+      "description": "Largest bill value a customer may enter, in rupees. A ceiling on a number the customer types themselves."
+    },
+    "customer.claim.pendingOrderReuseMinutes": {
+      "type": "number",
+      "default": 10,
+      "integer": true,
+      "min": 0,
+      "max": 1440,
+      "writableViaApi": true,
+      "description": "How long a still-open Razorpay order is reused instead of creating a duplicate."
+    },
+    "customer.claim.quoteTtlMinutes": {
+      "type": "number",
+      "default": 30,
+      "integer": true,
+      "min": 1,
+      "max": 1440,
+      "writableViaApi": true,
+      "description": "How long a priced quote stays valid before the customer has to re-quote. Stops a price being locked in and paid days later."
+    },
+    "customer.claim.allowWhenVendorPlanExpired": {
+      "type": "boolean",
+      "default": false,
+      "writableViaApi": true,
+      "description": "May a customer still claim at a brand whose subscription has lapsed."
+    },
+    "customer.claim.vendorPlanExpiredGraceDays": {
+      "type": "number",
+      "default": 0,
+      "integer": true,
+      "min": 0,
+      "max": 90,
+      "writableViaApi": true,
+      "description": "Days after expiry during which claims are still accepted, when the flag above is on."
+    },
+    "customer.claim.redemptionWindowHours": {
+      "type": "number",
+      "default": 24,
+      "integer": true,
+      "min": 1,
+      "max": 8760,
+      "writableViaApi": true,
+      "description": "How long a paid claim stays redeemable at the outlet before it lapses."
+    },
+    "customer.notification.isEmailNotificationEnabled": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Customer email delivery. Deliberately NOT shared with the vendor block — silencing vendor renewal reminders must not also silence a customer's payment receipt."
+    },
+    "customer.notification.isPushNotificationEnabled": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Customer push delivery."
+    },
+    "customer.notification.isWhatsAppNotificationEnabled": {
+      "type": "boolean",
+      "default": false,
+      "writableViaApi": true,
+      "description": "Customer WhatsApp delivery. Off until the Meta-approved templates exist."
+    },
+    "customer.invoice.seriesPrefix": {
+      "type": "string",
+      "default": "VCH",
+      "min": 2,
+      "max": 6,
+      "rejectedValues": [
+        "SUB",
+        "GRT",
+        "STL",
+        "REF",
+        "DBN",
+        "CMN"
+      ],
+      "pattern": "/^[A-Z]{2,6}$/",
+      "normalisedTo": "UPPERCASE",
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "Prefix for the voucher-claim invoice series. CHANGING IT STARTS A NEW COUNTER — numbers already issued keep the old prefix, which is correct: an invoice number is a permanent legal reference. Capitals only, and the series reserved by other Trydood documents are refused."
+    },
+    "customer.settlement.isEnabled": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Master switch for building settlements at all. Off stops the nightly build — and a settlement fails by NOT happening, so nothing errors."
+    },
+    "customer.settlement.delayDays": {
+      "type": "number",
+      "default": 3,
+      "integer": true,
+      "min": 0,
+      "max": 30,
+      "writableViaApi": true,
+      "description": "The T+N payout floor. LOAD-BEARING: the whole refund design rests on it, and a save that drops it below the sum of the refund windows is refused 422 by assertSettlementTimingRule."
+    },
+    "customer.settlement.payoutBufferHours": {
+      "type": "number",
+      "default": 6,
+      "integer": true,
+      "min": 0,
+      "max": 168,
+      "writableViaApi": true,
+      "description": "Extra hours after the cycle closes before the payout is actually released."
+    },
+    "customer.settlement.cycleType": {
+      "type": "string",
+      "default": "DAILY",
+      "allowedValues": [
+        "DAILY",
+        "WEEKLY"
+      ],
+      "writableViaApi": true,
+      "description": "How often settlements are built."
+    },
+    "customer.settlement.requiresAdminApproval": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "true = every settlement waits for a human to approve it. false ACTUALLY auto-approves now (buildSettlements reads it and goes straight to APPROVED) — note that approving is still not paying; PATCH /settlements/admin/:id/pay stays a deliberate act."
+    },
+    "customer.settlement.minPayoutAmount": {
+      "type": "number",
+      "default": 100,
+      "min": 0,
+      "writableViaApi": true,
+      "description": "Rupees below which a settlement is carried into the next cycle rather than paid out."
+    },
+    "customer.settlement.payoutProvider": {
+      "type": "string",
+      "default": "MANUAL_BANK",
+      "allowedValues": [
+        "MANUAL_BANK",
+        "RAZORPAY_X",
+        "RAZORPAY_ROUTE"
+      ],
+      "writableViaApi": true,
+      "description": "Who moves the money. MANUAL_BANK means a human starts an NEFT and confirms it — sweepStalePayouts alerts on an unconfirmed one and deliberately never acts, because it may genuinely have left."
+    },
+    "customer.settlement.commissionPercent": {
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "max": 100,
+      "writableViaApi": true,
+      "description": "Trydood's cut of a vendor's settled sales."
+    },
+    "customer.settlement.reserve.isEnabled": {
+      "type": "boolean",
+      "default": false,
+      "writableViaApi": true,
+      "description": "Master switch for withholding a slice of a risky vendor's payout. Off for everyone by default."
+    },
+    "customer.settlement.reserve.percent": {
+      "type": "number",
+      "default": 5,
+      "min": 0,
+      "max": 100,
+      "writableViaApi": true,
+      "description": "The base reserve rate held from every payout while the reserve is on."
+    },
+    "customer.settlement.reserve.holdDays": {
+      "type": "number",
+      "default": 30,
+      "integer": true,
+      "min": 0,
+      "max": 365,
+      "writableViaApi": true,
+      "description": "How long a reserved slice is held before it is released back to the vendor."
+    },
+    "customer.settlement.reserve.riskChargebackCount": {
+      "type": "number",
+      "default": 2,
+      "integer": true,
+      "min": 1,
+      "writableViaApi": true,
+      "description": "Chargebacks in the lookback window that TRIGGER a risk look. A count alone never decides — riskDisputeRatePercent does, because 2 chargebacks in 10,000 sales is a better merchant than 2 in 40."
+    },
+    "customer.settlement.reserve.riskLookbackDays": {
+      "type": "number",
+      "default": 180,
+      "integer": true,
+      "min": 1,
+      "max": 365,
+      "writableViaApi": true,
+      "description": "Trailing window over which chargebacks and payments are counted."
+    },
+    "customer.settlement.reserve.riskMinPayments": {
+      "type": "number",
+      "default": 20,
+      "integer": true,
+      "min": 1,
+      "writableViaApi": true,
+      "description": "Volume floor. Under this many payments the brand keeps the base rate and is labelled TOO_FEW_PAYMENTS rather than reading as clean — 1 of 3 sales is 33% and means nothing. Floor of 1: zero would make every brand with one chargeback on its first day read as 100% risky."
+    },
+    "customer.settlement.reserve.riskDisputeRatePercent": {
+      "type": "number",
+      "default": 1,
+      "min": 0,
+      "max": 100,
+      "writableViaApi": true,
+      "description": "Dispute rate above which a brand is treated as risky. Disputes we WON do not count — a won dispute is proof the sale was good."
+    },
+    "customer.settlement.reserve.riskPercent": {
+      "type": "number",
+      "default": 15,
+      "min": 0,
+      "max": 100,
+      "writableViaApi": true,
+      "description": "The higher reserve rate applied once a brand is judged risky."
+    },
+    "customer.settlement.reserve.maxPercent": {
+      "type": "number",
+      "default": 25,
+      "min": 0,
+      "max": 100,
+      "writableViaApi": true,
+      "description": "Ceiling that binds the base rate too. Without it a bad month holds nearly the whole payout, which is how a recoverable problem becomes a closed outlet."
+    },
+    "customer.settlement.newVendorReserveDays": {
+      "type": "number",
+      "default": 0,
+      "integer": true,
+      "min": 0,
+      "max": 365,
+      "writableViaApi": true,
+      "description": "Days a brand new vendor is held at the reserve rate regardless of their record."
+    },
+    "customer.settlement.notReceivedAlertHours": {
+      "type": "number",
+      "default": 96,
+      "integer": true,
+      "min": 1,
+      "max": 720,
+      "writableViaApi": true,
+      "description": "Hours after a payout is marked paid before an admin is alerted that the vendor has not confirmed receiving it."
+    },
+    "customer.settlement.gatewayFeeBearer": {
+      "type": "string",
+      "default": "PLATFORM",
+      "allowedValues": [
+        "PLATFORM",
+        "VENDOR",
+        "SHARED"
+      ],
+      "writableViaApi": true,
+      "description": "Who absorbs Razorpay's MDR. PLATFORM_COST deliberately never returns to zero in the ledger — Razorpay keeps its fee whether or not the sale is refunded."
+    },
+    "customer.refund.method": {
+      "type": "string",
+      "default": "SOURCE",
+      "allowedValues": [
+        "SOURCE",
+        "MANUAL_BANK"
+      ],
+      "writableViaApi": true,
+      "description": "SOURCE returns the money down the original payment rail. MANUAL_BANK collects the customer's account details and pays by transfer — which is what the bankDetails* fields below exist for."
+    },
+    "customer.refund.windowHours": {
+      "type": "number",
+      "default": 24,
+      "integer": true,
+      "min": 0,
+      "max": 720,
+      "writableViaApi": true,
+      "description": "How long after a claim the customer may raise a refund. Counts toward the settlement timing rule."
+    },
+    "customer.refund.vendorApprovalHours": {
+      "type": "number",
+      "default": 24,
+      "integer": true,
+      "min": 0,
+      "max": 720,
+      "writableViaApi": true,
+      "description": "How long the vendor has to respond before onVendorTimeout applies. Counts toward the settlement timing rule."
+    },
+    "customer.refund.adminBufferHours": {
+      "type": "number",
+      "default": 12,
+      "integer": true,
+      "min": 0,
+      "max": 720,
+      "writableViaApi": true,
+      "description": "Admin's slice of the refund path. Counts toward the settlement timing rule."
+    },
+    "customer.refund.onVendorTimeout": {
+      "type": "string",
+      "default": "ESCALATE",
+      "allowedValues": [
+        "ESCALATE",
+        "AUTO_APPROVE"
+      ],
+      "writableViaApi": true,
+      "description": "What happens when the vendor never responds. ESCALATE hands it to an admin; AUTO_APPROVE refunds the customer without them."
+    },
+    "customer.refund.allowPartial": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "May part of a claim be refunded. A partial refund RELEASES the settlement hold (the rest of the sale is still the vendor's) and is netted in the arithmetic — never by excluding the payment from future cycles."
+    },
+    "customer.refund.releasePromoOnRefund": {
+      "type": "boolean",
+      "default": false,
+      "writableViaApi": true,
+      "description": "Give the customer their promo code back when a refund completes."
+    },
+    "customer.refund.authorizedAlertMinutes": {
+      "type": "number",
+      "default": 30,
+      "integer": true,
+      "min": 1,
+      "max": 1440,
+      "writableViaApi": true,
+      "description": "Minutes a refund may sit AUTHORIZED at the gateway before an admin is alerted."
+    },
+    "customer.refund.maxOpenRequests": {
+      "type": "number",
+      "default": 1,
+      "integer": true,
+      "min": 1,
+      "max": 50,
+      "writableViaApi": true,
+      "description": "How many refunds one customer may have open at once. Counts REFUSED requests only, never approved ones — a customer with five approved refunds had five bad experiences, and blocking their sixth punishes the person the process exists for."
+    },
+    "customer.refund.maxRejectedPerWindow": {
+      "type": "number",
+      "default": 3,
+      "integer": true,
+      "min": 1,
+      "max": 100,
+      "writableViaApi": true,
+      "description": "Rejections within requestWindowDays before the customer is pointed at support instead."
+    },
+    "customer.refund.requestWindowDays": {
+      "type": "number",
+      "default": 30,
+      "integer": true,
+      "min": 1,
+      "max": 365,
+      "writableViaApi": true,
+      "description": "The window the two limits above are counted over."
+    },
+    "customer.refund.bankDetailsReminderHours": {
+      "type": "array of number",
+      "default": [
+        24,
+        96
+      ],
+      "itemType": "number",
+      "minItems": 1,
+      "maxItems": 5,
+      "itemRules": {
+        "type": "number",
+        "integer": true,
+        "min": 1,
+        "max": 720
+      },
+      "writableViaApi": true,
+      "description": "MANUAL_BANK only: when the customer is nudged for their account details. The job sorts these ascending itself. At least one entry — an empty list is not 'no reminders', it is a job that quietly nudges nobody."
+    },
+    "customer.refund.bankDetailsStaleDays": {
+      "type": "number",
+      "default": 30,
+      "integer": true,
+      "min": 1,
+      "max": 365,
+      "writableViaApi": true,
+      "description": "Days of silence after which a customer who never sent bank details becomes an admin's problem."
+    },
+    "customer.chargeback.writeOffDays": {
+      "type": "number",
+      "default": 90,
+      "integer": true,
+      "min": 1,
+      "max": 365,
+      "writableViaApi": true,
+      "description": "Days a vendor debt may sit uncollected before alertVendorDebt reports it. It only ever REPORTS — writing a debt off is a deliberate accounting act with a person's name on it, because doing it automatically would forgive a brand that is merely between seasons."
+    },
+    "customer.chargeback.deadlineAlertHours": {
+      "type": "array of number",
+      "default": [
+        72,
+        24
+      ],
+      "itemType": "number",
+      "minItems": 1,
+      "maxItems": 5,
+      "itemRules": {
+        "type": "number",
+        "integer": true,
+        "min": 1,
+        "max": 720
+      },
+      "writableViaApi": true,
+      "description": "Hours before disputeRespondBy at which an admin is warned. Sorted widest-first by the job itself. At least one entry — a dispute deadline that passes is an AUTOMATIC LOSS, and an empty list means no warning at all."
+    },
+    "customer.search.isEnabled": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Switch for the customer home-screen search. false EMPTIES the results, it does not remove the endpoint — GET /search keeps answering 200 with 'search is unavailable' so the app can say so rather than showing a broken-app screen."
+    },
+    "customer.search.minQueryLength": {
+      "type": "number",
+      "default": 2,
+      "integer": true,
+      "min": 1,
+      "max": 10,
+      "writableViaApi": true,
+      "description": "Shortest query that runs. Floor of 1: zero would let an empty query reach a match over brands, vouchers, categories and every outlet address at once."
+    },
+    "customer.search.sectionLimit": {
+      "type": "number",
+      "default": 5,
+      "integer": true,
+      "min": 1,
+      "max": 20,
+      "writableViaApi": true,
+      "description": "Rows per section in overview mode."
+    },
+    "customer.search.historyLimit": {
+      "type": "number",
+      "default": 20,
+      "integer": true,
+      "min": 1,
+      "max": 100,
+      "writableViaApi": true,
+      "description": "Recent searches one customer keeps."
+    },
+    "customer.search.popularQueries": {
+      "type": "array of string",
+      "default": [],
+      "itemType": "string",
+      "maxItems": 10,
+      "emptyListAllowed": true,
+      "itemRules": {
+        "type": "string",
+        "min": 1,
+        "max": 100,
+        "trimmed": true
+      },
+      "writableViaApi": true,
+      "description": "Admin-curated chips for the empty search box. Nothing derives these from traffic — no query a customer types is logged anywhere. An empty list is a legitimate choice and simply shows no chips."
+    },
+    "security.otp.resendCooldownSeconds": {
+      "type": "number",
+      "default": 60,
+      "integer": true,
+      "min": 0,
+      "max": 3600,
+      "writableViaApi": true,
+      "description": "Seconds between two codes to the same target. Its own top-level block because vendors, sub-vendors and customers all log in through the same OTP machinery — filing it under one audience would throttle the other two from a setting nobody would think to look at. 0 is allowed and means no wait."
+    },
+    "security.otp.maxPerHour": {
+      "type": "number",
+      "default": 5,
+      "integer": true,
+      "min": 1,
+      "max": 100,
+      "writableViaApi": true,
+      "description": "Codes per hour per TARGET (number/email), never per IP — Indian mobile networks put thousands of real customers behind one CGNAT address, so an IP limit locks out a block of people while barely inconveniencing an attacker with a phone. Floor of 1: zero would lock EVERYBODY out of logging in, and the way back in is also a login."
+    },
+    "admin.notification.isEmailNotificationEnabled": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Admin email delivery. Its own block so the three audiences cannot silence each other: this used to fall through to the vendor block, so switching off vendor renewal reminders also switched off SETTLEMENT_LEDGER_DRIFT, REFUND_FAILED and every other money alert. A kill switch for an outage, not a preference — an admin who wants fewer emails has PUT /notifications/preferences, which quiets them alone."
+    },
+    "admin.notification.isPushNotificationEnabled": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Admin push delivery. Same reasoning — keep it on."
+    },
+    "admin.notification.isWhatsAppNotificationEnabled": {
+      "type": "boolean",
+      "default": false,
+      "writableViaApi": true,
+      "description": "Admin WhatsApp delivery. Off until the Meta-approved templates exist."
+    },
+    "admin.notification.maxRecipientsPerDispatch": {
+      "type": "number",
+      "default": 5000,
+      "integer": true,
+      "min": 1,
+      "writableViaApi": true,
+      "description": "Ceiling on one broadcast. A REFUSAL, not a truncation — resolveAudience throws 422 above it rather than reaching the first N silently. No upper bound in the validator on purpose, but raising it is not free: every recipient is a row written and a push queued, and FCM takes 500 tokens per batch. Past a few thousand this belongs in a background job."
+    },
+    "app.minVersion.android": {
+      "type": "string",
+      "default": "1.0.0",
+      "pattern": "/^\\d+(\\.\\d+){0,2}$/",
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "Below this, the Android app must update before it can be used. Compared numerically, never as strings. PUBLIC."
+    },
+    "app.minVersion.ios": {
+      "type": "string",
+      "default": "1.0.0",
+      "pattern": "/^\\d+(\\.\\d+){0,2}$/",
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "Below this, the iOS app must update before it can be used. PUBLIC."
+    },
+    "app.latestVersion.android": {
+      "type": "string",
+      "default": "1.0.0",
+      "pattern": "/^\\d+(\\.\\d+){0,2}$/",
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "Newest Android build available. Kept separate from minVersion deliberately — telling somebody a newer build exists is a nudge; refusing to let them past the splash screen is a different decision. PUBLIC."
+    },
+    "app.latestVersion.ios": {
+      "type": "string",
+      "default": "1.0.0",
+      "pattern": "/^\\d+(\\.\\d+){0,2}$/",
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "Newest iOS build available. PUBLIC."
+    },
+    "app.forceUpdate": {
+      "type": "boolean",
+      "default": false,
+      "writableViaApi": true,
+      "description": "Overrides everything and locks every user below minVersion out at once, with no staged rollout and no undo other than setting it back. Its own field rather than something inferred from a version bump. PUBLIC."
+    },
+    "app.updateMessage": {
+      "type": "string",
+      "default": "A newer version of Trydood is available. Please update to continue.",
+      "max": 300,
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "Sentence shown on the update screen. PUBLIC."
+    },
+    "app.storeUrl.android": {
+      "type": "string",
+      "default": "",
+      "alsoAccepts": [
+        ""
+      ],
+      "format": "uri",
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "Play Store link the update screen opens. Must be a URI, or blank. PUBLIC."
+    },
+    "app.storeUrl.ios": {
+      "type": "string",
+      "default": "",
+      "alsoAccepts": [
+        ""
+      ],
+      "format": "uri",
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "App Store link the update screen opens. Must be a URI, or blank. PUBLIC."
+    },
+    "app.support.email": {
+      "type": "string",
+      "default": "",
+      "alsoAccepts": [
+        ""
+      ],
+      "format": "email",
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "Where every 'please contact support' sentence in the app points. This is the field that makes /app-config worth having on day one — every refusal in the refund flow ends with it. Blank allowed, and blank is the honest state before somebody fills it in. PUBLIC."
+    },
+    "app.support.phone": {
+      "type": "string",
+      "default": "",
+      "alsoAccepts": [
+        ""
+      ],
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "Support phone shown in the app. PUBLIC."
+    },
+    "app.support.whatsapp": {
+      "type": "string",
+      "default": "",
+      "alsoAccepts": [
+        ""
+      ],
+      "trimmed": true,
+      "writableViaApi": true,
+      "description": "Support WhatsApp number shown in the app. PUBLIC."
+    },
+    "app.features.promoCodes": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Tells the app whether to show the promo-code field. It does NOT close the endpoint — create-order still returns its hard 422 when promo codes are off. PUBLIC."
+    },
+    "app.features.refunds": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Tells the app whether to show the refund screens. Does not close the endpoints. PUBLIC."
+    },
+    "app.features.voucherClaims": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Tells the app whether to show the claim flow. Does not close the endpoints. PUBLIC."
+    },
+    "app.features.search": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Tells the app whether to show the search box. Does not close the endpoint. PUBLIC."
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": true,
+      "writableViaApi": true,
+      "description": "Master switch on the settings document itself."
+    },
+    "updatedBy": {
+      "type": "ObjectId (24-char hex string)",
+      "default": null,
+      "ref": "User",
+      "writableViaApi": false,
+      "readOnlyReason": "System field — never accepted from the request body.",
+      "description": "The admin User._id of whoever last saved. Written by the service from the JWT, never accepted from the body."
+    },
+    "_id": {
+      "type": "ObjectId (24-char hex string)",
+      "default": null,
+      "writableViaApi": false,
+      "readOnlyReason": "System field — never accepted from the request body.",
+      "description": "Assigned by MongoDB. The settings document is a singleton — there is only ever one."
+    },
+    "createdAt": {
+      "type": "date (ISO 8601 string in JSON)",
+      "default": null,
+      "writableViaApi": false,
+      "readOnlyReason": "System field — never accepted from the request body.",
+      "description": "Set by mongoose `timestamps`. Read-only."
+    },
+    "updatedAt": {
+      "type": "date (ISO 8601 string in JSON)",
+      "default": null,
+      "writableViaApi": false,
+      "readOnlyReason": "System field — never accepted from the request body.",
+      "description": "Set by mongoose `timestamps` on every save. Read-only."
+    }
+  }
+}

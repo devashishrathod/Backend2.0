@@ -18,6 +18,12 @@ const {
   sendEmailVerification,
   verifyEmail,
 } = require("./emailVerification");
+const {
+  sendMobileVerification,
+  verifyMobile,
+  sendWhatsappVerification,
+  verifyWhatsapp,
+} = require("./contactVerification");
 
 module.exports = {
   registerUser,
@@ -36,4 +42,12 @@ module.exports = {
   logout,
   sendEmailVerification,
   verifyEmail,
+  /**
+   * The two phone keys, same two-call shape as email. `whatsappNumber` is a
+   * step-up — see `contactVerification.js` for why it and `mobile` differ.
+   */
+  sendMobileVerification,
+  verifyMobile,
+  sendWhatsappVerification,
+  verifyWhatsapp,
 };

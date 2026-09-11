@@ -4,7 +4,10 @@ const { verifyOtp } = require("../otps");
 const { sendOtpVerificationSuccessMail } = require("../../helpers/nodeMailer");
 const { LOGIN_TYPES, ROLES } = require("../../constants");
 const { assertAccountAccess } = require("../../helpers/auth");
-const { sanitizeUser } = require("../../helpers/users");
+const {
+  sanitizeUser,
+  syncRoleProfileIdentity,
+} = require("../../helpers/users");
 
 exports.verifyEmailOTP = async (body) => {
   let { otp, email, role, currentScreen } = body;
@@ -26,6 +29,15 @@ exports.verifyEmailOTP = async (body) => {
     user.isOnline = true;
     if (currentScreen) user.currentScreen = currentScreen.toUpperCase().trim();
     user = await user.save();
+
+    // Signing in by email proves the address, so the flag above is earned — and
+    // this pushes it, and the other two keys, onto the role profile. That mirror
+    // is what `notify()` reads first and what invoices print, and nothing had
+    // been maintaining it since signup.
+    await syncRoleProfileIdentity(user).catch((error) =>
+      console.error(`[auth] identity mirror failed for ${user._id}:`, error?.message),
+    );
+
     const token = user.getSignedJwtToken();
     await sendOtpVerificationSuccessMail(email);
     /**

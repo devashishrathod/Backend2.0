@@ -1,5 +1,6 @@
 const Joi = require("joi");
 const objectId = require("./validJoiObjectId");
+const phone = require("./validJoiPhone");
 const {
   BUSINESS_REGISTRATION_STATUS,
   BUSINESS_ENTITY_TYPE,
@@ -371,14 +372,10 @@ exports.validateUpdateBrand = {
       "string.empty": "Email can't be empty",
       "string.email": "Please enter a valid email address",
     }),
-    mobile: Joi.string()
-      .trim()
-      .pattern(/^[0-9]{10}$/)
-      .optional()
-      .messages({
-        "string.empty": "Mobile number can't be empty",
-        "string.pattern.base": "Please enter a valid 10-digit mobile number",
-      }),
+    // ⚠️ Was `/^[0-9]{10}$/`, which accepted a first digit of 0-5 — the Mongoose
+    // validator on `Brand.mobile` demands `[6-9]`, so this let an admin submit a
+    // number the save would then reject with a raw validation error.
+    mobile: phone("mobile number").optional(),
     joinedDate: Joi.date().optional().messages({
       "date.base": "Please enter a valid joined date",
     }),

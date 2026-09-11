@@ -28,6 +28,7 @@ const {
   verifyRazorpayWebhook,
   recordRejectedWebhook,
   recordFundsReceived,
+  fetchSettledPaymentIds,
 } = require("../../helpers/transactions");
 const { releasePromoCode } = require("../../helpers/promoCodes");
 const { applyRefundCompletion } = require("../../helpers/refunds");
@@ -823,21 +824,30 @@ const handleGatewaySettlement = async ({ body, account, finish }) => {
   try {
     const { instance } = getRazorpayAccount(account);
     /**
-     * The payments in this batch. `count` is capped at 100 per page by Razorpay,
-     * so this pages until it runs out — a busy day settles more than 100.
+     * ⚠️ The settlement recon report, **not** `payments.all({ settlement_id })`.
+     *
+     * That call silently ignores the filter: measured against a live account it
+     * returned the whole account's 42 payments for a batch of one. Nothing
+     * errors — it just answers a different question than the one asked.
+     *
+     * The consequence here was as bad as it gets. One `settlement.processed`
+     * would have stamped `fundsReceivedAt` on **every** captured claim payment,
+     * including the ones the gateway was still holding, and
+     * `buildEligibilityFilter` would then have released all of them into a
+     * payout run. Vendors paid out of money that had not arrived — the exact
+     * failure this field exists to prevent, through the field meant to prevent
+     * it.
+     *
+     * It had never fired only by luck: the single delivery this platform has
+     * ever received landed on the subscription account, where all 43 payments it
+     * wrongly returned were the wrong `purpose` and `recordFundsReceived`
+     * matched none of them.
      */
-    let skip = 0;
-    for (;;) {
-      const page = await instance.payments.all({
-        settlement_id: settlement.id,
-        count: 100,
-        skip,
-      });
-      const items = page?.items || [];
-      paymentIds.push(...items.map((p) => p.id).filter(Boolean));
-      if (items.length < 100) break;
-      skip += items.length;
-    }
+    paymentIds = await fetchSettledPaymentIds({
+      instance,
+      settlementId: settlement.id,
+      settledAt,
+    });
   } catch (error) {
     /**
      * Recorded as a failure rather than swallowed. Without the payment list

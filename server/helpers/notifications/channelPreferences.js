@@ -66,8 +66,26 @@ const resolveChannelPreferences = (source) => {
 
   const resolved = {};
   for (const channel of Object.keys(NOTIFICATION_PREFERENCE_DEFAULTS)) {
-    // ⚠️ `!== false`, never `=== true`. See the note above.
-    resolved[channel] = prefs?.[channel] !== false;
+    /**
+     * ⚠️ `?? DEFAULTS[channel]`, and **not** the old `!== false`.
+     *
+     * `!== false` hard-coded "absent means on" for every channel and used this
+     * table only for its **keys** — so changing a default here changed nothing
+     * at all for the accounts that matter. Worse, it changed something for the
+     * ones that do not: `models/User.js` gives the schema path
+     * `default: NOTIFICATION_PREFERENCE_DEFAULTS[channel]`, so a **new** account
+     * stored the value while every **existing** account, which has no
+     * `notificationPreferences` field at all, resolved the opposite way.
+     *
+     * One table, two answers, decided by how old the account is.
+     *
+     * Now the table is the single source. `push` and `whatsapp` still default to
+     * **on**, so everything the big warning above describes still holds for them.
+     * `email` is deliberately **off**, because an address nobody has confirmed
+     * should not receive mail by default — and the verification guard below would
+     * refuse it anyway, so the two agree instead of contradicting each other.
+     */
+    resolved[channel] = prefs?.[channel] ?? NOTIFICATION_PREFERENCE_DEFAULTS[channel];
   }
 
   return resolved;
@@ -89,6 +107,7 @@ const isChannelAllowed = ({
   preferences,
   platformEnabled,
   type,
+  verified,
 } = {}) => {
   const preference = resolveChannelPreferences(preferences)[channel] ?? true;
 
@@ -107,6 +126,44 @@ const isChannelAllowed = ({
       preference,
       effective: false,
       blockedBy: "PLATFORM",
+      forced: false,
+    };
+  }
+
+  /**
+   * ---------------- the third switch: is this key confirmed? ----------------
+   *
+   * Checked **second**, and never overridden — the same standing as the platform
+   * kill switch, and for a reason that is not the same as a preference's.
+   *
+   * `email` and `whatsapp` deliver to a value on the account, and that value can
+   * be written by somebody who is not the account holder: an admin may set
+   * anybody's, a vendor may set their own outlet managers'. Until an OTP has
+   * confirmed it, **we do not know the address belongs to this person.**
+   *
+   * ⚠️ This sits **above** `ALWAYS_DELIVER_TYPES`, and that placement is the
+   * whole decision. That list exists to outrank somebody's *wish* not to be
+   * disturbed, for notices where silence costs them money or access. Unverified
+   * is not a wish — it is an unknown. Sending `REFUND_FAILED` to an address
+   * nobody has proved puts a real customer's refund detail in a stranger's inbox,
+   * which is worse than not sending it: they still have the in-app row, the push,
+   * and — for every non-admin role — WhatsApp, which is their login identity and
+   * therefore always verified.
+   *
+   * `push` has no such notion. A device token proves itself by existing; there is
+   * no address to confuse. `verified.push` is never consulted.
+   *
+   * ⚠️ Absent `verified` means **not checked**, not "unverified". A caller that
+   * does not pass it — `describeChannelPreferences` reporting a panel toggle, an
+   * older call site — gets the behaviour it had before, rather than silently
+   * blocking every channel.
+   */
+  if (verified?.[channel] === false) {
+    return {
+      allowed: false,
+      preference,
+      effective: false,
+      blockedBy: "UNVERIFIED",
       forced: false,
     };
   }
@@ -155,7 +212,11 @@ const isChannelAllowed = ({
  * @param {object} [args.platformChannels] `{email, push, whatsapp}` booleans
  * @returns {{email: object, push: object, whatsapp: object}}
  */
-const describeChannelPreferences = ({ preferences, platformChannels } = {}) => {
+const describeChannelPreferences = ({
+  preferences,
+  platformChannels,
+  verified,
+} = {}) => {
   const resolved = resolveChannelPreferences(preferences);
 
   /**
@@ -178,6 +239,16 @@ const describeChannelPreferences = ({ preferences, platformChannels } = {}) => {
       channel,
       preferences: resolved,
       platformEnabled: platformChannels?.[channel],
+      /**
+       * ⚠️ Passed here too, so the panel can grey the toggle out **before**
+       * anybody taps it.
+       *
+       * Without this the read would report `effective: true` for a channel the
+       * delivery path will refuse — the same lie the missing `platformChannels`
+       * warning above exists to prevent, in a second flavour. `blockedBy` comes
+       * back as `"UNVERIFIED"`, which is what the client branches on.
+       */
+      verified,
     });
 
     described[channel] = {

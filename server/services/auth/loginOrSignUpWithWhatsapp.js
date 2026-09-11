@@ -11,6 +11,8 @@ const {
   generateUniqueUserId,
   generateReferralCode,
   sanitizeUser,
+  profileForRole,
+  syncRoleProfileIdentity,
 } = require("../../helpers/users");
 const {
   generateUniqueBrandId,
@@ -29,30 +31,28 @@ const {
 const SELF_SIGNUP_ROLES = Object.freeze([ROLES.CUSTOMER, ROLES.VENDOR]);
 
 /**
- * The side profile each role carries, and the User field that points at it.
- * Keeping this in one place means the create path and the repair path can never
- * disagree about what a role needs.
+ * How to build a **new** profile for each self-signup role.
+ *
+ * ⚠️ Where that profile lives — the model and the `User` field pointing at it —
+ * moved to `helpers/users/roleProfiles.js`, because the identity mirror and the
+ * sync script need the same answer and could not reach it in here. What stays is
+ * the part only signup knows: which generated ids a fresh row needs.
+ *
+ * Keyed by the same roles as `SELF_SIGNUP_ROLES`. A `SUB_VENDOR`'s `SubBrand` is
+ * built by their parent brand in `signUpSubBrandWithWhatsapp`, never here.
  */
-const ROLE_PROFILES = Object.freeze({
-  [ROLES.VENDOR]: {
-    model: Brand,
-    userField: "brandId",
-    build: async (userId, whatsappNumber) => ({
-      userId,
-      whatsappNumber,
-      uniqueId: await generateUniqueBrandId(),
-      merchantId: await generateBrandMerchantId(),
-    }),
-  },
-  [ROLES.CUSTOMER]: {
-    model: Customer,
-    userField: "customerId",
-    build: async (userId, whatsappNumber) => ({
-      userId,
-      whatsappNumber,
-      uniqueId: await generateUniqueCustomerId(),
-    }),
-  },
+const PROFILE_BUILDERS = Object.freeze({
+  [ROLES.VENDOR]: async (userId, whatsappNumber) => ({
+    userId,
+    whatsappNumber,
+    uniqueId: await generateUniqueBrandId(),
+    merchantId: await generateBrandMerchantId(),
+  }),
+  [ROLES.CUSTOMER]: async (userId, whatsappNumber) => ({
+    userId,
+    whatsappNumber,
+    uniqueId: await generateUniqueCustomerId(),
+  }),
 });
 
 /**
@@ -85,10 +85,11 @@ const createUserWithProfile = async ({ whatsappNumber, role }) => {
         { session },
       );
 
-      const profile = ROLE_PROFILES[role];
-      if (profile) {
+      const profile = profileForRole(role);
+      const build = PROFILE_BUILDERS[role];
+      if (profile && build) {
         const [doc] = await profile.model.create(
-          [await profile.build(user._id, whatsappNumber)],
+          [await build(user._id, whatsappNumber)],
           { session },
         );
         user[profile.userField] = doc._id;
@@ -163,17 +164,16 @@ const createUserWithProfile = async ({ whatsappNumber, role }) => {
  * Idempotent — a healthy account falls straight through.
  */
 const repairRoleProfile = async (user, role, whatsappNumber) => {
-  const profile = ROLE_PROFILES[role];
-  if (!profile || user[profile.userField]) return user;
+  const profile = profileForRole(role);
+  const build = PROFILE_BUILDERS[role];
+  if (!profile || !build || user[profile.userField]) return user;
 
   let doc = await profile.model
     .findOne({ userId: user._id, isDeleted: false })
     .select("_id");
 
   if (!doc) {
-    doc = await profile.model.create(
-      await profile.build(user._id, whatsappNumber),
-    );
+    doc = await profile.model.create(await build(user._id, whatsappNumber));
   }
 
   user[profile.userField] = doc._id;
@@ -221,6 +221,22 @@ exports.loginOrSignUpWithWhatsapp = async (body) => {
    */
   user = await repairRoleProfile(user, role, whatsappNumber);
 
+  /**
+   * And repair the identity mirror while we are here.
+   *
+   * `repairRoleProfile` above guarantees a profile **exists**; this guarantees it
+   * carries the same three contact keys as the account. Those are different
+   * failures: a profile created years ago by a working signup is not missing, it
+   * is simply out of date — and `sendBankOtp` sends a refund's bank-attach code
+   * to `Customer.whatsappNumber`, so out of date there means the code goes to
+   * whoever holds the customer's old number.
+   *
+   * Idempotent and silent when the two already agree, which is the normal case.
+   */
+  await syncRoleProfileIdentity(user).catch((error) =>
+    console.error(`[auth] identity mirror failed for ${user._id}:`, error?.message),
+  );
+
   //  await sendOtp(LOGIN_TYPES.WHATSAPP, whatsappNumber);
 
   return {
@@ -229,7 +245,14 @@ exports.loginOrSignUpWithWhatsapp = async (body) => {
     // arrive: the row already existed on the retry, so `isFirst` flipped to
     // false and the client sent a returning user down the wrong path even
     // though they had never verified anything.
-    isFirst: !user.isMobileVerified,
+    //
+    // ⚠️ Reads `isWhatsappVerified` now. It used to read `isMobileVerified`,
+    // because that is the flag `verifyOtpWithWhatsapp` used to set — so this was
+    // asking "has their mobile been confirmed?" to decide whether their
+    // **WhatsApp** number still needs an OTP. Same answer by accident, on the
+    // wrong field. After `scripts/backfillIdentityFlags.js` the value every
+    // existing user sees is unchanged.
+    isFirst: !user.isWhatsappVerified,
     // Verified, but the profile (name / dob / email) is still empty. Lets the
     // client route to the profile step without inspecting raw user fields.
     isProfileComplete: Boolean(user.isSignUpCompleted),

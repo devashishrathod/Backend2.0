@@ -15,6 +15,7 @@ const { throwError } = require("./utils");
 const allRoutes = require("./routes");
 const { getIP } = require("./configs/render");
 const { startJobs } = require("./jobs");
+const { assertReachableAdmins } = require("./helpers/notifications");
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -196,6 +197,24 @@ app.use(errorHandler);
      */
     assertMoneyIndexes().catch((error) =>
       console.error("[idx] index check failed:", error?.message),
+    );
+
+    /**
+     * Can the admins still be told when money goes wrong?
+     *
+     * An unverified address now carries nothing, and WhatsApp is off for the
+     * admin audience platform-wide — so an admin whose email was never confirmed
+     * has **no** outbound channel, and their `SETTLEMENT_LEDGER_DRIFT` and
+     * `REFUND_FAILED` alerts reach in-app only.
+     *
+     * Exactly the failure `CLAUDE.md` describes as the dangerous kind: nothing
+     * errors, nothing is logged, the send is simply skipped. So it is checked out
+     * loud, at every boot. Reports and never acts — marking an address verified
+     * without an OTP is the one thing this whole feature forbids, and the
+     * accounts with the most power are the worst place to make an exception.
+     */
+    assertReachableAdmins().catch((error) =>
+      console.error("[notify] admin reachability check failed:", error?.message),
     );
     startJobs().catch((error) =>
       console.error("❌ [jobs] failed to start:", error?.message),

@@ -137,6 +137,20 @@ const describeActor = async (updatedBy) => {
   return { _id: actor._id, name: actor.name || null, role: actor.role || null };
 };
 
+/**
+ * Which of this person's channels point at a key an OTP has confirmed.
+ *
+ * ⚠️ `=== true`, not truthiness — absent must read as **not verified**. Every
+ * account that predates the flag has no value, and treating that as confirmed
+ * would be the guard passing for exactly the rows it exists for.
+ *
+ * `push` is absent on purpose: a device token proves itself by existing.
+ */
+const verifiedChannels = (user) => ({
+  email: user.isEmailVerified === true,
+  whatsapp: user.isWhatsappVerified === true,
+});
+
 /** The response every one of the four endpoints returns. */
 const present = async (user) => {
   const [{ audience, channels }, updatedBy] = await Promise.all([
@@ -152,6 +166,16 @@ const present = async (user) => {
     channels: describeChannelPreferences({
       preferences: user.notificationPreferences,
       platformChannels: channels,
+      /**
+       * ⚠️ So the panel can grey a toggle out **before** anybody taps it.
+       *
+       * An unverified channel comes back `effective: false` with
+       * `blockedBy: "UNVERIFIED"`. Reporting it as live and then refusing the
+       * write is the same lie `platformChannels` exists to prevent — and here it
+       * has an obvious fix the person can act on, so telling them up front is
+       * worth more than an error afterwards.
+       */
+      verified: verifiedChannels(user),
     }),
     updatedBy,
     updatedAt: user.notificationPreferences?.updatedAt || null,
@@ -169,6 +193,36 @@ const present = async (user) => {
 const applyChange = async (user, payload, actorUserId) => {
   const next = user.notificationPreferences || {};
   let changed = false;
+
+  /**
+   * ---------------- switching a channel **on** needs a confirmed key ---------
+   *
+   * The delivery guard already refuses an unverified channel, so allowing the
+   * toggle would send nothing wrong. It would do something worse than wrong: the
+   * person taps it, the API says yes, and nothing ever arrives — with no way for
+   * them to find out why.
+   *
+   * ⚠️ Switching **off** is never gated. Declining messages is always allowed;
+   * only the promise that they will arrive has to be backed by something.
+   *
+   * ⚠️ An admin doing it for somebody else is refused too. An admin's job is to
+   * change a person's wishes, not to vouch for an address on their behalf — and
+   * exempting the admin path would be a way around the guard rather than a
+   * convenience.
+   */
+  const verified = verifiedChannels(user);
+  for (const channel of Object.keys(NOTIFICATION_PREFERENCE_CHANNELS)) {
+    if (payload[channel] !== true) continue;
+    if (verified[channel] === false) {
+      throwError(
+        422,
+        channel === "email"
+          ? "Verify your email address first to get updates by email."
+          : "Verify your WhatsApp number first to get updates on WhatsApp.",
+        { code: "IDENTITY_NOT_VERIFIED", channel },
+      );
+    }
+  }
 
   for (const channel of Object.keys(NOTIFICATION_PREFERENCE_CHANNELS)) {
     if (payload[channel] === undefined) continue;

@@ -18,6 +18,7 @@ const {
 const { recordRejectedWebhook } = require("./recordRejectedWebhook");
 const { detectDoubleCapture } = require("./detectDoubleCapture");
 const { recordFundsReceived } = require("./recordFundsReceived");
+const { fetchSettledPaymentIds } = require("./fetchSettledPaymentIds");
 const {
   buildMoneyListFilter,
   claimProjection,
@@ -52,6 +53,13 @@ module.exports = {
    * settled yet is how a platform funds its own float without deciding to.
    */
   recordFundsReceived,
+  /**
+   * ⚠️ The only correct way to ask which payments a settlement carried.
+   *
+   * `payments.all({ settlement_id })` ignores the filter and returns the whole
+   * account — see the helper for what that cost.
+   */
+  fetchSettledPaymentIds,
   // The money-read surface: one filter builder, one projection per audience,
   // shared by every listing and by the detail endpoint so they cannot drift.
   buildMoneyListFilter,

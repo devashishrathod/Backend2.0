@@ -7,6 +7,7 @@ const { getAdminConfig } = require("./getAdminConfig");
 const { getSecurityConfig } = require("./getSecurityConfig");
 const { getAppConfig } = require("./getAppConfig");
 const { assertSettlementTimingRule } = require("./assertSettlementTimingRule");
+const { assertReserveRateRule } = require("./assertReserveRateRule");
 
 module.exports = {
   getSetting,
@@ -21,7 +22,9 @@ module.exports = {
   getSecurityConfig,
   // The only one whose output is public — a whitelist, see the file.
   getAppConfig,
-  // Not a getter: the cross-block rule that `updateSetting` runs on the merged
-  // document before saving.
+  // Not getters: the cross-field rules `updateSetting` runs on the merged
+  // document before saving, because a partial PATCH carries only one side of
+  // each comparison.
   assertSettlementTimingRule,
+  assertReserveRateRule,
 };

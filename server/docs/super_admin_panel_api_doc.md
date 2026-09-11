@@ -520,8 +520,8 @@ Naya user banata hai — **default role `ADMIN`**.
 | `name` | string | ✅ | – | 3–120 chars |
 | `email` | string | ✅ | – | Valid email, lowercase |
 | `dob` | date | ✅ | – | Past me honi chahiye |
-| `whatsappNumber` | string | ✅ | – | 10 digits, first `6-9` |
-| `mobile` | string | ✅ | – | 10 digits, first `6-9` |
+| `whatsappNumber` | string | ✅ | – | 10 digits, first `6-9`; `+91`/`91` prefix strip ho jaata hai |
+| `mobile` | string | ✅ | – | 10 digits, first `6-9`; `+91`/`91` prefix strip ho jaata hai |
 | `username` | string | ✅ | – | `/^[a-z0-9_]{3,50}$/` — lowercase, digits, underscore |
 | `password` | string | ✅ | – | 8–30 chars |
 | `role` | string | ❌ | **`ADMIN`** | ROLES enum, auto-uppercase |
@@ -645,7 +645,7 @@ WhatsApp OTP — **`role: "ADMIN"` bhejne pe admin account bhi banata hai**.
 ### Body
 | Field | Type | Required | Default | Validation |
 |---|---|---|---|---|
-| `whatsappNumber` | string | ✅ | – | 10 digits, first `6-9` |
+| `whatsappNumber` | string | ✅ | – | 10 digits, first `6-9`; `+91`/`91` prefix strip ho jaata hai |
 | `role` | string | ❌ | `CUSTOMER` | ROLES enum, auto-uppercase |
 
 ```json
@@ -710,7 +710,7 @@ if (!user) {
 ### Body
 | Field | Type | Required | Default | Validation |
 |---|---|---|---|---|
-| `whatsappNumber` | string | ✅ | – | 10 digits, first `6-9` |
+| `whatsappNumber` | string | ✅ | – | 10 digits, first `6-9`; `+91`/`91` prefix strip ho jaata hai |
 | `otp` | string | ✅ | – | Exactly 6 characters |
 | `role` | string | ❌ | `CUSTOMER` | ROLES enum |
 | `currentScreen` | string | ❌ | – | SCREENS enum |
@@ -773,13 +773,13 @@ Admin ke liye **email OTP recommended path** hai — yahan verification actually
 ### Body — #7 (mobile OTP send)
 | Field | Type | Required | Default |
 |---|---|---|---|
-| `mobile` | string | ✅ | – (10 digits) |
+| `mobile` | string | ✅ | – (10 digits, first `6-9`; `+91`/`91` prefix strip ho jaata hai) |
 | `role` | string | ❌ | `ADMIN` |
 
 ### Body — #8 (mobile OTP verify)
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `mobile` | string | ✅ | 10 digits |
+| `mobile` | string | ✅ | 10 digits, first `6-9`; `+91`/`91` prefix strip ho jaata hai |
 | `sessionId` | string | ✅ | **#7 ke response se** |
 | `otp` | string | ✅ | 6 digits |
 | `role` | string | ❌ | Default `ADMIN` |
@@ -803,7 +803,29 @@ Admin ke liye **email OTP recommended path** hai — yahan verification actually
 | `401` | `Invalid OTP! Please try again.` |
 | `422` | `OTP must be a 6 digit number` |
 | `422` | `Session ID is required` *(mobile only)* |
-| `422` | `Mobile number must be 10 digits` |
+| `422` | `Please enter a valid 10 digit mobile number` |
+| `403` 🆕 | `This email address / mobile number has not been verified yet...` — send step par, `details.code: IDENTITY_NOT_VERIFIED` |
+
+> ⚠️ **Message badla hai.** Pehle `Mobile number must be 10 digits` tha aur pattern
+> `/^\d{10}$/` — yaani `0123456789` bhi pass ho jaata, jabki `User.mobile` ka
+> Mongoose validator `[6-9]` maangta hai. Endpoint aisa number le leta jise database
+> phir refuse kar deta. Ab dono ek hi niyam par hain.
+
+> ### 🔴 Unverified email / mobile se ab login nahi hota
+>
+> Dono login identities hain: endpoint account dhoondh kar **usi key par** code bhejta
+> hai. Matlab kisi ki email likh dena hi uske account me ghusne ka raasta tha — aur
+> likhne ka haq sirf khud us insaan ke paas nahi hai: **admin kisi ka bhi** set kar
+> sakta hai, vendor apne outlet managers ka.
+>
+> Ab key tabhi sign-in identity banti hai jab uska apna OTP use confirm kare. Yahi wajah
+> hai ki admin ka `PATCH /users/admin/:userId/contact` kisi ke account me ghusne ka
+> raasta nahi banta.
+>
+> ⚠️ **Kisi admin ka login nahi tootta.** `verify-otp-email` / `verify-otp-mobile`
+> hamesha se apna flag `true` karte aaye hain, to jo admin in raaston se login karta
+> raha hai wo pehle se verified hai. Aur `POST /auth/register` password required karta
+> hai, to `POST /auth/login` hamesha khula hai.
 
 ### ⚠️ Note
 **Email aur Mobile OTP flows me verification intact hai** — sirf WhatsApp flow me commented out hai. Admin ke liye ye safe path hai.
@@ -1002,6 +1024,194 @@ Ye wahi do endpoint hain jo vendor panel aur customer app use karte hain: ek `Us
 ⚠️ **Uniqueness `{ email, role }` par**, aur **verify par dobara** check hoti hai — dono call ke beech minute nikalte hain aur utni der me koi aur wo address le sakta hai.
 
 Poora detail: [vendor doc #19c/#19d](./vendor_panel_api_doc.md#19c-post-authemailsend-verification-).
+
+---
+
+## 12c. POST /auth/mobile/send-verification 🆕
+
+**Access:** `verifyJwtToken` — koi bhi signed-in role
+
+Email wala hi shape: `mobile` **optional** hai. Na bhejo to account par jo number hai wahi
+confirm hota hai; bhejo to us par switch shuru hota hai.
+
+```jsonc
+{}                              // jo number hai use confirm karo
+{ "mobile": "9876543210" }      // is par switch karo
+```
+
+### Response — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "We have sent a code to ******3210. Enter it to switch to this number.",
+  "data": { "step": "CONFIRM_NEW", "isChange": true, "sentTo": "******3210", "sessionId": "abc-123" }
+}
+```
+
+⚠️ **`sessionId` wapas bhejna hoga.** Mobile ka code hamara nahi hai — 2factor banata aur
+rakhta hai, aur `sessionId` se hi use verify karta hai. Isi wajah se mobile ke calls me ye
+field hai aur email/WhatsApp ke calls me nahi.
+
+⚠️ **Ab throttled hai.** Pehle **kisi bhi** mobile OTP path par koi limit nahi thi —
+`sendOtp` ka throttle sirf WhatsApp aur email ke liye chalta hai, aur mobile seedha 2factor
+ko call karta tha. Ab 60 second ka cooldown aur 5 per hour lagte hain, `Setting.security.otp`
+se tunable, aur `429` me `retryAfterSeconds` aata hai — wahi shape jo baaki dono channels ka
+hai.
+
+⚠️ **`+91 98765 43210` bhi chalega** — server normalise karke 10 digit bana deta hai, to wo
+account par pade number se compare hota hai. Iske bina apna hi number confirm karna "change"
+lagta aur bewajah code chala jaata.
+
+| Code | Kab |
+|---|---|
+| `200` | Code chala gaya |
+| `409` | Ye number pehle se verified hai (aur aap badal nahi rahe) |
+| `409` | Number kisi aur account par hai (same role) |
+| `422` | Account par koi number hai hi nahi aur aapne bheja bhi nahi |
+| `429` | Cooldown — `details.retryAfterSeconds` dekhein |
+
+---
+
+## 12d. POST /auth/mobile/verify 🆕
+
+**Access:** `verifyJwtToken`
+
+```jsonc
+{ "otp": "482913", "sessionId": "abc-123" }
+{ "otp": "482913", "sessionId": "abc-123", "mobile": "9876543210" }
+```
+
+### Response — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "Mobile number updated and verified.",
+  "data": { "step": "DONE", "mobile": "9876543210", "isMobileVerified": true, "wasChange": true }
+}
+```
+
+⚠️ **Number likhna aur `isMobileVerified: true` ek hi save me** — aur usi save me role
+collection (`Customer` / `Brand` / `SubBrand`) par mirror bhi. Do step me karne par ek pal
+aisa banta jahan naya number padha hai aur verified nahi.
+
+⚠️ **Uniqueness yahan dobara check hoti hai** — dono call ke beech minute nikalte hain.
+
+| Code | Kab |
+|---|---|
+| `200` | Verified |
+| `401` | `Invalid OTP` |
+| `409` | Wo number is beech me kisi aur ne le liya |
+| `422` | `sessionId` nahi bheja, ya `otp` nahi |
+
+---
+
+## 12e. POST /auth/whatsapp/send-verification 🆕
+
+**Access:** `verifyJwtToken`
+
+```jsonc
+{}                                      // jo number hai use confirm karo
+{ "whatsappNumber": "9998887770" }      // is par switch karo
+```
+
+### 🔴 Ye ek **step-up** hai — email/mobile se yahi farq hai
+
+`whatsappNumber` customer, vendor aur outlet manager — teeno ka **login identity** hai. Agar
+code sirf **naye** number par jaata, to jiske paas bhi ek chura hui session hai wo apna number
+daal kar, apne phone par code paa kar, account hamesha ke liye le leta — aur asli maalik ke
+paas wapas aane ka koi raasta nahi bachta.
+
+To ek **verified** number badalne par:
+
+```jsonc
+// Step 1 ka response — code PURANE number par gaya hai
+{
+  "success": true,
+  "message": "To change your WhatsApp number we first need to confirm the one you have now. We have sent a code to ******3210.",
+  "data": { "step": "CONFIRM_CURRENT", "sentTo": "******3210", "isChange": true }
+}
+```
+
+⚠️ **Naya number *add* karna single-step hai.** Agar account ka number kabhi verified hua hi
+nahi, to step up karne ke liye kuch hai hi nahi — aur us par code maangna user se aisi cheez
+ka saboot maangna hota jiska dava account ne kabhi kiya hi nahi.
+
+| Code | Kab |
+|---|---|
+| `200` | Code chala gaya — `step` dekh kar decide karein kaunsa screen |
+| `409` | Ye number pehle se verified hai (aur aap badal nahi rahe) |
+| `409` | Number kisi aur account par hai (same role) |
+| `429` | Cooldown |
+
+---
+
+## 12f. POST /auth/whatsapp/verify 🆕
+
+**Access:** `verifyJwtToken`
+
+Step-up me ye **do baar** call hota hai.
+
+```jsonc
+// 1 — purane number ka code. Ye kuch badalta nahi; sirf naye number par code bhejne ka haq deta hai.
+{ "otp": "111111", "whatsappNumber": "9998887770" }
+
+// 2 — naye number ka code. Yahi wo call hai jo likhti hai.
+{ "otp": "222222", "whatsappNumber": "9998887770" }
+```
+
+### Response — step 1 ke baad
+
+```jsonc
+{
+  "success": true,
+  "message": "Thanks — that is confirmed. We have now sent a code to ******7770. Enter it to finish the change.",
+  "data": { "step": "CONFIRM_NEW", "sentTo": "******7770", "isChange": true, "wasChange": false }
+}
+```
+
+### Response — step 2 ke baad
+
+```jsonc
+{
+  "success": true,
+  "message": "WhatsApp number updated and verified. You have been signed out everywhere else.",
+  "data": {
+    "step": "DONE",
+    "whatsappNumber": "9998887770",
+    "isWhatsappVerified": true,
+    "wasChange": true,
+    "sessionsEnded": true
+  }
+}
+```
+
+🔴 **`sessionsEnded: true` par app ko sign-out handle karna hoga.** Number badalne par
+`sessionInvalidatedAt` set hota hai, yaani **is se pehle ke saare JWT mar jaate hain** —
+current wala bhi. Wajah: agar change kisi chor ne apni session se kiya tha, to uska token bhi
+usi waqt mar jaata hai, aur asli maalik — jiske paas purana number hai aur jiska code is flow
+me zaroori tha — wapas aa sakta hai.
+
+⚠️ **`mobile` par aisa nahi hota.** Wo secondary key hai aur account WhatsApp se reachable
+rehta hai, to sabko sign out karne se kuch milta nahi.
+
+⚠️ **`whatsappNumber` ka koi plain write nahi hai.** `PUT /users/update`, `PUT /brands/update`
+aur `PUT /subBrands/update` — teeno me se koi bhi ise chhoo nahi sakta; koshish par `422
+WHATSAPP_REQUIRES_VERIFICATION`. Sirf ye flow, aur admin ka
+`PATCH /users/admin/:userId/contact` (jo value badalta hai par flag `false` par girata hai).
+
+| Code | Kab |
+|---|---|
+| `200` | `step: "CONFIRM_NEW"` (pehla leg) ya `step: "DONE"` (ho gaya) |
+| `401` | Code galat, expire, ya use ho chuka |
+| `403` | Attempts khatam |
+| `409` | Wo number is beech me kisi aur ne le liya |
+| `422` | `otp` nahi bheja, ya number ka format galat |
+
+> ⚠️ **Inke success examples Postman me capture nahi hue** — code ek asli phone par jaata
+> hai aur collection use padh nahi sakti. Saved examples wahi refusals hain jo khaali/galat
+> code par aate hain; upar wale `200` shapes code se likhe gaye hain.
 
 ---
 
@@ -1601,6 +1811,31 @@ rehne se padhne wale ki pahunch ya paisa jaata hai. Rule aur poori list:
 switch tab lagta hai jab SMTP down ho ya Meta template na ho, aur us haalat me
 send karna sirf provider se reject hona hai.
 
+
+> ### 🔴 Ek channel tabhi chalta hai jab uski key **verified** ho
+>
+> Preference on hona kaafi nahi — us channel ki key ka OTP se confirm hona bhi
+> zaroori hai. `email` sirf `isEmailVerified` walon ko, WhatsApp sirf
+> `isWhatsappVerified` walon ko. `push` aur in-app row is niyam se bahar hain.
+>
+> **Read me:** unverified channel `effective: false` aur
+> `blockedBy: "UNVERIFIED"` ke saath aata hai — to toggle ko tap hone se *pehle*
+> greyed out dikhaya ja sakta hai.
+>
+> **Write me:** `{ "email": true }` bhejne par `422` —
+> `details.code: IDENTITY_NOT_VERIFIED`. Band karne par koi rok nahi; mana karna
+> hamesha allowed hai, sirf "aayega" ka waada kisi cheez par tika hona chahiye.
+>
+> ⚠️ Ye `ALWAYS_DELIVER` notices ko bhi rokta hai. Wo list kisi ki *marzi* ko
+> override karti hai; unverified marzi nahi hai — wo "pata kiska hai, ye hume
+> maloom nahi" hai. Aise pate par refund notice bhejna kisi ajnabi ke inbox me
+> asli customer ka detail daalna hai.
+>
+> ⚠️ **Key badalne par us channel ki preference bhi `false` ho jaati hai.** Sirf
+> guard hota to verify karte hi email apne aap chalu ho jaata — bina unke maange.
+> Verify karna *"ye pata mera hai"* hai, *"yahan bhejo"* nahi.
+
+
 ### Profile card par bina extra call ke
 
 Raw sub-document un responses me already aa jaata hai jo panel pehle se fetch
@@ -1616,6 +1851,44 @@ karta hai:
 baar setting badalta hai — **absent ka matlab sab on**. Un booleans ko seedha mat
 padhiye; resolved jawab (aur platform override) `GET /notifications/admin/preferences`
 deta hai.
+
+---
+
+# Customer directory — verification filters
+
+`GET /customers/admin/get-all` par teen alag verification filter hain, ek har
+identity key ke liye. Teeno `booleanFlag` hain — `true` / `false` / `"true"` /
+`"false"` chalte hain, aur na bhejne par koi filter nahi lagta.
+
+| Param | Kis key ke baare me | Customer ke liye kya ummeed karein |
+|---|---|---|
+| `isWhatsappVerified` | `whatsappNumber` | **Zyadatar `true`.** Signup hi WhatsApp OTP se hota hai |
+| `isMobileVerified` | `mobile` | **Lagbhag sabke liye `false`.** Zyadatar customers ne `mobile` daala hi nahi |
+| `isEmailVerified` | `email` | `POST /auth/email/verify` se hi `true` hota hai |
+
+Teeno response me bhi aate hain — `get-all` ki har row par aur
+`GET /customers/admin/:customerId` ke account block me. `GET /brands/admin/get-all`
+par bhi teeno hain.
+
+### 🔴 Purani wiring — agar aapka panel `isMobileVerified` padhta tha to wo ab badal gaya
+
+`POST /auth/verify-otp-whatsapp` pehle **`isMobileVerified`** set karta tha.
+`isWhatsappVerified` schema me tha par use koi likhta hi nahi tha.
+
+Iska matlab tha ki admin panel me *"mobile verified"* practically *"verified hai ya
+nahi"* ban gaya tha — har WhatsApp signup par wo flag `true` tha, jabki un accounts
+me `mobile` field hai hi nahi. Flag ek aisi cheez ke baare me dawa kar raha tha jo
+maujood nahi.
+
+Ab har flag apni key ke baare me bolta hai. **Panel ko `isWhatsappVerified` par
+shift karna hoga** — warna `isMobileVerified=true` par `404 "No any customer found"`
+aayega (khaali result par `pagination()` yahi deta hai), aur admin maan lega ki koi
+customer verified hai hi nahi.
+
+Maujooda rows `scripts/backfillIdentityFlags.js` se move hui hain — 55 accounts par
+`isWhatsappVerified: true` likha gaya, aur un 53 ka `isMobileVerified` clear hua
+jinke paas `mobile` hai hi nahi. Jin 2 admins ke paas asli mobile hai aur jinhone
+mobile OTP diya tha, unke **dono** flag `true` hain, aur dono sach hain.
 
 ---
 
@@ -2060,7 +2333,8 @@ GET /brands/get?brandId=68f1a2b3c4d5e6f7a8b9c3a1
 | Field | Type | Validation | Notes |
 |---|---|---|---|
 | `brandName` | string | 2–150 chars | Lowercase me store |
-| `email` | string | Valid email | |
+| `email` | string | Valid email | 🔴 Vendor ke **account** par bhi likhta hai |
+| `mobile` | string | 10 digits, first `6-9` | 🔴 Wahi |
 | `description` | string | – | |
 | `joinedDate` | date | – | |
 | `isActive` | boolean\|string | – | ⚠️ **Brand deactivate karne ka tareeka** |
@@ -2113,7 +2387,7 @@ Admin kisi brand ke liye outlet bana sakta hai.
 | Field | Type | Required | Default | Validation |
 |---|---|---|---|---|
 | `brandId` | ObjectId | ✅ | – | Admin koi bhi brand |
-| `whatsappNumber` | string | ✅ | – | 10 digits, first `6-9` |
+| `whatsappNumber` | string | ✅ | – | 10 digits, first `6-9`; `+91`/`91` prefix strip ho jaata hai |
 | `isFirstOutlet` | boolean\|string | ❌ | `false` | |
 | `outletType` | string | ❌ | `OUTLET` | `OUTLET` \| `FRANCHISE` |
 
@@ -2221,6 +2495,23 @@ Bina `brandId` ke **platform-wide list** milti hai — admin ke liye ye useful h
 
 ---
 
+> ### 🔴 `email` / `mobile` ab account ke mirror hain
+>
+> Ye dono (aur `PUT /brands/update` ke wahi do) seedhe profile par nahi likhte — ye us
+> account ke keys hain jinka profile mirror hai. Admin **kisi ka bhi** badal sakta hai;
+> vendor sirf apna aur apne outlet managers ka.
+>
+> **Flag hamesha `false` par girta hai.** Admin ka likhna bhi ye saabit nahi karta ki
+> pata us insaan ka hai — `isEmailVerified` sirf OTP se `true` hota hai. Isi wajah se
+> ye kisi ke account me ghusne ka raasta nahi banta: unverified email/mobile se
+> `login-with-email` / `login-with-mobile` chalte hi nahi.
+>
+> **`whatsappNumber` in dono me se kisi se bhi nahi badalta** — uske liye
+> `PATCH /users/admin/:userId/contact` hai.
+>
+> Naya error: `409` jab wahi email/mobile kisi doosre account par ho (`User` par
+> partial unique index hai; profile par kabhi nahi tha).
+
 ## 30. PUT /subBrands/update/:subBrandId
 
 **Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership**
@@ -2233,7 +2524,7 @@ Bina `brandId` ke **platform-wide list** milti hai — admin ke liye ye useful h
 ### Body — sab optional
 | Field | Type | Validation |
 |---|---|---|
-| `email` | string | Valid email |
+| `email` | string | Valid email — 🔴 ye outlet **manager ke account** ka email hai |
 | `outletType` | string | `OUTLET` \| `FRANCHISE` — ⚠️ pool switch |
 | `joinedDate` | date | – |
 | `description` | string | – |
@@ -6240,7 +6531,6 @@ Platform-wide configuration. **Ek singleton document.**
     "vendor": {
       "voucher": { "maxOffers": 10, "maxImages": 5, "maxDistanceKm": 25 },
       "showcase": {
-        "maxSections": 5,
         "maxItemsPerSection": 15,
         "maxImagesPerSection": 15,
         "maxVideosPerSection": 5,
@@ -6325,7 +6615,12 @@ Platform-wide configuration. **Ek singleton document.**
           "isEnabled": false,
           "percent": 5,
           "holdDays": 30,
-          "riskChargebackCount": 2
+          "riskChargebackCount": 2,
+          "riskLookbackDays": 180,
+          "riskMinPayments": 20,
+          "riskDisputeRatePercent": 1,
+          "riskPercent": 15,
+          "maxPercent": 25
         },
         "newVendorReserveDays": 0,
         "notReceivedAlertHours": 96,
@@ -6364,12 +6659,42 @@ Sirf [common auth errors](#common-errors) + `403` role check.
 | Block | Fields |
 |---|---|
 | `vendor.voucher` | `maxOffers` (1–100) · `maxImages` (≥1) · `maxDistanceKm` (≥1) |
-| `vendor.showcase` | `maxSections` · `maxItemsPerSection` · `maxImagesPerSection` · `maxVideosPerSection` · `maxImageSizeMB` · `maxVideoSizeMB` (sab ≥1) · `allowedImages[]` · `allowedVideos[]` (min 1 item) · `isActive` |
+| `vendor.showcase` | `maxItemsPerSection` · `maxImagesPerSection` · `maxVideosPerSection` · `maxImageSizeMB` · `maxVideoSizeMB` (sab ≥1) · `allowedImages[]` · `allowedVideos[]` (min 1 item) · `isActive` (showcase **edit** ka kill switch — neeche) |
 | `vendor.subscription` | Niche full table |
 | `customer` | Niche full table — **naya**, pehle pahunch me hi nahi tha |
 | `admin.notification` | 🆕 `isEmailNotificationEnabled` · `isPushNotificationEnabled` · `isWhatsAppNotificationEnabled` |
 | `app` | 🆕 `minVersion` · `latestVersion` · `support` · `features` — niche |
 | `isActive` | boolean |
+
+### 🆕 `vendor.showcase.isActive` — showcase **edit** ka kill switch
+
+`false` karne par vendor/admin showcase me **kuch naya nahi likh sakte** — section banana, badalna, reorder, delete, aur media ka add/update/replace/reorder/delete, sab **422**:
+
+> Showcase editing is temporarily switched off. Your existing sections and media are untouched — please try again later.
+
+**Padhna khula rehta hai, jaan-bujh kar:**
+
+| Endpoint | Switch off par |
+|---|---|
+| `GET /showcase/section/get/:sectionId` · `/section/get-all` (vendor/admin) | **khula** — vendor ko wo gallery dikhni chahiye jise edit karne se roka gaya hai |
+| `GET /showcase/get-brand-showcase/:brandId` · `/:brandId/video-clips` (public) | **khula** — jo brand ne pehle publish kiya wo publish rehta hai |
+| Baaki sab (9 write routes) | **422** |
+
+Gate `middlewares/requireShowcaseEnabled.js` hai, route file me `isVendorOrAdmin` ke saath baitha hai.
+
+> ### 🔴 Ye field pehle kuch karta hi nahi tha
+>
+> `isActive` model par tha aur panel se settable tha — to showcase off karne par save clean hota, `GET /settings/get` me wapas aata, aur **kuch nahi badalta**. `getShowcaseConfig()` ise return hi nahi karta tha aur koi caller isse poochta hi nahi tha. Vendors section banate aur media upload karte rehte, jaise kuch hua hi na ho.
+>
+> Wahi shape jo `admin` block, refund ki teen abuse limits, aur `reserve` ke paanch risk fields ka tha.
+
+> ### 🔴 `maxSections` **hata diya gaya hai**
+>
+> Ye field pehle is block me thi aur **koi service nahi padhti thi**. Section ki ginti plan ke entitlement se meter hoti hai — `createSection.js` me `reserveSlot(brand._id, ENTITLEMENT_BUCKETS.SHOWCASE)` — is setting se nahi. Matlab admin panel ek aisi limit dikhata tha jo kuch nahi karti.
+>
+> Wire karne ke bajaye hataya gaya: ek hi limit do jagah se meter karna matlab do sources of truth, aur jis din plan 10 kahe aur ye 3, us din kaun jeeta ye code padhe bina pata nahi chalta. Limit plan ki hai.
+>
+> ⚠️ Purane settings documents me `vendor.showcase.maxSections` abhi bhi **stored** ho sakta hai. Schema strict hai, to mongoose use read par ignore kar deta hai — koi error nahi, response me bhi nahi aata. Koi migration nahi chahiye.
 
 ### 🆕 `app` — mobile app ka force-update aur support contact
 
@@ -6529,7 +6854,7 @@ DB me row pehli write par banti hai. Koi migration nahi chahiye.
 
 **Showcase limits badhana:**
 ```json
-{ "vendor": { "showcase": { "maxSections": 10, "maxVideosPerSection": 8 } } }
+{ "vendor": { "showcase": { "maxImagesPerSection": 20, "maxVideosPerSection": 8 } } }
 ```
 
 ---
@@ -6538,7 +6863,7 @@ DB me row pehli write par banti hai. Koi migration nahi chahiye.
 
 > ⚠️ **Pehle ye poora tree API se pahunch me tha hi nahi.** Model me `customer.convenienceFee` maujood tha, par `validator/settings.js` me koi `customer` object nahi tha aur `stripUnknown` on hai — matlab har request body se ye chup-chaap gir jaata tha aur sirf schema defaults chalte the. Ab poora tree reachable hai.
 
-Har block alag se merge hota hai. Nested block bhi merge hota hai — `settlement.reserve.percent` bhejne par `holdDays` aur `riskChargebackCount` waise hi rehte hain.
+Har block alag se merge hota hai. Nested block bhi merge hota hai — `settlement.reserve.percent` bhejne par baaki **aath** reserve fields waise hi rehte hain.
 
 **`customer.convenienceFee`** — discounted bill ke upar platform fee
 | Field | Default | Validation | Notes |
@@ -6606,9 +6931,39 @@ Har block alag se merge hota hai. Nested block bhi merge hota hai — `settlemen
 | `payoutProvider` | `MANUAL_BANK` | `MANUAL_BANK` \| `RAZORPAY_X` \| `RAZORPAY_ROUTE` | Abhi manual NEFT |
 | `commissionPercent` | **`0`** | 0–100 | Structure ready, rate zero |
 | `reserve.isEnabled` | `false` | boolean | Risky vendor ka withheld slice |
-| `reserve.percent` | `5` | 0–100 | |
-| `reserve.holdDays` | `30` | 0–365 | |
-| `reserve.riskChargebackCount` | `2` | ≥ 1 | Itne chargeback → reserve on |
+| `reserve.percent` | `5` | 0–100 | Base rate — har brand par, jab reserve on ho |
+| `reserve.holdDays` | `30` | 0–365 | Itne din baad reserve release hota hai |
+| `reserve.riskChargebackCount` | `2` | ≥ 1 | Itne chargeback → **dekho**, akela faisla nahi karta |
+| `reserve.riskLookbackDays` | `180` | 1–365 | Itne din peeche tak chargeback aur sales gine jaate hain |
+| `reserve.riskMinPayments` | `20` | ≥ 1 | Isse kam sales par brand base rate par rehta hai (`TOO_FEW_PAYMENTS`) — 3 me se 1 dispute 33% hai aur matlab kuch nahi |
+| `reserve.riskDisputeRatePercent` | `1` | 0–100 | Is rate ke upar brand risky. Count trigger hai, **rate faisla karta hai** |
+| `reserve.riskPercent` | `15` | 0–100 | Risky brand ka raised rate. `percent` se **kam nahi** ho sakta |
+| `reserve.maxPercent` | `25` | 0–100 | Ceiling — base rate par bhi lagta hai. `percent` aur `riskPercent` dono se **upar** hona chahiye |
+
+> ### ⚠️ Reserve ke teen rate aapas me bandhe hain
+>
+> ```
+> percent  <=  maxPercent
+> riskPercent  <=  maxPercent
+> riskPercent  >=  percent
+> ```
+>
+> `helpers/settings/assertReserveRateRule.js` merged document par chalta hai
+> (Joi par nahi — partial PATCH me dusra number hota hi nahi) aur tootne par
+> **422** deta hai, dono numbers naam lekar.
+>
+> Ye refusal isliye hai ki `buildReserveRiskMap` aakhir me
+> `Math.min(percent, maxPercent)` karta hai. Uske bina `maxPercent: 3` aur
+> `percent: 5` rakhne par har brand se **3%** rukta, jabki stored document,
+> settings screen aur `GET /settings/get` teeno **5%** batate rehte — vendor ke
+> statement ka hisaab sahi hota aur settings screen se reproduce hi nahi hota.
+>
+> Aur `riskPercent < percent` ka matlab hota chargeback wale brand se **kam**
+> rokna — ulta, aur chup: kahin error nahi aata, bas exposure wahi sabse zyada
+> ho jaata jahan sabse kam hona tha.
+>
+> Ceiling `Math.min` ab bhi code me hai — purane document ke liye aur
+> `riskPercent ?? basePercent` fallback ke liye defence in depth.
 | `newVendorReserveDays` | `0` | 0–365 | |
 | `notReceivedAlertHours` | `96` | 1–720 | |
 | `gatewayFeeBearer` | `PLATFORM` | `PLATFORM` \| `VENDOR` \| `SHARED` | Razorpay MDR kaun uthaye |
@@ -6732,7 +7087,7 @@ Dono taraf se block hota hai:
 
 **1. Merge hota hai, replace nahi.** Validator comment: *"Merged onto the existing block, so an admin can change just the GST rate without resetting the seller identity and every policy flag."* Sirf jo bhejein wahi badalta hai.
 
-**1b. Nested block bhi merge hota hai.** `customer.settlement.reserve` block ke andar block hai. Mongoose sub-document par `Object.assign` nested path ko **poora replace** kar deta hai, isliye `{ settlement: { reserve: { percent: 15 } } }` bhejne se `holdDays` aur `riskChargebackCount` apne defaults par wapas chale jaate — live schema par verify kiya, 45/3 se 30/2 par reset ho rahe the. `updateSetting.js` ab nested block ko parent assign se pehle alag kar deta hai, to sibling bache rehte hain.
+**1b. Nested block bhi merge hota hai.** `customer.settlement.reserve` block ke andar block hai. Mongoose sub-document par `Object.assign` nested path ko **poora replace** kar deta hai, isliye `{ settlement: { reserve: { percent: 15 } } }` bhejne se baaki **aath** reserve fields apne defaults par wapas chale jaate — live schema par verify kiya, `holdDays`/`riskChargebackCount` 45/3 se 30/2 par reset ho rahe the. `updateSetting.js` ab nested block ko parent assign se pehle alag kar deta hai, to sibling bache rehte hain.
 
 **2. ⚠️ `companyStateCode` khali hai to har supply `IGST` treat hoti hai.** Comment: *"Leave blank and every supply is treated as inter-state."* Intra-state CGST+SGST split ke liye ye set karna zaruri hai — brand ke GSTIN ke pehle 2 digits se compare hota hai.
 

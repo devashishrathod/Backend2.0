@@ -2,10 +2,31 @@ const crypto = require("crypto");
 const mongoose = require("mongoose");
 
 /**
- * `payments.all` is the only outbound call this path makes. Mocked at the
+ * `settlements.reports` is the only outbound call this path makes. Mocked at the
  * config boundary so the branch itself runs for real.
+ *
+ * ### ⚠️ It used to be `payments.all({ settlement_id })`, and that was a bug
+ *
+ * That call **silently ignores the filter**. Measured against a live account:
+ * `payments.all({ settlement_id: "setl_X" })` and `payments.all()` both returned
+ * the same 42 payments — the whole account rather than the batch.
+ *
+ * So one `settlement.processed` would have stamped `fundsReceivedAt` on every
+ * captured claim payment, including ones the gateway was still holding, and
+ * `buildEligibilityFilter` would then have released all of them into a payout
+ * run. Vendors paid out of money that had not arrived.
+ *
+ * These tests could not catch it, because the mock answered the way the real API
+ * was *assumed* to: the fixture returned only the ids the test had chosen, so
+ * "leaves payments that are not in the batch alone" passed against code that in
+ * production would have marked everything. A mock that encodes the assumption
+ * rather than the behaviour proves the assumption, not the code.
+ *
+ * The fixtures below therefore return a **whole day's recon report** — other
+ * settlements' rows included — so filtering by `settlement_id` is something the
+ * code has to actually do.
  */
-const mockPaymentsAll = jest.fn();
+const mockReports = jest.fn();
 jest.mock("../../configs/razorpay", () => ({
   /**
    * ⚠️ Spread the real module, override one function.
@@ -18,7 +39,7 @@ jest.mock("../../configs/razorpay", () => ({
   ...jest.requireActual("../../configs/razorpay"),
   getRazorpayAccount: () => ({
     keyId: "rzp_test_x",
-    instance: { payments: { all: (...a) => mockPaymentsAll(...a) } },
+    instance: { settlements: { reports: (...a) => mockReports(...a) } },
   }),
 }));
 
@@ -43,6 +64,7 @@ const {
   RAZORPAY_ACCOUNTS,
 } = require("../../constants/transaction");
 const { PAYMENT_STATUS } = require("../../constants");
+const { istDateKey } = require("../../helpers/dates");
 
 const oid = () => new mongoose.Types.ObjectId();
 const DAY = 24 * 60 * 60 * 1000;
@@ -104,7 +126,24 @@ const deliver = (entity, extra = {}) =>
     ...extra,
   });
 
-const page = (ids) => ({ items: ids.map((id) => ({ id })) });
+/**
+ * A settlement recon row, in the shape the gateway really returns.
+ *
+ * Captured from a live response, so the field names here are the ones the code
+ * has to read rather than the ones it would be convenient to invent:
+ * `entity_id` holds the payment, `type` separates payments from refunds and
+ * adjustments, and `settled` marks rows whose money has actually moved.
+ */
+const row = (paymentId, settlementId = "setl_A1", overrides = {}) => ({
+  type: "payment",
+  entity_id: paymentId,
+  settlement_id: settlementId,
+  settled: true,
+  settled_at: SETTLED_AT,
+  ...overrides,
+});
+
+const page = (rows) => ({ items: rows });
 
 /**
  * Signed exactly the way the receiver sees it, so the end-to-end case below
@@ -151,7 +190,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await clearCollections(Transaction, WebhookEvent);
-  mockPaymentsAll.mockReset();
+  mockReports.mockReset();
 });
 
 describe("the event can be handled at all", () => {
@@ -160,20 +199,33 @@ describe("the event can be handled at all", () => {
    * time, from the first line of the branch.
    */
   it("does not throw", async () => {
-    mockPaymentsAll.mockResolvedValue(page([]));
+    mockReports.mockResolvedValue(page([]));
 
     await expect(
       deliver({ id: "setl_A1", created_at: SETTLED_AT }),
     ).resolves.toBeDefined();
   });
 
-  it("reads the settlement entity off the body", async () => {
-    mockPaymentsAll.mockResolvedValue(page([]));
+  /**
+   * The report is pulled for the settlement's own **IST** day.
+   *
+   * ⚠️ Verified against a live batch: `settled_at` 1788767017 appears in the
+   * report for 2026-09-07, its IST date. A UTC day would agree for most of the
+   * clock and be silently wrong for anything settled after 18:30 UTC — which is
+   * a whole batch of payments quietly never marked, on a rule that looks right
+   * in every test written before 18:30.
+   */
+  it("asks for the report of the settlement's IST day", async () => {
+    mockReports.mockResolvedValue(page([]));
 
     await deliver({ id: "setl_A1", created_at: SETTLED_AT });
 
-    expect(mockPaymentsAll).toHaveBeenCalledWith(
-      expect.objectContaining({ settlement_id: "setl_A1" }),
+    const [year, month, day] = istDateKey(new Date(SETTLED_AT * 1000))
+      .split("-")
+      .map(Number);
+
+    expect(mockReports).toHaveBeenCalledWith(
+      expect.objectContaining({ year, month, day }),
     );
   });
 });
@@ -181,7 +233,7 @@ describe("the event can be handled at all", () => {
 describe("marking the money as ours", () => {
   it("fills fundsReceivedAt on the payments in the batch", async () => {
     const mine = await payment({ razorpayPaymentId: "pay_1" });
-    mockPaymentsAll.mockResolvedValue(page(["pay_1"]));
+    mockReports.mockResolvedValue(page([row("pay_1")]));
 
     await deliver({ id: "setl_A1", created_at: SETTLED_AT });
 
@@ -212,7 +264,7 @@ describe("marking the money as ours", () => {
 
     expect(await eligible()).toBe(0);
 
-    mockPaymentsAll.mockResolvedValue(page(["pay_1"]));
+    mockReports.mockResolvedValue(page([row("pay_1")]));
     await deliver({ id: "setl_A1", created_at: SETTLED_AT });
 
     expect(await eligible()).toBe(1);
@@ -225,7 +277,7 @@ describe("marking the money as ours", () => {
    */
   it("dates the money from the gateway, not from when we processed it", async () => {
     const mine = await payment({ razorpayPaymentId: "pay_1" });
-    mockPaymentsAll.mockResolvedValue(page(["pay_1"]));
+    mockReports.mockResolvedValue(page([row("pay_1")]));
 
     await deliver({ id: "setl_A1", created_at: SETTLED_AT });
 
@@ -235,21 +287,67 @@ describe("marking the money as ours", () => {
     );
   });
 
-  it("leaves payments that are not in the batch alone", async () => {
+  /**
+   * ⚠️ **The one that matters most, and the one the old fixture could not test.**
+   *
+   * A day's recon report contains every settlement that day, not just ours. The
+   * previous version of this test handed the code a list containing only
+   * `pay_1`, so it passed no matter what the code did with it — while the real
+   * `payments.all({ settlement_id })` was returning the entire account and
+   * would have marked both.
+   *
+   * Now the fixture returns what the gateway returns: three rows across two
+   * settlements. Only `setl_A1`'s payment may be touched. Marking `pay_2` means
+   * a vendor is paid out of a batch the gateway has not sent us, which is the
+   * exact thing `fundsReceivedAt` exists to prevent.
+   */
+  it("marks only this settlement's payments, not the rest of the day's report", async () => {
     const mine = await payment({ razorpayPaymentId: "pay_1" });
-    const other = await payment({ razorpayPaymentId: "pay_2" });
-    mockPaymentsAll.mockResolvedValue(page(["pay_1"]));
+    const otherBatch = await payment({ razorpayPaymentId: "pay_2" });
+    const notSettled = await payment({ razorpayPaymentId: "pay_3" });
+
+    mockReports.mockResolvedValue(
+      page([
+        row("pay_1", "setl_A1"),
+        // A different settlement on the same day — the gateway returns these too.
+        row("pay_2", "setl_B2"),
+        // Ours, but the money has not actually moved yet.
+        row("pay_3", "setl_A1", { settled: false }),
+      ]),
+    );
 
     await deliver({ id: "setl_A1", created_at: SETTLED_AT });
 
     expect((await Transaction.findById(mine._id).lean()).fundsReceivedAt).not.toBeNull();
-    expect((await Transaction.findById(other._id).lean()).fundsReceivedAt).toBeNull();
+    expect((await Transaction.findById(otherBatch._id).lean()).fundsReceivedAt).toBeNull();
+    expect((await Transaction.findById(notSettled._id).lean()).fundsReceivedAt).toBeNull();
+  });
+
+  /**
+   * A report row can be a refund or an adjustment rather than a payment, and
+   * `entity_id` then names something that is not a payment at all. Passing one
+   * to `recordFundsReceived` would match nothing — harmless today — but the
+   * filter is what keeps that true.
+   */
+  it("ignores report rows that are not payments", async () => {
+    const mine = await payment({ razorpayPaymentId: "pay_1" });
+
+    mockReports.mockResolvedValue(
+      page([
+        row("pay_1", "setl_A1", { type: "refund" }),
+        row("pay_1", "setl_A1", { type: "adjustment" }),
+      ]),
+    );
+
+    await deliver({ id: "setl_A1", created_at: SETTLED_AT });
+
+    expect((await Transaction.findById(mine._id).lean()).fundsReceivedAt).toBeNull();
   });
 
   /** Razorpay redelivers. The timestamp must not walk forward on a repeat. */
   it("is idempotent under redelivery", async () => {
     const mine = await payment({ razorpayPaymentId: "pay_1" });
-    mockPaymentsAll.mockResolvedValue(page(["pay_1"]));
+    mockReports.mockResolvedValue(page([row("pay_1")]));
 
     await deliver({ id: "setl_A1", created_at: SETTLED_AT });
     const first = (await Transaction.findById(mine._id).lean()).fundsReceivedAt;
@@ -261,18 +359,18 @@ describe("marking the money as ours", () => {
   });
 
   /** A busy day settles more than one page of 100. */
-  it("pages until the batch runs out", async () => {
-    const ids = Array.from({ length: 100 }, (_, i) => `pay_${i}`);
+  it("pages until the report runs out", async () => {
+    const filler = Array.from({ length: 100 }, (_, i) => row(`pay_${i}`));
     await payment({ razorpayPaymentId: "pay_0" });
     const last = await payment({ razorpayPaymentId: "pay_tail" });
 
-    mockPaymentsAll
-      .mockResolvedValueOnce(page(ids))
-      .mockResolvedValueOnce(page(["pay_tail"]));
+    mockReports
+      .mockResolvedValueOnce(page(filler))
+      .mockResolvedValueOnce(page([row("pay_tail")]));
 
     await deliver({ id: "setl_A1", created_at: SETTLED_AT });
 
-    expect(mockPaymentsAll).toHaveBeenCalledTimes(2);
+    expect(mockReports).toHaveBeenCalledTimes(2);
     expect(
       (await Transaction.findById(last._id).lean()).fundsReceivedAt,
     ).not.toBeNull();
@@ -284,7 +382,7 @@ describe("when it cannot be handled", () => {
     const result = await deliver(null);
 
     expect(result.status).toBe(WEBHOOK_STATUS.IGNORED);
-    expect(mockPaymentsAll).not.toHaveBeenCalled();
+    expect(mockReports).not.toHaveBeenCalled();
   });
 
   /**
@@ -292,14 +390,34 @@ describe("when it cannot be handled", () => {
    * eligible, and an ignored event would mean a vendor's payout never arrives
    * with nothing anywhere saying why — the failure this whole file is about.
    */
-  it("records a FAILED webhook when the payment list cannot be fetched", async () => {
+  it("records a FAILED webhook when the report cannot be fetched", async () => {
     await payment({ razorpayPaymentId: "pay_1" });
-    mockPaymentsAll.mockRejectedValue(new Error("gateway down"));
+    mockReports.mockRejectedValue(new Error("gateway down"));
 
     const result = await deliver({ id: "setl_A1", created_at: SETTLED_AT });
 
     expect(result.status).toBe(WEBHOOK_STATUS.FAILED);
     expect(result.outcome).toMatch(/setl_A1/);
+  });
+
+  /**
+   * ⚠️ "The gateway would not answer" and "the batch carried nothing of ours"
+   * must not look the same.
+   *
+   * An empty report is a real, ordinary answer: a settlement can carry only
+   * refunds, or only another merchant's payments. Recording that as FAILED would
+   * put a healthy delivery on the replay worklist for ever. Recording an outage
+   * as PROCESSED is the worse half — the settlement is written off as carrying
+   * nothing and **nothing ever comes back for it**, which is the precise shape
+   * of silent loss this file exists to undo.
+   */
+  it("records an empty report as processed, not as a failure", async () => {
+    await payment({ razorpayPaymentId: "pay_1" });
+    mockReports.mockResolvedValue(page([]));
+
+    const result = await deliver({ id: "setl_A1", created_at: SETTLED_AT });
+
+    expect(result.status).toBe(WEBHOOK_STATUS.PROCESSED);
   });
 });
 
@@ -317,7 +435,7 @@ describe("when it cannot be handled", () => {
 describe("end to end, from the signed delivery", () => {
   it("carries the body all the way to the settlement branch", async () => {
     const mine = await payment({ razorpayPaymentId: "pay_e2e" });
-    mockPaymentsAll.mockResolvedValue(page(["pay_e2e"]));
+    mockReports.mockResolvedValue(page([row("pay_e2e", "setl_E2E")]));
 
     const { body, rawBody, signature } = signedDelivery({
       id: "setl_E2E",
@@ -346,7 +464,7 @@ describe("end to end, from the signed delivery", () => {
    */
   it("does not quietly record a FAILED webhook", async () => {
     await payment({ razorpayPaymentId: "pay_e2e2" });
-    mockPaymentsAll.mockResolvedValue(page(["pay_e2e2"]));
+    mockReports.mockResolvedValue(page([row("pay_e2e2", "setl_E2E2")]));
 
     const { body, rawBody, signature } = signedDelivery({
       id: "setl_E2E2",

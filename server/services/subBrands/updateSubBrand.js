@@ -1,9 +1,15 @@
 const SubBrand = require("../../models/SubBrand");
 const Brand = require("../../models/Brand");
+const User = require("../../models/User");
 const { ROLES } = require("../../constants");
+const { DUPLICATE_KEY } = require("../../constants/mongo");
 const { throwError } = require("../../utils");
 const { assertActiveSubscription } = require("../../helpers/subscribeds");
 const { switchOutletType } = require("../../helpers/subBrands");
+const {
+  applyIdentityChange,
+  assertCanWriteIdentity,
+} = require("../../helpers/users");
 
 /**
  * Update an outlet / sub-brand.
@@ -61,7 +67,63 @@ exports.updateSubBrand = async (actor, payload) => {
   }
 
   if (joinedDate) subBrand.joinedDate = new Date(joinedDate);
-  if (email) subBrand.email = email;
+
+  /**
+   * ---------------- the outlet's email is its manager's account email ----------
+   *
+   * `SubBrand.email` used to be written straight here, and it is the copy
+   * `notify()` reaches for. Meanwhile the outlet manager's own `User.email` — the
+   * one they could sign in with — was left untouched. Two values for one person,
+   * and the one nobody was maintaining is the one delivery used.
+   *
+   * ⚠️ A vendor **may** set this: they created the account and it is their staff.
+   * `assertCanWriteIdentity` enforces that it is *their own* outlet, and an admin
+   * may do it for anybody.
+   *
+   * ⚠️ It lands **unverified**, which is what stops it from being a way into the
+   * outlet manager's account. `loginWithEmailOTP` refuses an unverified address,
+   * so setting one here does not hand the vendor that login — only the manager
+   * themselves can confirm it, from their own session.
+   */
+  if (email !== undefined) {
+    const outletUser = await User.findOne({
+      _id: subBrand.userId,
+      isDeleted: false,
+    });
+    if (!outletUser) throwError(404, "The outlet's user account no longer exists.");
+
+    await assertCanWriteIdentity(actor, outletUser);
+
+    const taken = await User.findOne({
+      email,
+      role: outletUser.role,
+      _id: { $ne: outletUser._id },
+      isDeleted: false,
+    })
+      .select("_id")
+      .lean();
+    if (taken) {
+      throwError(409, "That email address is already in use on another account.");
+    }
+
+    try {
+      await applyIdentityChange(
+        outletUser,
+        { email },
+        // `profile: subBrand` — already loaded, and saved a few lines below.
+        { verified: false, profile: subBrand },
+      );
+    } catch (error) {
+      if (error?.code === DUPLICATE_KEY) {
+        throwError(
+          409,
+          "That email address was taken while you were saving. Try a different one.",
+        );
+      }
+      throw error;
+    }
+  }
+
   if (description) subBrand.description = description;
   // Only when the caller actually sent it — see note 3 above.
   if (isActive !== undefined) subBrand.isActive = isActive;
