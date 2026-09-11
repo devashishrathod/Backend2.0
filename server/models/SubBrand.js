@@ -1,10 +1,7 @@
 const mongoose = require("mongoose");
 const { OUTLET_TYPES } = require("../constants");
-const {
-  isValidEmail,
-  isValidPhoneNumber,
-  isValidateStoreId,
-} = require("../validator/common");
+const { isValidateStoreId } = require("../validator/common");
+const { emailField, mobileField, whatsappField } = require("./contactFields");
 const {
   userField,
   brandField,
@@ -24,29 +21,10 @@ const subBrandSchema = new mongoose.Schema(
       enum: Object.values(OUTLET_TYPES),
       default: OUTLET_TYPES.OUTLET,
     },
-    email: {
-      type: String,
-      lowercase: true,
-      trim: true,
-      validate: {
-        validator: (email) => isValidEmail(email),
-        message: (props) => `${props.value} is not a valid email address`,
-      },
-    },
-    mobile: {
-      type: String,
-      validate: {
-        validator: isValidPhoneNumber,
-        message: (props) => `${props.value} is not a valid mobile number`,
-      },
-    },
-    whatsappNumber: {
-      type: String,
-      validate: {
-        validator: isValidPhoneNumber,
-        message: (props) => `${props.value} is not a valid WhatsApp number`,
-      },
-    },
+    // Mirrors of the outlet manager's `User` — see `models/contactFields.js`.
+    email: emailField,
+    mobile: mobileField,
+    whatsappNumber: whatsappField,
     uniqueId: { type: String, required: true, unique: true },
     storeId: {
       type: String,

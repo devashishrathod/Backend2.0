@@ -1,21 +1,14 @@
 const Joi = require("joi");
 const { OUTLET_TYPES } = require("../constants");
 const objectId = require("./validJoiObjectId");
+const phone = require("./validJoiPhone");
 
 exports.validateWhatsappSubBrandSignUp = Joi.object({
   brandId: objectId().required().messages({
     "any.required": "Brand ID is required",
     "any.invalid": "Invalid Brand ID format",
   }),
-  whatsappNumber: Joi.string()
-    .trim()
-    .pattern(/^[6-9]\d{9}$/)
-    .required()
-    .messages({
-      "string.empty": "WhatsApp number is required",
-      "string.pattern.base": "Please enter a valid 10 digit WhatsApp number",
-      "any.required": "WhatsApp number is required",
-    }),
+  whatsappNumber: phone("WhatsApp number").required(),
   isFirstOutlet: Joi.alternatives()
     .try(Joi.string(), Joi.boolean())
     .default(false),
@@ -80,9 +73,13 @@ exports.validateGetAllSubBrands = {
       .messages({
         "string.empty": "Outlet type can't be empty",
       }),
-    email: Joi.string().trim().optional(),
-    mobile: Joi.string().trim().optional(),
-    whatsappNumber: Joi.string().trim().optional(),
+    email: Joi.string().trim().lowercase().optional(),
+    // ⚠️ `phone.searchable()`, **not** `phone()`. These three are matched with
+    // `$regex` in getAllSubBrands, so `98765` is a legitimate partial search —
+    // the strict schema would answer `422` to a search that works today. This
+    // only canonicalises a complete `+91…` so it matches the stored ten digits.
+    mobile: phone.searchable().optional(),
+    whatsappNumber: phone.searchable().optional(),
     uniqueId: Joi.string().trim().optional(),
     storeId: Joi.string().trim().optional(),
     isActive: Joi.alternatives().try(Joi.string(), Joi.boolean()).optional(),
