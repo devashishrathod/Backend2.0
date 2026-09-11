@@ -216,3 +216,99 @@ describe("the guards around the reserve fields still hold", () => {
     ).rejects.toThrow(/refund could outlive the settlement/i);
   });
 });
+
+/**
+ * ⚠️ A rate that could never be applied.
+ *
+ * `buildReserveRiskMap` ends on `Math.min(percent, maxPercent)`, so a ceiling
+ * below the base rate holds everybody at the ceiling while the stored document,
+ * the panel and `GET /settings/get` all keep reporting the base rate. Correct
+ * arithmetic on the vendor's statement that nobody can reproduce from the
+ * settings screen — the same silent shape as the bug this file was written for.
+ */
+describe("a reserve rate has to be reachable", () => {
+  /** Valid, and every value different from the defaults. */
+  const SANE = Object.freeze({ percent: 10, riskPercent: 20, maxPercent: 30 });
+
+  it("accepts rates that sit inside their ceiling", async () => {
+    await putSettings({ customer: { settlement: { reserve: SANE } } });
+
+    const { reserve } = (await Setting.findOne().lean()).customer.settlement;
+
+    expect(reserve).toMatchObject(SANE);
+  });
+
+  /** Equal is fine: a risky brand simply pays no extra penalty. */
+  it("accepts riskPercent equal to percent", async () => {
+    await expect(
+      putSettings({
+        customer: {
+          settlement: { reserve: { percent: 12, riskPercent: 12, maxPercent: 30 } },
+        },
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it("refuses a base rate above its own ceiling", async () => {
+    await expect(
+      putSettings({
+        customer: {
+          settlement: { reserve: { percent: 40, riskPercent: 40, maxPercent: 30 } },
+        },
+      }),
+    ).rejects.toThrow(/base reserve rate cannot be above its own ceiling/i);
+  });
+
+  it("refuses a risk rate above its own ceiling", async () => {
+    await expect(
+      putSettings({
+        customer: {
+          settlement: { reserve: { percent: 5, riskPercent: 40, maxPercent: 30 } },
+        },
+      }),
+    ).rejects.toThrow(/risk reserve rate cannot be above its own ceiling/i);
+  });
+
+  /**
+   * Backwards, and invisible: less would be held from a brand under suspicion
+   * than from a clean one. Nothing errors at payout time — the exposure is
+   * simply largest exactly where it was meant to be smallest.
+   */
+  it("refuses a risk rate below the base rate", async () => {
+    await expect(
+      putSettings({
+        customer: {
+          settlement: { reserve: { percent: 20, riskPercent: 5, maxPercent: 30 } },
+        },
+      }),
+    ).rejects.toThrow(/risk reserve rate cannot be below the base rate/i);
+  });
+
+  /**
+   * ⚠️ The case that proves the rule cannot live in the Joi validator.
+   *
+   * This PATCH carries `maxPercent` and nothing else, so a request-shaped
+   * validator has no `percent` to compare it against and would pass it straight
+   * through. The rule runs on the **merged** document, where both halves exist.
+   */
+  it("compares a partial save against what is already stored", async () => {
+    await putSettings({ customer: { settlement: { reserve: SANE } } });
+
+    await expect(
+      putSettings({
+        customer: { settlement: { reserve: { maxPercent: 8 } } },
+      }),
+    ).rejects.toThrow(/cannot be above its own ceiling/i);
+
+    // And the refusal changed nothing.
+    const { reserve } = (await Setting.findOne().lean()).customer.settlement;
+    expect(reserve.maxPercent).toBe(SANE.maxPercent);
+  });
+
+  /** The shipped defaults must satisfy their own rule, or every save fails. */
+  it("the defaults satisfy it", async () => {
+    await expect(
+      putSettings({ customer: { settlement: { reserve: { isEnabled: true } } } }),
+    ).resolves.toBeDefined();
+  });
+});

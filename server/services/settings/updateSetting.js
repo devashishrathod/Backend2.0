@@ -1,6 +1,7 @@
 const {
   getSetting,
   assertSettlementTimingRule,
+  assertReserveRateRule,
 } = require("../../helpers/settings");
 
 /**
@@ -119,6 +120,18 @@ exports.updateSetting = async (userId, payload = {}) => {
     // break silently. Throws 422 — a wrong value here only shows up as a broken
     // reconciliation weeks later.
     assertSettlementTimingRule(setting.customer);
+
+    /**
+     * ⚠️ The same shape of rule, one block down: a reserve rate that could never
+     * be applied.
+     *
+     * `buildReserveRiskMap` caps every rate with `Math.min(percent, maxPercent)`,
+     * so `maxPercent: 3` beside `percent: 5` holds 3% from everybody while the
+     * panel, the stored document and `GET /settings/get` all keep saying 5. Same
+     * reason it cannot live in Joi: a PATCH carrying only `maxPercent` has no
+     * `percent` to compare against.
+     */
+    assertReserveRateRule(setting.customer);
   }
 
   /**
