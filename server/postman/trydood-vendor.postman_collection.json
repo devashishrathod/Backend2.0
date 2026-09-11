@@ -5937,7 +5937,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n**Multipart** — logo aur coverImage files ke liye. Sirf text fields bhejni hon to bhi form-data hi chalega."
+            "description": "**Multipart** — logo aur coverImage files ke liye. Sirf text fields bhejni\nhon to bhi form-data hi chalega.\n\n🔴 **`email` aur `mobile` brand ke apne field nahi hain — wo aapke account ke**\n**mirror hain.** Pehle ye seedhe `Brand` par likhe jaate the, to vendor ka\n`User.email` purane pate par pada rehta tha jabki `Brand.email` — jo copy\ninvoice, approval mail aur har notification asli me padhti hai — naya rakhti thi.\n\nAb ek hi call dono jagah likhti hai, aur flag **`false`** ho jaata hai: yahan\nkuch bhi ye saabit nahi karta ki pata aapka hai. `POST /auth/email/verify` se\nverify karein, warna us channel par notification bhi band rahegi.\n\n⚠️ `whatsappNumber` yahan se badal hi nahi sakta — wo login identity hai."
           },
           "response": [
             {
@@ -6526,7 +6526,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n✅ **`isActive` ab default nahi hota.** Pehle `.default(true)` laga tha, matlab\nkoi bhi update — chahe usme `isActive` ho hi na — deactivated outlet ko\nchup-chaap **reactivate** kar deta tha.\n\nAb wo sirf tab apply hota hai jab explicitly bheja jaye."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n✅ **`isActive` ab default nahi hota.** Pehle `.default(true)` laga tha, matlab\nkoi bhi update — chahe usme `isActive` ho hi na — deactivated outlet ko\nchup-chaap **reactivate** kar deta tha.\n\nAb wo sirf tab apply hota hai jab explicitly bheja jaye.\n\n🔴 **`email` outlet ka apna field nahi hai** — wo us outlet ke **manager ke**\n**account** ka email hai, aur `SubBrand.email` uska mirror. Aap ye set kar sakte hain\n(apne hi outlet ka; doosre brand ke outlet par `403`), par flag **`false`** rehta hai —\nto isse us account me login nahi kiya ja sakta. Sirf manager khud verify kar sakta hai."
           },
           "response": [
             {
@@ -16570,6 +16570,482 @@
                   "  // naya address padha hota aur isEmailVerified false — theek wahi",
                   "  // haalat jisse nikalne ka raasta ye feature de raha hai.",
                   "  pm.expect(d.wasChange, \"wasChange\").to.eql(true);",
+                  "});",
+                  ""
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "21b — Phone Verification",
+      "description": "Mobile aur WhatsApp number confirm karna — **har role ke liye ek hi flow**,\nbilkul email jaisa. Gate `verifyJwtToken` hai, koi role gate nahi.\n\n### Teen keys, teen flags\n\n`email → isEmailVerified`, `mobile → isMobileVerified`,\n`whatsappNumber → isWhatsappVerified`. Pehle WhatsApp verify **galat flag**\n(`isMobileVerified`) set karta tha — un accounts par jinke paas `mobile`\nfield hai hi nahi.\n\n### ⚠️ WhatsApp ek step-up hai, mobile nahi\n\n`whatsappNumber` teeno non-admin roles ka **login identity** hai. Ek verified\nnumber badalne par code pehle **purane** number par jaata hai — warna jiske\npaas ek chura hui session hai wo apna number daal kar account hamesha ke liye\nle leta.\n\n⚠️ **Yahan koi success capture nahi ho sakta** — code asli phone par jaata hai.\nHar example wahi refusal hai jo galat/khaali code par aata hai.",
+      "item": [
+        {
+          "name": "Mobile verify ka code maango",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"{{verify_mobile}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/mobile/send-verification",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "mobile",
+                "send-verification"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\n`mobile` **optional** hai — na bhejein to account par jo number hai wahi\nconfirm hota hai.\n\nResponse me **`sessionId`** aata hai, jo verify step me wapas bhejna hai:\nmobile ka code hamara nahi hai, 2factor banata aur rakhta hai. Isi wajah\nse email/WhatsApp ke calls me ye field nahi hai.\n\n⚠️ **Ab throttled.** Pehle kisi bhi mobile OTP path par koi limit nahi thi\n— `sendOtp` ka throttle sirf WhatsApp aur email chalata hai. 60s cooldown,\n5 per hour, `429` me `retryAfterSeconds`."
+          },
+          "response": [
+            {
+              "name": "409 — ye number pehle se verified hai",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"mobile\": \"{{verify_mobile}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/mobile/send-verification",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "mobile",
+                    "send-verification"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{vendor_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\n`mobile` **optional** hai — na bhejein to account par jo number hai wahi\nconfirm hota hai.\n\nResponse me **`sessionId`** aata hai, jo verify step me wapas bhejna hai:\nmobile ka code hamara nahi hai, 2factor banata aur rakhta hai. Isi wajah\nse email/WhatsApp ke calls me ye field nahi hai.\n\n⚠️ **Ab throttled.** Pehle kisi bhi mobile OTP path par koi limit nahi thi\n— `sendOtp` ka throttle sirf WhatsApp aur email chalata hai. 60s cooldown,\n5 per hour, `429` me `retryAfterSeconds`."
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"This mobile number is already verified.\"\n}"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"mounted, gated aur validating\", function () {",
+                  "  const code = pm.response.code;",
+                  "  // 200 = code gaya · 409 = pehle se verified ya kisi aur ka",
+                  "  // 429 = throttle · 422 = account par number hai hi nahi",
+                  "  pm.expect(code, \"status\").to.be.oneOf([200, 409, 422, 429]);",
+                  "  if (code === 200) {",
+                  "    pm.environment.set(\"mobile_verify_session\", pm.response.json().data.sessionId || \"\");",
+                  "  }",
+                  "});",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mobile verify — galat code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"{{verify_mobile}}\",\n  \"otp\": \"000000\",\n  \"sessionId\": \"{{mobile_verify_session}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/mobile/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "mobile",
+                "verify"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\nJaan-boojh kar galat code. Asli code ek phone par jaata hai jise\ncollection padh nahi sakti, to saved example yahi refusal hai.\n\n⚠️ `sessionId` **validator me optional** hai par service ise maangti hai —\nkyunki step-up ka pehla leg bina session ke aata hai. Na ho to `422`."
+          },
+          "response": [
+            {
+              "name": "422 — sessionId nahi bheja",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"mobile\": \"{{verify_mobile}}\",\n  \"otp\": \"000000\",\n  \"sessionId\": \"{{mobile_verify_session}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/mobile/verify",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "mobile",
+                    "verify"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{vendor_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\nJaan-boojh kar galat code. Asli code ek phone par jaata hai jise\ncollection padh nahi sakti, to saved example yahi refusal hai.\n\n⚠️ `sessionId` **validator me optional** hai par service ise maangti hai —\nkyunki step-up ka pehla leg bina session ke aata hai. Na ho to `422`."
+              },
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Session ID is required\"\n}"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"galat code par likha nahi jaata\", function () {",
+                  "  const code = pm.response.code;",
+                  "  pm.expect(code, \"status\").to.be.oneOf([401, 422, 500]);",
+                  "  pm.expect(code, \"kabhi 200 nahi\").to.not.eql(200);",
+                  "});",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "WhatsApp verify ka code maango (step-up)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"whatsappNumber\": \"{{verify_whatsapp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/whatsapp/send-verification",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "whatsapp",
+                "send-verification"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\nAccount ka number **verified** hai, aur ye ek doosra number bhej rahi hai —\nto ye step-up ka **pehla** leg hai: code **purane** number par jaata hai\naur response `step: \"CONFIRM_CURRENT\"` deta hai.\n\n⚠️ Flow yahin chhoda gaya hai, jaan-boojh kar. Poora karne par seeded\naccount ka login number badal jaata aur agla run `00 — Setup & Auth` par\ngir jaata — wahi trap jo `Set Password` aur email restore me likha hai."
+          },
+          "response": [
+            {
+              "name": "409 — ye number pehle se verified hai",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"whatsappNumber\": \"{{verify_whatsapp}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/whatsapp/send-verification",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "whatsapp",
+                    "send-verification"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{vendor_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\nAccount ka number **verified** hai, aur ye ek doosra number bhej rahi hai —\nto ye step-up ka **pehla** leg hai: code **purane** number par jaata hai\naur response `step: \"CONFIRM_CURRENT\"` deta hai.\n\n⚠️ Flow yahin chhoda gaya hai, jaan-boojh kar. Poora karne par seeded\naccount ka login number badal jaata aur agla run `00 — Setup & Auth` par\ngir jaata — wahi trap jo `Set Password` aur email restore me likha hai."
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"This WhatsApp number is already verified.\"\n}"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"step-up shuru hota hai\", function () {",
+                  "  const code = pm.response.code;",
+                  "  pm.expect(code, \"status\").to.be.oneOf([200, 409, 422, 429]);",
+                  "  if (code === 200) {",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.step, \"step\").to.be.oneOf([\"CONFIRM_CURRENT\", \"CONFIRM_NEW\"]);",
+                  "    // ⚠️ Masked. Poora number wapas dena ek chura hui session ko nayi",
+                  "    // information de deta.",
+                  "    pm.expect(d.sentTo, \"sentTo\").to.include(\"*\");",
+                  "  }",
+                  "});",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "WhatsApp verify — galat code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"whatsappNumber\": \"{{verify_whatsapp}}\",\n  \"otp\": \"000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/whatsapp/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "whatsapp",
+                "verify"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\nJaan-boojh kar galat code — asli code ek phone par jaata hai.\n\n⚠️ Yahan koi `sessionId` nahi hai: WhatsApp ka code **hamara** hai,\nhash karke `purpose` ke saath store hota hai, to ek flow ka code doosre\nme chal hi nahi sakta."
+          },
+          "response": [
+            {
+              "name": "401 — galat ya expire code",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"whatsappNumber\": \"{{verify_whatsapp}}\",\n  \"otp\": \"000000\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/whatsapp/verify",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "whatsapp",
+                    "verify"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{vendor_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\nJaan-boojh kar galat code — asli code ek phone par jaata hai.\n\n⚠️ Yahan koi `sessionId` nahi hai: WhatsApp ka code **hamara** hai,\nhash karke `purpose` ke saath store hota hai, to ek flow ka code doosre\nme chal hi nahi sakta."
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Please resend OTP! OTP is expired or missing\"\n}"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"galat code par number nahi badalta\", function () {",
+                  "  const code = pm.response.code;",
+                  "  pm.expect(code, \"status\").to.be.oneOf([401, 403, 409, 422]);",
+                  "  pm.expect(code, \"kabhi 200 nahi\").to.not.eql(200);",
                   "});",
                   ""
                 ]

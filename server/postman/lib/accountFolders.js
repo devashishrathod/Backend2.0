@@ -433,4 +433,168 @@ const notificationPreferenceRequests = ({ token }) => [
   }),
 ];
 
-module.exports = { emailVerificationFolder, notificationPreferenceRequests };
+// ------------------------------------------------ phone verification
+
+/**
+ * The two phone keys, in the same factory and for the same reason as the email
+ * folder above: `mobile` and `whatsappNumber` verification are role-agnostic, so
+ * writing them once per collection would put the same eight requests in three
+ * files.
+ *
+ * ### ⚠️ None of these can capture a success
+ *
+ * The code goes to a real phone. The collection cannot read it, so every request
+ * here saves the **refusal** it gets from a wrong or absent code — which is still
+ * worth having: it is what proves the endpoint is mounted, gated and validating.
+ * The `200` shapes live in the role docs, written from the code.
+ *
+ * ⚠️ The WhatsApp change is deliberately left as a **`CONFIRM_CURRENT`** step and
+ * never completed. Completing it would move the seeded account's login number,
+ * and the next run's `00 — Setup & Auth` would fail on a number that no longer
+ * exists — the same trap `Set Password` and the email restore already document.
+ *
+ * @param {object} args
+ * @param {string} args.name   the folder's numbered title in this collection
+ * @param {string} args.token  environment variable holding the bearer token
+ */
+const phoneVerificationFolder = ({ name, token }) =>
+  folder(
+    name,
+    [
+      "Mobile aur WhatsApp number confirm karna — **har role ke liye ek hi flow**,",
+      "bilkul email jaisa. Gate `verifyJwtToken` hai, koi role gate nahi.",
+      "",
+      "### Teen keys, teen flags",
+      "",
+      "`email → isEmailVerified`, `mobile → isMobileVerified`,",
+      "`whatsappNumber → isWhatsappVerified`. Pehle WhatsApp verify **galat flag**",
+      "(`isMobileVerified`) set karta tha — un accounts par jinke paas `mobile`",
+      "field hai hi nahi.",
+      "",
+      "### ⚠️ WhatsApp ek step-up hai, mobile nahi",
+      "",
+      "`whatsappNumber` teeno non-admin roles ka **login identity** hai. Ek verified",
+      "number badalne par code pehle **purane** number par jaata hai — warna jiske",
+      "paas ek chura hui session hai wo apna number daal kar account hamesha ke liye",
+      "le leta.",
+      "",
+      "⚠️ **Yahan koi success capture nahi ho sakta** — code asli phone par jaata hai.",
+      "Har example wahi refusal hai jo galat/khaali code par aata hai.",
+    ].join("\n"),
+    [
+      req({
+        name: "Mobile verify ka code maango",
+        method: "POST",
+        segments: ["auth", "mobile", "send-verification"],
+        token,
+        body: { mobile: "{{verify_mobile}}" },
+        description: [
+          "`mobile` **optional** hai — na bhejein to account par jo number hai wahi",
+          "confirm hota hai.",
+          "",
+          "Response me **`sessionId`** aata hai, jo verify step me wapas bhejna hai:",
+          "mobile ka code hamara nahi hai, 2factor banata aur rakhta hai. Isi wajah",
+          "se email/WhatsApp ke calls me ye field nahi hai.",
+          "",
+          "⚠️ **Ab throttled.** Pehle kisi bhi mobile OTP path par koi limit nahi thi",
+          "— `sendOtp` ka throttle sirf WhatsApp aur email chalata hai. 60s cooldown,",
+          "5 per hour, `429` me `retryAfterSeconds`.",
+        ].join("\n"),
+        assert: [
+          ...A.custom("mounted, gated aur validating", [
+            "const code = pm.response.code;",
+            "// 200 = code gaya · 409 = pehle se verified ya kisi aur ka",
+            "// 429 = throttle · 422 = account par number hai hi nahi",
+            'pm.expect(code, "status").to.be.oneOf([200, 409, 422, 429]);',
+            "if (code === 200) {",
+            '  pm.environment.set("mobile_verify_session", pm.response.json().data.sessionId || "");',
+            "}",
+          ]),
+        ],
+      }),
+
+      req({
+        name: "Mobile verify — galat code",
+        method: "POST",
+        segments: ["auth", "mobile", "verify"],
+        token,
+        body: {
+          mobile: "{{verify_mobile}}",
+          otp: "000000",
+          sessionId: "{{mobile_verify_session}}",
+        },
+        description: [
+          "Jaan-boojh kar galat code. Asli code ek phone par jaata hai jise",
+          "collection padh nahi sakti, to saved example yahi refusal hai.",
+          "",
+          "⚠️ `sessionId` **validator me optional** hai par service ise maangti hai —",
+          "kyunki step-up ka pehla leg bina session ke aata hai. Na ho to `422`.",
+        ].join("\n"),
+        assert: [
+          ...A.custom("galat code par likha nahi jaata", [
+            "const code = pm.response.code;",
+            'pm.expect(code, "status").to.be.oneOf([401, 422, 500]);',
+            'pm.expect(code, "kabhi 200 nahi").to.not.eql(200);',
+          ]),
+        ],
+      }),
+
+      req({
+        name: "WhatsApp verify ka code maango (step-up)",
+        method: "POST",
+        segments: ["auth", "whatsapp", "send-verification"],
+        token,
+        body: { whatsappNumber: "{{verify_whatsapp}}" },
+        description: [
+          "Account ka number **verified** hai, aur ye ek doosra number bhej rahi hai —",
+          "to ye step-up ka **pehla** leg hai: code **purane** number par jaata hai",
+          "aur response `step: \"CONFIRM_CURRENT\"` deta hai.",
+          "",
+          "⚠️ Flow yahin chhoda gaya hai, jaan-boojh kar. Poora karne par seeded",
+          "account ka login number badal jaata aur agla run `00 — Setup & Auth` par",
+          "gir jaata — wahi trap jo `Set Password` aur email restore me likha hai.",
+        ].join("\n"),
+        assert: [
+          ...A.custom("step-up shuru hota hai", [
+            "const code = pm.response.code;",
+            'pm.expect(code, "status").to.be.oneOf([200, 409, 422, 429]);',
+            "if (code === 200) {",
+            "  const d = pm.response.json().data;",
+            '  pm.expect(d.step, "step").to.be.oneOf(["CONFIRM_CURRENT", "CONFIRM_NEW"]);',
+            "  // ⚠️ Masked. Poora number wapas dena ek chura hui session ko nayi",
+            "  // information de deta.",
+            '  pm.expect(d.sentTo, "sentTo").to.include("*");',
+            "}",
+          ]),
+        ],
+      }),
+
+      req({
+        name: "WhatsApp verify — galat code",
+        method: "POST",
+        segments: ["auth", "whatsapp", "verify"],
+        token,
+        body: { whatsappNumber: "{{verify_whatsapp}}", otp: "000000" },
+        description: [
+          "Jaan-boojh kar galat code — asli code ek phone par jaata hai.",
+          "",
+          "⚠️ Yahan koi `sessionId` nahi hai: WhatsApp ka code **hamara** hai,",
+          "hash karke `purpose` ke saath store hota hai, to ek flow ka code doosre",
+          "me chal hi nahi sakta.",
+        ].join("\n"),
+        assert: [
+          ...A.custom("galat code par number nahi badalta", [
+            "const code = pm.response.code;",
+            'pm.expect(code, "status").to.be.oneOf([401, 403, 409, 422]);',
+            'pm.expect(code, "kabhi 200 nahi").to.not.eql(200);',
+          ]),
+        ],
+      }),
+    ],
+  );
+
+module.exports = {
+  emailVerificationFolder,
+  phoneVerificationFolder,
+  notificationPreferenceRequests,
+};

@@ -777,7 +777,7 @@ Customer app ka **primary login endpoint**. Ek hi call login aur signup dono han
 ### Body
 | Field | Type | Required | Default | Validation |
 |---|---|---|---|---|
-| `whatsappNumber` | string | ✅ | – | Exactly 10 digits, first digit `6-9` (`/^[6-9]\d{9}$/`) |
+| `whatsappNumber` | string | ✅ | – | 10 digits, first digit `6-9`. `+91` / `91` / spaces / dashes bhi chalenge - server strip karke 10 digit bana deta hai |
 | `role` | string | ❌ | `CUSTOMER` | Enum: `ADMIN` \| `VENDOR` \| `SUB_VENDOR` \| `CUSTOMER`. Auto-uppercase |
 
 ```json
@@ -809,6 +809,7 @@ Customer app ka **primary login endpoint**. Ek hi call login aur signup dono han
       "walletBalance": 0,
       "tCoinsBalance": 0,
       "isEmailVerified": false,
+      "isWhatsappVerified": false,
       "isMobileVerified": false,
       "isSignUpCompleted": false,
       "isOnBoardingCompleted": false,
@@ -867,7 +868,7 @@ OTP verify karke JWT token deta hai. **Yahi se app ka token milta hai.**
 ### Body
 | Field | Type | Required | Default | Validation |
 |---|---|---|---|---|
-| `whatsappNumber` | string | ✅ | – | 10 digits, first `6-9` |
+| `whatsappNumber` | string | ✅ | – | 10 digits, first `6-9`; `+91`/`91` prefix strip ho jaata hai |
 | `otp` | string | ✅ | – | Exactly 6 characters (string, number nahi) |
 | `role` | string | ❌ | `CUSTOMER` | ROLES enum, auto-uppercase |
 | `currentScreen` | string | ❌ | – | 🔴 **Customer app se bhejein hi nahi.** Enum me sirf vendor onboarding screens hain — koi bhi doosri value poori login call `422` kar deti hai. [Details](#screens-onboarding-step-tracking--currentscreen-field) |
@@ -893,7 +894,8 @@ OTP verify karke JWT token deta hai. **Yahi se app ka token milta hai.**
       "whatsappNumber": "9876543210",
       "uniqueId": "TDU000123",
       "referralCode": "RAHUL7X2K",
-      "isMobileVerified": true,
+      "isWhatsappVerified": true,
+      "isMobileVerified": false,
       "isActive": true,
       "createdAt": "2026-08-22T10:15:30.000Z",
       "updatedAt": "2026-08-22T10:16:12.000Z"
@@ -903,7 +905,16 @@ OTP verify karke JWT token deta hai. **Yahi se app ka token milta hai.**
 }
 ```
 
-Verify hone pe backend `isMobileVerified: true` set kar deta hai.
+Verify hone pe backend **`isWhatsappVerified: true`** set kar deta hai (aur
+`loginType` ko `WHATSAPP`).
+
+> 🔴 **Breaking change.** Pehle ye `isMobileVerified` set karta tha - galat key par.
+> Us account me `mobile` field hai hi nahi, to wo flag ek aisi cheez ke baare me
+> dawa kar raha tha jo maujood nahi. Agar app kisi screen ko `isMobileVerified`
+> par gate karti hai to use **`isWhatsappVerified`** par shift karna hoga.
+>
+> `isMobileVerified` ab sirf tab `true` hota hai jab `mobile` key khud OTP se
+> verify ho - `POST /auth/verify-otp-mobile` se.
 
 ### Errors
 | Status | Message | Kab |
@@ -1076,7 +1087,8 @@ Logged-in customer ka profile, uske customer record aur saved location ke saath.
     "tCoinsBalance": 150,
     "image": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/profile/abc.jpg",
     "isEmailVerified": false,
-    "isMobileVerified": true,
+    "isWhatsappVerified": true,
+    "isMobileVerified": false,
     "isSignUpCompleted": true,
     "isActive": true,
     "createdAt": "2026-08-22T10:15:30.000Z",
@@ -5315,6 +5327,194 @@ me address phir se badal sakta tha.
 
 ---
 
+## 37. POST /auth/mobile/send-verification 🆕
+
+**Access:** `verifyJwtToken` — koi bhi signed-in role
+
+Email wala hi shape: `mobile` **optional** hai. Na bhejo to account par jo number hai wahi
+confirm hota hai; bhejo to us par switch shuru hota hai.
+
+```jsonc
+{}                              // jo number hai use confirm karo
+{ "mobile": "9876543210" }      // is par switch karo
+```
+
+### Response — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "We have sent a code to ******3210. Enter it to switch to this number.",
+  "data": { "step": "CONFIRM_NEW", "isChange": true, "sentTo": "******3210", "sessionId": "abc-123" }
+}
+```
+
+⚠️ **`sessionId` wapas bhejna hoga.** Mobile ka code hamara nahi hai — 2factor banata aur
+rakhta hai, aur `sessionId` se hi use verify karta hai. Isi wajah se mobile ke calls me ye
+field hai aur email/WhatsApp ke calls me nahi.
+
+⚠️ **Ab throttled hai.** Pehle **kisi bhi** mobile OTP path par koi limit nahi thi —
+`sendOtp` ka throttle sirf WhatsApp aur email ke liye chalta hai, aur mobile seedha 2factor
+ko call karta tha. Ab 60 second ka cooldown aur 5 per hour lagte hain, `Setting.security.otp`
+se tunable, aur `429` me `retryAfterSeconds` aata hai — wahi shape jo baaki dono channels ka
+hai.
+
+⚠️ **`+91 98765 43210` bhi chalega** — server normalise karke 10 digit bana deta hai, to wo
+account par pade number se compare hota hai. Iske bina apna hi number confirm karna "change"
+lagta aur bewajah code chala jaata.
+
+| Code | Kab |
+|---|---|
+| `200` | Code chala gaya |
+| `409` | Ye number pehle se verified hai (aur aap badal nahi rahe) |
+| `409` | Number kisi aur account par hai (same role) |
+| `422` | Account par koi number hai hi nahi aur aapne bheja bhi nahi |
+| `429` | Cooldown — `details.retryAfterSeconds` dekhein |
+
+---
+
+## 38. POST /auth/mobile/verify 🆕
+
+**Access:** `verifyJwtToken`
+
+```jsonc
+{ "otp": "482913", "sessionId": "abc-123" }
+{ "otp": "482913", "sessionId": "abc-123", "mobile": "9876543210" }
+```
+
+### Response — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "Mobile number updated and verified.",
+  "data": { "step": "DONE", "mobile": "9876543210", "isMobileVerified": true, "wasChange": true }
+}
+```
+
+⚠️ **Number likhna aur `isMobileVerified: true` ek hi save me** — aur usi save me role
+collection (`Customer` / `Brand` / `SubBrand`) par mirror bhi. Do step me karne par ek pal
+aisa banta jahan naya number padha hai aur verified nahi.
+
+⚠️ **Uniqueness yahan dobara check hoti hai** — dono call ke beech minute nikalte hain.
+
+| Code | Kab |
+|---|---|
+| `200` | Verified |
+| `401` | `Invalid OTP` |
+| `409` | Wo number is beech me kisi aur ne le liya |
+| `422` | `sessionId` nahi bheja, ya `otp` nahi |
+
+---
+
+## 39. POST /auth/whatsapp/send-verification 🆕
+
+**Access:** `verifyJwtToken`
+
+```jsonc
+{}                                      // jo number hai use confirm karo
+{ "whatsappNumber": "9998887770" }      // is par switch karo
+```
+
+### 🔴 Ye ek **step-up** hai — email/mobile se yahi farq hai
+
+`whatsappNumber` customer, vendor aur outlet manager — teeno ka **login identity** hai. Agar
+code sirf **naye** number par jaata, to jiske paas bhi ek chura hui session hai wo apna number
+daal kar, apne phone par code paa kar, account hamesha ke liye le leta — aur asli maalik ke
+paas wapas aane ka koi raasta nahi bachta.
+
+To ek **verified** number badalne par:
+
+```jsonc
+// Step 1 ka response — code PURANE number par gaya hai
+{
+  "success": true,
+  "message": "To change your WhatsApp number we first need to confirm the one you have now. We have sent a code to ******3210.",
+  "data": { "step": "CONFIRM_CURRENT", "sentTo": "******3210", "isChange": true }
+}
+```
+
+⚠️ **Naya number *add* karna single-step hai.** Agar account ka number kabhi verified hua hi
+nahi, to step up karne ke liye kuch hai hi nahi — aur us par code maangna user se aisi cheez
+ka saboot maangna hota jiska dava account ne kabhi kiya hi nahi.
+
+| Code | Kab |
+|---|---|
+| `200` | Code chala gaya — `step` dekh kar decide karein kaunsa screen |
+| `409` | Ye number pehle se verified hai (aur aap badal nahi rahe) |
+| `409` | Number kisi aur account par hai (same role) |
+| `429` | Cooldown |
+
+---
+
+## 40. POST /auth/whatsapp/verify 🆕
+
+**Access:** `verifyJwtToken`
+
+Step-up me ye **do baar** call hota hai.
+
+```jsonc
+// 1 — purane number ka code. Ye kuch badalta nahi; sirf naye number par code bhejne ka haq deta hai.
+{ "otp": "111111", "whatsappNumber": "9998887770" }
+
+// 2 — naye number ka code. Yahi wo call hai jo likhti hai.
+{ "otp": "222222", "whatsappNumber": "9998887770" }
+```
+
+### Response — step 1 ke baad
+
+```jsonc
+{
+  "success": true,
+  "message": "Thanks — that is confirmed. We have now sent a code to ******7770. Enter it to finish the change.",
+  "data": { "step": "CONFIRM_NEW", "sentTo": "******7770", "isChange": true, "wasChange": false }
+}
+```
+
+### Response — step 2 ke baad
+
+```jsonc
+{
+  "success": true,
+  "message": "WhatsApp number updated and verified. You have been signed out everywhere else.",
+  "data": {
+    "step": "DONE",
+    "whatsappNumber": "9998887770",
+    "isWhatsappVerified": true,
+    "wasChange": true,
+    "sessionsEnded": true
+  }
+}
+```
+
+🔴 **`sessionsEnded: true` par app ko sign-out handle karna hoga.** Number badalne par
+`sessionInvalidatedAt` set hota hai, yaani **is se pehle ke saare JWT mar jaate hain** —
+current wala bhi. Wajah: agar change kisi chor ne apni session se kiya tha, to uska token bhi
+usi waqt mar jaata hai, aur asli maalik — jiske paas purana number hai aur jiska code is flow
+me zaroori tha — wapas aa sakta hai.
+
+⚠️ **`mobile` par aisa nahi hota.** Wo secondary key hai aur account WhatsApp se reachable
+rehta hai, to sabko sign out karne se kuch milta nahi.
+
+⚠️ **`whatsappNumber` ka koi plain write nahi hai.** `PUT /users/update`, `PUT /brands/update`
+aur `PUT /subBrands/update` — teeno me se koi bhi ise chhoo nahi sakta; koshish par `422
+WHATSAPP_REQUIRES_VERIFICATION`. Sirf ye flow, aur admin ka
+`PATCH /users/admin/:userId/contact` (jo value badalta hai par flag `false` par girata hai).
+
+| Code | Kab |
+|---|---|
+| `200` | `step: "CONFIRM_NEW"` (pehla leg) ya `step: "DONE"` (ho gaya) |
+| `401` | Code galat, expire, ya use ho chuka |
+| `403` | Attempts khatam |
+| `409` | Wo number is beech me kisi aur ne le liya |
+| `422` | `otp` nahi bheja, ya number ka format galat |
+
+> ⚠️ **Inke success examples Postman me capture nahi hue** — code ek asli phone par jaata
+> hai aur collection use padh nahi sakti. Saved examples wahi refusals hain jo khaali/galat
+> code par aate hain; upar wale `200` shapes code se likhe gaye hain.
+
+---
+
 # Notification APIs 🆕
 
 **Access:** 🔒 `verifyJwtToken` — **ek endpoint, chaar shapes**.
@@ -5503,6 +5703,30 @@ koi apne hi code ko silence na kar paye.
 
 ---
 
+
+> ### 🔴 Ek channel tabhi chalta hai jab uski key **verified** ho
+>
+> Preference on hona kaafi nahi — us channel ki key ka OTP se confirm hona bhi
+> zaroori hai. `email` sirf `isEmailVerified` walon ko, WhatsApp sirf
+> `isWhatsappVerified` walon ko. `push` aur in-app row is niyam se bahar hain.
+>
+> **Read me:** unverified channel `effective: false` aur
+> `blockedBy: "UNVERIFIED"` ke saath aata hai — to toggle ko tap hone se *pehle*
+> greyed out dikhaya ja sakta hai.
+>
+> **Write me:** `{ "email": true }` bhejne par `422` —
+> `details.code: IDENTITY_NOT_VERIFIED`. Band karne par koi rok nahi; mana karna
+> hamesha allowed hai, sirf "aayega" ka waada kisi cheez par tika hona chahiye.
+>
+> ⚠️ Ye `ALWAYS_DELIVER` notices ko bhi rokta hai. Wo list kisi ki *marzi* ko
+> override karti hai; unverified marzi nahi hai — wo "pata kiska hai, ye hume
+> maloom nahi" hai. Aise pate par refund notice bhejna kisi ajnabi ke inbox me
+> asli customer ka detail daalna hai.
+>
+> ⚠️ **Key badalne par us channel ki preference bhi `false` ho jaati hai.** Sirf
+> guard hota to verify karte hi email apne aap chalu ho jaata — bina unke maange.
+> Verify karna *"ye pata mera hai"* hai, *"yahan bhejo"* nahi.
+
 # App Config API 🆕
 
 ## 39. GET /app-config 🆕
@@ -5658,7 +5882,12 @@ tak valid rehta hai. App ko token khud delete karna hoga. Sirf `allDevices` toke
 ### `isFirst` retry pe galat aata tha — FIXED
 **Pehle:** OTP na aane pe user dobara signup call karta tha, to `isFirst: false` aa jaata tha — kyunki flag User document ke **hone** pe based tha, verify hone pe nahi. App use returning user samajh leta tha.
 
-**Ab:** `isFirst` verification state pe based hai (`!user.isMobileVerified`). Jitni baar bhi retry karein, jab tak verify nahi hua `true` hi rahega.
+**Ab:** `isFirst` verification state pe based hai (`!user.isWhatsappVerified`). Jitni baar bhi retry karein, jab tak verify nahi hua `true` hi rahega.
+
+> Pehle ye `!user.isMobileVerified` padhta tha - yaani *"inka mobile confirm hua?"*
+> poochh kar decide karta tha ki inka **WhatsApp** number verify karna baaki hai ya
+> nahi. Jawab ittefaq se sahi aata tha, field galat thi. Backfill ke baad har
+> maujooda user ko wahi value dikhti hai jo pehle dikhti thi.
 
 ---
 

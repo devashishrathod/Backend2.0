@@ -11,7 +11,7 @@
 **Framework:** Express.js (CommonJS) · **DB:** MongoDB (Mongoose)
 **Route mounting:** `routes/index.js` auto-mounts har file ko uske filename se → `routes/subBrands.js` = `/trydood/v1/subBrands` (camelCase preserved). Do file `routePrefix` override karti hain — `voucherClaims.js` → `/voucher-claims`, `customerBankAccounts.js` → `/bank-accounts`.
 
-**Scanned:** 2026-09-05 · **Total endpoints: 215** (+3 utility/non-versioned)
+**Scanned:** 2026-09-11 · **Total endpoints: 220** (+3 utility/non-versioned)
 
 > ### ⚠️ Ye ginti pichhli baar 53 endpoint peeche reh gayi thi
 >
@@ -114,12 +114,12 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 
 ---
 
-## Summary — 215 endpoints
+## Summary — 220 endpoints
 
 | # | Module | Base path | Total | 🟠 | 🟢 | 🔵 | 🟣 | ⚪ | 🤖 |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
-| 1 | Auth | `/auth` | 14 | – | – | – | 5 | 9 | – |
-| 2 | Users | `/users` | 3 | – | – | – | – | 3 | – |
+| 1 | Auth | `/auth` | 18 | – | – | – | 5 | 13 | – |
+| 2 | Users | `/users` | 4 | – | – | – | 1 | 3 | – |
 | 3 | Customers 🆕 | `/customers` | 2 | – | – | – | 2 | – | – |
 | 4 | Device Tokens | `/deviceTokens` | 4 | – | – | – | – | 4 | – |
 | 5 | Notifications | `/notifications` | 7 | – | – | – | 3 | 4 | – |
@@ -152,12 +152,12 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | 32 | Privacy & Policies | `/privacy-and-policies` | 5 | 2 | – | – | 3 | – | – |
 | 33 | App Config | `/app-config` | 1 | 1 | – | – | – | – | – |
 | 34 | Documents 🆕 | `/documents` | 1 | – | – | – | – | – | 1 |
-| | **TOTAL** | | **215** | **22** | **17** | **15** | **84** | **74** | **3** |
+| | **TOTAL** | | **220** | **22** | **17** | **15** | **85** | **78** | **3** |
 
 > \* **4 endpoints do category me hain** (`optionalAuth`) — teen `/vouchers/customer/*`
 > aur `GET /search`. Wo 🟠 aur 🟢 dono column me ginne gaye hain, isliye
-> `22 + 17 + 15 + 84 + 74 + 3 = 215` **tabhi** milta hai jab un chaar ko ek baar
-> hi gina jaaye: distinct = `18 (pure guest) + 4 (dual) + 17 (customer) + 15 + 84 + 74 + 3 = 215` ✓
+> `22 + 17 + 15 + 85 + 78 + 3 = 220` **tabhi** milta hai jab un chaar ko ek baar
+> hi gina jaaye: distinct = `18 (pure guest) + 4 (dual) + 17 (customer) + 15 + 85 + 78 + 3 = 220` ✓
 >
 > **Round 6 me kya juda:** `/auth` me do (email verification, ⚪ — har role),
 > naya `/app-config` (🟠 public), aur `/notifications` ke do endpoints ab customer
@@ -168,15 +168,15 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | Doc | Endpoints | Breakdown | Status |
 |---|---:|---|---|
 | 🟠 Guest surface | **21** | Poori list neeche `§ Guest Surface` me | 🆕 Round 5 |
-| 📱 `customer_mobile_api_doc.md` | **62** | 17 exclusive + 22 guest + 22 shared global + 1 🤖 invoice link | ✅ **v1.7.0 — poora.** Live verified: 135 requests · 473 assertions · 0 failed · 198 captured examples |
-| 🏪 `vendor_panel_api_doc.md` | **97** | 15 exclusive + 70 shared global + 10 guest reads + 2 🤖 links | ⚠️ v1.2.1 me 78 the — 19 naye jodne hain |
-| 🛡️ `super_admin_panel_api_doc.md` | **170** | 82 exclusive + 70 shared global + 14 guest reads + 4 🤖 reference | ⬜ Baaki |
+| 📱 `customer_mobile_api_doc.md` | **66** | 17 exclusive + 22 guest + 26 shared global + 1 🤖 invoice link | ✅ **v1.7.0 — poora.** Live verified: 135 requests · 473 assertions · 0 failed · 198 captured examples |
+| 🏪 `vendor_panel_api_doc.md` | **101** | 15 exclusive + 74 shared global + 10 guest reads + 2 🤖 links | ⚠️ v1.2.1 me 78 the — 19 naye jodne hain |
+| 🛡️ `super_admin_panel_api_doc.md` | **175** | 83 exclusive + 74 shared global + 14 guest reads + 4 🤖 reference | ⬜ Baaki |
 
-> Sum > 215 kyunki shared endpoints kai docs me aate hain.
+> Sum > 220 kyunki shared endpoints kai docs me aate hain.
 >
 > **Cross-check:** har endpoint kam se kam ek doc me hai —
 > 🟠 21 (customer doc me saare 21) · 🟢 17 (customer) · 🔵 15 (vendor) ·
-> 🟣 82 (admin) · ⚪ 70 (vendor + admin, jinme 18 customer bhi) ·
+> 🟣 83 (admin) · ⚪ 74 (vendor + admin, jinme 22 customer bhi) ·
 > 🤖 4 (admin reference). **Koi endpoint chhoota nahi.** ✓
 >
 > ### ⚠️ Per-doc ginti "reachable" nahi hai — do baar ghatayi jaati hai
@@ -363,6 +363,10 @@ Ownership enforcement ka proper pattern:
 | 11 | POST | `/auth/reset-password` | Intended: ADMIN · Enforced: Public, validator ADMIN-only | 🟣 | 2-step flow ka step 2. Deactivated account par `403` |
 | 12a 🆕 | POST | `/auth/email/send-verification` | Intended: All · Enforced: **Any authenticated** | ⚪ | Email confirm ya change ka code. `email` **optional** — na do to account ka apna address, do to us par switch. ⚠️ Code **naye** address par jaata hai; purane par bhejna sirf ye sabit karta ki wo purana mailbox padh lete hain, jo sawal hai hi nahi. Uniqueness `{email, role}` par, aur **verify par dobara** check hoti hai kyunki do call ke beech minute nikalte hain. Throttle `sendOtp` me — 60s / 5 per hour, target par keyed |
 | 12b 🆕 | POST | `/auth/email/verify` | Intended: All · Enforced: **Any authenticated** | ⚪ | Code se confirm. Address likhna aur `isEmailVerified: true` **ek hi save me** — do step me karne par ek pal aisa banta jahan naya address padha hai aur verified nahi, theek wahi haalat jisse nikalne ka raasta ye hai. ⚠️ `loginType` **nahi** chhua jaata: `verifyEmailOTP` use `EMAIL` karta hai kyunki wo sign-in hai, ye nahi. Code consume ho jaata hai |
+| 12c 🆕 | POST | `/auth/mobile/send-verification` | Intended: All · Enforced: **Any authenticated** | ⚪ | Email wala hi shape, `mobile` ke liye. `mobile` **optional** — na do to account ka apna number, do to us par switch. Transport 2factor `AUTOGEN` hai, to response me `sessionId` aata hai jo verify step me wapas bhejna hai. ⚠️ Ab throttled — `sendThrottledMobileOtp` `claimOtpSend` se guzarta hai, jo pehle **kisi bhi** mobile path par nahi lagta tha |
+| 12d 🆕 | POST | `/auth/mobile/verify` | Intended: All · Enforced: **Any authenticated** | ⚪ | `sessionId` + `otp`. Number likhna aur `isMobileVerified: true` **ek hi save me**, aur role collection par mirror bhi. Uniqueness `{mobile, role}` par, **verify par dobara** check hoti hai |
+| 12e 🆕 | POST | `/auth/whatsapp/send-verification` | Intended: All · Enforced: **Any authenticated** | ⚪ | ⚠️ **Step-up.** `whatsappNumber` teeno non-admin roles ka login identity hai, to ek **verified** number badalne par code pehle **purane** number par jaata hai (`step: "CONFIRM_CURRENT"`) — warna chura hui session se koi bhi account apne phone par le jaata, hamesha ke liye. Naya number *add* karna (jo verified tha hi nahi) single-step hai |
+| 12f 🆕 | POST | `/auth/whatsapp/verify` | Intended: All · Enforced: **Any authenticated** | ⚪ | Step-up me **do baar** call hota hai: pehle purane number ka code (jo sirf naye number par code bhejne ka haq deta hai, `step: "CONFIRM_NEW"`), phir naye ka (`step: "DONE"`). Landing par `sessionInvalidatedAt` set hota hai — baaki sab devices logout, taaki agar change chor ne kiya tha to asli maalik apne purane number se wapas aa sake |
 | 12 | POST | `/auth/logout` | Intended: All · Enforced: **Any authenticated, EvenIfDeactivated** | ⚪ | Body optional — `pushToken` (is device ka push band), `allDevices` (har JWT + har device khatam). Response: `sessionsEnded` · `pushDeactivated` · `activeDevices` |
 
 > ### ⚠️ Logout jaan-boojh kar deactivated account ko bhi chalta hai
@@ -387,7 +391,8 @@ Ownership enforcement ka proper pattern:
 | # | Method | Endpoint | Access | Cat | Notes |
 |---|---|---|---|---|---|
 | 13 | GET | `/users/get` | Intended: All · Enforced: Any authenticated | ⚪ | ✅ `userId` token se aata hai — `?userId` query param hata diya gaya (IDOR fix) |
-| 14 | PUT | `/users/update` | Intended: All · Enforced: Any authenticated | ⚪ | ✅ Wahi fix |
+| 14 | PUT | `/users/update` | Intended: All · Enforced: Any authenticated | ⚪ | ✅ Wahi fix. `email` ab role collection par bhi mirror hota hai aur `isEmailVerified` `false` kar deta hai; `mobile`/`whatsappNumber` yahan se badalte hi nahi |
+| 14a 🆕 | PATCH | `/users/admin/:userId/contact` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Support desk ka ekmatra raasta jab kisi ka **purana SIM chala gaya** ho: `whatsappNumber` normally sirf purane number ke OTP se badalta hai, jo wo de hi nahi sakte. ⚠️ Value badalta hai, **verify nahi karta** — teeno flags `false` par girte hain, to admin ka likha email/mobile us account me login ke liye kaam nahi aata (`assertIdentityVerified`), aur naya WhatsApp number agle login ke OTP par verified hota hai. `reason` **required**, `sessionInvalidatedAt` set hota hai jab login number hile, aur account ko in-app notice jaata hai |
 | 15 | DELETE | `/users/delete` | Intended: All · Enforced: Any authenticated | ⚪ | ⚠️ **No-op stub.** Route file me inline handler hai — `200 "User deleted successfully"` bhejta hai aur kuch delete nahi karta. Customer app "account deleted" dikha deta hai aur wahi login chalta rehta hai. → [account_deletion_plan.md](./account_deletion_plan.md) |
 
 > **Customer doc me:** teeno (3) · **Vendor doc me:** teeno · **Admin doc me:** teeno
@@ -1567,11 +1572,11 @@ koi error nahi hota.
 
 | Doc | Endpoints | Status |
 |---|---:|---|
-| `endpoints_category.md` | **215** | ✅ **Round 6 — ye file.** Live routers ke against introspection se verify. `scripts/verifyApiCoverage.js` isi ko enforce karta hai |
+| `endpoints_category.md` | **220** | ✅ **Round 6 — ye file.** Live routers ke against introspection se verify. `scripts/verifyApiCoverage.js` isi ko enforce karta hai |
 | 🟠 Guest surface | 21 | 🆕 Round 5 — naya category, poori list is file me |
-| `customer_mobile_api_doc.md` | 62 | ✅ **v1.7.0** — live verified, 135 requests · 473 assertions · 0 failed · 198 captured examples (135/135 requests) |
-| `vendor_panel_api_doc.md` | 97 | ⚠️ **v1.2.1 me 78 hain** — 19 jodne hain (voucher claims reads, refunds, disputes, settlements, legacy mounts) |
-| `super_admin_panel_api_doc.md` | 170 | ⬜ Baaki |
+| `customer_mobile_api_doc.md` | 66 | ✅ **v1.7.0** — live verified, 135 requests · 473 assertions · 0 failed · 198 captured examples (135/135 requests) |
+| `vendor_panel_api_doc.md` | 101 | ⚠️ **v1.2.1 me 78 hain** — 19 jodne hain (voucher claims reads, refunds, disputes, settlements, legacy mounts) |
+| `super_admin_panel_api_doc.md` | 175 | ⬜ Baaki |
 | `security_findings.md` | 3 open (2 deferred) | ⚠️ Round 5 ke naye findings jodne hain — #15 no-op delete, #4 OTP verify commented |
 | `account_deletion_plan.md` | – | ⏸️ Deferred — full flow ready hone pe |
 
