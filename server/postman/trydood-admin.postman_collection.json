@@ -305,6 +305,21 @@
                   "key": "search",
                   "value": "",
                   "disabled": true
+                },
+                {
+                  "key": "isWhatsappVerified",
+                  "value": "true",
+                  "disabled": true
+                },
+                {
+                  "key": "isMobileVerified",
+                  "value": "true",
+                  "disabled": true
+                },
+                {
+                  "key": "isEmailVerified",
+                  "value": "true",
+                  "disabled": true
                 }
               ]
             },
@@ -318,7 +333,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isAdmin` — admin only\n\nPaginated. `search` naam, number aur `uniqueId` par chalta hai — wahi teen cheezein hain jo support call par haath me hoti hain."
+            "description": "Paginated. `search` naam, number aur `uniqueId` par chalta hai — wahi teen\ncheezein hain jo support call par haath me hoti hain.\n\n**Teen verification filter, teen alag keys ke liye.** 🔴 `verify-otp-whatsapp` pehle `isMobileVerified` set karta tha, to panel me *\"mobile verified\"* practically *\"verified hai ya nahi\"* ban gaya tha — jabki un accounts me `mobile` field hai hi nahi. Ab har flag apni key ke baare me bolta hai, to `isMobileVerified=true` par `404 \"No any customer found\"` aayega. Customer ke liye `isWhatsappVerified` chahiye."
           },
           "response": [
             {
@@ -538,6 +553,127 @@
                   "pm.test(\"paginated\", function () {",
                   "  const d = pm.response.json().data;",
                   "  pm.expect(d.data, \"data.data\").to.be.an(\"array\");",
+                  "});",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Contact badlo (lost SIM) 🔴",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"{{verify_mobile}}\",\n  \"reason\": \"Postman fixture — support desk contact change\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/users/admin/{{contact_change_user_id}}/contact",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "admin",
+                "{{contact_change_user_id}}",
+                "contact"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `isAdmin` — admin only\n\nSupport desk ka **ekmatra raasta** jab kisi ka purana SIM chala gaya ho.\n\n`whatsappNumber` normally sirf **purane** number ke OTP se badalta hai — aur\njiska SIM gaya, wo wahi cheez de nahi sakta.\n\n⚠️ **Value badalta hai, verify nahi karta.** Teeno flags `false` par girte hain,\nto admin ka likha email/mobile us account me login ke liye kaam nahi aata.\n\n⚠️ `reason` required; `whatsappNumber` hilne par account har device se sign out."
+          },
+          "response": [
+            {
+              "name": "422 — reason nahi bheja",
+              "originalRequest": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"mobile\": \"{{verify_mobile}}\",\n  \"reason\": \"Postman fixture — support desk contact change\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/users/admin/{{contact_change_user_id}}/contact",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "users",
+                    "admin",
+                    "{{contact_change_user_id}}",
+                    "contact"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "**Access:** `isAdmin` — admin only\n\nSupport desk ka **ekmatra raasta** jab kisi ka purana SIM chala gaya ho.\n\n`whatsappNumber` normally sirf **purane** number ke OTP se badalta hai — aur\njiska SIM gaya, wo wahi cheez de nahi sakta.\n\n⚠️ **Value badalta hai, verify nahi karta.** Teeno flags `false` par girte hain,\nto admin ka likha email/mobile us account me login ke liye kaam nahi aata.\n\n⚠️ `reason` required; `whatsappNumber` hilne par account har device se sign out."
+              },
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"A reason is required\"\n}"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"badla, par verified nahi\", function () {",
+                  "  const code = pm.response.code;",
+                  "  pm.expect(code, \"status\").to.be.oneOf([200, 404, 409, 422]);",
+                  "  if (code === 200) {",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.changed, \"changed\").to.be.an(\"array\").that.is.not.empty;",
+                  "    Object.values(d.verified).forEach((v) => pm.expect(v, \"verified\").to.eql(false));",
+                  "  }",
                   "});",
                   ""
                 ]
@@ -11440,6 +11576,482 @@
       ]
     },
     {
+      "name": "14b — Phone Verification",
+      "description": "Mobile aur WhatsApp number confirm karna — **har role ke liye ek hi flow**,\nbilkul email jaisa. Gate `verifyJwtToken` hai, koi role gate nahi.\n\n### Teen keys, teen flags\n\n`email → isEmailVerified`, `mobile → isMobileVerified`,\n`whatsappNumber → isWhatsappVerified`. Pehle WhatsApp verify **galat flag**\n(`isMobileVerified`) set karta tha — un accounts par jinke paas `mobile`\nfield hai hi nahi.\n\n### ⚠️ WhatsApp ek step-up hai, mobile nahi\n\n`whatsappNumber` teeno non-admin roles ka **login identity** hai. Ek verified\nnumber badalne par code pehle **purane** number par jaata hai — warna jiske\npaas ek chura hui session hai wo apna number daal kar account hamesha ke liye\nle leta.\n\n⚠️ **Yahan koi success capture nahi ho sakta** — code asli phone par jaata hai.\nHar example wahi refusal hai jo galat/khaali code par aata hai.",
+      "item": [
+        {
+          "name": "Mobile verify ka code maango",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"{{verify_mobile}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/mobile/send-verification",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "mobile",
+                "send-verification"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\n`mobile` **optional** hai — na bhejein to account par jo number hai wahi\nconfirm hota hai.\n\nResponse me **`sessionId`** aata hai, jo verify step me wapas bhejna hai:\nmobile ka code hamara nahi hai, 2factor banata aur rakhta hai. Isi wajah\nse email/WhatsApp ke calls me ye field nahi hai.\n\n⚠️ **Ab throttled.** Pehle kisi bhi mobile OTP path par koi limit nahi thi\n— `sendOtp` ka throttle sirf WhatsApp aur email chalata hai. 60s cooldown,\n5 per hour, `429` me `retryAfterSeconds`."
+          },
+          "response": [
+            {
+              "name": "409 — ye number pehle se verified hai",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"mobile\": \"{{verify_mobile}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/mobile/send-verification",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "mobile",
+                    "send-verification"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\n`mobile` **optional** hai — na bhejein to account par jo number hai wahi\nconfirm hota hai.\n\nResponse me **`sessionId`** aata hai, jo verify step me wapas bhejna hai:\nmobile ka code hamara nahi hai, 2factor banata aur rakhta hai. Isi wajah\nse email/WhatsApp ke calls me ye field nahi hai.\n\n⚠️ **Ab throttled.** Pehle kisi bhi mobile OTP path par koi limit nahi thi\n— `sendOtp` ka throttle sirf WhatsApp aur email chalata hai. 60s cooldown,\n5 per hour, `429` me `retryAfterSeconds`."
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"This mobile number is already verified.\"\n}"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"mounted, gated aur validating\", function () {",
+                  "  const code = pm.response.code;",
+                  "  // 200 = code gaya · 409 = pehle se verified ya kisi aur ka",
+                  "  // 429 = throttle · 422 = account par number hai hi nahi",
+                  "  pm.expect(code, \"status\").to.be.oneOf([200, 409, 422, 429]);",
+                  "  if (code === 200) {",
+                  "    pm.environment.set(\"mobile_verify_session\", pm.response.json().data.sessionId || \"\");",
+                  "  }",
+                  "});",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mobile verify — galat code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"{{verify_mobile}}\",\n  \"otp\": \"000000\",\n  \"sessionId\": \"{{mobile_verify_session}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/mobile/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "mobile",
+                "verify"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\nJaan-boojh kar galat code. Asli code ek phone par jaata hai jise\ncollection padh nahi sakti, to saved example yahi refusal hai.\n\n⚠️ `sessionId` **validator me optional** hai par service ise maangti hai —\nkyunki step-up ka pehla leg bina session ke aata hai. Na ho to `422`."
+          },
+          "response": [
+            {
+              "name": "422 — sessionId nahi bheja",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"mobile\": \"{{verify_mobile}}\",\n  \"otp\": \"000000\",\n  \"sessionId\": \"{{mobile_verify_session}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/mobile/verify",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "mobile",
+                    "verify"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\nJaan-boojh kar galat code. Asli code ek phone par jaata hai jise\ncollection padh nahi sakti, to saved example yahi refusal hai.\n\n⚠️ `sessionId` **validator me optional** hai par service ise maangti hai —\nkyunki step-up ka pehla leg bina session ke aata hai. Na ho to `422`."
+              },
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Session ID is required\"\n}"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"galat code par likha nahi jaata\", function () {",
+                  "  const code = pm.response.code;",
+                  "  pm.expect(code, \"status\").to.be.oneOf([401, 422, 500]);",
+                  "  pm.expect(code, \"kabhi 200 nahi\").to.not.eql(200);",
+                  "});",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "WhatsApp verify ka code maango (step-up)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"whatsappNumber\": \"{{verify_whatsapp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/whatsapp/send-verification",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "whatsapp",
+                "send-verification"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\nAccount ka number **verified** hai, aur ye ek doosra number bhej rahi hai —\nto ye step-up ka **pehla** leg hai: code **purane** number par jaata hai\naur response `step: \"CONFIRM_CURRENT\"` deta hai.\n\n⚠️ Flow yahin chhoda gaya hai, jaan-boojh kar. Poora karne par seeded\naccount ka login number badal jaata aur agla run `00 — Setup & Auth` par\ngir jaata — wahi trap jo `Set Password` aur email restore me likha hai."
+          },
+          "response": [
+            {
+              "name": "409 — ye number pehle se verified hai",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"whatsappNumber\": \"{{verify_whatsapp}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/whatsapp/send-verification",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "whatsapp",
+                    "send-verification"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\nAccount ka number **verified** hai, aur ye ek doosra number bhej rahi hai —\nto ye step-up ka **pehla** leg hai: code **purane** number par jaata hai\naur response `step: \"CONFIRM_CURRENT\"` deta hai.\n\n⚠️ Flow yahin chhoda gaya hai, jaan-boojh kar. Poora karne par seeded\naccount ka login number badal jaata aur agla run `00 — Setup & Auth` par\ngir jaata — wahi trap jo `Set Password` aur email restore me likha hai."
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"This WhatsApp number is already verified.\"\n}"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"step-up shuru hota hai\", function () {",
+                  "  const code = pm.response.code;",
+                  "  pm.expect(code, \"status\").to.be.oneOf([200, 409, 422, 429]);",
+                  "  if (code === 200) {",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d.step, \"step\").to.be.oneOf([\"CONFIRM_CURRENT\", \"CONFIRM_NEW\"]);",
+                  "    // ⚠️ Masked. Poora number wapas dena ek chura hui session ko nayi",
+                  "    // information de deta.",
+                  "    pm.expect(d.sentTo, \"sentTo\").to.include(\"*\");",
+                  "  }",
+                  "});",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "WhatsApp verify — galat code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"whatsappNumber\": \"{{verify_whatsapp}}\",\n  \"otp\": \"000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/whatsapp/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "whatsapp",
+                "verify"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\nJaan-boojh kar galat code — asli code ek phone par jaata hai.\n\n⚠️ Yahan koi `sessionId` nahi hai: WhatsApp ka code **hamara** hai,\nhash karke `purpose` ke saath store hota hai, to ek flow ka code doosre\nme chal hi nahi sakta."
+          },
+          "response": [
+            {
+              "name": "401 — galat ya expire code",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"whatsappNumber\": \"{{verify_whatsapp}}\",\n  \"otp\": \"000000\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/whatsapp/verify",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "whatsapp",
+                    "verify"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\nJaan-boojh kar galat code — asli code ek phone par jaata hai.\n\n⚠️ Yahan koi `sessionId` nahi hai: WhatsApp ka code **hamara** hai,\nhash karke `purpose` ke saath store hota hai, to ek flow ka code doosre\nme chal hi nahi sakta."
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Please resend OTP! OTP is expired or missing\"\n}"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"galat code par number nahi badalta\", function () {",
+                  "  const code = pm.response.code;",
+                  "  pm.expect(code, \"status\").to.be.oneOf([401, 403, 409, 422]);",
+                  "  pm.expect(code, \"kabhi 200 nahi\").to.not.eql(200);",
+                  "});",
+                  ""
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "16 — Auth (admin-only flows)",
       "description": "Migrate kiye gaye requests — dekho file ke upar wala note.",
       "item": [
@@ -14121,7 +14733,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"message\": \"Settings fetched successfully.\",\n  \"data\": {\n    \"_id\": \"6a8f216cbc022169c2c3ec2b\",\n    \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n    \"customer\": {\n      \"convenienceFee\": {\n        \"isEnabled\": true,\n        \"slabSize\": 500,\n        \"feePerSlab\": 5,\n        \"maxFee\": null,\n        \"chargeWhenNoOffer\": false\n      },\n      \"chargeback\": {\n        \"writeOffDays\": 90,\n        \"deadlineAlertHours\": [\n          72,\n          24\n        ]\n      },\n      \"claim\": {\n        \"isEnabled\": true,\n        \"allowWhenNoOffer\": true,\n        \"maxBillAmount\": 100000,\n        \"pendingOrderReuseMinutes\": 10,\n        \"quoteTtlMinutes\": 30,\n        \"allowWhenVendorPlanExpired\": false,\n        \"vendorPlanExpiredGraceDays\": 0,\n        \"redemptionWindowHours\": 24\n      },\n      \"invoice\": {\n        \"seriesPrefix\": \"VCH\"\n      },\n      \"notification\": {\n        \"isEmailNotificationEnabled\": true,\n        \"isPushNotificationEnabled\": true,\n        \"isWhatsAppNotificationEnabled\": false\n      },\n      \"promoCode\": {\n        \"isEnabled\": true,\n        \"allowWhenNoOffer\": false,\n        \"allowForGuestPreview\": true\n      },\n      \"refund\": {\n        \"method\": \"SOURCE\",\n        \"windowHours\": 24,\n        \"vendorApprovalHours\": 24,\n        \"adminBufferHours\": 12,\n        \"onVendorTimeout\": \"ESCALATE\",\n        \"allowPartial\": true,\n        \"releasePromoOnRefund\": false,\n        \"authorizedAlertMinutes\": 30,\n        \"maxOpenRequests\": 3,\n        \"maxRejectedPerWindow\": 3,\n        \"requestWindowDays\": 30,\n        \"bankDetailsStaleDays\": 30,\n        \"bankDetailsReminderHours\": [\n          24,\n          96\n        ]\n      },\n      \"search\": {\n        \"isEnabled\": true,\n        \"minQueryLength\": 2,\n        \"sectionLimit\": 5,\n        \"historyLimit\": 20,\n        \"popularQueries\": []\n      },\n      \"settlement\": {\n        \"isEnabled\": true,\n        \"delayDays\": 3,\n        \"payoutBufferHours\": 6,\n        \"cycleType\": \"DAILY\",\n        \"requiresAdminApproval\": true,\n        \"minPayoutAmount\": 100,\n        \"payoutProvider\": \"MANUAL_BANK\",\n        \"commissionPercent\": 0,\n        \"newVendorReserveDays\": 0,\n        \"notReceivedAlertHours\": 96,\n        \"gatewayFeeBearer\": \"PLATFORM\",\n        \"reserve\": {\n          \"isEnabled\": false,\n          \"percent\": 5,\n          \"holdDays\": 30,\n          \"riskChargebackCount\": 2,\n          \"riskLookbackDays\": 180,\n          \"riskMinPayments\": 20,\n          \"riskDisputeRatePercent\": 1,\n          \"riskPercent\": 15,\n          \"maxPercent\": 25\n        }\n      },\n      \"tax\": {\n        \"isGstEnabled\": false,\n        \"gstPercentage\": 18,\n        \"isGstInclusive\": true,\n        \"sacCode\": \"998599\"\n      }\n    },\n    \"isActive\": true,\n    \"updatedAt\": \"2026-08-27T10:00:00.000Z\",\n    \"updatedBy\": \"6a9c75ade7dca08c50d53b5d\",\n    \"vendor\": {\n      \"voucher\": {\n        \"maxOffers\": 10,\n        \"maxImages\": 5,\n        \"maxDistanceKm\": 25\n      },\n      \"showcase\": {\n        \"maxSections\": 5,\n        \"maxItemsPerSection\": 15,\n        \"maxImagesPerSection\": 15,\n        \"maxVideosPerSection\": 5,\n        \"maxImageSizeMB\": 10,\n        \"maxVideoSizeMB\": 50,\n        \"allowedImages\": [\n          \"image/jpeg\",\n          \"image/jpg\",\n          \"image/png\",\n          \"image/webp\"\n        ],\n        \"allowedVideos\": [\n          \"video/mp4\",\n          \"video/webm\",\n          \"video/quicktime\"\n        ],\n        \"isActive\": true\n      },\n      \"subscription\": {\n        \"gstPercentage\": 18,\n        \"isGstInclusive\": false,\n        \"hsnSacCode\": \"998315\",\n        \"companyName\": \"TRYDOOD RETAIL PRIVATE LIMITED\",\n        \"companyGstin\": \"33AAKCT3750H1ZB\",\n        \"companyAddress\": \"2nd Floor, Phase-3, Suite No. 250, No. S101, Door No. 769, Spencer Plaza, Anna Salai, Chennai, Tamil Nadu, 600002\",\n        \"companyStateCode\": \"33\",\n        \"companyState\": \"Tamil Nadu\",\n        \"currency\": \"INR\",\n        \"allowVendorUpgrade\": true,\n        \"allowVendorDowngrade\": false,\n        \"allowVendorRenewal\": true,\n        \"allowAdminDowngrade\": true,\n        \"allowAdminFreeGrant\": true,\n        \"gracePeriodDays\": 0,\n        \"pendingOrderReuseMinutes\": 15,\n        \"expiryJobIntervalMinutes\": 60,\n        \"isPromoCodeEnabled\": false,\n        \"reminderJobIntervalMinutes\": 180,\n        \"isEmailNotificationEnabled\": true,\n        \"isPushNotificationEnabled\": true,\n        \"isWhatsAppNotificationEnabled\": false,\n        \"isActive\": true,\n        \"expiryReminderDays\": [\n          7,\n          3,\n          1\n        ]\n      }\n    },\n    \"security\": {\n      \"otp\": {\n        \"resendCooldownSeconds\": 60,\n        \"maxPerHour\": 5\n      }\n    },\n    \"app\": {\n      \"forceUpdate\": false,\n      \"updateMessage\": \"A newer version of Trydood is available. Please update to continue.\",\n      \"minVersion\": {\n        \"android\": \"1.0.0\",\n        \"ios\": \"1.0.0\"\n      },\n      \"latestVersion\": {\n        \"android\": \"1.4.0\",\n        \"ios\": \"1.4.0\"\n      },\n      \"storeUrl\": {\n        \"android\": \"https://play.google.com/store/apps/details?id=com.trydood\",\n        \"ios\": \"https://apps.apple.com/app/trydood/id{{otp}}0000\"\n      },\n      \"support\": {\n        \"email\": \"help@trydood.com\",\n        \"phone\": \"1800-000-000\",\n        \"whatsapp\": \"97{{otp}}01\"\n      },\n      \"features\": {\n        \"promoCodes\": true,\n        \"refunds\": true,\n        \"voucherClaims\": true,\n        \"search\": true\n      }\n    },\n    \"admin\": {\n      \"notification\": {\n        \"isEmailNotificationEnabled\": true,\n        \"isPushNotificationEnabled\": true,\n        \"isWhatsAppNotificationEnabled\": false,\n        \"maxRecipientsPerDispatch\": 5000\n      }\n    }\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"message\": \"Settings fetched successfully.\",\n  \"data\": {\n    \"_id\": \"6a8f216cbc022169c2c3ec2b\",\n    \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n    \"customer\": {\n      \"convenienceFee\": {\n        \"isEnabled\": true,\n        \"slabSize\": 500,\n        \"feePerSlab\": 5,\n        \"maxFee\": null,\n        \"chargeWhenNoOffer\": false\n      },\n      \"chargeback\": {\n        \"writeOffDays\": 90,\n        \"deadlineAlertHours\": [\n          72,\n          24\n        ]\n      },\n      \"claim\": {\n        \"isEnabled\": true,\n        \"allowWhenNoOffer\": true,\n        \"maxBillAmount\": 100000,\n        \"pendingOrderReuseMinutes\": 10,\n        \"quoteTtlMinutes\": 30,\n        \"allowWhenVendorPlanExpired\": false,\n        \"vendorPlanExpiredGraceDays\": 0,\n        \"redemptionWindowHours\": 24\n      },\n      \"invoice\": {\n        \"seriesPrefix\": \"VCH\"\n      },\n      \"notification\": {\n        \"isEmailNotificationEnabled\": true,\n        \"isPushNotificationEnabled\": true,\n        \"isWhatsAppNotificationEnabled\": false\n      },\n      \"promoCode\": {\n        \"isEnabled\": true,\n        \"allowWhenNoOffer\": false,\n        \"allowForGuestPreview\": true\n      },\n      \"refund\": {\n        \"method\": \"SOURCE\",\n        \"windowHours\": 24,\n        \"vendorApprovalHours\": 24,\n        \"adminBufferHours\": 12,\n        \"onVendorTimeout\": \"ESCALATE\",\n        \"allowPartial\": true,\n        \"releasePromoOnRefund\": false,\n        \"authorizedAlertMinutes\": 30,\n        \"maxOpenRequests\": 3,\n        \"maxRejectedPerWindow\": 3,\n        \"requestWindowDays\": 30,\n        \"bankDetailsStaleDays\": 30,\n        \"bankDetailsReminderHours\": [\n          24,\n          96\n        ]\n      },\n      \"search\": {\n        \"isEnabled\": true,\n        \"minQueryLength\": 2,\n        \"sectionLimit\": 5,\n        \"historyLimit\": 20,\n        \"popularQueries\": []\n      },\n      \"settlement\": {\n        \"isEnabled\": true,\n        \"delayDays\": 3,\n        \"payoutBufferHours\": 6,\n        \"cycleType\": \"DAILY\",\n        \"requiresAdminApproval\": true,\n        \"minPayoutAmount\": 100,\n        \"payoutProvider\": \"MANUAL_BANK\",\n        \"commissionPercent\": 0,\n        \"newVendorReserveDays\": 0,\n        \"notReceivedAlertHours\": 96,\n        \"gatewayFeeBearer\": \"PLATFORM\",\n        \"reserve\": {\n          \"isEnabled\": false,\n          \"percent\": 5,\n          \"holdDays\": 30,\n          \"riskChargebackCount\": 2,\n          \"riskLookbackDays\": 180,\n          \"riskMinPayments\": 20,\n          \"riskDisputeRatePercent\": 1,\n          \"riskPercent\": 15,\n          \"maxPercent\": 25\n        }\n      },\n      \"tax\": {\n        \"isGstEnabled\": false,\n        \"gstPercentage\": 18,\n        \"isGstInclusive\": true,\n        \"sacCode\": \"998599\"\n      }\n    },\n    \"isActive\": true,\n    \"updatedAt\": \"2026-08-27T10:00:00.000Z\",\n    \"updatedBy\": \"6a9c75ade7dca08c50d53b5d\",\n    \"vendor\": {\n      \"voucher\": {\n        \"maxOffers\": 10,\n        \"maxImages\": 5,\n        \"maxDistanceKm\": 25\n      },\n      \"showcase\": {\n        \"maxItemsPerSection\": 15,\n        \"maxImagesPerSection\": 15,\n        \"maxVideosPerSection\": 5,\n        \"maxImageSizeMB\": 10,\n        \"maxVideoSizeMB\": 50,\n        \"allowedImages\": [\n          \"image/jpeg\",\n          \"image/jpg\",\n          \"image/png\",\n          \"image/webp\"\n        ],\n        \"allowedVideos\": [\n          \"video/mp4\",\n          \"video/webm\",\n          \"video/quicktime\"\n        ],\n        \"isActive\": true\n      },\n      \"subscription\": {\n        \"gstPercentage\": 18,\n        \"isGstInclusive\": false,\n        \"hsnSacCode\": \"998315\",\n        \"companyName\": \"TRYDOOD RETAIL PRIVATE LIMITED\",\n        \"companyGstin\": \"33AAKCT3750H1ZB\",\n        \"companyAddress\": \"2nd Floor, Phase-3, Suite No. 250, No. S101, Door No. 769, Spencer Plaza, Anna Salai, Chennai, Tamil Nadu, 600002\",\n        \"companyStateCode\": \"33\",\n        \"companyState\": \"Tamil Nadu\",\n        \"currency\": \"INR\",\n        \"allowVendorUpgrade\": true,\n        \"allowVendorDowngrade\": false,\n        \"allowVendorRenewal\": true,\n        \"allowAdminDowngrade\": true,\n        \"allowAdminFreeGrant\": true,\n        \"gracePeriodDays\": 0,\n        \"pendingOrderReuseMinutes\": 15,\n        \"expiryJobIntervalMinutes\": 60,\n        \"isPromoCodeEnabled\": false,\n        \"reminderJobIntervalMinutes\": 180,\n        \"isEmailNotificationEnabled\": true,\n        \"isPushNotificationEnabled\": true,\n        \"isWhatsAppNotificationEnabled\": false,\n        \"isActive\": true,\n        \"expiryReminderDays\": [\n          7,\n          3,\n          1\n        ]\n      }\n    },\n    \"security\": {\n      \"otp\": {\n        \"resendCooldownSeconds\": 60,\n        \"maxPerHour\": 5\n      }\n    },\n    \"app\": {\n      \"forceUpdate\": false,\n      \"updateMessage\": \"A newer version of Trydood is available. Please update to continue.\",\n      \"minVersion\": {\n        \"android\": \"1.0.0\",\n        \"ios\": \"1.0.0\"\n      },\n      \"latestVersion\": {\n        \"android\": \"1.4.0\",\n        \"ios\": \"1.4.0\"\n      },\n      \"storeUrl\": {\n        \"android\": \"https://play.google.com/store/apps/details?id=com.trydood\",\n        \"ios\": \"https://apps.apple.com/app/trydood/id{{otp}}0000\"\n      },\n      \"support\": {\n        \"email\": \"help@trydood.com\",\n        \"phone\": \"1800-000-000\",\n        \"whatsapp\": \"97{{otp}}01\"\n      },\n      \"features\": {\n        \"promoCodes\": true,\n        \"refunds\": true,\n        \"voucherClaims\": true,\n        \"search\": true\n      }\n    },\n    \"admin\": {\n      \"notification\": {\n        \"isEmailNotificationEnabled\": true,\n        \"isPushNotificationEnabled\": true,\n        \"isWhatsAppNotificationEnabled\": false,\n        \"maxRecipientsPerDispatch\": 5000\n      }\n    }\n  }\n}"
             }
           ],
           "event": [
@@ -14279,7 +14891,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"message\": \"Settings updated successfully.\",\n  \"data\": {\n    \"_id\": \"6a8f216cbc022169c2c3ec2b\",\n    \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n    \"customer\": {\n      \"convenienceFee\": {\n        \"isEnabled\": true,\n        \"slabSize\": 500,\n        \"feePerSlab\": 5,\n        \"maxFee\": null,\n        \"chargeWhenNoOffer\": false\n      },\n      \"chargeback\": {\n        \"writeOffDays\": 90,\n        \"deadlineAlertHours\": [\n          72,\n          24\n        ]\n      },\n      \"claim\": {\n        \"isEnabled\": true,\n        \"allowWhenNoOffer\": true,\n        \"maxBillAmount\": 100000,\n        \"pendingOrderReuseMinutes\": 10,\n        \"quoteTtlMinutes\": 30,\n        \"allowWhenVendorPlanExpired\": false,\n        \"vendorPlanExpiredGraceDays\": 0,\n        \"redemptionWindowHours\": 24\n      },\n      \"invoice\": {\n        \"seriesPrefix\": \"VCH\"\n      },\n      \"notification\": {\n        \"isEmailNotificationEnabled\": true,\n        \"isPushNotificationEnabled\": true,\n        \"isWhatsAppNotificationEnabled\": false\n      },\n      \"promoCode\": {\n        \"isEnabled\": true,\n        \"allowWhenNoOffer\": false,\n        \"allowForGuestPreview\": true\n      },\n      \"refund\": {\n        \"method\": \"SOURCE\",\n        \"windowHours\": 24,\n        \"vendorApprovalHours\": 24,\n        \"adminBufferHours\": 12,\n        \"onVendorTimeout\": \"ESCALATE\",\n        \"allowPartial\": true,\n        \"releasePromoOnRefund\": false,\n        \"authorizedAlertMinutes\": 30,\n        \"maxOpenRequests\": 3,\n        \"maxRejectedPerWindow\": 3,\n        \"requestWindowDays\": 30,\n        \"bankDetailsStaleDays\": 30,\n        \"bankDetailsReminderHours\": [\n          24,\n          96\n        ]\n      },\n      \"search\": {\n        \"isEnabled\": true,\n        \"minQueryLength\": 2,\n        \"sectionLimit\": 5,\n        \"historyLimit\": 20,\n        \"popularQueries\": []\n      },\n      \"settlement\": {\n        \"isEnabled\": true,\n        \"delayDays\": 3,\n        \"payoutBufferHours\": 6,\n        \"cycleType\": \"DAILY\",\n        \"requiresAdminApproval\": true,\n        \"minPayoutAmount\": 100,\n        \"payoutProvider\": \"MANUAL_BANK\",\n        \"commissionPercent\": 0,\n        \"newVendorReserveDays\": 0,\n        \"notReceivedAlertHours\": 96,\n        \"gatewayFeeBearer\": \"PLATFORM\",\n        \"reserve\": {\n          \"isEnabled\": false,\n          \"percent\": 5,\n          \"holdDays\": 30,\n          \"riskChargebackCount\": 2,\n          \"riskLookbackDays\": 180,\n          \"riskMinPayments\": 20,\n          \"riskDisputeRatePercent\": 1,\n          \"riskPercent\": 15,\n          \"maxPercent\": 25\n        }\n      },\n      \"tax\": {\n        \"isGstEnabled\": false,\n        \"gstPercentage\": 18,\n        \"isGstInclusive\": true,\n        \"sacCode\": \"998599\"\n      }\n    },\n    \"isActive\": true,\n    \"updatedAt\": \"2026-08-27T10:00:00.000Z\",\n    \"updatedBy\": \"{{admin_user_id}}\",\n    \"vendor\": {\n      \"voucher\": {\n        \"maxOffers\": 10,\n        \"maxImages\": 5,\n        \"maxDistanceKm\": 25\n      },\n      \"showcase\": {\n        \"maxSections\": 5,\n        \"maxItemsPerSection\": 15,\n        \"maxImagesPerSection\": 15,\n        \"maxVideosPerSection\": 5,\n        \"maxImageSizeMB\": 10,\n        \"maxVideoSizeMB\": 50,\n        \"allowedImages\": [\n          \"image/jpeg\",\n          \"image/jpg\",\n          \"image/png\",\n          \"image/webp\"\n        ],\n        \"allowedVideos\": [\n          \"video/mp4\",\n          \"video/webm\",\n          \"video/quicktime\"\n        ],\n        \"isActive\": true\n      },\n      \"subscription\": {\n        \"gstPercentage\": 18,\n        \"isGstInclusive\": false,\n        \"hsnSacCode\": \"998315\",\n        \"companyName\": \"TRYDOOD RETAIL PRIVATE LIMITED\",\n        \"companyGstin\": \"33AAKCT3750H1ZB\",\n        \"companyAddress\": \"2nd Floor, Phase-3, Suite No. 250, No. S101, Door No. 769, Spencer Plaza, Anna Salai, Chennai, Tamil Nadu, 600002\",\n        \"companyStateCode\": \"33\",\n        \"companyState\": \"Tamil Nadu\",\n        \"currency\": \"INR\",\n        \"allowVendorUpgrade\": true,\n        \"allowVendorDowngrade\": false,\n        \"allowVendorRenewal\": true,\n        \"allowAdminDowngrade\": true,\n        \"allowAdminFreeGrant\": true,\n        \"gracePeriodDays\": 0,\n        \"pendingOrderReuseMinutes\": 15,\n        \"expiryJobIntervalMinutes\": 60,\n        \"isPromoCodeEnabled\": false,\n        \"reminderJobIntervalMinutes\": 180,\n        \"isEmailNotificationEnabled\": true,\n        \"isPushNotificationEnabled\": true,\n        \"isWhatsAppNotificationEnabled\": false,\n        \"isActive\": true,\n        \"expiryReminderDays\": [\n          7,\n          3,\n          1\n        ]\n      }\n    },\n    \"security\": {\n      \"otp\": {\n        \"resendCooldownSeconds\": 60,\n        \"maxPerHour\": 5\n      }\n    },\n    \"app\": {\n      \"forceUpdate\": false,\n      \"updateMessage\": \"A newer version of Trydood is available. Please update to continue.\",\n      \"minVersion\": {\n        \"android\": \"1.0.0\",\n        \"ios\": \"1.0.0\"\n      },\n      \"latestVersion\": {\n        \"android\": \"1.4.0\",\n        \"ios\": \"1.4.0\"\n      },\n      \"storeUrl\": {\n        \"android\": \"https://play.google.com/store/apps/details?id=com.trydood\",\n        \"ios\": \"https://apps.apple.com/app/trydood/id{{otp}}0000\"\n      },\n      \"support\": {\n        \"email\": \"help@trydood.com\",\n        \"phone\": \"1800-000-000\",\n        \"whatsapp\": \"97{{otp}}01\"\n      },\n      \"features\": {\n        \"promoCodes\": true,\n        \"refunds\": true,\n        \"voucherClaims\": true,\n        \"search\": true\n      }\n    },\n    \"admin\": {\n      \"notification\": {\n        \"isEmailNotificationEnabled\": true,\n        \"isPushNotificationEnabled\": true,\n        \"isWhatsAppNotificationEnabled\": false,\n        \"maxRecipientsPerDispatch\": 5000\n      }\n    }\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"message\": \"Settings updated successfully.\",\n  \"data\": {\n    \"_id\": \"6a8f216cbc022169c2c3ec2b\",\n    \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n    \"customer\": {\n      \"convenienceFee\": {\n        \"isEnabled\": true,\n        \"slabSize\": 500,\n        \"feePerSlab\": 5,\n        \"maxFee\": null,\n        \"chargeWhenNoOffer\": false\n      },\n      \"chargeback\": {\n        \"writeOffDays\": 90,\n        \"deadlineAlertHours\": [\n          72,\n          24\n        ]\n      },\n      \"claim\": {\n        \"isEnabled\": true,\n        \"allowWhenNoOffer\": true,\n        \"maxBillAmount\": 100000,\n        \"pendingOrderReuseMinutes\": 10,\n        \"quoteTtlMinutes\": 30,\n        \"allowWhenVendorPlanExpired\": false,\n        \"vendorPlanExpiredGraceDays\": 0,\n        \"redemptionWindowHours\": 24\n      },\n      \"invoice\": {\n        \"seriesPrefix\": \"VCH\"\n      },\n      \"notification\": {\n        \"isEmailNotificationEnabled\": true,\n        \"isPushNotificationEnabled\": true,\n        \"isWhatsAppNotificationEnabled\": false\n      },\n      \"promoCode\": {\n        \"isEnabled\": true,\n        \"allowWhenNoOffer\": false,\n        \"allowForGuestPreview\": true\n      },\n      \"refund\": {\n        \"method\": \"SOURCE\",\n        \"windowHours\": 24,\n        \"vendorApprovalHours\": 24,\n        \"adminBufferHours\": 12,\n        \"onVendorTimeout\": \"ESCALATE\",\n        \"allowPartial\": true,\n        \"releasePromoOnRefund\": false,\n        \"authorizedAlertMinutes\": 30,\n        \"maxOpenRequests\": 3,\n        \"maxRejectedPerWindow\": 3,\n        \"requestWindowDays\": 30,\n        \"bankDetailsStaleDays\": 30,\n        \"bankDetailsReminderHours\": [\n          24,\n          96\n        ]\n      },\n      \"search\": {\n        \"isEnabled\": true,\n        \"minQueryLength\": 2,\n        \"sectionLimit\": 5,\n        \"historyLimit\": 20,\n        \"popularQueries\": []\n      },\n      \"settlement\": {\n        \"isEnabled\": true,\n        \"delayDays\": 3,\n        \"payoutBufferHours\": 6,\n        \"cycleType\": \"DAILY\",\n        \"requiresAdminApproval\": true,\n        \"minPayoutAmount\": 100,\n        \"payoutProvider\": \"MANUAL_BANK\",\n        \"commissionPercent\": 0,\n        \"newVendorReserveDays\": 0,\n        \"notReceivedAlertHours\": 96,\n        \"gatewayFeeBearer\": \"PLATFORM\",\n        \"reserve\": {\n          \"isEnabled\": false,\n          \"percent\": 5,\n          \"holdDays\": 30,\n          \"riskChargebackCount\": 2,\n          \"riskLookbackDays\": 180,\n          \"riskMinPayments\": 20,\n          \"riskDisputeRatePercent\": 1,\n          \"riskPercent\": 15,\n          \"maxPercent\": 25\n        }\n      },\n      \"tax\": {\n        \"isGstEnabled\": false,\n        \"gstPercentage\": 18,\n        \"isGstInclusive\": true,\n        \"sacCode\": \"998599\"\n      }\n    },\n    \"isActive\": true,\n    \"updatedAt\": \"2026-08-27T10:00:00.000Z\",\n    \"updatedBy\": \"{{admin_user_id}}\",\n    \"vendor\": {\n      \"voucher\": {\n        \"maxOffers\": 10,\n        \"maxImages\": 5,\n        \"maxDistanceKm\": 25\n      },\n      \"showcase\": {\n        \"maxItemsPerSection\": 15,\n        \"maxImagesPerSection\": 15,\n        \"maxVideosPerSection\": 5,\n        \"maxImageSizeMB\": 10,\n        \"maxVideoSizeMB\": 50,\n        \"allowedImages\": [\n          \"image/jpeg\",\n          \"image/jpg\",\n          \"image/png\",\n          \"image/webp\"\n        ],\n        \"allowedVideos\": [\n          \"video/mp4\",\n          \"video/webm\",\n          \"video/quicktime\"\n        ],\n        \"isActive\": true\n      },\n      \"subscription\": {\n        \"gstPercentage\": 18,\n        \"isGstInclusive\": false,\n        \"hsnSacCode\": \"998315\",\n        \"companyName\": \"TRYDOOD RETAIL PRIVATE LIMITED\",\n        \"companyGstin\": \"33AAKCT3750H1ZB\",\n        \"companyAddress\": \"2nd Floor, Phase-3, Suite No. 250, No. S101, Door No. 769, Spencer Plaza, Anna Salai, Chennai, Tamil Nadu, 600002\",\n        \"companyStateCode\": \"33\",\n        \"companyState\": \"Tamil Nadu\",\n        \"currency\": \"INR\",\n        \"allowVendorUpgrade\": true,\n        \"allowVendorDowngrade\": false,\n        \"allowVendorRenewal\": true,\n        \"allowAdminDowngrade\": true,\n        \"allowAdminFreeGrant\": true,\n        \"gracePeriodDays\": 0,\n        \"pendingOrderReuseMinutes\": 15,\n        \"expiryJobIntervalMinutes\": 60,\n        \"isPromoCodeEnabled\": false,\n        \"reminderJobIntervalMinutes\": 180,\n        \"isEmailNotificationEnabled\": true,\n        \"isPushNotificationEnabled\": true,\n        \"isWhatsAppNotificationEnabled\": false,\n        \"isActive\": true,\n        \"expiryReminderDays\": [\n          7,\n          3,\n          1\n        ]\n      }\n    },\n    \"security\": {\n      \"otp\": {\n        \"resendCooldownSeconds\": 60,\n        \"maxPerHour\": 5\n      }\n    },\n    \"app\": {\n      \"forceUpdate\": false,\n      \"updateMessage\": \"A newer version of Trydood is available. Please update to continue.\",\n      \"minVersion\": {\n        \"android\": \"1.0.0\",\n        \"ios\": \"1.0.0\"\n      },\n      \"latestVersion\": {\n        \"android\": \"1.4.0\",\n        \"ios\": \"1.4.0\"\n      },\n      \"storeUrl\": {\n        \"android\": \"https://play.google.com/store/apps/details?id=com.trydood\",\n        \"ios\": \"https://apps.apple.com/app/trydood/id{{otp}}0000\"\n      },\n      \"support\": {\n        \"email\": \"help@trydood.com\",\n        \"phone\": \"1800-000-000\",\n        \"whatsapp\": \"97{{otp}}01\"\n      },\n      \"features\": {\n        \"promoCodes\": true,\n        \"refunds\": true,\n        \"voucherClaims\": true,\n        \"search\": true\n      }\n    },\n    \"admin\": {\n      \"notification\": {\n        \"isEmailNotificationEnabled\": true,\n        \"isPushNotificationEnabled\": true,\n        \"isWhatsAppNotificationEnabled\": false,\n        \"maxRecipientsPerDispatch\": 5000\n      }\n    }\n  }\n}"
             }
           ],
           "event": [

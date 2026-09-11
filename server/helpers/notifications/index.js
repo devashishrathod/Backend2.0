@@ -1,5 +1,6 @@
 const { notify } = require("./notify");
 const { notifyAdmins } = require("./notifyAdmins");
+const { assertReachableAdmins } = require("./assertReachableAdmins");
 const { notifyAudience } = require("./notifyAudience");
 const { resolveAudience } = require("./resolveAudience");
 const { logChannelStatus } = require("./logChannelStatus");
@@ -59,6 +60,12 @@ module.exports = {
   ...disputeNotices,
   notify,
   notifyAdmins,
+  /**
+   * An admin with no verified address has no outbound channel at all — WhatsApp
+   * is off for that audience platform-wide — so their money alerts go in-app
+   * only, silently. Run at boot; reports and never acts.
+   */
+  assertReachableAdmins,
   notifyAudience,
   resolveAudience,
   logChannelStatus,

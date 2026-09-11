@@ -48,6 +48,7 @@ const {
 const { refundsFolder, settlementsFolder } = require("./lib/adminMoneyFolders");
 const {
   emailVerificationFolder,
+  phoneVerificationFolder,
   notificationPreferenceRequests,
 } = require("./lib/accountFolders");
 /**
@@ -147,10 +148,25 @@ const customerFolder = folder(
         { key: "page", value: "1" },
         { key: "limit", value: "20" },
         { key: "search", value: "", disabled: true },
+        // Ek filter per identity key. `isWhatsappVerified` hi wo hai jo ek normal
+        // customer par true hota hai — signup WhatsApp OTP se hota hai aur
+        // zyadatar customers `mobile` daalte hi nahi.
+        { key: "isWhatsappVerified", value: "true", disabled: true },
+        { key: "isMobileVerified", value: "true", disabled: true },
+        { key: "isEmailVerified", value: "true", disabled: true },
       ],
       token: ADM,
-      description:
-        "Paginated. `search` naam, number aur `uniqueId` par chalta hai — wahi teen cheezein hain jo support call par haath me hoti hain.",
+      description: [
+        "Paginated. `search` naam, number aur `uniqueId` par chalta hai — wahi teen",
+        "cheezein hain jo support call par haath me hoti hain.",
+        "",
+        "**Teen verification filter, teen alag keys ke liye.** 🔴 `verify-otp-whatsapp`",
+        "pehle `isMobileVerified` set karta tha, to panel me *\"mobile verified\"*",
+        "practically *\"verified hai ya nahi\"* ban gaya tha — jabki un accounts me",
+        "`mobile` field hai hi nahi. Ab har flag apni key ke baare me bolta hai, to",
+        "`isMobileVerified=true` par `404 \"No any customer found\"` aayega.",
+        "Customer ke liye `isWhatsappVerified` chahiye.",
+      ].join("\n"),
       assert: [
         ...A.status(200),
         ...A.ok(),
@@ -160,6 +176,50 @@ const customerFolder = folder(
         ]),
       ],
       capture: [["admin_customer_id", "d.data[0]._id"]],
+    }),
+
+    req({
+      name: "Contact badlo (lost SIM) 🔴",
+      method: "PATCH",
+      segments: ["users", "admin", "{{contact_change_user_id}}", "contact"],
+      token: ADM,
+      body: {
+        mobile: "{{verify_mobile}}",
+        reason: "Postman fixture — support desk contact change",
+      },
+      description: [
+        "Support desk ka **ekmatra raasta** jab kisi ka purana SIM chala gaya ho.",
+        "",
+        "`whatsappNumber` normally sirf **purane** number ke OTP se badalta hai —",
+        "aur jiska SIM gaya, wo wahi cheez de nahi sakta. Iske bina wo account me",
+        "kabhi wapas nahi aa sakta.",
+        "",
+        "⚠️ **Value badalta hai, verify nahi karta.** Teeno flags `false` par",
+        "girte hain. Admin ka type kiya hua number ye sabit nahi karta ki wo us",
+        "insaan ka hai — to admin ka likha email/mobile us account me **login ke",
+        "liye kaam nahi aata** (`assertIdentityVerified`), aur naya WhatsApp number",
+        "agle login ke OTP par verified hota hai. Isi wajah se ye endpoint kisi ke",
+        "account me ghusne ka raasta nahi hai.",
+        "",
+        "⚠️ `reason` **required** hai, aur `whatsappNumber` hilne par account har",
+        "device se sign out ho jaata hai.",
+        "",
+        "⚠️ Ye request jaan-boojh kar `mobile` badalti hai, `whatsappNumber` nahi —",
+        "seeded account ka login number hilane se agla run `00 — Setup & Auth` par",
+        "gir jaata.",
+      ].join("\n"),
+      assert: [
+        ...A.custom("badla, par verified nahi", [
+          "const code = pm.response.code;",
+          'pm.expect(code, "status").to.be.oneOf([200, 404, 409, 422]);',
+          "if (code === 200) {",
+          "  const d = pm.response.json().data;",
+          '  pm.expect(d.changed, "changed").to.be.an("array").that.is.not.empty;',
+          "  // ⚠️ Yahi wo cheez hai jo is endpoint ko surakshit rakhti hai.",
+          '  Object.values(d.verified).forEach((v) => pm.expect(v, "verified").to.eql(false));',
+          "}",
+        ]),
+      ],
     }),
 
     req({
@@ -943,6 +1003,13 @@ const transactionFolder = folder(
 // ===========================================================================
 // 14 — Email Verification (shared) · 15 — Access control
 // ===========================================================================
+// `14b`, not `15` — that number is already the access-control folder, and
+// renumbering to insert one is churn. Same shape as `12c`–`12f` in the map.
+const phoneFolder = phoneVerificationFolder({
+  name: "14b — Phone Verification",
+  token: ADM,
+});
+
 const emailFolder = emailVerificationFolder({
   name: "14 — Email Verification",
   token: ADM,
@@ -1013,6 +1080,7 @@ const items = [
   refundsFolder,
   settlementsFolder,
   emailFolder,
+  phoneFolder,
   migrated.fauthAdminOnlyFlows,
   migrated.fpromoCodes,
   migrated.fsubscribedsGrantCancelForfeit,

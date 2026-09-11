@@ -568,7 +568,7 @@ Vendor ka primary login. Naya number → `User` + `Brand` dono auto-create.
 ### Body
 | Field | Type | Required | Default | Validation |
 |---|---|---|---|---|
-| `whatsappNumber` | string | ✅ | – | 10 digits, first `6-9` (`/^[6-9]\d{9}$/`) |
+| `whatsappNumber` | string | ✅ | – | 10 digits, first `6-9`. `+91` / `91` / spaces / dashes bhi chalenge - server strip kar deta hai |
 | `role` | string | ⚠️ | `CUSTOMER` | **Vendor panel ko `"VENDOR"` bhejna zaruri hai** — default customer hai |
 
 ```json
@@ -590,6 +590,7 @@ Vendor ka primary login. Naya number → `User` + `Brand` dono auto-create.
       "whatsappNumber": "9812345678",
       "uniqueId": "TDU000078",
       "referralCode": "MOCHA7X2K",
+      "isWhatsappVerified": false,
       "isMobileVerified": false,
       "isOnBoardingCompleted": false,
       "isActive": true,
@@ -632,7 +633,7 @@ OTP verify → JWT.
 ### Body
 | Field | Type | Required | Default | Validation |
 |---|---|---|---|---|
-| `whatsappNumber` | string | ✅ | – | 10 digits, first `6-9` |
+| `whatsappNumber` | string | ✅ | – | 10 digits, first `6-9`; `+91`/`91` prefix strip ho jaata hai |
 | `otp` | string | ✅ | – | Exactly 6 characters |
 | `role` | string | ⚠️ | `CUSTOMER` | **`"VENDOR"` bhejein** |
 | `currentScreen` | string | ❌ | – | SCREENS enum, auto-uppercase |
@@ -654,7 +655,8 @@ OTP verify → JWT.
       "whatsappNumber": "9812345678",
       "uniqueId": "TDU000078",
       "currentScreen": "BUSINESS_NAME",
-      "isMobileVerified": true,
+      "isWhatsappVerified": true,
+      "isMobileVerified": false,
       "isActive": true
     },
     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...."
@@ -708,6 +710,26 @@ Email pe OTP bhejta hai.
 | Status | Message |
 |---|---|
 | `404` | *(user not found)* |
+| `403` 🆕 | `This email address has not been verified yet. Sign in another way and confirm it first...` — `details.code: IDENTITY_NOT_VERIFIED` |
+
+> ### 🔴 Unverified email se ab login nahi hota
+>
+> `email` ek **login identity** hai: ye endpoint account dhoondh kar us pate par code
+> bhej deta hai. Matlab kisi ka email likh dena hi uske account me ghusne ka raasta
+> tha — aur likhna sirf khud us insaan tak seemit nahi hai: admin kisi ka bhi set kar
+> sakta hai, vendor apne outlet managers ka.
+>
+> Ab ek key **tabhi** sign-in identity banti hai jab uska apna OTP use confirm kar de.
+> Tab tak wo bas ek stored value hai.
+>
+> ⚠️ **Isse koi bahar nahi hota.** `verify-otp-email` ne hamesha har kaamyaab login par
+> ye flag `true` kiya hai — to jisne bhi kabhi email se login kiya hai wo pehle se
+> verified hai aur is check tak pahunchta hi nahi. Jo ruk te hain wo theek wahi rows
+> hain jinse kabhi login hua hi nahi — yaani wahi jo kisi **aur** ne likhi ho sakti hain.
+>
+> Har account ke paas doosra darwaza hai: vendor/customer/outlet manager ke liye
+> WhatsApp OTP, admin ke liye password. Ek baar `POST /auth/email/verify` chala lene par
+> ye raasta khul jaata hai.
 | `422` | `Email is required` / `Please enter a valid email address` |
 | `422` | `Invalid role` |
 
@@ -754,7 +776,7 @@ Email OTP flow me verification **intact** hai (WhatsApp ke ulta) — actual OTP 
 ### Body
 | Field | Type | Required | Default | Validation |
 |---|---|---|---|---|
-| `mobile` | string | ✅ | – | Exactly 10 digits (`/^\d{10}$/`) |
+| `mobile` | string | ✅ | – | 10 digits, first `6-9`. `+91` / `91` prefix bhi chalega — server strip kar deta hai |
 | `role` | string | ⚠️ | `ADMIN` | `"VENDOR"` bhejein |
 
 ### Success — `200`
@@ -767,7 +789,17 @@ Email OTP flow me verification **intact** hai (WhatsApp ke ulta) — actual OTP 
 ### Errors
 | Status | Message |
 |---|---|
-| `422` | `Mobile number must be 10 digits` / `Mobile number is required` |
+| `422` | `Please enter a valid 10 digit mobile number` / `Mobile number is required` |
+| `403` 🆕 | `This mobile number has not been verified yet...` — `details.code: IDENTITY_NOT_VERIFIED` |
+
+> ⚠️ **Pehle ye `/^\d{10}$/` tha**, yaani `0123456789` bhi pass ho jaata — jabki
+> `User.mobile` ka Mongoose validator `[6-9]` maangta hai. To endpoint aisa number
+> le leta jise database phir refuse kar deta. Ab dono ek hi niyam par hain.
+
+> 🔴 **Unverified mobile se ab login nahi hota** — bilkul wahi wajah jo
+> [#3](#3-post-authlogin-with-email) me likhi hai. `verify-otp-mobile` hamesha se is
+> flag ko `true` karta aaya hai, to jisne kabhi mobile se login kiya hai uspe koi
+> farq nahi padta.
 
 ---
 
@@ -907,7 +939,8 @@ POST /auth/logout
     "currentScreen": "DASHBOARD",
     "image": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/profile/abc.jpg",
     "isEmailVerified": false,
-    "isMobileVerified": true,
+    "isWhatsappVerified": true,
+    "isMobileVerified": false,
     "isOnBoardingCompleted": true,
     "isActive": true,
     "createdAt": "2026-03-15T00:00:00.000Z",
@@ -976,7 +1009,16 @@ POST /auth/logout
 
 **2. Email uniqueness role-scoped hai** — same email VENDOR aur CUSTOMER dono me ho sakta hai.
 
-**3. `mobile` / `whatsappNumber` update nahi ho sakte** — validator me commented hain.
+**3. `mobile` / `whatsappNumber` yahan se update nahi hote.** `mobile` validator me
+commented hai aur uska apna flow hai (`POST /auth/mobile/verify`); `whatsappNumber`
+login identity hai, to wo **sirf** `POST /auth/whatsapp/verify` se badalta hai —
+koi bhi doosra raasta `422` deta hai.
+
+**3b. 🆕 `email` ab role collection me bhi jaata hai.** Pehle ye sirf CUSTOMER ke
+`Customer.email` par copy hota tha; VENDOR aur SUB_VENDOR ke liye kuch nahi hota tha,
+to `Brand.email` — jo invoice aur approval mail padhti hai — purane pate par atka
+rehta tha. Ab teeno roles ka mirror saath chalta hai, aur `isEmailVerified` `false`
+ho jaata hai (saath me email notifications bhi band, jab tak verify na ho).
 
 **4. Ye endpoint `validateSchema` middleware use nahi karta** — controller ke andar manual validation hai, isliye error format thoda different (field names raw camelCase me).
 
@@ -1382,6 +1424,30 @@ aur email/WhatsApp hi ek raasta bachta hai. Poori list aur rule:
 
 ---
 
+
+> ### 🔴 Ek channel tabhi chalta hai jab uski key **verified** ho
+>
+> Preference on hona kaafi nahi — us channel ki key ka OTP se confirm hona bhi
+> zaroori hai. `email` sirf `isEmailVerified` walon ko, WhatsApp sirf
+> `isWhatsappVerified` walon ko. `push` aur in-app row is niyam se bahar hain.
+>
+> **Read me:** unverified channel `effective: false` aur
+> `blockedBy: "UNVERIFIED"` ke saath aata hai — to toggle ko tap hone se *pehle*
+> greyed out dikhaya ja sakta hai.
+>
+> **Write me:** `{ "email": true }` bhejne par `422` —
+> `details.code: IDENTITY_NOT_VERIFIED`. Band karne par koi rok nahi; mana karna
+> hamesha allowed hai, sirf "aayega" ka waada kisi cheez par tika hona chahiye.
+>
+> ⚠️ Ye `ALWAYS_DELIVER` notices ko bhi rokta hai. Wo list kisi ki *marzi* ko
+> override karti hai; unverified marzi nahi hai — wo "pata kiska hai, ye hume
+> maloom nahi" hai. Aise pate par refund notice bhejna kisi ajnabi ke inbox me
+> asli customer ka detail daalna hai.
+>
+> ⚠️ **Key badalne par us channel ki preference bhi `false` ho jaati hai.** Sirf
+> guard hota to verify karte hi email apne aap chalu ho jaata — bina unke maange.
+> Verify karna *"ye pata mera hai"* hai, *"yahan bhejo"* nahi.
+
 ## 19c. POST /auth/email/send-verification 🆕
 
 **Access:** 🔒 `verifyJwtToken` — **har role**: vendor, outlet manager, customer, admin. Koi role gate nahi.
@@ -1475,6 +1541,194 @@ Do alag endpoints ka matlab hota client pehle decide kare ki address badla hai y
 | `422` | `otp` nahi bheja, ya email ka format galat |
 
 > ⚠️ **Iska success example Postman me capture nahi hua** — code ek asli inbox me jaata hai aur collection use padh nahi sakti. Saved example wahi refusal hai jo khaali code par aata hai; upar wala `200` shape code se likha gaya hai.
+
+---
+
+## 19e. POST /auth/mobile/send-verification 🆕
+
+**Access:** `verifyJwtToken` — koi bhi signed-in role
+
+Email wala hi shape: `mobile` **optional** hai. Na bhejo to account par jo number hai wahi
+confirm hota hai; bhejo to us par switch shuru hota hai.
+
+```jsonc
+{}                              // jo number hai use confirm karo
+{ "mobile": "9876543210" }      // is par switch karo
+```
+
+### Response — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "We have sent a code to ******3210. Enter it to switch to this number.",
+  "data": { "step": "CONFIRM_NEW", "isChange": true, "sentTo": "******3210", "sessionId": "abc-123" }
+}
+```
+
+⚠️ **`sessionId` wapas bhejna hoga.** Mobile ka code hamara nahi hai — 2factor banata aur
+rakhta hai, aur `sessionId` se hi use verify karta hai. Isi wajah se mobile ke calls me ye
+field hai aur email/WhatsApp ke calls me nahi.
+
+⚠️ **Ab throttled hai.** Pehle **kisi bhi** mobile OTP path par koi limit nahi thi —
+`sendOtp` ka throttle sirf WhatsApp aur email ke liye chalta hai, aur mobile seedha 2factor
+ko call karta tha. Ab 60 second ka cooldown aur 5 per hour lagte hain, `Setting.security.otp`
+se tunable, aur `429` me `retryAfterSeconds` aata hai — wahi shape jo baaki dono channels ka
+hai.
+
+⚠️ **`+91 98765 43210` bhi chalega** — server normalise karke 10 digit bana deta hai, to wo
+account par pade number se compare hota hai. Iske bina apna hi number confirm karna "change"
+lagta aur bewajah code chala jaata.
+
+| Code | Kab |
+|---|---|
+| `200` | Code chala gaya |
+| `409` | Ye number pehle se verified hai (aur aap badal nahi rahe) |
+| `409` | Number kisi aur account par hai (same role) |
+| `422` | Account par koi number hai hi nahi aur aapne bheja bhi nahi |
+| `429` | Cooldown — `details.retryAfterSeconds` dekhein |
+
+---
+
+## 19f. POST /auth/mobile/verify 🆕
+
+**Access:** `verifyJwtToken`
+
+```jsonc
+{ "otp": "482913", "sessionId": "abc-123" }
+{ "otp": "482913", "sessionId": "abc-123", "mobile": "9876543210" }
+```
+
+### Response — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "Mobile number updated and verified.",
+  "data": { "step": "DONE", "mobile": "9876543210", "isMobileVerified": true, "wasChange": true }
+}
+```
+
+⚠️ **Number likhna aur `isMobileVerified: true` ek hi save me** — aur usi save me role
+collection (`Customer` / `Brand` / `SubBrand`) par mirror bhi. Do step me karne par ek pal
+aisa banta jahan naya number padha hai aur verified nahi.
+
+⚠️ **Uniqueness yahan dobara check hoti hai** — dono call ke beech minute nikalte hain.
+
+| Code | Kab |
+|---|---|
+| `200` | Verified |
+| `401` | `Invalid OTP` |
+| `409` | Wo number is beech me kisi aur ne le liya |
+| `422` | `sessionId` nahi bheja, ya `otp` nahi |
+
+---
+
+## 19g. POST /auth/whatsapp/send-verification 🆕
+
+**Access:** `verifyJwtToken`
+
+```jsonc
+{}                                      // jo number hai use confirm karo
+{ "whatsappNumber": "9998887770" }      // is par switch karo
+```
+
+### 🔴 Ye ek **step-up** hai — email/mobile se yahi farq hai
+
+`whatsappNumber` customer, vendor aur outlet manager — teeno ka **login identity** hai. Agar
+code sirf **naye** number par jaata, to jiske paas bhi ek chura hui session hai wo apna number
+daal kar, apne phone par code paa kar, account hamesha ke liye le leta — aur asli maalik ke
+paas wapas aane ka koi raasta nahi bachta.
+
+To ek **verified** number badalne par:
+
+```jsonc
+// Step 1 ka response — code PURANE number par gaya hai
+{
+  "success": true,
+  "message": "To change your WhatsApp number we first need to confirm the one you have now. We have sent a code to ******3210.",
+  "data": { "step": "CONFIRM_CURRENT", "sentTo": "******3210", "isChange": true }
+}
+```
+
+⚠️ **Naya number *add* karna single-step hai.** Agar account ka number kabhi verified hua hi
+nahi, to step up karne ke liye kuch hai hi nahi — aur us par code maangna user se aisi cheez
+ka saboot maangna hota jiska dava account ne kabhi kiya hi nahi.
+
+| Code | Kab |
+|---|---|
+| `200` | Code chala gaya — `step` dekh kar decide karein kaunsa screen |
+| `409` | Ye number pehle se verified hai (aur aap badal nahi rahe) |
+| `409` | Number kisi aur account par hai (same role) |
+| `429` | Cooldown |
+
+---
+
+## 19h. POST /auth/whatsapp/verify 🆕
+
+**Access:** `verifyJwtToken`
+
+Step-up me ye **do baar** call hota hai.
+
+```jsonc
+// 1 — purane number ka code. Ye kuch badalta nahi; sirf naye number par code bhejne ka haq deta hai.
+{ "otp": "111111", "whatsappNumber": "9998887770" }
+
+// 2 — naye number ka code. Yahi wo call hai jo likhti hai.
+{ "otp": "222222", "whatsappNumber": "9998887770" }
+```
+
+### Response — step 1 ke baad
+
+```jsonc
+{
+  "success": true,
+  "message": "Thanks — that is confirmed. We have now sent a code to ******7770. Enter it to finish the change.",
+  "data": { "step": "CONFIRM_NEW", "sentTo": "******7770", "isChange": true, "wasChange": false }
+}
+```
+
+### Response — step 2 ke baad
+
+```jsonc
+{
+  "success": true,
+  "message": "WhatsApp number updated and verified. You have been signed out everywhere else.",
+  "data": {
+    "step": "DONE",
+    "whatsappNumber": "9998887770",
+    "isWhatsappVerified": true,
+    "wasChange": true,
+    "sessionsEnded": true
+  }
+}
+```
+
+🔴 **`sessionsEnded: true` par app ko sign-out handle karna hoga.** Number badalne par
+`sessionInvalidatedAt` set hota hai, yaani **is se pehle ke saare JWT mar jaate hain** —
+current wala bhi. Wajah: agar change kisi chor ne apni session se kiya tha, to uska token bhi
+usi waqt mar jaata hai, aur asli maalik — jiske paas purana number hai aur jiska code is flow
+me zaroori tha — wapas aa sakta hai.
+
+⚠️ **`mobile` par aisa nahi hota.** Wo secondary key hai aur account WhatsApp se reachable
+rehta hai, to sabko sign out karne se kuch milta nahi.
+
+⚠️ **`whatsappNumber` ka koi plain write nahi hai.** `PUT /users/update`, `PUT /brands/update`
+aur `PUT /subBrands/update` — teeno me se koi bhi ise chhoo nahi sakta; koshish par `422
+WHATSAPP_REQUIRES_VERIFICATION`. Sirf ye flow, aur admin ka
+`PATCH /users/admin/:userId/contact` (jo value badalta hai par flag `false` par girata hai).
+
+| Code | Kab |
+|---|---|
+| `200` | `step: "CONFIRM_NEW"` (pehla leg) ya `step: "DONE"` (ho gaya) |
+| `401` | Code galat, expire, ya use ho chuka |
+| `403` | Attempts khatam |
+| `409` | Wo number is beech me kisi aur ne le liya |
+| `422` | `otp` nahi bheja, ya number ka format galat |
+
+> ⚠️ **Inke success examples Postman me capture nahi hue** — code ek asli phone par jaata
+> hai aur collection use padh nahi sakti. Saved examples wahi refusals hain jo khaali/galat
+> code par aate hain; upar wale `200` shapes code se likhe gaye hain.
 
 ---
 
@@ -2293,7 +2547,8 @@ Brand ki public profile update.
 | Field | Type | Validation | Notes |
 |---|---|---|---|
 | `brandName` | string | 2–150 chars | Lowercase me store |
-| `email` | string | Valid email | |
+| `email` | string | Valid email | 🔴 Ab **account** par bhi likhta hai — niche note 5 |
+| `mobile` | string | 10 digits, first `6-9` | 🔴 Wahi — niche note 5 |
 | `description` | string | – | |
 | `joinedDate` | date | – | |
 | `isActive` | boolean\|string | – | |
@@ -2333,7 +2588,9 @@ Brand ki public profile update.
 | `404` | `Brand not found!` | |
 | `404` | `User not found!` | Brand ka owner user missing |
 | `422` | `Brand name must be at least 2 characters` / `Brand name cannot exceed 150 characters` | |
-| `422` | `Please enter a valid email address` | |
+| `422` | `Please enter a valid email address` / `Please enter a valid 10 digit mobile number` | |
+| `403` | `You cannot change this account's contact details...` | 🆕 Aap na is brand ke maalik hain na admin (`details.code: IDENTITY_WRITE_FORBIDDEN`) |
+| `409` | `That email address is already in use on another account.` | 🆕 Koi doosra vendor wahi email/mobile rakhta hai |
 | `422` | `Sub-category ID is required during onboarding` | `isOnboarding: true` par `subCategoryId` nahi |
 | `422` | `Invalid Sub-category ID format` | |
 | `500` | *(upload error)* | Cloudinary fail |
@@ -2347,6 +2604,25 @@ Brand ki public profile update.
 **3. `brandName` lowercase me store** — display pe capitalize karein.
 
 **4. ⚠️ Role gate missing** — customer bhi call kar sakta hai ([Appendix B](#appendix-b--known-issues)).
+
+**5. 🔴 `email` aur `mobile` ab brand ke apne field nahi hain — wo account ke mirror hain.**
+
+Pehle ye seedhe `Brand` par likhe jaate the. Nateeja: vendor ka `User.email` purane
+pate par pada rehta tha jabki `Brand.email` — jo copy invoice, approval mail aur har
+notification **asli me padhti hai** — naya rakhti thi. Do value, aur ye bataane ka
+koi tareeka nahi ki kaun si chaalu hai.
+
+Ab ek hi call dono jagah likhti hai, aur:
+
+- **Flag `false` ho jaata hai.** Yahan kuch bhi ye saabit nahi karta ki pata ya number
+  aapka hai. `isEmailVerified` / `isMobileVerified` sirf
+  `POST /auth/email/verify` aur `POST /auth/mobile/verify` se `true` hote hain.
+  Jab tak verify na ho, us channel par notification bhi band rehti hai.
+- **Uniqueness ab lagti hai.** `Brand.email` par kabhi koi unique index nahi tha;
+  `User` par hai (`user_email_role_unique`). Doosre vendor ka email daalne par ab
+  `409` milega, pehle chup-chaap duplicate ban jaata tha.
+- **`whatsappNumber` yahan se badal hi nahi sakta.** Wo login identity hai —
+  uska raasta sirf `POST /auth/whatsapp/verify` hai.
 
 ---
 
@@ -2458,7 +2734,7 @@ Naya outlet register karta hai.
 | Field | Type | Required | Default | Validation |
 |---|---|---|---|---|
 | `brandId` | ObjectId | ✅ | – | ⚠️ Validator me **required** hai, chahe vendor ho. Vendor apna hi bhej sakta hai |
-| `whatsappNumber` | string | ✅ | – | 10 digits, first `6-9` |
+| `whatsappNumber` | string | ✅ | – | 10 digits, first `6-9`; `+91`/`91` prefix strip ho jaata hai |
 | `isFirstOutlet` | boolean\|string | ❌ | `false` | Onboarding ka pehla outlet — `brand.firstSubBrandId` set hota hai |
 | `outletType` | string | ❌ | `OUTLET` | `OUTLET` \| `FRANCHISE` — **kaunsa plan pool kharcha hoga** |
 
@@ -2638,7 +2914,7 @@ Outlet details update.
 ### Body — sab optional
 | Field | Type | Validation | Notes |
 |---|---|---|---|
-| `email` | string | Valid email | |
+| `email` | string | Valid email | 🔴 Ye **outlet manager ke account** ka email hai — niche dekhein |
 | `outletType` | string | `OUTLET` \| `FRANCHISE` | ⚠️ Change karne pe **naya pool kharcha hoga** — subscription gate lagta hai |
 | `joinedDate` | date | – | |
 | `description` | string | – | |
@@ -2652,6 +2928,21 @@ Outlet details update.
 ```json
 { "outletType": "FRANCHISE" }
 ```
+
+> ### 🔴 `email` outlet ka apna field nahi hai
+>
+> Wo us outlet ke **manager ke `User` account** ka email hai, aur `SubBrand.email`
+> uska mirror. Pehle sirf `SubBrand.email` likha jaata tha, jabki manager ka apna
+> `User.email` chhua hi nahi jaata — do value ek insaan ki, aur jise koi maintain
+> nahi kar raha tha wahi `notify()` sabse pehle padhta hai.
+>
+> - **Vendor ye set kar sakta hai**, par sirf **apne** outlet ka. Kisi doosre brand
+>   ke outlet par `403 IDENTITY_WRITE_FORBIDDEN`.
+> - **Flag `false` ho jaata hai.** Aap ye saabit nahi karte ki wo pata manager ka hai.
+>   Isi wajah se ye us account me ghusne ka raasta **nahi** banta: unverified email se
+>   `POST /auth/login-with-email` chalta hi nahi. Sirf manager khud, apni session se,
+>   use verify kar sakta hai.
+> - Wahi email kisi aur account par ho to `409`.
 
 ### Success — `200`
 ```json

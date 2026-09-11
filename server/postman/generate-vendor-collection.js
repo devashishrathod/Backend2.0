@@ -72,6 +72,7 @@ const {
  */
 const {
   emailVerificationFolder,
+  phoneVerificationFolder,
   notificationPreferenceRequests,
 } = require("./lib/accountFolders");
 /**
@@ -676,6 +677,12 @@ const emailFolder = emailVerificationFolder({
   name: "21 — Email Verification",
   token: V,
 });
+// `21b`, not `22` — renumbering every folder after it to insert one is churn for
+// nothing. The endpoint map uses the same shape (`12c`–`12f`).
+const phoneFolder = phoneVerificationFolder({
+  name: "21b — Phone Verification",
+  token: V,
+});
 
 // ===========================================================================
 // 04 — Onboarding (fresh vendor)
@@ -1142,8 +1149,24 @@ const brandFolder = folder(
         { key: "coverImage", type: "file", disabled: true },
       ],
       gate: "`isVendorOrAdmin`",
-      description:
-        "**Multipart** — logo aur coverImage files ke liye. Sirf text fields bhejni hon to bhi form-data hi chalega.",
+      description: [
+        "**Multipart** — logo aur coverImage files ke liye. Sirf text fields bhejni",
+        "hon to bhi form-data hi chalega.",
+        "",
+        "🔴 **`email` aur `mobile` brand ke apne field nahi hain — wo aapke account**",
+        "**ke mirror hain.** Pehle ye seedhe `Brand` par likhe jaate the, to vendor ka",
+        "`User.email` purane pate par pada rehta tha jabki `Brand.email` — jo copy",
+        "invoice, approval mail aur har notification asli me padhti hai — naya",
+        "rakhti thi. Do value, aur ye bataane ka koi tareeka nahi ki kaun si chaalu hai.",
+        "",
+        "Ab ek hi call dono jagah likhti hai, aur flag **`false`** ho jaata hai: yahan",
+        "kuch bhi ye saabit nahi karta ki pata aapka hai. `POST /auth/email/verify`",
+        "se verify karein, warna us channel par notification bhi band rahegi.",
+        "",
+        "⚠️ `whatsappNumber` yahan se badal hi nahi sakta — wo login identity hai.",
+        "",
+        "Naya `409`: wahi email/mobile kisi doosre account par ho to.",
+      ].join("\n"),
       assert: [
         ...A.status(200),
         ...A.ok("Brand details updated successfully"),
@@ -2928,6 +2951,7 @@ const items = [
   settlementsFolder,
   disputeEvidenceFolder,
   emailFolder,
+  phoneFolder,
   // Last, like the customer collection's: its negative tests deliberately call
   // admin surfaces, so anything ordered after it would run against a token that
   // has just been proven not to work there.

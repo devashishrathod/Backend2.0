@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
-const { isValidPhoneNumber, isValidEmail } = require("../validator/common");
 const { userField, locationField } = require("./validObjectId");
+const { emailField, mobileField, whatsappField } = require("./contactFields");
 
 const customerSchema = new mongoose.Schema(
   {
@@ -8,29 +8,11 @@ const customerSchema = new mongoose.Schema(
     locationId: locationField,
     fullName: { type: String },
     dob: { type: Date },
-    email: {
-      type: String,
-      lowercase: true,
-      trim: true,
-      validate: {
-        validator: (email) => isValidEmail(email),
-        message: (props) => `${props.value} is not a valid email address`,
-      },
-    },
-    mobile: {
-      type: String,
-      validate: {
-        validator: isValidPhoneNumber,
-        message: (props) => `${props.value} is not a valid mobile number`,
-      },
-    },
-    whatsappNumber: {
-      type: String,
-      validate: {
-        validator: isValidPhoneNumber,
-        message: (props) => `${props.value} is not a valid WhatsApp number`,
-      },
-    },
+    // Mirrors of `User`'s — same three descriptors, so the two copies can never
+    // disagree about what is valid. See `models/contactFields.js`.
+    email: emailField,
+    mobile: mobileField,
+    whatsappNumber: whatsappField,
     image: { type: String },
     uniqueId: { type: String, required: true, unique: true },
     isSignUpCompleted: { type: Boolean, default: false },

@@ -19,6 +19,7 @@
 const { req, folder, A } = require("./builders");
 const {
   emailVerificationFolder,
+  phoneVerificationFolder,
   notificationPreferenceRequests,
 } = require("./accountFolders");
 
@@ -26,6 +27,16 @@ const CUST = "customer_token";
 
 const emailFolder = emailVerificationFolder({
   name: "15 — Email Verification",
+  token: CUST,
+});
+
+/**
+ * ⚠️ `15b`, not `16`. Renumbering every folder after it would rewrite twenty
+ * names to insert one, and the endpoint map already uses this shape for the same
+ * reason (`12c`–`12f`).
+ */
+const phoneFolder = phoneVerificationFolder({
+  name: "15b — Phone Verification",
   token: CUST,
 });
 
@@ -279,4 +290,4 @@ const appConfigFolder = folder(
   ],
 );
 
-module.exports = { emailFolder, inboxFolder, appConfigFolder };
+module.exports = { emailFolder, phoneFolder, inboxFolder, appConfigFolder };

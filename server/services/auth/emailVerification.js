@@ -4,7 +4,7 @@ const { LOGIN_TYPES } = require("../../constants");
 const { EMAIL_VERIFY_OTP_PURPOSE } = require("../../constants/otp");
 const { DUPLICATE_KEY } = require("../../constants/mongo");
 const { sendOtp, verifyOtp } = require("../otps");
-const { maskEmail } = require("../../helpers/users");
+const { maskEmail, applyIdentityChange } = require("../../helpers/users");
 
 /**
  * ---------------- confirming an email address ----------------
@@ -172,9 +172,6 @@ exports.verifyEmail = async (actor, payload = {}) => {
    */
   if (isChange) await assertNotTaken(user, target);
 
-  user.email = target;
-  user.isEmailVerified = true;
-
   /**
    * ⚠️ `loginType` is deliberately **not** touched.
    *
@@ -184,7 +181,17 @@ exports.verifyEmail = async (actor, payload = {}) => {
    * because they confirmed an address.
    */
   try {
-    await user.save();
+    /**
+     * Writes the address, sets `isEmailVerified: true` and mirrors it onto the
+     * `Customer` / `Brand` / `SubBrand` — one call, because the address and the
+     * flag have to land together and the mirror is what the receipts, the
+     * invoices and the approval mail actually read.
+     *
+     * ⚠️ `verified: true` is the **only** kind of write that turns a flag on, and
+     * the code has already been consumed above — so nothing reaches this line
+     * without having proved the address.
+     */
+    await applyIdentityChange(user, { email: target }, { verified: true });
   } catch (error) {
     /**
      * `user_email_role_unique` is the real guard; the check above is the polite

@@ -329,7 +329,24 @@ const band = (text, size, color, width, y) => ({
   y,
 });
 
-const creative = (headline, caption, width, height) => [
+/**
+ * The slot the app renders into, in pixels.
+ *
+ * ⚠️ Every banner is this size — stills and GIFs alike. They used to differ
+ * (1600x800 and 1000x500) because an animated GIF grows fast with its
+ * dimensions, but a carousel whose slides are not the same shape is a layout
+ * bug waiting to happen. The GIF pipeline pays for it with a compression pass
+ * instead; see `uploadAnimated`.
+ */
+const BANNER_WIDTH = 1600;
+const BANNER_HEIGHT = 1332;
+
+const creative = (
+  headline,
+  caption,
+  width = BANNER_WIDTH,
+  height = BANNER_HEIGHT,
+) => [
   { width, height, crop: "fill", gravity: "auto" },
   { effect: "brightness:-30" },
   band(headline, Math.round(width / 17), "#FFFFFF", width, Math.round(height / 4.2)),
@@ -342,7 +359,11 @@ const uploadStill = async (spec, slug) => {
     resource_type: "image",
     format: "jpg",
     overwrite: true,
-    transformation: creative(spec.headline, spec.caption, 1600, 800),
+    // ⚠️ Overwriting a public id replaces the stored bytes but leaves the CDN
+    // serving the old ones from cache, so a re-cut banner keeps rendering at
+    // its previous size for anybody whose edge node still has it.
+    invalidate: true,
+    transformation: creative(spec.headline, spec.caption),
   });
   return {
     url: result.secure_url,
@@ -372,7 +393,7 @@ const uploadAnimated = async (spec, slug) => {
       format: "jpg",
       overwrite: true,
       tags: [tag],
-      transformation: creative(spec.headline, spec.caption, 1000, 500),
+      transformation: creative(spec.headline, spec.caption),
     });
     framePublicIds.push(frame.public_id);
   }
@@ -382,17 +403,39 @@ const uploadAnimated = async (spec, slug) => {
     delay: 1100,
   });
 
-  // Re-upload so the asset lives under /upload/ like every other one — see the
-  // header note. Deliberately no transformation here: a transform on an
-  // animated GIF without `fl_animated` silently flattens it to frame one.
-  const result = await cloudinary.uploader.upload(stitched.secure_url, {
-    public_id: `Banners/${slug}`,
+  // Land it under /upload/ like every other asset — see the header note.
+  // Deliberately no transformation: a transform on an animated GIF without
+  // `fl_animated` silently flattens it to frame one.
+  const raw = await cloudinary.uploader.upload(stitched.secure_url, {
+    public_id: `Banners/_raw/${slug}`,
     resource_type: "image",
     format: "gif",
     overwrite: true,
   });
 
-  for (const id of framePublicIds) {
+  /**
+   * ⚠️ Three frames at the full banner size is **4.2 MB**, and four of those on
+   * one home screen is 17 MB on every cold start — on a slow connection the
+   * carousel is simply empty. `fl_lossy` with a quality cap brings it to about
+   * 1.3 MB with no visible loss on a photograph.
+   *
+   * It is applied by **re-uploading the optimised delivery URL**, so the stored
+   * asset is the small one. Passing `transformation` to `uploader.multi` looks
+   * like it should do this and does nothing at all — measured, byte-identical —
+   * and leaving the optimisation in a delivery URL instead would keep the 4.2 MB
+   * original on the account for ever and put a transformation string into a URL
+   * that gets stored in the database.
+   */
+  const optimised = raw.secure_url.replace("/upload/", "/upload/fl_lossy,q_50/");
+  const result = await cloudinary.uploader.upload(optimised, {
+    public_id: `Banners/${slug}`,
+    resource_type: "image",
+    format: "gif",
+    overwrite: true,
+    invalidate: true,
+  });
+
+  for (const id of [...framePublicIds, raw.public_id]) {
     await cloudinary.uploader.destroy(id, { resource_type: "image" });
   }
 
@@ -446,7 +489,24 @@ const simulate = async (Banner, at) => {
 
 const line = (char = "─") => console.log(char.repeat(72));
 
-(async () => {
+/**
+ * The specs and the upload pipeline are exported so `replaceBannerMedia.js` can
+ * re-cut the artwork without owning a second copy of the source photographs. A
+ * duplicated list would drift the first time one image is swapped, and the
+ * symptom would be a banner whose picture no longer matches its headline —
+ * exactly the defect that had to be fixed here by hand once already.
+ */
+module.exports = {
+  SCHEDULED,
+  EVERGREEN,
+  BANNER_WIDTH,
+  BANNER_HEIGHT,
+  creative,
+  uploadStill,
+  uploadAnimated,
+};
+
+const main = async () => {
   await mongoose.connect(process.env.MONGO_URL, {
     serverSelectionTimeoutMS: 15000,
   });
@@ -637,9 +697,15 @@ const line = (char = "─") => console.log(char.repeat(72));
   console.log(`  done — ${JSON.stringify(counts)}`);
 
   await mongoose.disconnect();
-})().catch(async (error) => {
-  console.error("\n❌", error.message || error);
-  if (error.error) console.error("   detail:", JSON.stringify(error.error));
-  await mongoose.disconnect().catch(() => {});
-  process.exit(1);
-});
+};
+
+// Only when this file is the entry point — requiring it for the specs above
+// must not delete every banner in the database.
+if (require.main === module) {
+  main().catch(async (error) => {
+    console.error("\n❌", error.message || error);
+    if (error.error) console.error("   detail:", JSON.stringify(error.error));
+    await mongoose.disconnect().catch(() => {});
+    process.exit(1);
+  });
+}

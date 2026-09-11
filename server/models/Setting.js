@@ -46,14 +46,22 @@ const voucherSettingSchema = new mongoose.Schema(
   { _id: false },
 );
 
+/**
+ * ⚠️ No `maxSections` here, deliberately.
+ *
+ * It used to sit at the top of this block, and nothing ever read it: how many
+ * sections a brand may create is metered by their **plan**, through
+ * `reserveSlot(brandId, ENTITLEMENT_BUCKETS.SHOWCASE)` in
+ * `services/showcases/createSection.js`. So the admin panel offered a limit that
+ * changed nothing, which is its own kind of bug — the same shape as
+ * `vendor.showcase.isActive` before it was wired up.
+ *
+ * Wiring it instead was the worse option: metering one limit from two places is
+ * two sources of truth, and the day the plan says 10 and this says 3, nothing
+ * anywhere says which won. The plan owns it.
+ */
 const showcaseSettingSchema = new mongoose.Schema(
   {
-    maxSections: {
-      type: Number,
-      required: true,
-      default: 5,
-      min: 1,
-    },
     maxItemsPerSection: {
       type: Number,
       required: true,

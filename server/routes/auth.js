@@ -21,6 +21,10 @@ const {
   resetPasswordHandler,
   sendEmailVerificationHandler,
   verifyEmailHandler,
+  sendMobileVerificationHandler,
+  verifyMobileHandler,
+  sendWhatsappVerificationHandler,
+  verifyWhatsappHandler,
 } = require("../controllers/auth");
 const {
   validateRegisterUser,
@@ -37,6 +41,10 @@ const {
   validateLogout,
   validateSendEmailVerification,
   validateVerifyEmail,
+  validateSendMobileVerification,
+  validateVerifyMobile,
+  validateSendWhatsappVerification,
+  validateVerifyWhatsapp,
 } = require("../validator/auth");
 
 // Creating an account here is an admin action. It used to be public with `role`
@@ -136,6 +144,46 @@ router.post(
   verifyJwtToken,
   validateSchema(validateVerifyEmail),
   verifyEmailHandler,
+);
+
+// ---------------------------------------------------------------------------
+// The same two calls for the two phone keys — EVERY signed-in role.
+//
+// `mobile` behaves exactly like `email`: one code, to the number being claimed.
+//
+// ⚠️ `whatsappNumber` is a **step-up**, and only when replacing a number that is
+// already verified. It is the login identity for customers, vendors and outlet
+// managers, so a code sent only to the *new* number would let anybody holding a
+// stolen session move the account onto their own phone — permanently, with no way
+// back for the real owner. So: a code to the current number first, then one to
+// the new one, and every other session is ended when it lands.
+//
+// Adding a number that was never verified stays a single step; there is nothing
+// to step up from.
+// ---------------------------------------------------------------------------
+router.post(
+  "/mobile/send-verification",
+  verifyJwtToken,
+  validateSchema(validateSendMobileVerification),
+  sendMobileVerificationHandler,
+);
+router.post(
+  "/mobile/verify",
+  verifyJwtToken,
+  validateSchema(validateVerifyMobile),
+  verifyMobileHandler,
+);
+router.post(
+  "/whatsapp/send-verification",
+  verifyJwtToken,
+  validateSchema(validateSendWhatsappVerification),
+  sendWhatsappVerificationHandler,
+);
+router.post(
+  "/whatsapp/verify",
+  verifyJwtToken,
+  validateSchema(validateVerifyWhatsapp),
+  verifyWhatsappHandler,
 );
 
 // Deliberately reachable by a deactivated account: every other gate answers a

@@ -84,19 +84,33 @@ describe("a customer notification reaches the customer", () => {
   });
 
   /**
-   * The login is not the customer.
+   * 🔴 **This used to assert the opposite, and the change is deliberate.**
    *
-   * A User record can back more than one identity, and a customer's receipt
-   * belongs at the address they gave as a customer — not at whatever the account
-   * was created with.
+   * `resolveRecipient` read `customer?.email || brand?.email || user?.email` —
+   * the profile first, the account as a fallback — on the theory that a User can
+   * back more than one identity and a receipt belongs at the address given *as a
+   * customer*.
+   *
+   * That theory required the two to be allowed to differ. They are not any more:
+   * `helpers/users/applyIdentityChange.js` is the only thing that writes either
+   * copy and it writes both together. So the chain can now only produce a
+   * different answer when something has **drifted** — and that is precisely the
+   * case where it must not, because the verification flags it is checked against
+   * live on the `User`. A chain that hands back the profile's address while the
+   * flag describes the account's is a guard silently checking the wrong thing.
+   *
+   * One document, one answer. The profile is still read for the display name,
+   * which is genuinely its own.
    */
-  it("prefers the customer's own contacts over the login's", async () => {
+  it("takes the contact off the account, not off the profile copy", async () => {
     const user = await User.create({
       uniqueId: `USR-NOTICE-${Date.now()}`,
       name: "shared login",
       email: "login@example.com",
       mobile: "9700000001",
     });
+    // Deliberately out of step — no ordinary path produces this any more, which
+    // is exactly what is being pinned down here.
     const customer = await Customer.create({
       uniqueId: `CUS-NOTICE-${Date.now()}`,
       userId: user._id,
@@ -110,19 +124,20 @@ describe("a customer notification reaches the customer", () => {
     const { resolveRecipient } = require("../../helpers/notifications/notify");
     const recipient = await resolveRecipient(null, null, customer._id);
 
-    expect(recipient.email).toBe("customer@example.com");
-    expect(recipient.phone).toBe("9700000002");
-    // The user is still found, because the row has to be readable in-app.
+    expect(recipient.email).toBe("login@example.com");
+    expect(recipient.phone).toBe("9700000001");
+    // Still found, because the row has to be readable in-app either way.
     expect(String(recipient.userId)).toBe(String(user._id));
     expect(String(recipient.customerId)).toBe(String(customer._id));
   });
 
-  it("falls back to the login when the customer gave no email", async () => {
+  it("reports whether each channel's key has been verified", async () => {
     const user = await User.create({
       uniqueId: `USR-NOTICE-${Date.now()}-b`,
       name: "shared login",
       email: "login@example.com",
-      mobile: "9700000001",
+      isEmailVerified: true,
+      isWhatsappVerified: false,
     });
     const customer = await Customer.create({
       uniqueId: `CUS-NOTICE-${Date.now()}-b`,
@@ -133,8 +148,13 @@ describe("a customer notification reaches the customer", () => {
     const { resolveRecipient } = require("../../helpers/notifications/notify");
     const recipient = await resolveRecipient(null, null, customer._id);
 
-    // A customer who never filled one in should still get their receipt.
-    expect(recipient.email).toBe("login@example.com");
+    /**
+     * ⚠️ These ride along on the read that was already happening — no extra
+     * query — and they are what `isChannelAllowed` refuses an unconfirmed address
+     * on. `=== true`, so an account predating the flags reads as unverified
+     * rather than as confirmed.
+     */
+    expect(recipient.verified).toEqual({ email: true, whatsapp: false });
   });
 
   it("says what was paid and what was saved", async () => {

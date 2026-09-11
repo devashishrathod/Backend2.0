@@ -173,6 +173,9 @@ exports.getAllAdminBrands = async (query = {}) => {
         isActive: 1,
         isLoggedIn: 1,
         isMobileVerified: 1,
+        // Vendors sign up with a WhatsApp OTP too, so this is the flag that is
+        // actually true for them — see getAllAdminCustomers.
+        isWhatsappVerified: 1,
         isSignUpCompleted: 1,
         isOnBoardingCompleted: 1,
         createdAt: 1,

@@ -451,15 +451,31 @@ const run = async () => {
       /**
        * ⚠️ With a password, because the admin collection signs in with one.
        *
-       * `POST /auth/login` is the only admin entry point — the WhatsApp flow
-       * refuses `role: "ADMIN"` outright, deliberately, so that knowing the
-       * endpoint is not enough to mint an admin. Seeding this account without a
-       * password left the collection with no way in at all.
+       * `POST /auth/login` is the admin collection's entry point. Seeding this
+       * account without a password left it with no way in at all.
+       *
+       * ⚠️ This comment used to claim the WhatsApp flow *"refuses `role: ADMIN`
+       * outright"*. It does not. `validateWhatsappLoginOrSignUp` accepts every
+       * role, and `loginOrSignUpWithWhatsapp` restricts only account
+       * **creation** to CUSTOMER and VENDOR — its own comment says the other
+       * roles "may still log in here". An existing admin signs in by WhatsApp
+       * perfectly well; what they cannot do is *create* an admin that way.
        *
        * The `pre("save")` hook hashes it, so this is never stored in the clear.
        */
       password: ADMIN_PASSWORD,
       loginType: LOGIN_TYPES.PASSWORD,
+      /**
+       * ⚠️ Verified, so this admin is reachable.
+       *
+       * Once the notification guard lands, an unverified address carries nothing
+       * — and `ADMIN_NOTIFICATION_DEFAULTS.isWhatsAppNotificationEnabled` is
+       * `false`, so email is an admin's only outbound channel. A seeded admin
+       * with an unverified address would capture every money-alert example as a
+       * notification that was never sent.
+       */
+      isEmailVerified: true,
+      isWhatsappVerified: true,
     });
     return admin.uniqueId;
   });
@@ -477,13 +493,41 @@ const run = async () => {
     return `${category.name} › ${subCategory.name}`;
   });
 
-  const makeBrand = async ({ key, name, whatsapp, coords, verified, top, followers }) => {
+  const makeBrand = async ({
+    key,
+    name,
+    whatsapp,
+    coords,
+    verified,
+    top,
+    followers,
+    email,
+    mobile,
+  }) => {
     const user = await User.create({
       name: `${name} owner`,
       role: ROLES.VENDOR,
       whatsappNumber: whatsapp,
       uniqueId: `USR-${MARK}-${key}`,
       referralCode: `${MARK}${key}`,
+      /**
+       * ⚠️ The verified flags are part of the fixture, not a shortcut past a
+       * check.
+       *
+       * An account that signed up through the WhatsApp flow **is**
+       * `isWhatsappVerified: true` the moment it gets past the OTP — that is the
+       * state the collection starts from. Seeding it `false` would not be more
+       * honest, it would be a state no real vendor is ever in after signing in.
+       *
+       * `email` / `mobile` land verified for the same reason: the vendor
+       * collection signs in with both (folder `00`), and
+       * `loginWithEmailOTP` / `loginWithMobileOTP` now refuse an unverified key.
+       * Without these, eight requests answer `403 IDENTITY_NOT_VERIFIED` and the
+       * capture run dies on a folder that has nothing to do with what changed.
+       */
+      isWhatsappVerified: true,
+      ...(email ? { email, isEmailVerified: true } : {}),
+      ...(mobile ? { mobile, isMobileVerified: true } : {}),
     });
 
     const verify = await SystemVerify.create({
@@ -585,6 +629,19 @@ const run = async () => {
         key: "A",
         name: "postman cafe mocha",
         whatsapp: "9700000011",
+        /**
+         * ⚠️ These two must match `vendor_email` and `vendor_mobile` in
+         * `postman/environments/vendor-local.postman_environment.json`.
+         *
+         * Folder `00` of the vendor collection signs in with both, and both login
+         * paths now refuse a key that has never been verified. The environment
+         * carries the values; this is the account that has to own them.
+         *
+         * `mobile` is the same number as `whatsappNumber` on purpose — that is
+         * what the environment says, and the unique indexes are per field.
+         */
+        email: "postman.vendor@example.com",
+        mobile: "9700000011",
         coords: INDORE,
         verified: true,
         top: true,
@@ -1325,6 +1382,9 @@ const run = async () => {
         whatsappNumber: whatsapp,
         uniqueId: `USR-${MARK}-${key}`,
         referralCode: `${MARK}C${key}`,
+        // The state a customer is in the moment they get past the signup OTP —
+        // see the note in `makeBrand`.
+        isWhatsappVerified: true,
       });
       const customer = await Customer.create({
         userId: user._id,
@@ -2685,6 +2745,21 @@ const run = async () => {
         statement_token: String(a.paid?.documentToken || ""),
 
         admin_user_id: String(admin._id),
+
+        /**
+         * Whose contact the admin collection's "lost SIM" request moves.
+         *
+         * ⚠️ Brand **B**'s owner, on purpose — not brand A's and not the admin.
+         * Brand A's vendor is the account folder `00` signs in with and whose
+         * `vendor_email` / `vendor_mobile` the vendor collection's OTP logins
+         * use; moving its contact would break a login two folders later, and
+         * the failure would point at authentication rather than here. That is
+         * the trap `Set Password` and the email restore already document.
+         *
+         * The request changes `mobile` only, which nothing else reads.
+         */
+        contact_change_user_id: String(brands[1].user._id),
+
         email_otp: EMAIL_VERIFY_OTP,
         verify_email: VERIFY_EMAIL_TARGETS.admin,
         account_email: String(admin.email || ""),

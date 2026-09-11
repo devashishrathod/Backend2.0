@@ -55,6 +55,23 @@ const NOTIFICATION_TYPES = Object.freeze({
   // vendors, customers, and any role added later.
   ANNOUNCEMENT: "ANNOUNCEMENT",
 
+  /**
+   * An admin changed somebody's email, mobile or WhatsApp number for them —
+   * `PATCH /users/admin/:userId/contact`, the support desk's way out of "I lost
+   * the SIM I sign in with".
+   *
+   * ⚠️ The person has to be told, and the in-app row is the part that cannot be
+   * lost: an admin who has just moved the account's contact details is, by
+   * definition, changing where outbound messages go. The row is waiting whichever
+   * address ends up working.
+   *
+   * Deliberately **not** on `ALWAYS_DELIVER_TYPES`. Every key an admin writes
+   * lands unverified, and an unverified channel carries nothing — which is the
+   * rule that stops this endpoint from being a way into an account, and it must
+   * not be undermined by the notice about itself.
+   */
+  ACCOUNT_CONTACT_CHANGED: "ACCOUNT_CONTACT_CHANGED",
+
   // ---------- admin-audience ----------
   // A payment arrived but could not be settled. Money is captured and the plan
   // is not live, so somebody has to look.
@@ -128,6 +145,25 @@ const NOTIFICATION_TYPES = Object.freeze({
    * one of the two is wrong about money that has physically moved.
    */
   SETTLEMENT_LEDGER_DRIFT: "SETTLEMENT_LEDGER_DRIFT",
+  /**
+   * Admin only, CRITICAL. The **gateway** has not paid us, so nothing can be
+   * paid onward.
+   *
+   * ⚠️ Deliberately not `SETTLEMENT_STUCK`, which means the opposite end of the
+   * same pipe: a payout that left our bank and was never confirmed. This one is
+   * money that never arrived in it. One type for both would make the alert
+   * useless — the two need opposite actions, and only one of them involves a
+   * settlement at all.
+   *
+   * Nothing else watches this. `alertLateSettlements` reads existing
+   * `Settlement` rows, and a payment the gateway has not settled never produces
+   * one: `buildEligibilityFilter` requires `fundsReceivedAt`, so the build sees
+   * no eligible money, reports `brandsChecked: 0`, and succeeds. Every job is
+   * green, no error is raised anywhere, and no vendor is ever paid.
+   *
+   * That is exactly how this was found — by a person asking why, weeks in.
+   */
+  GATEWAY_FUNDS_NOT_RECEIVED: "GATEWAY_FUNDS_NOT_RECEIVED",
   /**
    * Admin only, CRITICAL. A blanket unique index was found shadowing a partial
    * one and removed.
@@ -255,6 +291,13 @@ const ALWAYS_DELIVER_TYPES = Object.freeze([
   /** Rule 2. The payout legs and the ledger disagree about money that has physically moved. */
   "SETTLEMENT_LEDGER_DRIFT",
   /**
+   * Rule 2. The gateway has not settled to our bank, so **no** vendor can be
+   * paid — and every job stays green while it is true, because a payment that
+   * never becomes eligible produces no settlement to be late about. Only a
+   * person chasing the gateway resolves it.
+   */
+  "GATEWAY_FUNDS_NOT_RECEIVED",
+  /**
    * Rule 2, indirectly and at scale: while a shadow index is present, roughly
    * every second voucher claim fails with a duplicate-key error on a field the
    * customer never touched.
@@ -311,7 +354,7 @@ const PLATFORM_CHANNEL_KEYS = Object.freeze({
  * which is the only place allowed to make that decision.
  */
 const NOTIFICATION_PREFERENCE_DEFAULTS = Object.freeze({
-  email: true,
+  email: false,
   push: true,
   whatsapp: true,
 });

@@ -60,8 +60,44 @@ const OTP_THROTTLE_TTL_SECONDS = 2 * 60 * 60;
  */
 const EMAIL_VERIFY_OTP_PURPOSE = "email-verify";
 
+/**
+ * Confirming a phone number — the two phone keys, for **any** role.
+ *
+ * Same reasoning as `EMAIL_VERIFY_OTP_PURPOSE` above, and the separation matters
+ * more here than it looks, because the two keys are very often **the same
+ * number**: a customer's `mobile` and `whatsappNumber` are usually one phone.
+ *
+ * `Otp` carries a unique index on `{ target, purpose }`. Share a purpose between
+ * these two and a code issued for one flow would *overwrite* the other's row —
+ * the second send silently invalidating the first, with nothing to show for it
+ * but a customer whose code "stopped working".
+ *
+ * And `hashOtp(code, target, purpose)` folds the purpose into the stored hash, so
+ * a code sent to confirm a WhatsApp number cannot be presented to the mobile
+ * flow, or to a login, even though the digits and the target match.
+ */
+const MOBILE_VERIFY_OTP_PURPOSE = "mobile-verify";
+const WHATSAPP_VERIFY_OTP_PURPOSE = "whatsapp-verify";
+
+/**
+ * The **first** leg of a WhatsApp number change: the code that goes to the number
+ * already on the account.
+ *
+ * ⚠️ Its own purpose, not `whatsapp-verify`, and the two are never
+ * interchangeable. Changing a verified WhatsApp number sends one code to the old
+ * number and one to the new, and the target of the first is the account's current
+ * value — which is also what `whatsapp-verify` uses when somebody is merely
+ * *confirming* the number they already have. One purpose for both would mean a
+ * plain confirmation code could be replayed as proof of the old number, which is
+ * the whole thing the step-up asks for.
+ */
+const WHATSAPP_CHANGE_CURRENT_OTP_PURPOSE = "whatsapp-change-current";
+
 module.exports = {
   OTP_DEFAULTS,
   OTP_THROTTLE_TTL_SECONDS,
   EMAIL_VERIFY_OTP_PURPOSE,
+  MOBILE_VERIFY_OTP_PURPOSE,
+  WHATSAPP_VERIFY_OTP_PURPOSE,
+  WHATSAPP_CHANGE_CURRENT_OTP_PURPOSE,
 };

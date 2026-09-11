@@ -15,42 +15,52 @@ const { isChannelAllowed } = require("./channelPreferences");
 const { resolveAudienceChannels } = require("./audienceChannels");
 
 /**
- * Resolve where to reach a brand: the address on the brand, falling back to the
- * owning user's. Vendor brands often have one and not the other.
+ * Where to reach this person, and whether we are allowed to.
  *
- * The phone follows the same pattern, preferring an explicit `whatsappNumber`
- * over the login mobile — a business often runs WhatsApp on a different number
- * from the one used to sign in, and messaging the wrong one reaches nobody.
+ * ### ⚠️ The contact comes off the **account**, not off the profile
+ *
+ * This used to read `customer?.email || brand?.email || user?.email` — the role
+ * profile first, the account as a fallback — on the theory that a customer's own
+ * address is a better place for a receipt than the login identity.
+ *
+ * That was true while the two could differ. They cannot any more:
+ * `helpers/users/applyIdentityChange.js` is now the only thing that writes any of
+ * the three keys and it writes both copies together, and
+ * `scripts/syncRoleProfileIdentity.js` brought the old rows into line. So the
+ * chain can only ever produce a different answer when something has **drifted** —
+ * and that is exactly the case where it must not, because the verification flags
+ * it is checked against live on the `User`. A chain that can hand back the
+ * profile's address while the flag describes the account's is a guard that
+ * silently checks the wrong thing.
+ *
+ * One document, one answer. The profile is still read for `brandName` and for the
+ * customer's display name, which are genuinely its own.
  */
 const resolveRecipient = async (brandId, userId, customerId) => {
-  /**
-   * A customer's own contacts come first.
-   *
-   * Falling through to the User record would reach the login identity, which is
-   * often not where a customer wants a receipt — and on a shared login it is
-   * not even the same person. The User is still the fallback, because a
-   * customer who never filled in an email should still get one.
-   */
   const resolvedCustomerId = resolveCustomerId(customerId);
   const customer = resolvedCustomerId
-    ? await Customer.findById(resolvedCustomerId)
-        .select("email mobile whatsappNumber name userId")
-        .lean()
+    ? await Customer.findById(resolvedCustomerId).select("name userId").lean()
     : null;
 
   const brand = brandId
-    ? await Brand.findById(brandId)
-        .select("email mobile whatsappNumber userId brandName")
-        .lean()
+    ? await Brand.findById(brandId).select("userId brandName").lean()
     : null;
 
   const targetUserId = userId || customer?.userId || brand?.userId;
   const user = targetUserId
     ? await User.findById(targetUserId)
-        // ⚠️ `notificationPreferences` rides along on a read that already
-        // happens — the person's channel toggles cost no extra query on any
-        // path, which is precisely why they live on `User`.
-        .select("email name mobile whatsappNumber notificationPreferences")
+        /**
+         * ⚠️ `notificationPreferences` and the two verified flags ride along on a
+         * read that already happens — the person's toggles **and** whether each
+         * address has been confirmed cost no extra query on any path. That is
+         * precisely why both live on `User` and are not mirrored onto the
+         * profile: a second home would be a second thing to keep in step, and it
+         * is the thing delivery is decided on.
+         */
+        .select(
+          "email name mobile whatsappNumber notificationPreferences " +
+            "isEmailVerified isWhatsappVerified",
+        )
         .lean()
     : null;
 
@@ -58,20 +68,31 @@ const resolveRecipient = async (brandId, userId, customerId) => {
     userId: targetUserId || null,
     customerId: resolvedCustomerId || null,
     /**
-     * Raw, not normalised. `channelPreferences.js` owns the "absent means on"
-     * decision and is the only place allowed to make it — handing a normalised
+     * Raw, not normalised. `channelPreferences.js` owns what an absent value
+     * means and is the only place allowed to decide it — handing a normalised
      * object around would let a second opinion form somewhere else.
      */
     notificationPreferences: user?.notificationPreferences || null,
-    email: customer?.email || brand?.email || user?.email || null,
-    phone:
-      customer?.whatsappNumber ||
-      customer?.mobile ||
-      brand?.whatsappNumber ||
-      user?.whatsappNumber ||
-      brand?.mobile ||
-      user?.mobile ||
-      null,
+    /**
+     * Has each channel's key been confirmed by an OTP?
+     *
+     * ⚠️ `=== true`, not truthiness: absent has to read as **not verified**.
+     * Every account that predates the flag has no value, and treating that as
+     * confirmed would be the guard passing for exactly the rows it exists for.
+     *
+     * `push` is not here — a device token proves itself by existing.
+     */
+    verified: {
+      email: user?.isEmailVerified === true,
+      whatsapp: user?.isWhatsappVerified === true,
+    },
+    email: user?.email || null,
+    /**
+     * WhatsApp first, then the plain mobile — a business often runs WhatsApp on a
+     * different number from the one it signs in with, and messaging the wrong one
+     * reaches nobody.
+     */
+    phone: user?.whatsappNumber || user?.mobile || null,
     brandName: brand?.brandName || null,
     name: customer?.name || user?.name || brand?.brandName || null,
   };
@@ -196,6 +217,18 @@ exports.notify = async ({
         preferences: recipient.notificationPreferences,
         platformEnabled: platform[channel],
         type,
+        /**
+         * ⚠️ The third switch, and it outranks `ALWAYS_DELIVER_TYPES`.
+         *
+         * An unconfirmed address is not a person saying "do not disturb me" — it
+         * is us not knowing whose address it is. Delivering a refund notice there
+         * puts a real customer's money detail in a stranger's inbox.
+         *
+         * Nobody becomes unreachable: the in-app row is already written above,
+         * push is unaffected, and for every non-admin role WhatsApp is the login
+         * identity and therefore always verified.
+         */
+        verified: recipient.verified,
       });
 
     // ---------------- push ----------------

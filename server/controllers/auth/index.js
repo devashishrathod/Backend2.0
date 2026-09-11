@@ -14,6 +14,12 @@ const {
   sendEmailVerificationHandler,
   verifyEmailHandler,
 } = require("./emailVerification");
+const {
+  sendMobileVerificationHandler,
+  verifyMobileHandler,
+  sendWhatsappVerificationHandler,
+  verifyWhatsappHandler,
+} = require("./contactVerification");
 
 module.exports = {
   register,
@@ -30,4 +36,8 @@ module.exports = {
   resetPasswordHandler,
   sendEmailVerificationHandler,
   verifyEmailHandler,
+  sendMobileVerificationHandler,
+  verifyMobileHandler,
+  sendWhatsappVerificationHandler,
+  verifyWhatsappHandler,
 };

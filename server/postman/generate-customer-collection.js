@@ -52,6 +52,7 @@ const {
 const { searchFolder } = require("./lib/customerSearchFolder");
 const {
   emailFolder,
+  phoneFolder,
   inboxFolder,
   appConfigFolder,
 } = require("./lib/customerAccountFolders");
@@ -136,7 +137,7 @@ const authFolder = folder(
               role: ROLES.CUSTOMER,
               whatsappNumber: "{{customer_whatsapp}}",
               customerId: "{{customer_id}}",
-              isMobileVerified: false,
+              isWhatsappVerified: false,
               isSignUpCompleted: false,
             },
           }),
@@ -232,8 +233,14 @@ const authFolder = folder(
         ...A.custom("token environment me save ho gaya", [
           `pm.expect(pm.environment.get("customer_token"), "customer_token").to.be.a("string").and.not.empty;`,
         ]),
-        ...A.custom("isMobileVerified ab true hai", [
-          `pm.expect(pm.response.json().data.user.isMobileVerified).to.eql(true);`,
+        // ⚠️ `isWhatsappVerified`, not `isMobileVerified`. This path used to set
+        // the mobile flag on an account that has no mobile number at all; each
+        // flag now describes its own key.
+        ...A.custom("isWhatsappVerified ab true hai", [
+          `pm.expect(pm.response.json().data.user.isWhatsappVerified).to.eql(true);`,
+        ]),
+        ...A.custom("isMobileVerified chhua nahi gaya", [
+          `pm.expect(pm.response.json().data.user.isMobileVerified).to.not.eql(true);`,
         ]),
         ...A.custom("password / otp response me nahi", [
           `const u = pm.response.json().data.user;`,
@@ -3277,6 +3284,7 @@ const items = [
   bankFolder,
   searchFolder,
   emailFolder,
+  phoneFolder,
   inboxFolder,
   appConfigFolder,
   gateFolder,

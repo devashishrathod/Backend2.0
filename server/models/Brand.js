@@ -1,9 +1,6 @@
 const mongoose = require("mongoose");
-const {
-  isValidEmail,
-  isValidPhoneNumber,
-  isValidateMerchantId,
-} = require("../validator/common");
+const { isValidateMerchantId } = require("../validator/common");
+const { emailField, mobileField, whatsappField } = require("./contactFields");
 const {
   userField,
   PANField,
@@ -78,29 +75,10 @@ const brandSchema = new mongoose.Schema(
       type: String,
       enum: Object.values(BUSINESS_ENTITY_TYPE),
     },
-    email: {
-      type: String,
-      lowercase: true,
-      trim: true,
-      validate: {
-        validator: (email) => isValidEmail(email),
-        message: (props) => `${props.value} is not a valid email address`,
-      },
-    },
-    mobile: {
-      type: String,
-      validate: {
-        validator: isValidPhoneNumber,
-        message: (props) => `${props.value} is not a valid mobile number`,
-      },
-    },
-    whatsappNumber: {
-      type: String,
-      validate: {
-        validator: isValidPhoneNumber,
-        message: (props) => `${props.value} is not a valid WhatsApp number`,
-      },
-    },
+    // Mirrors of the owning `User`'s — see `models/contactFields.js`.
+    email: emailField,
+    mobile: mobileField,
+    whatsappNumber: whatsappField,
     uniqueId: { type: String, required: true, unique: true },
     merchantId: {
       type: String,

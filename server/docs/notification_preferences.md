@@ -11,7 +11,14 @@ manager and an admin all work the same way, because they are all one `User`.
 | | Whose | What it means | Where |
 |---|---|---|---|
 | `Setting.<audience>.…is*NotificationEnabled` | the platform's | an **operational kill switch** — SMTP is down, no Meta template exists | `PUT /settings`, admin only |
+| `User.is{Email,Whatsapp}Verified` 🆕 | nobody's — it is a **fact** | *"an OTP has confirmed this address belongs to them"* | only `/auth/…/verify` sets it |
 | `User.notificationPreferences.<channel>` | the person's | *"do not email me"* | `PUT /notifications/preferences` |
+
+🆕 **Three switches now, and the middle one is not a preference.** It is not
+somebody's wish — it is whether we know the address is theirs. `email` and
+`whatsappNumber` can be written by someone who is not the account holder (an admin
+may set anybody's, a vendor may set their own outlet managers'), so until an OTP
+has confirmed one, delivering to it is delivering to a stranger.
 
 **A send needs both.**
 
@@ -36,18 +43,26 @@ platform-wide for all three audiences until the Meta-approved templates exist.
 
 ---
 
-## 🔴 Absent means ON — the one thing to get right
+## 🔴 Absent means *the channel's declared default*
 
-`notificationPreferences` carries `default: true` on every channel. **A schema
-default applies only to documents created after the field existed.** Every user
-already in the database has no `notificationPreferences` at all, and will not
-grow one until they change a setting.
+**A schema default applies only to documents created after the field existed.**
+Every user already in the database has no `notificationPreferences` at all, and
+will not grow one until they change a setting.
 
-So the read is:
+⚠️ **This used to read `prefs?.email !== false`** — hard-coding *"absent means
+on"* for every channel, and using `NOTIFICATION_PREFERENCE_DEFAULTS` only for its
+**keys**. So the table said one thing and the code did another; changing a default
+there changed nothing for existing accounts. And because `models/User.js` *does*
+read the table for its schema default, a **new** account stored the table's value
+while an **old** one resolved to the opposite: one table, two answers, decided by
+how old the account is.
+
+The read now takes the value from the table:
 
 ```js
-prefs?.email !== false     // ✅ absent, null and true all mean on
-prefs?.email === true      // ❌ silences every existing user
+prefs?.email ?? NOTIFICATION_PREFERENCE_DEFAULTS.email   // ✅ one source
+prefs?.email !== false                                   // ❌ ignores the table
+prefs?.email === true                                    // ❌ silences every existing user
 Boolean(prefs?.email)      // ❌ the same, wearing a different hat
 ```
 
@@ -67,6 +82,73 @@ Which is why:
   thousand documents to match a value that is already the default would only
   hide a wrong `!== false` if one ever appeared. The field fills in when somebody
   first changes a setting.
+
+---
+
+## 🆕 An unverified address carries nothing
+
+> **`email` goes only to an `isEmailVerified` account. WhatsApp goes only to an
+> `isWhatsappVerified` one.** Preference on **and** key confirmed — both, or
+> nothing leaves on that channel.
+
+`push` and the in-app row are outside this entirely: a device token proves itself
+by existing, and the row is the record.
+
+### ⚠️ It is checked **above** `ALWAYS_DELIVER_TYPES`
+
+The order in `isChannelAllowed` is deliberate:
+
+```
+1. platform off?        → PLATFORM      (never overridden)
+2. key unverified?      → UNVERIFIED    (never overridden)  🆕
+3. ALWAYS_DELIVER type? → allowed, forced
+4. preference off?      → PREFERENCE
+```
+
+`ALWAYS_DELIVER_TYPES` exists to outrank somebody's *wish* to be left alone, for
+notices where silence costs them money or access. Unverified is not a wish — it is
+not knowing whose address it is. Sending `REFUND_FAILED` to an unconfirmed address
+puts a real customer's refund detail in a stranger's inbox, which is worse than
+not sending it: they still have the in-app row, the push, and — for every
+non-admin role — WhatsApp, which is their login identity and therefore always
+verified.
+
+### Switching a channel on
+
+`PUT /notifications/preferences` with `{ email: true }` on an unverified address
+answers **`422`** with `details.code: IDENTITY_NOT_VERIFIED`. Switching **off** is
+never gated — declining messages is always allowed; only the promise that they
+will arrive has to be backed by something.
+
+The read says so first, too: `GET /notifications/preferences` reports that channel
+as `effective: false, blockedBy: "UNVERIFIED"`, so a panel can grey the toggle out
+before anybody taps it.
+
+### ⚠️ Changing a key switches its channel off
+
+When a key is written **without** an OTP — a profile edit, a vendor correcting an
+outlet's email, an admin fixing a contact — `applyIdentityChange` sets that
+channel's preference to `false` as well as the flag.
+
+The guard alone would be enough to stop delivery. It would not be enough to stop
+something subtler: the moment the address was verified, email would resume
+**without the person asking**, because a `true` from before the change was still
+sitting in the document. Verifying proves *"this address is mine"*. It does not
+say *"send things here"*.
+
+### 🔴 The one role this can strand: ADMIN
+
+`ADMIN_NOTIFICATION_DEFAULTS.isWhatsAppNotificationEnabled` is **`false`** —
+WhatsApp is shut for the admin audience platform-wide. So a vendor or customer
+with an unverified email is still reached on WhatsApp; an admin is not. **Email is
+an admin's only outbound channel**, and an unverified one leaves them with none —
+including for `SETTLEMENT_LEDGER_DRIFT` and `REFUND_FAILED`.
+
+`helpers/notifications/assertReachableAdmins.js` runs at every boot, names them in
+the log and raises a CRITICAL admin notice. It reports and never acts: marking an
+address verified without an OTP is the one thing this whole feature forbids, and
+the accounts with the most power are the worst place to make an exception. The fix
+is a person: each of them signs in once and runs `POST /auth/email/verify`.
 
 ---
 

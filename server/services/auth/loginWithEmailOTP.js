@@ -2,6 +2,7 @@ const User = require("../../models/User");
 const { throwError } = require("../../utils");
 const { sendOtp } = require("../otps");
 const { LOGIN_TYPES, ROLES } = require("../../constants");
+const { assertIdentityVerified } = require("../../helpers/auth");
 
 exports.loginWithEmailOTP = async (body) => {
   let { email, role } = body;
@@ -11,5 +12,6 @@ exports.loginWithEmailOTP = async (body) => {
     "+password",
   );
   if (!user) throwError(404, "User not found with this email");
+  assertIdentityVerified(user, "email");
   await sendOtp(LOGIN_TYPES.EMAIL, email);
 };
