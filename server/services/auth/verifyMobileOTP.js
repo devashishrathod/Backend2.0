@@ -3,7 +3,10 @@ const { LOGIN_TYPES, ROLES } = require("../../constants");
 const { throwError } = require("../../utils");
 const { assertAccountAccess } = require("../../helpers/auth");
 const { verifyOtpToMobile } = require("../../helpers/twoFactor");
-const { sanitizeUser } = require("../../helpers/users");
+const {
+  sanitizeUser,
+  syncRoleProfileIdentity,
+} = require("../../helpers/users");
 
 exports.verifyMobileOTP = async (body) => {
   let { sessionId, otp, mobile, role, currentScreen } = body;
@@ -22,6 +25,12 @@ exports.verifyMobileOTP = async (body) => {
     user.isOnline = true;
     if (currentScreen) user.currentScreen = currentScreen.toUpperCase().trim();
     user = await user.save();
+
+    // Same mirror repair as the other two sign-in paths — see verifyEmailOTP.
+    await syncRoleProfileIdentity(user).catch((error) =>
+      console.error(`[auth] identity mirror failed for ${user._id}:`, error?.message),
+    );
+
     const token = user.getSignedJwtToken();
     // See verifyEmailOTP — same shape for every token-issuing path.
     return { user: sanitizeUser(user), token };
