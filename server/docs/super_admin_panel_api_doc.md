@@ -6616,7 +6616,12 @@ Platform-wide configuration. **Ek singleton document.**
           "isEnabled": false,
           "percent": 5,
           "holdDays": 30,
-          "riskChargebackCount": 2
+          "riskChargebackCount": 2,
+          "riskLookbackDays": 180,
+          "riskMinPayments": 20,
+          "riskDisputeRatePercent": 1,
+          "riskPercent": 15,
+          "maxPercent": 25
         },
         "newVendorReserveDays": 0,
         "notReceivedAlertHours": 96,
@@ -6655,12 +6660,40 @@ Sirf [common auth errors](#common-errors) + `403` role check.
 | Block | Fields |
 |---|---|
 | `vendor.voucher` | `maxOffers` (1–100) · `maxImages` (≥1) · `maxDistanceKm` (≥1) |
-| `vendor.showcase` | `maxSections` · `maxItemsPerSection` · `maxImagesPerSection` · `maxVideosPerSection` · `maxImageSizeMB` · `maxVideoSizeMB` (sab ≥1) · `allowedImages[]` · `allowedVideos[]` (min 1 item) · `isActive` |
+| `vendor.showcase` | `maxItemsPerSection` · `maxImagesPerSection` · `maxVideosPerSection` · `maxImageSizeMB` · `maxVideoSizeMB` (sab ≥1) · `allowedImages[]` · `allowedVideos[]` (min 1 item) · `isActive` (showcase **edit** ka kill switch — neeche) · `maxSections` (⚠️ abhi koi nahi padhta, dekho neeche) |
 | `vendor.subscription` | Niche full table |
 | `customer` | Niche full table — **naya**, pehle pahunch me hi nahi tha |
 | `admin.notification` | 🆕 `isEmailNotificationEnabled` · `isPushNotificationEnabled` · `isWhatsAppNotificationEnabled` |
 | `app` | 🆕 `minVersion` · `latestVersion` · `support` · `features` — niche |
 | `isActive` | boolean |
+
+### 🆕 `vendor.showcase.isActive` — showcase **edit** ka kill switch
+
+`false` karne par vendor/admin showcase me **kuch naya nahi likh sakte** — section banana, badalna, reorder, delete, aur media ka add/update/replace/reorder/delete, sab **422**:
+
+> Showcase editing is temporarily switched off. Your existing sections and media are untouched — please try again later.
+
+**Padhna khula rehta hai, jaan-bujh kar:**
+
+| Endpoint | Switch off par |
+|---|---|
+| `GET /showcase/section/get/:sectionId` · `/section/get-all` (vendor/admin) | **khula** — vendor ko wo gallery dikhni chahiye jise edit karne se roka gaya hai |
+| `GET /showcase/get-brand-showcase/:brandId` · `/:brandId/video-clips` (public) | **khula** — jo brand ne pehle publish kiya wo publish rehta hai |
+| Baaki sab (9 write routes) | **422** |
+
+Gate `middlewares/requireShowcaseEnabled.js` hai, route file me `isVendorOrAdmin` ke saath baitha hai.
+
+> ### 🔴 Ye field pehle kuch karta hi nahi tha
+>
+> `isActive` model par tha aur panel se settable tha — to showcase off karne par save clean hota, `GET /settings/get` me wapas aata, aur **kuch nahi badalta**. `getShowcaseConfig()` ise return hi nahi karta tha aur koi caller isse poochta hi nahi tha. Vendors section banate aur media upload karte rehte, jaise kuch hua hi na ho.
+>
+> Wahi shape jo `admin` block, refund ki teen abuse limits, aur `reserve` ke paanch risk fields ka tha.
+
+> ### ⚠️ `maxSections` abhi bhi kuch nahi karta
+>
+> `getShowcaseConfig()` ise return karta hai par **koi service nahi padhti**. Section ki ginti plan ke entitlement se meter hoti hai — `createSection.js` me `reserveSlot(brand._id, ENTITLEMENT_BUCKETS.SHOWCASE)` — is setting se nahi.
+>
+> Jaan-bujh kar wire nahi kiya: do jagah se ek hi limit tay karna matlab do sources of truth, aur jis din dono alag keh dein us din kaun jeeta ye code padhe bina pata nahi chalta. Ya to ise hata dena chahiye, ya plan-limit ke **upar** ek platform ceiling ke roop me likhna chahiye — ye product ka faisla hai.
 
 ### 🆕 `app` — mobile app ka force-update aur support contact
 
@@ -6829,7 +6862,7 @@ DB me row pehli write par banti hai. Koi migration nahi chahiye.
 
 > ⚠️ **Pehle ye poora tree API se pahunch me tha hi nahi.** Model me `customer.convenienceFee` maujood tha, par `validator/settings.js` me koi `customer` object nahi tha aur `stripUnknown` on hai — matlab har request body se ye chup-chaap gir jaata tha aur sirf schema defaults chalte the. Ab poora tree reachable hai.
 
-Har block alag se merge hota hai. Nested block bhi merge hota hai — `settlement.reserve.percent` bhejne par `holdDays` aur `riskChargebackCount` waise hi rehte hain.
+Har block alag se merge hota hai. Nested block bhi merge hota hai — `settlement.reserve.percent` bhejne par baaki **aath** reserve fields waise hi rehte hain.
 
 **`customer.convenienceFee`** — discounted bill ke upar platform fee
 | Field | Default | Validation | Notes |
@@ -6897,9 +6930,39 @@ Har block alag se merge hota hai. Nested block bhi merge hota hai — `settlemen
 | `payoutProvider` | `MANUAL_BANK` | `MANUAL_BANK` \| `RAZORPAY_X` \| `RAZORPAY_ROUTE` | Abhi manual NEFT |
 | `commissionPercent` | **`0`** | 0–100 | Structure ready, rate zero |
 | `reserve.isEnabled` | `false` | boolean | Risky vendor ka withheld slice |
-| `reserve.percent` | `5` | 0–100 | |
-| `reserve.holdDays` | `30` | 0–365 | |
-| `reserve.riskChargebackCount` | `2` | ≥ 1 | Itne chargeback → reserve on |
+| `reserve.percent` | `5` | 0–100 | Base rate — har brand par, jab reserve on ho |
+| `reserve.holdDays` | `30` | 0–365 | Itne din baad reserve release hota hai |
+| `reserve.riskChargebackCount` | `2` | ≥ 1 | Itne chargeback → **dekho**, akela faisla nahi karta |
+| `reserve.riskLookbackDays` | `180` | 1–365 | Itne din peeche tak chargeback aur sales gine jaate hain |
+| `reserve.riskMinPayments` | `20` | ≥ 1 | Isse kam sales par brand base rate par rehta hai (`TOO_FEW_PAYMENTS`) — 3 me se 1 dispute 33% hai aur matlab kuch nahi |
+| `reserve.riskDisputeRatePercent` | `1` | 0–100 | Is rate ke upar brand risky. Count trigger hai, **rate faisla karta hai** |
+| `reserve.riskPercent` | `15` | 0–100 | Risky brand ka raised rate. `percent` se **kam nahi** ho sakta |
+| `reserve.maxPercent` | `25` | 0–100 | Ceiling — base rate par bhi lagta hai. `percent` aur `riskPercent` dono se **upar** hona chahiye |
+
+> ### ⚠️ Reserve ke teen rate aapas me bandhe hain
+>
+> ```
+> percent  <=  maxPercent
+> riskPercent  <=  maxPercent
+> riskPercent  >=  percent
+> ```
+>
+> `helpers/settings/assertReserveRateRule.js` merged document par chalta hai
+> (Joi par nahi — partial PATCH me dusra number hota hi nahi) aur tootne par
+> **422** deta hai, dono numbers naam lekar.
+>
+> Ye refusal isliye hai ki `buildReserveRiskMap` aakhir me
+> `Math.min(percent, maxPercent)` karta hai. Uske bina `maxPercent: 3` aur
+> `percent: 5` rakhne par har brand se **3%** rukta, jabki stored document,
+> settings screen aur `GET /settings/get` teeno **5%** batate rehte — vendor ke
+> statement ka hisaab sahi hota aur settings screen se reproduce hi nahi hota.
+>
+> Aur `riskPercent < percent` ka matlab hota chargeback wale brand se **kam**
+> rokna — ulta, aur chup: kahin error nahi aata, bas exposure wahi sabse zyada
+> ho jaata jahan sabse kam hona tha.
+>
+> Ceiling `Math.min` ab bhi code me hai — purane document ke liye aur
+> `riskPercent ?? basePercent` fallback ke liye defence in depth.
 | `newVendorReserveDays` | `0` | 0–365 | |
 | `notReceivedAlertHours` | `96` | 1–720 | |
 | `gatewayFeeBearer` | `PLATFORM` | `PLATFORM` \| `VENDOR` \| `SHARED` | Razorpay MDR kaun uthaye |
@@ -7023,7 +7086,7 @@ Dono taraf se block hota hai:
 
 **1. Merge hota hai, replace nahi.** Validator comment: *"Merged onto the existing block, so an admin can change just the GST rate without resetting the seller identity and every policy flag."* Sirf jo bhejein wahi badalta hai.
 
-**1b. Nested block bhi merge hota hai.** `customer.settlement.reserve` block ke andar block hai. Mongoose sub-document par `Object.assign` nested path ko **poora replace** kar deta hai, isliye `{ settlement: { reserve: { percent: 15 } } }` bhejne se `holdDays` aur `riskChargebackCount` apne defaults par wapas chale jaate — live schema par verify kiya, 45/3 se 30/2 par reset ho rahe the. `updateSetting.js` ab nested block ko parent assign se pehle alag kar deta hai, to sibling bache rehte hain.
+**1b. Nested block bhi merge hota hai.** `customer.settlement.reserve` block ke andar block hai. Mongoose sub-document par `Object.assign` nested path ko **poora replace** kar deta hai, isliye `{ settlement: { reserve: { percent: 15 } } }` bhejne se baaki **aath** reserve fields apne defaults par wapas chale jaate — live schema par verify kiya, `holdDays`/`riskChargebackCount` 45/3 se 30/2 par reset ho rahe the. `updateSetting.js` ab nested block ko parent assign se pehle alag kar deta hai, to sibling bache rehte hain.
 
 **2. ⚠️ `companyStateCode` khali hai to har supply `IGST` treat hoti hai.** Comment: *"Leave blank and every supply is treated as inter-state."* Intra-state CGST+SGST split ke liye ye set karna zaruri hai — brand ke GSTIN ke pehle 2 digits se compare hota hai.
 
