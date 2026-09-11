@@ -70,6 +70,7 @@ const {
   NOTIFICATION_TYPES,
   NOTIFICATION_CHANNELS,
   ALWAYS_DELIVER_TYPES,
+  NOTIFICATION_PREFERENCE_DEFAULTS,
 } = require("../../constants/notification");
 
 const COLLECTIONS = [User, Customer, Brand, Notification, Setting, DeviceToken];
@@ -78,8 +79,10 @@ const oid = () => new mongoose.Types.ObjectId();
 let seq = 0;
 
 /**
- * A user with **no** `notificationPreferences` field, which is what every
- * account already in the database looks like.
+ * A vendor account with the schema's own defaults for
+ * `notificationPreferences` — which is what a **newly created** account looks
+ * like, not what the rows already in the database look like. Those have no such
+ * field at all, and `resolveChannelPreferences` is what reconciles the two.
  */
 const user = async (overrides = {}) => {
   seq += 1;
@@ -103,6 +106,19 @@ const user = async (overrides = {}) => {
     whatsappNumber: phone,
     role: ROLES.VENDOR,
     isActive: true,
+    /**
+     * ⚠️ Verified, because this file is about **preferences**, not verification.
+     *
+     * Delivery now needs both: the toggle on *and* the key confirmed by an OTP
+     * (`helpers/notifications/channelPreferences.js`). Leaving these off would
+     * make every email assertion here pass or fail for the wrong reason — the
+     * guard, not the toggle — and the file would quietly stop testing what its
+     * name says.
+     *
+     * The guard itself has its own file: `notificationVerificationGuard.test.js`.
+     */
+    isEmailVerified: true,
+    isWhatsappVerified: true,
     ...overrides,
   });
 };
@@ -206,40 +222,47 @@ beforeEach(async () => {
 // The normaliser — where the migration risk lives
 // ---------------------------------------------------------------------------
 
-describe("an absent preference means on", () => {
+describe("an absent preference takes that channel's declared default", () => {
   /**
    * 🔴 The one that would have broken every existing account.
    *
-   * `default: true` only applies to documents created after the field existed.
+   * `default: <x>` only applies to documents created after the field existed.
    * Every user already in the database has no `notificationPreferences` at all,
-   * so `=== true` or `Boolean(...)` would read every one of them as *off* — and
-   * the failure is silent, because the in-app feed keeps working perfectly and
-   * nobody reports a notification they never knew was coming.
+   * so a hard-coded `=== true` or `Boolean(...)` would read every one of them as
+   * *off* — and the failure is silent, because the in-app feed keeps working
+   * perfectly and nobody reports a notification they never knew was coming.
+   *
+   * ⚠️ **This block used to assert `email: true` and now asserts `false`, and
+   * that flip is the point.** The resolver hard-coded `!== false` for every
+   * channel and used `NOTIFICATION_PREFERENCE_DEFAULTS` only for its **keys** —
+   * so the table said one thing and the code did another. Worse, `User`'s schema
+   * *did* read the table, so a **new** account stored `email: false` while every
+   * **existing** one resolved to `true`: one table, two answers, decided by how
+   * old the account is.
+   *
+   * These expectations are now read from the table itself, so the test cannot
+   * drift from it the way the code did.
    */
-  it("treats a missing field, a missing channel and null as on", () => {
-    expect(resolveChannelPreferences(null)).toEqual({
-      email: true,
-      push: true,
-      whatsapp: true,
-    });
-    expect(resolveChannelPreferences({})).toEqual({
-      email: true,
-      push: true,
-      whatsapp: true,
-    });
+  it("takes each channel's default, from the one table", () => {
+    const D = NOTIFICATION_PREFERENCE_DEFAULTS;
+    // Stated explicitly as well, so a mistake in the table is still visible here.
+    expect(D).toEqual({ email: false, push: true, whatsapp: true });
+
+    expect(resolveChannelPreferences(null)).toEqual({ ...D });
+    expect(resolveChannelPreferences({})).toEqual({ ...D });
     expect(
       resolveChannelPreferences({ notificationPreferences: { whatsapp: false } }),
-    ).toEqual({ email: true, push: true, whatsapp: false });
-    expect(resolveChannelPreferences({ email: null })).toEqual({
-      email: true,
-      push: true,
-      whatsapp: true,
-    });
+    ).toEqual({ ...D, whatsapp: false });
+    expect(resolveChannelPreferences({ email: null })).toEqual({ ...D });
   });
 
-  it("only `false` is off", () => {
+  it("an explicit value always wins over the default", () => {
     expect(resolveChannelPreferences({ email: false }).email).toBe(false);
-    expect(resolveChannelPreferences({ email: undefined }).email).toBe(true);
+    expect(resolveChannelPreferences({ email: true }).email).toBe(true);
+    expect(resolveChannelPreferences({ push: false }).push).toBe(false);
+    // Absent falls back to the table, both ways round.
+    expect(resolveChannelPreferences({ email: undefined }).email).toBe(false);
+    expect(resolveChannelPreferences({ push: undefined }).push).toBe(true);
   });
 
   /**
@@ -345,10 +368,13 @@ describe("both switches have to agree", () => {
       effective: false,
       blockedBy: "PLATFORM",
     });
+    // ⚠️ `email` ab default **off** hai — is call me koi email preference bheji
+    // hi nahi gayi, to `NOTIFICATION_PREFERENCE_DEFAULTS.email` lagta hai.
+    // Blocking `PREFERENCE` hai, `PLATFORM` nahi: platform khula hai.
     expect(described.email).toEqual({
-      preference: true,
-      effective: true,
-      blockedBy: null,
+      preference: false,
+      effective: false,
+      blockedBy: "PREFERENCE",
     });
   });
 });
@@ -358,8 +384,25 @@ describe("both switches have to agree", () => {
 // ---------------------------------------------------------------------------
 
 describe("notify honours the recipient's own toggles", () => {
-  it("sends on all three for a user who has never touched a setting", async () => {
+  /**
+   * ⚠️ **Two of three, not three.** `email`'s declared default is `false`.
+   *
+   * An address that nobody has asked to be written to should not start receiving
+   * mail because an account exists — and the verification guard would refuse it
+   * anyway for the far more common case where the address is unconfirmed. The two
+   * now agree; before, the table said `false` and the resolver said `true`.
+   */
+  it("sends on push and whatsapp for a user who has never touched a setting", async () => {
     const u = await user();
+    await device(u);
+
+    await send(u);
+
+    expect(sent()).toEqual({ email: 0, push: 1, whatsapp: 1 });
+  });
+
+  it("sends on email once the person switches it on", async () => {
+    const u = await user({ notificationPreferences: { email: true } });
     await device(u);
 
     await send(u);
@@ -373,7 +416,12 @@ describe("notify honours the recipient's own toggles", () => {
     ["push", { email: 1, push: 1, whatsapp: 1 }],
     ["whatsapp", { email: 1, push: 1, whatsapp: 1 }],
   ])("switching %s off leaves the other two alone", async (channel, all) => {
-    const u = await user({ notificationPreferences: { [channel]: false } });
+    // ⚠️ Baseline me teeno **explicitly on** hain, phir ek band. Sirf ek key
+    // bhejne par `email` apne default (`false`) par gir jaata aur test "email band
+    // kiya" aur "email kabhi on tha hi nahi" me farq nahi kar paata.
+    const u = await user({
+      notificationPreferences: { email: true, push: true, whatsapp: true, [channel]: false },
+    });
     await device(u);
 
     await send(u);
@@ -604,15 +652,47 @@ describe("a broadcast respects the same toggles", () => {
 // ---------------------------------------------------------------------------
 
 describe("reading and writing the toggles", () => {
-  it("reports every channel on for an untouched account", async () => {
+  it("reports each channel's declared default for an untouched account", async () => {
     const u = await user();
 
     const result = await getMyNotificationPreferences({ userId: u._id });
 
-    expect(result.channels.email).toMatchObject({ preference: true, effective: true });
+    // ⚠️ `email` is `false` by default — see the resolver block above. It is
+    // `effective: false` for the plainest of reasons: the person has not asked
+    // for it, not because anything is blocking it.
+    expect(result.channels.email).toMatchObject({
+      preference: false,
+      effective: false,
+      blockedBy: "PREFERENCE",
+    });
     expect(result.channels.push.preference).toBe(true);
     expect(result.channels.whatsapp.preference).toBe(true);
     expect(result.updatedAt).toBeNull();
+  });
+
+  /**
+   * ⚠️ An unverified key is reported as blocked **before** anybody taps it.
+   *
+   * The write would be refused (`422 IDENTITY_NOT_VERIFIED`), but a panel that
+   * only learns this from the error shows a switch that looks available and is
+   * not. `blockedBy` is what the client greys it out on.
+   */
+  it("says UNVERIFIED when the channel's key was never confirmed", async () => {
+    const u = await user({
+      isEmailVerified: false,
+      notificationPreferences: { email: true, push: true, whatsapp: true },
+    });
+
+    const result = await getMyNotificationPreferences({ userId: u._id });
+
+    expect(result.channels.email).toMatchObject({
+      // What they chose is still stored and still reported — it simply has no
+      // effect until the address is confirmed.
+      preference: true,
+      effective: false,
+      blockedBy: "UNVERIFIED",
+    });
+    expect(result.channels.whatsapp.effective).toBe(true);
   });
 
   /**
@@ -656,9 +736,12 @@ describe("reading and writing the toggles", () => {
     const target = await user();
     const admin = await user({ role: ROLES.ADMIN, name: "ops admin" });
 
+    // ⚠️ `whatsapp: false`, not `email: false`. `email`'s default is already
+    // `false`, so writing `false` changes nothing — `applyChange` returns early
+    // and never stamps `updatedBy`, and this would assert against `null`.
     const result = await updateUserNotificationPreferences(
       { userId: admin._id },
-      { userId: target._id, email: false },
+      { userId: target._id, whatsapp: false },
     );
 
     expect(Object.keys(result.updatedBy).sort()).toEqual(["_id", "name", "role"]);

@@ -55,6 +55,23 @@ const NOTIFICATION_TYPES = Object.freeze({
   // vendors, customers, and any role added later.
   ANNOUNCEMENT: "ANNOUNCEMENT",
 
+  /**
+   * An admin changed somebody's email, mobile or WhatsApp number for them —
+   * `PATCH /users/admin/:userId/contact`, the support desk's way out of "I lost
+   * the SIM I sign in with".
+   *
+   * ⚠️ The person has to be told, and the in-app row is the part that cannot be
+   * lost: an admin who has just moved the account's contact details is, by
+   * definition, changing where outbound messages go. The row is waiting whichever
+   * address ends up working.
+   *
+   * Deliberately **not** on `ALWAYS_DELIVER_TYPES`. Every key an admin writes
+   * lands unverified, and an unverified channel carries nothing — which is the
+   * rule that stops this endpoint from being a way into an account, and it must
+   * not be undermined by the notice about itself.
+   */
+  ACCOUNT_CONTACT_CHANGED: "ACCOUNT_CONTACT_CHANGED",
+
   // ---------- admin-audience ----------
   // A payment arrived but could not be settled. Money is captured and the plan
   // is not live, so somebody has to look.
@@ -311,7 +328,7 @@ const PLATFORM_CHANNEL_KEYS = Object.freeze({
  * which is the only place allowed to make that decision.
  */
 const NOTIFICATION_PREFERENCE_DEFAULTS = Object.freeze({
-  email: true,
+  email: false,
   push: true,
   whatsapp: true,
 });
