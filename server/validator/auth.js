@@ -1,5 +1,6 @@
 const Joi = require("joi");
 const { ROLES, LOGIN_TYPES } = require("../constants");
+const phone = require("./validJoiPhone");
 
 /**
  * Shown whenever a non-admin role is offered to a password endpoint.
@@ -41,24 +42,8 @@ exports.validateRegisterUser = Joi.object({
     "date.max": "Date of birth cannot be in future",
     "any.required": "Date of birth is required",
   }),
-  whatsappNumber: Joi.string()
-    .trim()
-    .pattern(/^[6-9]\d{9}$/)
-    .required()
-    .messages({
-      "string.empty": "WhatsApp number is required",
-      "string.pattern.base": "Please enter a valid 10 digit WhatsApp number",
-      "any.required": "WhatsApp number is required",
-    }),
-  mobile: Joi.string()
-    .trim()
-    .pattern(/^[6-9]\d{9}$/)
-    .required()
-    .messages({
-      "string.empty": "Mobile number is required",
-      "string.pattern.base": "Please enter a valid 10 digit Mobile number",
-      "any.required": "Mobile number is required",
-    }),
+  whatsappNumber: phone("WhatsApp number").required(),
+  mobile: phone("mobile number").required(),
   username: Joi.string()
     .trim()
     .pattern(/^[a-z0-9_]{3,50}$/)
@@ -100,15 +85,7 @@ exports.validateLogin = Joi.object({
   }),
   mobile: Joi.when("type", {
     is: LOGIN_TYPES.MOBILE,
-    then: Joi.string()
-      .trim()
-      .pattern(/^[6-9]\d{9}$/)
-      .required()
-      .messages({
-        "string.empty": "Mobile number is required",
-        "string.pattern.base": "Please enter a valid 10 digit Mobile number",
-        "any.required": "Mobile number is required",
-      }),
+    then: phone("mobile number").required(),
     otherwise: Joi.forbidden(),
   }),
   username: Joi.when("type", {
@@ -142,15 +119,7 @@ exports.validateLogin = Joi.object({
 });
 
 exports.validateWhatsappLoginOrSignUp = Joi.object({
-  whatsappNumber: Joi.string()
-    .trim()
-    .pattern(/^[6-9]\d{9}$/)
-    .required()
-    .messages({
-      "string.empty": "WhatsApp number is required",
-      "string.pattern.base": "Please enter a valid 10 digit WhatsApp number",
-      "any.required": "WhatsApp number is required",
-    }),
+  whatsappNumber: phone("WhatsApp number").required(),
   role: Joi.string()
     .uppercase()
     .valid(...Object.values(ROLES))
@@ -161,15 +130,7 @@ exports.validateWhatsappLoginOrSignUp = Joi.object({
 });
 
 exports.validateWhatsappVerifyOtp = Joi.object({
-  whatsappNumber: Joi.string()
-    .trim()
-    .pattern(/^[6-9]\d{9}$/)
-    .required()
-    .messages({
-      "string.empty": "WhatsApp number is required",
-      "string.pattern.base": "Please enter a valid 10 digit WhatsApp number",
-      "any.required": "WhatsApp number is required",
-    }),
+  whatsappNumber: phone("WhatsApp number").required(),
   otp: Joi.string().length(6).required().messages({
     "string.empty": "OTP is required",
     "string.length": "OTP must be 6 digits",
@@ -230,13 +191,10 @@ exports.validateVerifyEmailOtp = Joi.object({
 });
 
 exports.validateSendMobileLogin = Joi.object({
-  mobile: Joi.string()
-    .pattern(/^\d{10}$/)
-    .required()
-    .messages({
-      "string.pattern.base": "Mobile number must be 10 digits",
-      "any.required": "Mobile number is required",
-    }),
+  // ⚠️ Was `/^\d{10}$/`, which accepted a first digit of 0-5 — looser than the
+  // `[6-9]` every other phone field and the Mongoose validator demand. So this
+  // endpoint could accept a number the database would then refuse.
+  mobile: phone("mobile number").required(),
   role: Joi.string()
     .uppercase()
     .valid(...Object.values(ROLES))
@@ -247,13 +205,10 @@ exports.validateSendMobileLogin = Joi.object({
 });
 
 exports.validateVerifyMobileOtp = Joi.object({
-  mobile: Joi.string()
-    .pattern(/^\d{10}$/)
-    .required()
-    .messages({
-      "string.pattern.base": "Mobile number must be 10 digits",
-      "any.required": "Mobile number is required",
-    }),
+  // ⚠️ Was `/^\d{10}$/`, which accepted a first digit of 0-5 — looser than the
+  // `[6-9]` every other phone field and the Mongoose validator demand. So this
+  // endpoint could accept a number the database would then refuse.
+  mobile: phone("mobile number").required(),
   sessionId: Joi.string().required().messages({
     "any.required": "Session ID is required",
   }),
@@ -395,6 +350,63 @@ const verifiableEmail = Joi.string().trim().lowercase().email().optional().messa
 exports.validateSendEmailVerification = {
   body: Joi.object({
     email: verifiableEmail,
+  }),
+};
+
+/**
+ * ---------------- confirming a phone number ----------------
+ *
+ * Same shape as the email pair above and for the same reason: the number is
+ * **optional on both**, so omitting it confirms what is already on the account
+ * and sending one starts a change. No `role` — the caller arrives with a token,
+ * and accepting a role from the body would be accepting a claim about themselves.
+ *
+ * ⚠️ `phone(...)` rather than a raw pattern, so `+91 98765 43210` is normalised to
+ * the ten digits the account is stored under **before** the service compares it
+ * against the current value. Without that, confirming the number you already have
+ * would read as a change and send a code for nothing.
+ */
+const verifiableMobile = phone("mobile number").optional();
+const verifiableWhatsapp = phone("WhatsApp number").optional();
+
+/**
+ * Length is left to the verifier, which compares a hash — a code of the wrong
+ * length simply does not match, and stating a length here would tell an attacker
+ * how long it is.
+ */
+const verificationOtp = Joi.string().trim().required().messages({
+  "string.empty": "Please enter the code we sent you.",
+  "any.required": "Please enter the code we sent you.",
+});
+
+exports.validateSendMobileVerification = {
+  body: Joi.object({ mobile: verifiableMobile }),
+};
+
+exports.validateVerifyMobile = {
+  body: Joi.object({
+    mobile: verifiableMobile,
+    otp: verificationOtp,
+    /**
+     * ⚠️ Required by the **service**, not here.
+     *
+     * 2factor owns the code for this channel and hands back a `sessionId` that
+     * the client echoes. Making it required at this layer would refuse the
+     * step-up's first leg, which has no session yet — so the service asks for it
+     * at the point it actually needs one.
+     */
+    sessionId: Joi.string().trim().optional(),
+  }),
+};
+
+exports.validateSendWhatsappVerification = {
+  body: Joi.object({ whatsappNumber: verifiableWhatsapp }),
+};
+
+exports.validateVerifyWhatsapp = {
+  body: Joi.object({
+    whatsappNumber: verifiableWhatsapp,
+    otp: verificationOtp,
   }),
 };
 
