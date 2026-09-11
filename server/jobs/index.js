@@ -19,6 +19,9 @@ const {
   resumeIncompleteSettlements,
 } = require("../services/transactions/settlementJobs");
 const {
+  reconcileGatewaySettlements,
+} = require("../services/transactions/gatewaySettlementJobs");
+const {
   escalateStaleRefunds,
   reconcileRefunds,
   remindVendorsAboutRefunds,
@@ -201,6 +204,35 @@ const registry = [
   // Every other money path here fails loudly. A settlement fails by *not
   // happening* — no build, an unconfirmed NEFT, a payout that booked no ledger
   // row — and an absence has to be looked for. That is what these four do.
+  {
+    /**
+     * ⚠️ Declared **before** `buildSettlements`, and that ordering is deliberate.
+     *
+     * The runner walks this registry in order at boot, so a fresh instance marks
+     * what the gateway has settled and *then* builds — rather than building
+     * against yesterday's picture and waiting an hour to notice.
+     *
+     * ### Why it exists
+     *
+     * `fundsReceivedAt` has exactly one writer (`settlement.processed`) and one
+     * reader (`buildEligibilityFilter`), and the reader refuses to settle a
+     * payment without it. So one lost delivery — a deploy, an endpoint down,
+     * Razorpay giving up after its retries, or the event simply never subscribed
+     * in the dashboard — makes that batch of payments **permanently unpayable**,
+     * and nothing anywhere says so: no webhook arrives to fail, no `Settlement`
+     * row exists for `alertLateSettlements` to find, and the build reports
+     * `brandsChecked: 0` and **succeeds**.
+     *
+     * Every other sweep here looks for money in the wrong place. This is the one
+     * shape none of them could see — money that never entered the pipeline.
+     *
+     * Hourly, in step with the build it feeds: the gateway settles about once a
+     * day, so most runs list one page and mark nothing.
+     */
+    name: "reconcileGatewaySettlements",
+    run: reconcileGatewaySettlements,
+    intervalMinutes: () => 60,
+  },
   {
     /**
      * Build yesterday's payouts.

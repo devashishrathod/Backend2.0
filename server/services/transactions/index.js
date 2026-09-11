@@ -5,6 +5,9 @@ const { regenerateInvoice } = require("./regenerateInvoice");
 const { handleRazorpayWebhook } = require("./handleRazorpayWebhook");
 const { resolveSettler, SETTLER_PURPOSES } = require("./webhookSettlers");
 const { resumeIncompleteSettlements } = require("./settlementJobs");
+const {
+  reconcileGatewaySettlements,
+} = require("./gatewaySettlementJobs");
 const { replayWebhookEvent } = require("./replayWebhookEvent");
 const {
   getWebhookEvents,
@@ -40,6 +43,15 @@ module.exports = {
    * beside it rather than inside either flow.
    */
   resumeIncompleteSettlements,
+  /**
+   * ⚠️ The backstop under `settlement.processed`.
+   *
+   * `fundsReceivedAt` has one writer and one reader, and the reader refuses to
+   * settle without it — so a single lost delivery makes a batch of payments
+   * permanently unpayable while every job stays green and nothing alerts. This
+   * pulls the same facts from the gateway instead of waiting to be told.
+   */
+  reconcileGatewaySettlements,
   replayWebhookEvent,
   getWebhookEvents,
   getWebhookEvent,
