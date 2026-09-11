@@ -101,6 +101,9 @@ const ACCOUNT_FIELDS = [
   "isLoggedIn",
   "isEmailVerified",
   "isMobileVerified",
+  // See getAllAdminCustomers: this is the one that is true for a customer who
+  // signed up the normal way.
+  "isWhatsappVerified",
   "isSignUpCompleted",
   "isOnBoardingCompleted",
   "isDeleted",

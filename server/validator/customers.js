@@ -75,6 +75,9 @@ exports.validateGetAllAdminCustomers = {
     // Profile / onboarding progress.
     isSignUpCompleted: booleanFlag("isSignUpCompleted"),
     isOnBoardingCompleted: booleanFlag("isOnBoardingCompleted"),
+    // One per identity key. `isWhatsappVerified` is the meaningful one for a
+    // customer — they sign up with a WhatsApp OTP and most never add a mobile.
+    isWhatsappVerified: booleanFlag("isWhatsappVerified"),
     isMobileVerified: booleanFlag("isMobileVerified"),
     isEmailVerified: booleanFlag("isEmailVerified"),
     isLoggedIn: booleanFlag("isLoggedIn"),
