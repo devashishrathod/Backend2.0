@@ -118,7 +118,7 @@ Vendor panel 22 functional areas cover karta hai:
 
 **Important architecture notes:**
 
-- **Role gates kaafi endpoints pe lag chuke hain.** Vouchers, transactions, subBrands, subscribeds, notifications pe proper `VENDOR+ADMIN` checks hain. Lekin showcase, locations, brandFeatures, workHours pe abhi sirf `verifyJwtToken` hai → [Appendix B](#appendix-b--known-issues)
+- **Role gates har vendor-write pe lag chuke hain** — `isVendorOrAdmin`. Ownership uske baad service ka kaam hai; do endpoints me wo abhi bhi missing hai → [Appendix B](#appendix-b--known-issues)
 - **Ownership `resolveActorBrand` se enforce hoti hai** — 11 services isko use karte hain. Vendor sirf apna brand touch kar sakta hai, aur wo check brand ke apne `userId` se hota hai, token ke cached `brandId` se nahi
 - **Paid features subscription gate ke peeche hain** — outlets, vouchers, showcase sections ke liye active plan chahiye → [Subscription Gate](#subscription-gate)
 - **Soft delete pattern** — kuch bhi actually delete nahi hota, `isDeleted: true` set hota hai
@@ -4848,13 +4848,16 @@ Cloudinary se file bhi delete hoti hai. Banner na ho tab bhi `200` aata hai (ide
 Brand ke USP / highlight points — icon + title + description. Customer ko brand profile pe dikhte hain.
 
 **Max 10 active features per brand.** Plan se metered **nahi** hain.
-Global middleware: `router.use(verifyJwtToken)` — ⚠️ **koi role gate nahi**
+
+Writes (`add` / `update` / `delete`) par `isVendorOrAdmin`, aur us ke baad service me
+`resolveActorBrand` — vendor sirf **apna** brand, admin koi bhi (par `brandId` dena
+hoga). Reads par koi gate nahi: customer app brand profile par ye dikhati hai.
 
 ## 61. POST /brandFeatures/add
 
 **Multipart** (icon mandatory).
 
-**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** ⚠️
+**Access:** Vendor (apna brand) + Admin · **VENDOR+ADMIN**, ownership verified ✅
 
 ### Body (multipart)
 | Field | Type | Required | Default | Validation |
@@ -5022,7 +5025,7 @@ Practically vendor panel me shayad na chahiye — `get-all` (#62) me poora data 
 
 ## 64. PUT /brandFeatures/update/:featureId
 
-**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** ⚠️
+**Access:** Vendor (apna brand) + Admin · **VENDOR+ADMIN**, ownership verified ✅
 
 ### Path Params
 | Param | Type | Required |
@@ -5059,8 +5062,9 @@ Practically vendor panel me shayad na chahiye — `get-all` (#62) me poora data 
 ### Errors
 | Status | Message | Kab |
 |---|---|---|
-| `404` | `Brand feature not found!` | |
-| `400` | `A brand can have maximum 10 active features!` | Inactive ko active karne pe limit cross |
+| `403` | `Forbidden: You do not have permission to perform this action on this brand.` | 🆕 Feature kisi aur brand ka hai |
+| `404` | `Brand feature not found!` | 🆕 Pehle yahan **500** aata tha |
+| `400` | `A brand can have maximum 10 active features!` | 🆕 Pehle yahan bhi **500** aata tha |
 | `422` | `Feature title must be at least 2 characters` | |
 | `422` | `Invalid Feature ID format` | |
 
@@ -5068,15 +5072,17 @@ Practically vendor panel me shayad na chahiye — `get-all` (#62) me poora data 
 
 **1. `isActive: false` → `true` karne pe 10-limit check hota hai.** Agar already 10 active hain to `400` aayega.
 
-**2. Icon replace karne pe purana Cloudinary se delete hota hai.**
+**2. Icon replace karne pe purana Cloudinary se delete hota hai.** Ownership check **upload se pehle** chalta hai, to refuse hui request kuch upload nahi karti aur purana icon chhuti nahi.
 
-**3. ⚠️ Ownership check nahi hai** ([Appendix B](#appendix-b--known-issues)).
+**3. ✅ Ownership ab enforce hoti hai.** Feature ka `brandId` caller ke brand se match karna chahiye (admin koi bhi). Pehle sirf `featureId` se uthaya jaata tha.
+
+**4. 🆕 `isActive: false` ab sach me kaam karta hai.** Pehle JSON me boolean `false` bhejne par response `200 "updated successfully"` aata tha aur **kuch badalta nahi tha** — feature brand profile par live rehta tha. Multipart form se (`"false"` string) chalta tha, isliye panel me kabhi nahi dikha. Dono ab ek jaise hain.
 
 ---
 
 ## 65. DELETE /brandFeatures/delete/:featureId
 
-**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** ⚠️
+**Access:** Vendor (apna brand) + Admin · **VENDOR+ADMIN**, ownership verified ✅
 
 ### Path Params
 | Param | Type | Required |
@@ -5091,6 +5097,7 @@ Practically vendor panel me shayad na chahiye — `get-all` (#62) me poora data 
 ### Errors
 | Status | Message |
 |---|---|
+| `403` | 🆕 `Forbidden: You do not have permission to perform this action on this brand.` |
 | `404` | `Brand feature not found!` |
 | `422` | `Feature ID is required` / `Invalid Feature ID format` |
 
@@ -5098,6 +5105,7 @@ Practically vendor panel me shayad na chahiye — `get-all` (#62) me poora data 
 
 **1. Soft delete hai** — `isDeleted: true`.
 **2. Sirf hide karna ho to `isActive: false` (#64) behtar hai** — 10-limit se bhi bahar ho jaata hai aur wapas la sakte hain.
+**3. ✅ Ownership ab enforce hoti hai.** Record soft-delete hota hai par uska **icon Cloudinary se permanently hat jaata hai** — wo wapas nahi aata. Pehle koi bhi vendor kisi bhi brand ka feature ek-ek id karke mita sakta tha.
 
 ---
 
@@ -6773,14 +6781,22 @@ ye nahi ki wo **is** brand ka vendor hai.
 
 | Endpoint | Kya ho sakta hai |
 |---|---|
-| `PUT /brandFeatures/update/:featureId` | Kisi bhi brand ka feature edit — service `featureId` se feature uthati hai aur uska `brandId` caller se match nahi karti |
-| `DELETE /brandFeatures/delete/:featureId` | Wahi, delete ke saath |
-| `PUT /locations/update/:id` | Kisi bhi brand/outlet ka address edit |
-| `DELETE /locations/delete/:id` | Wahi, delete ke saath |
+| `PUT /locations/update/:id` | Kisi bhi brand/outlet ka address edit. ⚠️ `updateLocation(userId, payload)` `userId` **leta hai par use karta hi nahi** — aur ek Location **customer** ki bhi ho sakti hai |
+| `DELETE /locations/delete/:id` | Wahi, delete ke saath. `deleteLocation(payload)` `userId` **leta hi nahi** |
 | `POST /vouchers/publish/:versionId` | Kisi bhi brand ka approved voucher publish — `publishVoucher(userId, versionId)` `userId` leta hai par use ownership ke liye **use hi nahi karta** |
 
-Pattern repo me maujood hai — `resolveActorBrand` aur `resolveSectionForActor` 22
-services me chal rahe hain. In paanch me apply karna baaki hai.
+Pattern repo me maujood hai — `resolveActorBrand` aur `resolveSectionForActor` 23
+services me chal rahe hain. In teen me apply karna baaki hai.
+
+### ✅ Band ho chuke
+
+| Endpoint | |
+|---|---|
+| `POST /brandFeatures/add` | ✅ `resolveActorBrand` — vendor sirf apna brand |
+| `PUT /brandFeatures/update/:featureId` | ✅ Feature ke `brandId` ke against |
+| `DELETE /brandFeatures/delete/:featureId` | ✅ Wahi |
+
+Teenon ka test: `__tests__/money/brandFeatureOwnership.test.js`.
 
 **Vendor panel pe impact:** apne hi resources ke ids use karein. Ye "defensive coding"
 wali salaah nahi hai — ye batana hai ki backend abhi aapko rok nahi raha, to accidental

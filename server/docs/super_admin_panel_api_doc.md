@@ -3693,13 +3693,15 @@ Soft delete. `isActive: false` (#52) usually behtar hai.
 
 Brand ke USP points. Admin kisi bhi brand ke liye manage kar sakta hai.
 
-⚠️ Global middleware: `router.use(verifyJwtToken)` — **koi role gate nahi**
+Writes par `isVendorOrAdmin`, aur uske baad service me `resolveActorBrand`. Admin ke
+liye iska matlab hai: **`brandId` dena hoga** — vendor ki tarah token se resolve
+nahi hota. Reads par koi gate nahi (customer app brand profile par dikhati hai).
 
 ## 56. POST /brandFeatures/add
 
 **Multipart** — `icon` mandatory.
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · admin ko `brandId` dena hoga
 
 ### Body (multipart)
 | Field | Type | Required | Default | Validation |
@@ -3826,7 +3828,7 @@ Brand ke USP points. Admin kisi bhi brand ke liye manage kar sakta hai.
 
 ## 59. PUT /brandFeatures/update/:featureId
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · admin kisi bhi brand ka
 
 ### Path Params
 | Param | Type | Required |
@@ -3857,7 +3859,7 @@ Brand ke USP points. Admin kisi bhi brand ke liye manage kar sakta hai.
 
 ## 60. DELETE /brandFeatures/delete/:featureId
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · admin kisi bhi brand ka
 
 ### Path Params
 | Param | Type | Required |
@@ -3874,6 +3876,9 @@ Brand ke USP points. Admin kisi bhi brand ke liye manage kar sakta hai.
 |---|---|
 | `404` | `Brand feature not found!` |
 | `422` | `Invalid Feature ID format` |
+
+⚠️ Record soft-delete hota hai, par uska **icon Cloudinary se permanently hat jaata
+hai**. Wo wapas nahi aata — galat `featureId` par sirf row nahi, asset bhi jaata hai.
 
 ---
 

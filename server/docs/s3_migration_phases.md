@@ -659,10 +659,10 @@ SHOWCASE_MEDIA: {
 
 Ek row = **allowed types + kaun kar sakta hai + kiska hai + kitna bada + kahan jaayega**.
 
-> 🔴 **F-11 yahin band hota hai.** Aaj `brandFeatures` me ownership check **hai
-> hi nahi** — koi bhi vendor kisi bhi brand ka feature bana / badal / mita
-> sakta hai, aur uska Cloudinary asset uda sakta hai. §8 dekho — ye alag se
-> bhi fix hona chahiye.
+> ✅ **F-11 alag se band ho chuka hai** — Phase 0 ke saath, apne commit me.
+> `brandFeatures` ke teenon writes ab `resolveActorBrand` se guzarte hain.
+> Ye table us fix ki jagah nahi leta; ye har surface ke liye wahi cheez ek
+> jagah le aata hai, taaki agla endpoint likhne wale ko sochna hi na pade.
 
 ## 5.3 Presigned **POST**, PUT nahi
 
@@ -863,13 +863,27 @@ shift hon (§1.1)? Ya ek saath sab?
 `imageStorage` naya sibling. Isse **response shape nahi badalta** aur panel team
 ko Phase 3 me kuch nahi karna.
 
-### ❓ Q-13 — F-11 ab fix karun?
+### ✅ Q-13 — F-11 → ho gaya
 
-`brandFeatures` ka ownership hole 🔴 ek **aaj ka security bug** hai — koi bhi
-vendor kisi bhi brand ka feature bana/badal/mita sakta hai aur uska asset uda
-sakta hai. Phase 5 me wo waise bhi band ho jaayega, par wo **kaafi door** hai.
+Phase 0 ke saath, apne commit me. Teenon writes par `resolveActorBrand`.
 
-Isko **Phase 0 ke saath, alag commit** me fix kar dun?
+Likhte waqt do aur bug mile, usi file me:
+
+  - `throwError` **teen lines par call, import kahin nahi** — har ek
+    `ReferenceError`. Feature na milne par `404` ki jagah `500`, aur — zyada
+    bura — 10-active ki limit khud ko report hi nahi kar paati thi: vendor ko
+    *"server error"* dikhta tha, ye nahi ki limit 10 hai.
+  - `if (isActive)` boolean `false` ke liye falsy hai, to feature **band karna**
+    accept hota tha, `200 "updated successfully"` deta tha, aur kuch badalta
+    nahi tha.
+
+13 tests, asli DB. Mutation: 5/5 killed.
+
+🔴 **Aur teen ownership hole abhi khule hain** — media se rishta nahi, par wahi
+bimari. `PUT /locations/update/:id` aur `DELETE /locations/delete/:id` (dono me
+**customer ka apna address** bhi aata hai), aur `POST /vouchers/publish/:versionId`.
+Teenon `userId` lete hain (ya lete bhi nahi) aur ownership ke liye use nahi karte.
+Detail: [vendor_panel_api_doc.md → Appendix B](./vendor_panel_api_doc.md#appendix-b--known-issues).
 
 ---
 

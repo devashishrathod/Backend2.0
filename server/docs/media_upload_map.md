@@ -580,8 +580,14 @@ Ye sab **verify kiye gaye** hain, guess nahi. Har ek ke saath file:line diya hai
 
 | Status | Findings |
 |---|---|
-| ✅ **Fixed** | §8.1 (no size limit) · §8.9 (`/tmp` galat jagah) · §8.10 (temp files kabhi delete nahi) — sab **Phase 0** |
-| ⏳ **Abhi khula** | §8.2 · §8.3 · §8.4 · §8.5 · §8.6 · §8.7 · §8.8 · §8.11 (🔴 F-11) · §8.12 · §8.13 · §8.14 · §8.15 · §8.16 |
+| ✅ **Fixed** | §8.1 (no size limit) · §8.9 (`/tmp` galat jagah) · §8.10 (temp files kabhi delete nahi) — sab **Phase 0** · §8.11 (🔴 ownership hole, + 2 aur bug) |
+| ⏳ **Abhi khula** | §8.2 · §8.3 · §8.4 · §8.5 · §8.6 · §8.7 · §8.8 · §8.12 · §8.13 · §8.14 · §8.15 · §8.16 |
+
+🔴 **Ownership ke teen aur hole, is doc ke bahar** — media se seedha rishta nahi,
+par wahi bimari: `PUT /locations/update/:id`, `DELETE /locations/delete/:id`
+(dono me **customer ka apna address** bhi shaamil hai), aur
+`POST /vouchers/publish/:versionId`. Detail:
+[vendor_panel_api_doc.md → Appendix B](./vendor_panel_api_doc.md#appendix-b--known-issues).
 
 Khule findings ka kaunsa phase inhe theek karega —
 [s3_migration_phases.md](./s3_migration_phases.md).
@@ -850,9 +856,23 @@ code ke bahar hai aur naye server par set karna bhool sakte hain.
 
 ---
 
-### 8.11 🔴 `brandFeatures` me ownership check hai hi nahi
+### 8.11 ✅ FIXED — `brandFeatures` me ownership check hai hi nahi tha
 
-Ye poore media surface ka sabse serious gap hai.
+> **Fixed** — teenon writes ab `resolveActorBrand` se guzarte hain, wahi helper jo
+> vouchers aur subscriptions use karte hain. Controllers ab `actor`
+> (`{userId, role, brandId}`) bhejte hain, aur ownership `Brand.userId` se padhi
+> jaati hai — token ke cached `brandId` se nahi, taaki purana token access widen
+> na kar sake.
+>
+> Check **upload se pehle** chalta hai, to refuse hui request na kuch upload
+> karti hai na purana asset chhuti hai.
+>
+> Saath me do aur bug mile aur theek hue — niche.
+>
+> Test: `__tests__/money/brandFeatureOwnership.test.js` (13 tests, asli DB).
+> Mutation-verified: har check hatane par suite fail hoti hai.
+
+Ye poore media surface ka sabse serious gap tha.
 
 | Endpoint | Gate | Actor check | Media asar |
 |---|---|---|---|
@@ -902,8 +922,38 @@ Compare karein — baaki har domain me ye check hai:
 | **brandFeatures** | **kuch nahi** |
 
 Dono helpers ownership ko `Brand.userId` se verify karte hain, token ke cached
-`brandId` se nahi — taaki purana token access widen na kar sake. Fix yahi
-pattern hai: controllers `actor` banayein, service `resolveActorBrand` call kare.
+`brandId` se nahi — taaki purana token access widen na kar sake. Fix wahi
+pattern hai: controllers `actor` banate hain, service `resolveActorBrand` call
+karti hai. `middlewares/validateRoles.js` khud yahi kehta hai — *"Ownership
+within the brand is still the service's job"* — ye teen services wahi nahi kar
+rahi thi.
+
+#### Saath me mile do aur bug
+
+**1. `throwError` import hi nahi tha.** `updateBrandFeature.js` ise **teen**
+lines par call karta tha aur import **kahin nahi** — to har ek
+`ReferenceError: throwError is not defined` deta tha:
+
+| Path | Aata tha | Ab |
+|---|---|---|
+| Feature nahi mila | `500` | `404 Brand feature not found!` |
+| Brand nahi mila | `500` | ab ownership check pehle chalta hai |
+| 10 active ki limit | `500` | `400 A brand can have maximum 10 active features!` |
+
+🔴 **Vendor ko kya dikhta tha:** 10 features ke baad gyaarahvaan activate
+karne par *"server error"* — use kabhi pata hi nahi chalta ki **limit 10 hai**.
+
+**2. `isActive: false` chup-chaap ignore hota tha.** Guard `if (isActive)` tha,
+jo boolean `false` ke liye falsy hai:
+
+| Bheja | Pehle | Ab |
+|---|---|---|
+| `false` (JSON boolean) | 🔴 **chup-chaap ignore**, phir bhi `200 "updated successfully"` | band ho jaata hai |
+| `"false"` (multipart string) | band ho jaata tha | band ho jaata hai |
+
+Panel multipart bhejta hai isliye wahan kaam karta dikhta tha; JSON se update
+karne par feature switch off karne ka koi tarika hi nahi tha — aur response
+success bolta tha.
 
 ### 8.12 🔴 `mimetype` client ka bheja hua hai, file ka nahi
 
