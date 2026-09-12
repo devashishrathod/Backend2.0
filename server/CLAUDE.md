@@ -66,17 +66,38 @@ Node.js · CommonJS · Express 5 · Mongoose 9 (MongoDB) · Joi 18 · JWT · bcr
 npm run dev     # nodemon index  — local development with reload
 npm start       # node index     — production
 npm test        # jest --runInBand — money paths only, see below
+npm run test:unit   # jest.unit.config.js — pure functions, no database
 ```
 
 > No lint script is configured. Do not invent `npm run lint` — it will fail.
 
+### Two suites, and they never share a runner
+
+| | `npm test` | `npm run test:unit` |
+|---|---|---|
+| Folder | `__tests__/money/` | `__tests__/unit/` |
+| Database | real cluster, `Trydood2_test` | **none** |
+| Run lock | yes | no |
+| Time | ~35 minutes | seconds |
+
+Deliberately separate configs rather than two folders under one. Everything
+about the money suite — the lock, `maxWorkers: 1`, the 60s timeout, the
+disconnect discipline — exists because it needs a live Mongo. Pure functions
+have none of those needs and should not wait behind them, or make anybody think
+twice before running the tests.
+
+**What belongs in `__tests__/unit/`:** logic that is a security boundary or
+expensive to get wrong, and that takes plain arguments — upload key scoping,
+magic-byte sniffing, storage provider routing, temp file cleanup. Anything that
+needs a model, a session or a transaction belongs in the money suite instead.
+
 ### `npm test` covers the money paths and nothing else
 
-`__tests__/money/` is the only tested folder, and the rest of the repo keeps the
-no-test convention. It exists for the handful of behaviours that cannot be
-verified by clicking — atomic claims, partial unique indexes, idempotency keys,
-webhook replay. Rare, expensive when wrong, and exactly the class manual QA never
-catches.
+`__tests__/money/` is the only folder that suite runs, and the rest of the repo
+keeps the no-test convention. It exists for the handful of behaviours that cannot
+be verified by clicking — atomic claims, partial unique indexes, idempotency
+keys, webhook replay. Rare, expensive when wrong, and exactly the class manual QA
+never catches.
 
 These run against a **separate database on the real cluster** (`Trydood2_test`),
 derived from `MONGO_URL` by `__tests__/money/setup/testDb.js`. There is no
@@ -107,14 +128,22 @@ database name ends in `_test`. Never bypass it, and never point a test at
 > ⚠️ That TTL has been raised twice. It began at 15 minutes against a comment
 > claiming the suite took about four, so the lock was quietly lapsing mid-run —
 > protecting nothing at the one moment it was needed. Raised to 45 when a run
-> measured 17.7 minutes; raised to **90** now, because a full run is **32.6
-> minutes** across 55 suites.
+> measured 17.7 minutes; raised to **90** when a full run was 32.6 minutes across
+> 55 suites.
 >
 > ⚠️ Set it against the **slowest** run, not the average. Two runs of the same
 > suite on this machine measured 24.8 and 32.6 minutes — an eight minute spread,
 > on a value that only has to be exceeded once to reproduce the bug. A too-long
 > TTL costs a wait and a `--clear`; a too-short one has cost a debugging session
 > twice. Keep it at roughly 3× the slowest run you have seen.
+>
+> ⚠️ **The suite has grown since that was written and the TTL has not.** Latest
+> measured run: **36.1 minutes across 74 suites / 1491 tests**. Three times that
+> is 108 minutes against a TTL still set to 90, so the margin the rule above asks
+> for is gone — a run slower than the one measured could see its own lock lapse
+> mid-run, which is the exact failure the TTL exists to prevent. Raising it is a
+> one-line change in `__tests__/money/setup/runLock.js`; it has not been made
+> here because the number is a judgement call, not a fact.
 >
 > ```bash
 > node scripts/testRunLock.js           # who holds it
@@ -937,8 +966,16 @@ moving — no error anywhere. If you add a third webhook, add it to
   start without a database, a forgotten entry fails the deploy instead of
   serving broken requests.
 - `getIP` (`GET /my-ip`) reports the outbound address to put on that list.
-- `tempFileDir: "/tmp/"` in `index.js` is fine on Linux; make sure the unit has
-  a writable `/tmp` and something clears it.
+- Uploads stage through `os.tmpdir()/trydood-uploads`, and
+  `middlewares/cleanupTempFiles.js` empties it as each response ends. Make sure
+  the unit has a writable temp directory; nothing else is needed, and no cron
+  should be pointed at it.
+
+  > It used to be `tempFileDir: "/tmp/"` with no cleanup and no size limit. On
+  > Windows that resolves to `C:\tmp` — the drive root, nowhere near the project
+  > — so the resulting pile was invisible while working: **493 files, 7.70 GB**,
+  > the largest a single 2,615 MB upload. On a real host that is a disk filling
+  > up with no line in any log saying why.
 
 ## Working agreement
 

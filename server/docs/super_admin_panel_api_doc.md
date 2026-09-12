@@ -300,6 +300,7 @@ Ye endpoints scoped nahi hain — `brandId` sirf ek **query filter** hai. Admin 
 | `403` | Forbidden | Role not permitted, deactivated account |
 | `404` | Not Found | Resource nahi mila **ya empty list** |
 | `409` | Conflict | Duplicate (promo code, section title), banner capacity full, concurrent modification |
+| `413` | Payload Too Large | Uploaded file platform ki max size se badi |
 | `422` | Unprocessable Entity | Joi validation, invalid ObjectId, **`brandId` missing for admin** |
 | `500` | Server Error | Unexpected |
 | `503` | Service Unavailable | Razorpay down |
@@ -322,7 +323,25 @@ Ye endpoints scoped nahi hain — `brandId` sirf ek **query filter** hai. Admin 
 | `404` | `Brand not found!` | `brandId` galat |
 | `500` | `Authentication failed due to an unexpected error.` | JWT verify me unknown error |
 | `422` | *(field-wise Joi message)* | Validation fail |
+| `413` | `File is too large. The maximum upload size is 100 MB.` | Kisi bhi file upload par — niche dekho |
 | `404` | `Invalid API` | Galat path |
+
+### File upload limits
+
+| Layer | Limit | Response |
+|---|---|---|
+| **Platform ceiling** | `MAX_UPLOAD_SIZE_MB` (aaj **100 MB**) | `413` — **upload beech me hi kat jaata hai** |
+| **Per-surface rule** | Showcase: **10 MB** image / **50 MB** video (`Setting.vendor.showcase`) | `400` with the surface named |
+
+⚠️ Platform ceiling `.env` se aata hai aur **boot par padha jaata hai** —
+`express-fileupload` apne options `app.use()` ke waqt build karta hai, har
+request par nahi. Isliye ise badalne ke liye **restart chahiye**, aur wo admin
+panel se badla **nahi** ja sakta. Showcase ki per-surface limits `Setting` me
+hain aur `PUT /settings/update` se turant badal jaati hain.
+
+⚠️ `413` par connection **turant band** ho jaata hai — poori file bheji nahi
+jaati. Admin panel ko `fetch`/`XHR` ke abort ko error ki tarah handle karna
+chahiye.
 
 ### Validation error format
 

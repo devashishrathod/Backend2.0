@@ -655,6 +655,16 @@ mahine baad dikhega.
 | `RATE_LIMIT_MAX` | `3000` | `10000` | `100000` | `3000` |
 | `LOG_FORMAT` | `combined` | `combined` | `dev` | env par depend |
 | `ENABLE_JOBS` | `true` | `true` | `false` | on |
+| `MAX_UPLOAD_SIZE_MB` | `100` | `100` | `100` | `100` |
+
+⚠️ **`MAX_UPLOAD_SIZE_MB` boot par padha jaata hai**, har request par nahi —
+`express-fileupload` apne options `app.use()` ke waqt build karta hai
+(`lib/index.js`). Badalne ke liye **restart** chahiye, aur ye admin panel se
+badla nahi ja sakta. Per-surface limits (showcase ka 10 MB / 50 MB) `Setting` me
+hain aur turant lagu hote hain. Ye ceiling unke upar ka backstop hai — normal
+user ko kabhi nahi dikhta. Presigned uploads aane ke baad size condition har
+presign par `Setting` se banegi aur ye variable multipart path ke saath hi
+hat jaayega.
 
 ⚠️ **`ENABLE_JOBS` dev me `false` hona chahiye.** Aaj on hai. **21 background
 jobs** registered hain ([jobs/index.js](../jobs/index.js)) — `buildSettlements`,
@@ -828,7 +838,7 @@ S3 design ko **directly** shape karte hain:
 | **F-12** — `mimetype` client-controlled hai (busboy ise multipart part ke `Content-Type` header se leta hai, content sniff nahi hota). Aaj Cloudinary reject kar deta hai isliye bacha hua hai | S3 me ye bachav khatam. Upload se pehle **magic-byte sniffing** (`file-type` package), aur `ContentType` sniffed value se set hoga — client ke bheje header se nahi |
 | **F-13** — voucher images me `image/svg+xml` allowed hai (`mimetype.startsWith("image/")`) | Har domain ke liye explicit **allowlist**, SVG kahin nahi. Aur public bucket par `Content-Disposition: attachment` un types ke liye jo inline render ho sakte hain |
 | **F-14** — PDF ka `public_id` `Math.random()` se banta hai, aur Cloudinary URL public + permanent hai | Documents **private bucket** me, key `crypto.randomUUID()`, access sirf short-TTL presigned GET se. `documentToken` tab sach me credential ban jaata hai |
-| **§8.10** — `/tmp/` kabhi saaf nahi hota, har uploaded file ki copy permanently padi rehti hai | S3 shift ke saath hi decide karna hai: temp file rakhein (aur cleanup middleware lagayein) ya memory/stream par jaayein ya presigned direct-upload par |
+| **§8.10** — ✅ **FIXED (Phase 0)** — `/tmp/` kabhi saaf nahi hota tha, har uploaded file ki copy permanently padi rehti thi (measured: 493 files / 7.70 GB) | [middlewares/cleanupTempFiles.js](../middlewares/cleanupTempFiles.js), `fileUpload()` se **pehle** mount. Saath me `limits` + `abortOnLimit` (§8.1) aur `os.tmpdir()` (§8.9). Multipart path Phase 9 me poora hat jaayega |
 
 ---
 

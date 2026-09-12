@@ -578,24 +578,52 @@ kuch nahi bachta. Detail §8.3 me.
 
 Ye sab **verify kiye gaye** hain, guess nahi. Har ek ke saath file:line diya hai.
 
-### 8.1 `express-fileupload` par **koi limit nahi**
+| Status | Findings |
+|---|---|
+| ✅ **Fixed** | §8.1 (no size limit) · §8.9 (`/tmp` galat jagah) · §8.10 (temp files kabhi delete nahi) — sab **Phase 0** |
+| ⏳ **Abhi khula** | §8.2 · §8.3 · §8.4 · §8.5 · §8.6 · §8.7 · §8.8 · §8.11 (🔴 F-11) · §8.12 · §8.13 · §8.14 · §8.15 · §8.16 |
+
+Khule findings ka kaunsa phase inhe theek karega —
+[s3_migration_phases.md](./s3_migration_phases.md).
+
+### 8.1 ✅ FIXED — `express-fileupload` par koi limit nahi thi
+
+> **Fixed in Phase 0** — [s3_migration_phases.md](./s3_migration_phases.md)
+
+Pehle:
 
 ```js
 app.use(fileUpload({ useTempFiles: true, tempFileDir: "/tmp/" }));
 ```
-[index.js:114](../index.js#L114)
 
-Na `limits.fileSize`, na `limits.files`, na `abortOnLimit`. Iska matlab:
+Na `limits.fileSize`, na `abortOnLimit`. Har media endpoint par size
+**unlimited** tha. Measured natija: `C:\tmp` me ek **2,615 MB** ki single file,
+aur uske baad chaar 1,095 MB wali.
 
-- Sirf **showcase** endpoints par size check hai (10 MB image / 50 MB video), aur
-  wo bhi upload ke **baad** — file pehle `/tmp/` par poori likhi ja chuki hoti hai.
-- Baaki har media endpoint (user image, brand logo, category image, voucher
-  images, banner, ticker) par size **unlimited** hai.
-- Ek 5 GB file `/tmp/` bhar sakti hai, aur Render/EC2 par disk full hone se poora
-  process girta hai.
+Ab [index.js](../index.js):
 
-**Fix:** `fileUpload({ limits: { fileSize: N }, abortOnLimit: true })`.
-Ye ek jagah ka change hai jo har endpoint ko cover karta hai.
+```js
+limits: { fileSize: MAX_UPLOAD_SIZE_MB * 1024 * 1024 },   // .env, default 100
+abortOnLimit: true,
+limitHandler: (req, res) => { /* JSON 413 */ },
+```
+
+⚠️ **`abortOnLimit` load-bearing hai.** Uske bina busboy file ko chup-chaap
+**kaat** deta hai, `truncated: true` set karta hai, aur request chalti rehti hai
+— aur is codebase me `truncated` kahin nahi padha jaata. Aadhi video upload hokar
+valid row ban jaati, jo **bina limit ke haalat se bhi bura** hai.
+
+⚠️ `limitHandler` bhi zaroori hai — library ka default `res.end(<plain text>)`
+hai, jo `errorHandler` tak nahi pahunchta aur JSON parse karne wale client ko
+ek bekaar error deta hai.
+
+Showcase ki per-surface limits (10 MB / 50 MB) waise hi hain — wo `Setting` se
+aati hain aur upload ke **baad** check hoti hain. Ye ceiling us se upar ka
+backstop hai.
+
+Tested: `__tests__/unit/uploadLimits.test.js` (real multipart request over a
+socket). Mutation-verified — `abortOnLimit: false` aur `limitHandler` hataane,
+dono par suite fail hoti hai.
 
 ### 8.2 `CLOUD_BASE_URL` galat/khaali ho to **har delete chup-chaap skip**
 
@@ -752,21 +780,50 @@ badalte hain) — aur wahi do assets peeche chhod jaate hain.
 me `deleteBannerMedia` / `deleteTickerIcon` ka koi call hi nahi hai — helpers
 maujood hain, sirf use nahi hue.
 
-### 8.9 `/tmp/` Windows par exist nahi karta
+### 8.9 ✅ FIXED — `/tmp/` Windows par galat jagah banta tha
 
-```js
-app.use(fileUpload({ useTempFiles: true, tempFileDir: "/tmp/" }));
-```
+> **Fixed in Phase 0** — [s3_migration_phases.md](./s3_migration_phases.md)
 
-Linux (Render, EC2) par theek hai. Windows dev machine par `/tmp/` current drive
-ke root par resolve hota hai (`C:\tmp`) — wo folder hai to chal jaayega, warna
-upload fail hoga. `helpers/documents/renderDocument.js` sahi kaam karta hai —
-`os.tmpdir()` use karta hai, hardcoded path nahi.
+`"/tmp/"` ek absolute POSIX path hai. Windows par wo `C:\tmp` par resolve hota
+hai — **drive ka root**, project se bilkul alag jagah. Isi wajah se 7.70 GB wahan
+jama hoti rahi aur kabhi kisi ko dikhi nahi: dhoondha project folder me jaata
+tha, files thi `C:\tmp` me.
 
-### 8.10 `/tmp/` me har uploaded file ki copy **hamesha ke liye** rah jaati hai
+Ab `path.join(os.tmpdir(), "trydood-uploads")` — Linux aur Windows dono par sahi
+jagah, aur naam se pata chalta hai ki files kiski hain. Library directory khud
+bana leti hai (`checkAndMakeDir({ createParentPath: true })`).
 
-`CLAUDE.md` me already likha hai: *"make sure the unit has a writable `/tmp` and
-something clears it"* — **kuch clear nahi karta.**
+`helpers/documents/renderDocument.js` shuru se hi `os.tmpdir()` use karta tha.
+
+### 8.10 ✅ FIXED — har uploaded file ki copy hamesha ke liye rah jaati thi
+
+> **Fixed in Phase 0** — [s3_migration_phases.md](./s3_migration_phases.md)
+>
+> **Naya:** [middlewares/cleanupTempFiles.js](../middlewares/cleanupTempFiles.js),
+> `index.js` me `fileUpload()` se **pehle** mount kiya gaya.
+>
+> ```js
+> res.on("finish", sweep);   // response chala gaya
+> res.on("close", sweep);    // client beech me bhaag gaya
+> ```
+>
+> ⚠️ **Mount order load-bearing hai.** Size abort par `express-fileupload` khud
+> response band karta hai aur `next()` kabhi nahi bulaata — to uske *baad* mount
+> kiya middleware us request par chalta hi nahi. Library sirf us file ko saaf
+> karti hai jisne limit todi; usi request ki pehle wali chhoti file, jo already
+> disk par likhi ja chuki hai, **chhoot jaati hai**. Pehle mount karne se
+> listeners us se pehle lag jaate hain.
+>
+> Measured tha: **493 files / 7.70 GB**, Oct 2025 → Sep 2026.
+>
+> Tested: `__tests__/unit/cleanupTempFiles.test.js` +
+> `__tests__/unit/uploadLimits.test.js`. Mount order ka claim mutation se verify
+> kiya gaya — baad me mount karne par suite fail hoti hai.
+
+Wajah, record ke liye —
+
+`CLAUDE.md` me already likha tha: *"make sure the unit has a writable `/tmp` and
+something clears it"* — **kuch clear nahi karta tha.**
 
 `express-fileupload` ka `cleanup()` (jo temp file `unlink` karta hai) sirf
 **failure paths** par chalta hai — `lib/processMultipart.js` me line `82` (write
@@ -786,10 +843,10 @@ permanently baithi hai.** Ek 50 MB showcase video upload = 50 MB Cloudinary par
 + 50 MB disk par, hamesha ke liye. Ek instance jo mahino chalti rahe, uski disk
 bharegi aur process gir jaayega — aur wajah kisi log me nahi dikhegi.
 
-**Fix ke 3 options:** (a) service me upload ke baad `fs.unlink(tempFilePath)`,
-(b) ek middleware jo `res.on("finish")` par `req.files` ki saari temp files
-saaf kare, (c) OS-level cron/tmpfiles.d. (b) sabse safe hai kyunki wo har
-endpoint ko cover karta hai, aaj ke aur kal ke dono.
+**Chuna gaya:** middleware wala raasta — 20 call sites me `fs.unlink` bikherne
+se behtar, kyunki agla banne wala upload endpoint bina kuch jaane cover ho jaata
+hai. Per-service unlink me ek jagah bhoolna matlab leak wapas; OS-level cron
+code ke bahar hai aur naye server par set karna bhool sakte hain.
 
 ---
 

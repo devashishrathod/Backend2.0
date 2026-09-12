@@ -309,6 +309,7 @@ Har list endpoint ka exact 404 message alag hai — har endpoint ke section me d
 | `403` | Forbidden | Role not permitted, **subscription required**, **limit reached**, deactivated account |
 | `404` | Not Found | Resource nahi mila **ya empty list** |
 | `409` | Conflict | Duplicate (jaise showcase section title) |
+| `413` | Payload Too Large | Uploaded file platform ki max size se badi |
 | `422` | Unprocessable Entity | Joi validation fail, invalid ObjectId, missing `brandId` for admin |
 | `500` | Server Error | Unexpected failure |
 
@@ -333,7 +334,26 @@ Ye kisi bhi protected endpoint pe aa sakte hain — har endpoint pe repeat nahi 
 | `404` | `Brand not found!` | brandId ka brand nahi ya deleted |
 | `500` | `Authentication failed due to an unexpected error.` | JWT verify me unknown error |
 | `422` | *(field-wise Joi message)* | Request validation fail |
+| `413` | `File is too large. The maximum upload size is 100 MB.` | Kisi bhi file upload par — niche dekho |
 | `404` | `Invalid API` | Galat endpoint path |
+
+### File upload limits
+
+Do alag layer hain, aur vendor ko aam taur par sirf doosri wali dikhti hai:
+
+| Layer | Limit | Response |
+|---|---|---|
+| **Platform ceiling** | `MAX_UPLOAD_SIZE_MB` (aaj **100 MB**) | `413` — **upload beech me hi kat jaata hai** |
+| **Per-surface rule** | Showcase: **10 MB** image / **50 MB** video (`Setting` se, admin badal sakta hai) | `400` with the surface named |
+
+⚠️ `413` ka behaviour baaki errors se alag hai: connection **turant band** ho
+jaata hai, poori file bheji nahi jaati. Ek 500 MB ki file par client ko lagbhag
+100 MB bhejne ke baad hi jawab mil jaata hai — poora upload nahi hota. Client ko
+`XHR`/`fetch` ke abort ko error ki tarah handle karna chahiye aur `413` ka body
+padhna chahiye.
+
+Baaki surfaces (logo, voucher images, banner, ticker, category image, profile
+photo) par abhi sirf platform ceiling lagta hai.
 
 ### Validation errors ka format
 

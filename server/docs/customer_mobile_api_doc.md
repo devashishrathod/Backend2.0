@@ -477,6 +477,7 @@ Har list endpoint ka exact 404 message alag hai (entity name ke hisaab se) — h
 | `403` | Forbidden | Invalid token format, deactivated account, wrong role |
 | `404` | Not Found | Resource nahi mila **ya empty list** (upar dekho) |
 | `409` | Conflict | Duplicate resource |
+| `413` | Payload Too Large | Profile photo platform ki max size se badi |
 | `422` | Unprocessable Entity | Joi validation fail, ya invalid ObjectId format |
 | `500` | Server Error | Unexpected failure |
 
@@ -497,7 +498,27 @@ Ye errors kisi bhi protected endpoint pe aa sakte hain — har endpoint pe repea
 | `404` | `Access Denied! User not found` | Token valid hai par us user ka record DB me nahi |
 | `500` | `Authentication failed due to an unexpected error.` | JWT verify me unknown error |
 | `422` | *(field-wise Joi message)* | Request validation fail |
+| `413` | `File is too large. The maximum upload size is 100 MB.` | Profile photo upload — niche dekho |
 | `404` | `Invalid API` | Galat endpoint path |
+
+### File upload — `413`
+
+Customer sirf do jagah file bhejta hai: `POST /auth/register` aur
+`PUT /users/update` (profile photo). Dono par platform ka ceiling lagta hai —
+aaj **100 MB**.
+
+⚠️ **App ke liye zaroori:** `413` par server connection **turant band** kar deta
+hai, poori file bheji nahi jaati. Upload library ise **network error / abort**
+ki tarah report karegi, HTTP error ki tarah nahi. Agar app sirf `catch` me
+*"Network error, please try again"* dikhata hai, to customer wahi photo baar-baar
+try karta rahega aur kabhi nahi chadhegi.
+
+Sahi handling: abort ke baad response status padho — `413` ho to
+*"Yeh photo bahut badi hai"* dikhao, retry nahi.
+
+> Practically ek phone camera ki photo 100 MB ke aas-paas bhi nahi hoti, to ye
+> normal customer ko kabhi nahi dikhega. Ye ek galat/corrupt file ya kisi
+> automated client ko rokne ke liye hai.
 
 ### Validation errors ka format
 
