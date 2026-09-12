@@ -1,4 +1,6 @@
 require("dotenv").config();
+const os = require("os");
+const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
@@ -8,7 +10,8 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 
 const { mongoDb } = require("./database/mongoDb");
-const { errorHandler } = require("./middlewares");
+const { resolveMaxUploadSizeMb } = require("./configs/uploadLimit");
+const { errorHandler, cleanupTempFiles } = require("./middlewares");
 const { logChannelStatus } = require("./helpers/notifications");
 const { logPaymentAccounts, assertMoneyIndexes } = require("./helpers/transactions");
 const { throwError } = require("./utils");
@@ -111,7 +114,82 @@ app.use(
   }),
 );
 
-app.use(fileUpload({ useTempFiles: true, tempFileDir: "/tmp/" }));
+/**
+ * How large a single uploaded file may be.
+ *
+ * A ceiling that protects the process, not a product rule. The limits a vendor
+ * actually meets — 10 MB for a showcase image, 50 MB for a showcase video —
+ * live in `Setting` and are enforced per surface with a message naming the
+ * surface. This one exists so that nothing, from any client, can put an
+ * unbounded file on this disk; it is set well above every real limit and a
+ * normal user should never see it.
+ *
+ * ⚠️ Read once, here, because `express-fileupload` builds its options at
+ * `app.use()` time and not per request (`lib/index.js`). Changing it needs a
+ * restart. Once uploads are presigned the size condition is built per request
+ * from `Setting` and this line goes away with the multipart path.
+ */
+/**
+ * ⚠️ Refuses to start on a value that cannot be a size — see
+ * `configs/uploadLimit.js` for why an unreadable one is worse than a missing
+ * one. Failing the boot turns a typo into a failed deploy, which is the only
+ * form of this problem anybody notices.
+ */
+let MAX_UPLOAD_SIZE_MB;
+try {
+  MAX_UPLOAD_SIZE_MB = resolveMaxUploadSizeMb(process.env.MAX_UPLOAD_SIZE_MB);
+} catch (error) {
+  console.error("");
+  console.error(`❌ ${error.message}`);
+  console.error("   Nothing is listening, on purpose — an unreadable value");
+  console.error("   here means no upload limit at all, silently.");
+  console.error("");
+  process.exit(1);
+}
+
+/**
+ * ⚠️ Before `fileUpload()`, deliberately — see `middlewares/cleanupTempFiles.js`.
+ * A request aborted on the size limit never reaches a middleware mounted after
+ * it, and any file that had already finished writing would be left behind.
+ */
+app.use(cleanupTempFiles);
+app.use(
+  fileUpload({
+    useTempFiles: true,
+    /**
+     * ⚠️ Not `"/tmp/"`. That is an absolute POSIX path, and on Windows it
+     * resolves to `C:\tmp` — the root of the drive, nowhere near this project,
+     * which is why 7.70 GB of abandoned uploads accumulated there unnoticed.
+     * `os.tmpdir()` is the right directory on both, and the subdirectory makes
+     * it obvious who owns the files. The library creates it if missing.
+     */
+    tempFileDir: path.join(os.tmpdir(), "trydood-uploads"),
+    limits: { fileSize: MAX_UPLOAD_SIZE_MB * 1024 * 1024 },
+    /**
+     * ⚠️ Load-bearing, and `false` by default.
+     *
+     * Without it busboy **truncates** a file that passes the limit, marks it
+     * `truncated: true`, and lets the request carry on. Nothing in this
+     * codebase reads `truncated`, so half a video would upload cleanly and be
+     * stored as a valid row — a worse outcome than having no limit at all.
+     */
+    abortOnLimit: true,
+    /**
+     * The library's own response is `res.end(<plain text>)`, which never
+     * reaches `errorHandler` and gives a client expecting JSON something it
+     * cannot parse — surfacing as a generic "something went wrong" rather than
+     * the one message that would tell the user what to do about it.
+     */
+    limitHandler: (req, res) => {
+      // Several files in one request each fire this. Only the first can answer.
+      if (res.headersSent) return;
+      res.status(413).json({
+        success: false,
+        message: `File is too large. The maximum upload size is ${MAX_UPLOAD_SIZE_MB} MB.`,
+      });
+    },
+  }),
+);
 // The raw bytes are kept alongside the parsed body because Razorpay signs the
 // untouched payload — re-serialised JSON would not match the HMAC. Only the
 // webhook route reads `req.rawBody`; everything else is unaffected.

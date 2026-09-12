@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon index",
     "start": "node index",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "test:unit": "jest --config jest.unit.config.js"
   },
   "keywords": [
     "voucher",
