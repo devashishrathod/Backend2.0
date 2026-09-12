@@ -137,13 +137,27 @@ database name ends in `_test`. Never bypass it, and never point a test at
 > TTL costs a wait and a `--clear`; a too-short one has cost a debugging session
 > twice. Keep it at roughly 3× the slowest run you have seen.
 >
-> ⚠️ **The suite has grown since that was written and the TTL has not.** Latest
-> measured run: **36.1 minutes across 74 suites / 1491 tests**. Three times that
-> is 108 minutes against a TTL still set to 90, so the margin the rule above asks
-> for is gone — a run slower than the one measured could see its own lock lapse
-> mid-run, which is the exact failure the TTL exists to prevent. Raising it is a
-> one-line change in `__tests__/money/setup/runLock.js`; it has not been made
-> here because the number is a judgement call, not a fact.
+> 🔴 **The suite has grown since that was written and the TTL has not. The margin
+> is not thin any more — it is nearly gone.** Two runs measured back to back on
+> this machine:
+>
+> | Run | Suites / tests | Time |
+> |---|---|---|
+> | idle machine | 74 / 1491 | **36.1 min** |
+> | with other work in parallel | 75 / 1504 | **71.6 min** |
+>
+> The TTL is **90 minutes**. The rule above asks for 3× the slowest run seen,
+> which would now be **215**. The slower of those two was 71.6 — eighteen minutes
+> from lapsing *during its own run*, which is exactly the failure the lock exists
+> to prevent, and which reads as a scatter of unrelated tests failing on correct
+> assertions rather than as a lock problem.
+>
+> Note what the second row means: the spread is not noise, it is **contention**.
+> Anything else touching the cluster while the suite runs roughly doubles it, so
+> the number to set the TTL against is the busy one, not the quiet one.
+>
+> One line in `__tests__/money/setup/runLock.js`. Not changed here because the
+> value is a judgement call, not a fact — but it should be changed.
 >
 > ```bash
 > node scripts/testRunLock.js           # who holds it
