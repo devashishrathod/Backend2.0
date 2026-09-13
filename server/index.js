@@ -1,4 +1,19 @@
-require("dotenv").config();
+/**
+ * ⚠️ First, before anything else is required — including express.
+ *
+ * Eleven modules read `process.env` at **load time** (`MERCHANT_ID_SECRET` in
+ * `generateBrandMerchantId`, `CLOUD_BASE_URL` in `helpers/cloudinary`,
+ * `TWO_FACTOR_API_KEY` in three OTP helpers, and the rest). A value that
+ * arrives after they have been required is a value they never see, so the
+ * environment has to be loaded, validated and written back before the first
+ * `require` below runs.
+ *
+ * This replaces a bare `dotenv.config()`. The difference is that a missing or
+ * malformed variable now fails the boot instead of surfacing weeks later as
+ * behaviour nobody can explain — `CLOUD_BASE_URL` unset, for instance, makes
+ * every media delete a silent no-op while the server answers 200 to everything.
+ */
+const { config } = require("./configs/env");
 const os = require("os");
 const path = require("path");
 const express = require("express");
@@ -10,7 +25,6 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 
 const { mongoDb } = require("./database/mongoDb");
-const { resolveMaxUploadSizeMb } = require("./configs/uploadLimit");
 const { errorHandler, cleanupTempFiles } = require("./middlewares");
 const { logChannelStatus } = require("./helpers/notifications");
 const { logPaymentAccounts, assertMoneyIndexes } = require("./helpers/transactions");
@@ -21,15 +35,19 @@ const { startJobs } = require("./jobs");
 const { assertReachableAdmins } = require("./helpers/notifications");
 
 const app = express();
-const port = process.env.PORT || 8080;
+const port = config.PORT;
 
 /**
- * ⚠️ Only ever used to choose a log format. `NODE_ENV=production` is set in some
- * shells on the dev machine here (see `CLAUDE.md`), so anything that changes
- * behaviour must not hang off it — the money paths and index handling all read
- * their own named variables instead.
+ * Which tier this is — from `CONFIG_PROFILE`, never from `NODE_ENV`.
+ *
+ * ⚠️ `NODE_ENV=production` is set in some shells on the dev machine here (see
+ * `CLAUDE.md`), on a laptop pointed at a development database with Razorpay test
+ * keys. Anything that changes behaviour must therefore hang off the profile,
+ * which lives in the environment file and says what that file is. `NODE_ENV`
+ * survives for exactly one job below — picking a log format — because it is
+ * npm's and Express's variable, not ours.
  */
-const isProduction = process.env.NODE_ENV === "production";
+const isProduction = config.isProduction;
 
 /**
  * How many proxies sit in front of this process.
@@ -44,7 +62,7 @@ const isProduction = process.env.NODE_ENV === "production";
  * of it. Trusting a hop that does not exist means believing an `X-Forwarded-For`
  * header the caller wrote themselves, which is a free pass around the limiter.
  */
-app.set("trust proxy", Number.parseInt(process.env.TRUST_PROXY ?? "1", 10));
+app.set("trust proxy", config.TRUST_PROXY);
 
 app.use(
   helmet({
@@ -72,7 +90,7 @@ app.use(cors());
 
 // `dev` is colourised and built for a terminal. In production the log is a file
 // or a CloudWatch stream, where `combined` is the format everything else parses.
-app.use(morgan(process.env.LOG_FORMAT || (isProduction ? "combined" : "dev")));
+app.use(morgan(config.LOG_FORMAT || (isProduction ? "combined" : "dev")));
 
 /**
  * A backstop against a runaway client, not a security boundary.
@@ -100,7 +118,7 @@ const WEBHOOK_PATHS = new Set([
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: Number.parseInt(process.env.RATE_LIMIT_MAX ?? "3000", 10),
+    limit: config.RATE_LIMIT_MAX,
     standardHeaders: "draft-7",
     legacyHeaders: false,
     /**
@@ -128,24 +146,14 @@ app.use(
  * `app.use()` time and not per request (`lib/index.js`). Changing it needs a
  * restart. Once uploads are presigned the size condition is built per request
  * from `Setting` and this line goes away with the multipart path.
+ *
+ * Validated by `configs/env/schema.js` along with everything else, so an
+ * unreadable value fails the boot rather than becoming `NaN` — and `NaN` bytes
+ * is not a small limit, it is **no limit**, because every comparison against it
+ * is false. That check briefly lived in its own module; the schema does it
+ * strictly better, rejecting `"100MB"` too rather than reading it as 100.
  */
-/**
- * ⚠️ Refuses to start on a value that cannot be a size — see
- * `configs/uploadLimit.js` for why an unreadable one is worse than a missing
- * one. Failing the boot turns a typo into a failed deploy, which is the only
- * form of this problem anybody notices.
- */
-let MAX_UPLOAD_SIZE_MB;
-try {
-  MAX_UPLOAD_SIZE_MB = resolveMaxUploadSizeMb(process.env.MAX_UPLOAD_SIZE_MB);
-} catch (error) {
-  console.error("");
-  console.error(`❌ ${error.message}`);
-  console.error("   Nothing is listening, on purpose — an unreadable value");
-  console.error("   here means no upload limit at all, silently.");
-  console.error("");
-  process.exit(1);
-}
+const MAX_UPLOAD_SIZE_MB = config.MAX_UPLOAD_SIZE_MB;
 
 /**
  * ⚠️ Before `fileUpload()`, deliberately — see `middlewares/cleanupTempFiles.js`.
@@ -307,11 +315,11 @@ app.use(errorHandler);
      * listened. Inside this branch it is only reached when somebody has asked
      * for a tunnel, which can only be true where the package is installed.
      */
-    if (process.env.ENABLE_NGROK === "true") {
+    if (config.ENABLE_NGROK) {
       const ngrok = require("ngrok");
       const url = await ngrok.connect({
         addr: port,
-        authtoken: process.env.NGROK_AUTH_TOKEN,
+        authtoken: config.NGROK_AUTH_TOKEN,
         // subdomain: process.env.NGROK_SUBDOMAIN // must be set for custom subdomain
       });
       console.log(`Public URL: ${url}`);
