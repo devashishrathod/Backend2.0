@@ -44,9 +44,9 @@ exports.addBrandFeature = async (actor, payload, icon) => {
   // to happen before the row exists.
   const _id = new mongoose.Types.ObjectId();
 
-  let iconUrl;
+  let uploaded;
   try {
-    iconUrl = await storage.uploadUrl({
+    uploaded = await storage.uploadFromPath({
       filePath: icon.tempFilePath,
       originalFile: icon,
       purpose: UPLOAD_PURPOSE.BRAND_FEATURE_ICON,
@@ -61,7 +61,8 @@ exports.addBrandFeature = async (actor, payload, icon) => {
     brandId: brand._id,
     title,
     description,
-    icon: iconUrl,
+    icon: uploaded.url,
+    iconStorage: uploaded.storage,
     isActive: typeof isActive === "string" ? isActive === "true" : isActive,
   });
 };

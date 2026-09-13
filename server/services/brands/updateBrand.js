@@ -29,10 +29,17 @@ const {
  * it that drift apart.
  */
 const IMAGE_SLOTS = Object.freeze([
-  { file: "logo", field: "logo", label: "Logo", purpose: UPLOAD_PURPOSE.BRAND_LOGO },
+  {
+    file: "logo",
+    field: "logo",
+    storageField: "logoStorage",
+    label: "Logo",
+    purpose: UPLOAD_PURPOSE.BRAND_LOGO,
+  },
   {
     file: "coverImage",
     field: "coverImage",
+    storageField: "coverImageStorage",
     label: "Cover image",
     purpose: UPLOAD_PURPOSE.BRAND_COVER,
   },
@@ -194,17 +201,22 @@ exports.updateBrand = async (brandId, payload = {}, files = null, actor = null) 
         const file = uploads[slot.file];
         if (!file) continue;
 
-        const uploaded = await storage.uploadUrl({
+        const uploaded = await storage.uploadFromPath({
           filePath: file.tempFilePath,
           originalFile: file,
           purpose: slot.purpose,
           entityId: brand._id,
         });
+        // The previous pair, captured before it is overwritten.
         replaced.set(slot.field, {
-          previous: brand[slot.field] || null,
+          previous: {
+            url: brand[slot.field] || null,
+            storage: brand[slot.storageField],
+          },
           uploaded,
         });
-        brand[slot.field] = uploaded;
+        brand[slot.field] = uploaded.url;
+        brand[slot.storageField] = uploaded.storage;
       }
       brand.updatedAt = new Date();
       await brand.save({ session });
@@ -215,9 +227,9 @@ exports.updateBrand = async (brandId, payload = {}, files = null, actor = null) 
     // an orphan is worth a log line, not a failed request for a change that has
     // already been saved.
     for (const [field, { previous }] of replaced) {
-      if (!previous) continue;
+      if (!previous.url) continue;
       try {
-        await storage.deleteAsset({ url: previous });
+        await storage.deleteAsset(previous);
       } catch (deleteError) {
         console.error(`Failed to delete old brand ${field}:`, deleteError);
       }
@@ -228,7 +240,7 @@ exports.updateBrand = async (brandId, payload = {}, files = null, actor = null) 
     // this they would sit in storage referenced by nothing.
     for (const [field, { uploaded }] of replaced) {
       try {
-        await storage.deleteAsset({ url: uploaded });
+        await storage.deleteAsset(uploaded);
       } catch (deleteError) {
         console.error(`Failed to cleanup uploaded brand ${field}:`, deleteError);
       }

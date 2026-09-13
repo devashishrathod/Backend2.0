@@ -38,7 +38,10 @@
  */
 
 jest.mock("../../services/storage", () => ({
-  uploadUrl: jest.fn(async () => "https://example.test/icons/uploaded.png"),
+  uploadFromPath: jest.fn(async () => ({
+    url: "https://example.test/icons/uploaded.png",
+    storage: { provider: "CLOUDINARY", publicId: "Images/uploaded" },
+  })),
   deleteAsset: jest.fn(async () => true),
 }));
 
@@ -60,7 +63,7 @@ const {
   updateBrandFeature,
   deleteBrandFeature,
 } = require("../../services/brandFeatures");
-const { uploadUrl, deleteAsset } = require("../../services/storage");
+const { uploadFromPath, deleteAsset } = require("../../services/storage");
 
 const oid = () => new mongoose.Types.ObjectId();
 
@@ -156,7 +159,7 @@ describe("who may write a brand's features", () => {
       ),
     ).rejects.toMatchObject({ statusCode: 403 });
 
-    expect(uploadUrl).not.toHaveBeenCalled();
+    expect(uploadFromPath).not.toHaveBeenCalled();
   });
 
   it("lets the owner create on their own brand", async () => {
@@ -209,7 +212,7 @@ describe("who may write a brand's features", () => {
       ),
     ).rejects.toMatchObject({ statusCode: 403 });
 
-    expect(uploadUrl).not.toHaveBeenCalled();
+    expect(uploadFromPath).not.toHaveBeenCalled();
     expect(deleteAsset).not.toHaveBeenCalled();
     expect((await BrandFeatures.findById(feature._id)).icon).toBe(
       "https://example.test/icons/existing.png",

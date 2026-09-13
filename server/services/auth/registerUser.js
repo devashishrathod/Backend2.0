@@ -40,11 +40,11 @@ exports.registerUser = async (body, image) => {
   // insert — so the id is minted here. Mongo generates ids client-side anyway.
   const _id = new mongoose.Types.ObjectId();
 
-  let imageUrl;
+  let uploaded = null;
   assertImageFile(image, "Profile photo");
 
   if (image) {
-    imageUrl = await storage.uploadUrl({
+    uploaded = await storage.uploadFromPath({
       filePath: image.tempFilePath,
       originalFile: image,
       purpose: UPLOAD_PURPOSE.USER_AVATAR,
@@ -61,7 +61,8 @@ exports.registerUser = async (body, image) => {
     username,
     whatsappNumber,
     role,
-    image: imageUrl,
+    image: uploaded?.url,
+    imageStorage: uploaded?.storage,
     loginType: LOGIN_TYPES.PASSWORD,
     uniqueId: await generateUniqueUserId(),
     referralCode: await generateReferralCode(),

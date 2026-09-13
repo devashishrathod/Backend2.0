@@ -11,7 +11,10 @@ exports.deleteCategoryById = async (id) => {
   // undone, so a delete that is about to be refused must be refused first —
   // otherwise the category survives the 400 with its picture already gone.
   await assertCategoryDeletable(category._id);
-  await storage.deleteAsset({ url: category?.image });
+  await storage.deleteAsset({
+    url: category?.image,
+    storage: category?.imageStorage,
+  });
   category.isDeleted = true;
   category.isActive = false;
   category.image = null;

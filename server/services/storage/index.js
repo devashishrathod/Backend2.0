@@ -142,15 +142,10 @@ exports.uploadFromPath = async ({
   });
 };
 
-/**
- * Upload and hand back only the delivery URL.
- *
- * Several surfaces — a category image, a brand logo, an avatar — store a bare
- * string rather than a `storage` object. They get the sibling field in Phase 3;
- * until then this keeps their call sites one expression instead of four.
- */
-exports.uploadUrl = async (options) =>
-  (await exports.uploadFromPath(options)).url;
+// `uploadUrl` lived here for one step: the surfaces that stored a bare URL
+// string had nowhere to put a `storage` object, so a URL-only helper kept their
+// call sites short. They all have a sibling field now, and every one of them
+// wants both halves — so the helper had no callers left.
 
 /**
  * Every shared placeholder, as a set of URLs.

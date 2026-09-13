@@ -1,6 +1,7 @@
 /**
- * A brand's logo and cover, an outlet's logo and cover, and a section's pinned
- * cover — the three writes that never existed.
+ * A brand's logo and cover, an outlet's logo and cover, a category's image and
+ * a section's pinned cover — the writes that never existed, and the storage
+ * sibling that now records where each one landed.
  *
  * ### 🔴 Why this file exists
  *
@@ -21,7 +22,13 @@
 jest.mock("../../services/storage", () => {
   let n = 0;
   return {
-    uploadUrl: jest.fn(async () => `https://cdn.test/uploaded-${++n}.webp`),
+    uploadFromPath: jest.fn(async () => {
+      n += 1;
+      return {
+        url: `https://cdn.test/uploaded-${n}.webp`,
+        storage: { provider: "S3", bucket: "b", key: `k-${n}` },
+      };
+    }),
     deleteAsset: jest.fn(async () => true),
   };
 });
@@ -37,6 +44,7 @@ const Brand = require("../../models/Brand");
 const SubBrand = require("../../models/SubBrand");
 const User = require("../../models/User");
 const ShowcaseSection = require("../../models/ShowcaseSection");
+const Category = require("../../models/Category");
 const { ROLES } = require("../../constants");
 const {
   SHOWCASE_COVER_IMAGE_MODE,
@@ -51,7 +59,11 @@ const {
 const { updateBrand } = require("../../services/brands");
 const { updateSubBrand } = require("../../services/subBrands");
 const { updateSection } = require("../../services/showcases");
-const { uploadUrl, deleteAsset } = require("../../services/storage");
+const {
+  updateCategoryById,
+  deleteCategoryById,
+} = require("../../services/categories");
+const { uploadFromPath, deleteAsset } = require("../../services/storage");
 
 const { AUTO, MANUAL } = SHOWCASE_COVER_IMAGE_MODE;
 const oid = () => new mongoose.Types.ObjectId();
@@ -101,7 +113,7 @@ beforeAll(connectTestDb);
 afterAll(disconnectTestDb);
 
 beforeEach(async () => {
-  await clearCollections(Brand, SubBrand, User, ShowcaseSection);
+  await clearCollections(Brand, SubBrand, User, ShowcaseSection, Category);
   jest.clearAllMocks();
   OWNER = (await seedOwner())._id;
   BRAND = await seedBrand(OWNER);
@@ -121,7 +133,7 @@ describe("brand logo and cover", () => {
     expect(saved.coverImage).toBeTruthy();
     // 🔴 The whole point: two pictures, two fields, not one overwriting the other.
     expect(saved.coverImage).not.toBe(saved.logo);
-    expect(uploadUrl).toHaveBeenCalledTimes(2);
+    expect(uploadFromPath).toHaveBeenCalledTimes(2);
   });
 
   test("each goes up under its own purpose", async () => {
@@ -132,10 +144,10 @@ describe("brand logo and cover", () => {
       vendorActor(OWNER),
     );
 
-    const purposes = uploadUrl.mock.calls.map((c) => c[0].purpose);
+    const purposes = uploadFromPath.mock.calls.map((c) => c[0].purpose);
     expect(purposes).toEqual(["BRAND_LOGO", "BRAND_COVER"]);
     // The key carries the brand id, so an object can be traced back to its row.
-    for (const call of uploadUrl.mock.calls) {
+    for (const call of uploadFromPath.mock.calls) {
       expect(String(call[0].entityId)).toBe(String(BRAND._id));
     }
   });
@@ -150,7 +162,7 @@ describe("brand logo and cover", () => {
     const saved = await Brand.findById(BRAND._id);
     expect(saved.logo).toBe(afterLogo);
     expect(saved.coverImage).toBeTruthy();
-    expect(uploadUrl).toHaveBeenCalledTimes(1);
+    expect(uploadFromPath).toHaveBeenCalledTimes(1);
   });
 
   test("replacing one deletes the picture it replaced, and only that", async () => {
@@ -166,7 +178,9 @@ describe("brand logo and cover", () => {
     await updateBrand(BRAND._id, {}, { coverImage: image() }, vendorActor(OWNER));
 
     expect(deleteAsset).toHaveBeenCalledTimes(1);
-    expect(deleteAsset).toHaveBeenCalledWith({ url: first.coverImage });
+    expect(deleteAsset).toHaveBeenCalledWith(
+      expect.objectContaining({ url: first.coverImage }),
+    );
     // The logo was not touched, so it must survive.
     expect((await Brand.findById(BRAND._id)).logo).toBe(first.logo);
   });
@@ -188,7 +202,7 @@ describe("brand logo and cover", () => {
 
     // Refused before the session opens: a file this endpoint will never accept
     // should not cost a transaction, and the message must name the file.
-    expect(uploadUrl).not.toHaveBeenCalled();
+    expect(uploadFromPath).not.toHaveBeenCalled();
   });
 
   test("a bare file still means the logo, as it always did", async () => {
@@ -199,6 +213,79 @@ describe("brand logo and cover", () => {
     const saved = await Brand.findById(BRAND._id);
     expect(saved.logo).toBeTruthy();
     expect(saved.coverImage).toBeFalsy();
+  });
+});
+
+/**
+ * Phase 3's actual claim: the server now knows where every picture lives, and
+ * **nothing a client can see has changed**.
+ */
+describe("the storage sibling", () => {
+  test("🔴 the response shape is unchanged — url stays a string", async () => {
+    await updateBrand(
+      BRAND._id,
+      {},
+      { logo: image(), coverImage: image() },
+      vendorActor(OWNER),
+    );
+
+    const saved = await Brand.findById(BRAND._id);
+    // The obvious shape would have been `logo: { url, storage }`, and that is a
+    // breaking change for every client reading `brand.logo` as a string.
+    expect(typeof saved.logo).toBe("string");
+    expect(typeof saved.coverImage).toBe("string");
+  });
+
+  test("each picture's provider and key are stored beside it", async () => {
+    await updateBrand(
+      BRAND._id,
+      {},
+      { logo: image(), coverImage: image() },
+      vendorActor(OWNER),
+    );
+
+    const saved = await Brand.findById(BRAND._id);
+    expect(saved.logoStorage.provider).toBe("S3");
+    expect(saved.logoStorage.key).toBeTruthy();
+    expect(saved.coverImageStorage.key).not.toBe(saved.logoStorage.key);
+  });
+
+  test("🔴 a replace deletes by the OLD storage, not the new one", async () => {
+    await updateBrand(BRAND._id, {}, { logo: image() }, vendorActor(OWNER));
+    const first = await Brand.findById(BRAND._id);
+
+    jest.clearAllMocks();
+    await updateBrand(BRAND._id, {}, { logo: image() }, vendorActor(OWNER));
+
+    // Capturing the pair after the overwrite would delete the file that was
+    // just uploaded and leave the old one behind — the exact inverse.
+    expect(deleteAsset).toHaveBeenCalledTimes(1);
+    const [asset] = deleteAsset.mock.calls[0];
+    expect(asset.url).toBe(first.logo);
+    expect(asset.storage.key).toBe(first.logoStorage.key);
+  });
+
+  test("⚠️ absent, not `{}`, on a row that never had a picture", async () => {
+    // A Mongoose sub-document without `default: undefined` materialises as `{}`
+    // on every document, and `{}` reads as `provider: undefined` — which the
+    // facade refuses with "Unknown storage provider". Absent means "written
+    // before this existed, fall back to the URL".
+    const saved = await Brand.findById(BRAND._id);
+    expect(saved.logoStorage).toBeUndefined();
+    expect(saved.coverImageStorage).toBeUndefined();
+  });
+
+  test("a legacy row with a URL and no storage still deletes", async () => {
+    await Brand.updateOne(
+      { _id: BRAND._id },
+      { $set: { logo: "https://res.cloudinary.com/x/image/upload/v1/old.png" } },
+    );
+
+    await updateBrand(BRAND._id, {}, { logo: image() }, vendorActor(OWNER));
+
+    const [asset] = deleteAsset.mock.calls[0];
+    expect(asset.url).toContain("old.png");
+    expect(asset.storage).toBeUndefined();
   });
 });
 
@@ -231,8 +318,13 @@ describe("outlet logo and cover", () => {
     expect(saved.coverImage).toBeTruthy();
     expect(saved.coverImage).not.toBe(saved.logo);
 
-    const purposes = uploadUrl.mock.calls.map((c) => c[0].purpose);
+    const purposes = uploadFromPath.mock.calls.map((c) => c[0].purpose);
     expect(purposes).toEqual(["SUB_BRAND_LOGO", "SUB_BRAND_COVER"]);
+
+    // Each picture's provider and key land beside it, on their own field.
+    expect(saved.logoStorage.key).toBeTruthy();
+    expect(saved.coverImageStorage.key).toBeTruthy();
+    expect(saved.coverImageStorage.key).not.toBe(saved.logoStorage.key);
   });
 
   test("replacing one deletes what it replaced", async () => {
@@ -251,7 +343,9 @@ describe("outlet logo and cover", () => {
       { logo: image() },
     );
 
-    expect(deleteAsset).toHaveBeenCalledWith({ url: first.logo });
+    const [asset] = deleteAsset.mock.calls[0];
+    expect(asset.url).toBe(first.logo);
+    expect(asset.storage.key).toBe(first.logoStorage.key);
   });
 
   test("🔴 a vendor cannot put a picture on another brand's outlet", async () => {
@@ -267,7 +361,7 @@ describe("outlet logo and cover", () => {
       ),
     ).rejects.toMatchObject({ statusCode: 403 });
 
-    expect(uploadUrl).not.toHaveBeenCalled();
+    expect(uploadFromPath).not.toHaveBeenCalled();
   });
 
   test("an admin may, on anybody's outlet", async () => {
@@ -293,7 +387,65 @@ describe("outlet logo and cover", () => {
       ),
     ).rejects.toMatchObject({ statusCode: 422 });
 
-    expect(uploadUrl).not.toHaveBeenCalled();
+    expect(uploadFromPath).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Categories are where the shared-placeholder problem lives.
+ *
+ * `Category.image` **defaults** to one URL that every picture-less category
+ * carries, so a delete that trusted the URL alone could blank the tile on all
+ * of them at once. The sibling makes "ours" and "the shared default" two
+ * different things rather than two similar strings.
+ */
+describe("category image", () => {
+  const seedCategory = (overrides = {}) =>
+    Category.create({ name: `cat-${Date.now()}-${Math.random()}`, ...overrides });
+
+  test("an upload writes the url and its storage", async () => {
+    const category = await seedCategory();
+
+    await updateCategoryById(category._id, null, image());
+
+    const saved = await Category.findById(category._id);
+    expect(typeof saved.image).toBe("string");
+    expect(saved.imageStorage.key).toBeTruthy();
+  });
+
+  test("🔴 replacing deletes by the stored sibling, not the URL alone", async () => {
+    const category = await seedCategory();
+    await updateCategoryById(category._id, null, image());
+    const first = await Category.findById(category._id);
+
+    jest.clearAllMocks();
+    await updateCategoryById(category._id, null, image());
+
+    const [asset] = deleteAsset.mock.calls[0];
+    expect(asset.url).toBe(first.image);
+    expect(asset.storage.key).toBe(first.imageStorage.key);
+  });
+
+  test("🔴 deleting a category passes the sibling too", async () => {
+    const category = await seedCategory();
+    await updateCategoryById(category._id, null, image());
+    const saved = await Category.findById(category._id);
+
+    jest.clearAllMocks();
+    await deleteCategoryById(category._id);
+
+    const [asset] = deleteAsset.mock.calls[0];
+    expect(asset.storage.key).toBe(saved.imageStorage.key);
+  });
+
+  test("⚠️ a category that never had a picture carries the shared default and no storage", async () => {
+    const category = await seedCategory();
+    const saved = await Category.findById(category._id);
+
+    // The URL is real — it is the placeholder every such category shares — but
+    // there is no storage, because we did not put it there.
+    expect(saved.image).toBeTruthy();
+    expect(saved.imageStorage).toBeUndefined();
   });
 });
 

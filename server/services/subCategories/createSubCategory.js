@@ -27,11 +27,11 @@ exports.createSubCategory = async (categoryId, payload, image) => {
   // Minted here because the object key carries it and the upload comes first.
   const _id = new mongoose.Types.ObjectId();
 
-  let imageUrl;
+  let uploaded = null;
   assertImageFile(image, "Subcategory image");
 
   if (image) {
-    imageUrl = await storage.uploadUrl({
+    uploaded = await storage.uploadFromPath({
       filePath: image.tempFilePath,
       originalFile: image,
       purpose: UPLOAD_PURPOSE.SUBCATEGORY_IMAGE,
@@ -44,7 +44,8 @@ exports.createSubCategory = async (categoryId, payload, image) => {
     name,
     description,
     categoryId,
-    image: imageUrl,
+    image: uploaded?.url,
+    imageStorage: uploaded?.storage,
     isActive,
   });
   return newSubCategory;

@@ -71,14 +71,18 @@ exports.updateUserById = async (userId, payload, image) => {
     // ⚠️ Upload first, delete second. The old order removed the customer's
     // existing photo before the new one had landed, so a failed upload left the
     // profile with a dead URL and no way back.
-    const previous = user.image;
-    user.image = await storage.uploadUrl({
+    // ⚠️ The whole previous pair, captured before it is overwritten — the
+    // delete needs the OLD storage, not the new one.
+    const previous = { url: user.image, storage: user.imageStorage };
+    const uploaded = await storage.uploadFromPath({
       filePath: image.tempFilePath,
       originalFile: image,
       purpose: UPLOAD_PURPOSE.USER_AVATAR,
       entityId: user._id,
     });
-    if (previous) await storage.deleteAsset({ url: previous });
+    user.image = uploaded.url;
+    user.imageStorage = uploaded.storage;
+    if (previous.url) await storage.deleteAsset(previous);
   }
   user.isSignUpCompleted = true;
 

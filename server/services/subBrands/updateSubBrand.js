@@ -37,12 +37,14 @@ const IMAGE_SLOTS = Object.freeze([
   {
     file: "logo",
     field: "logo",
+    storageField: "logoStorage",
     label: "Logo",
     purpose: UPLOAD_PURPOSE.SUB_BRAND_LOGO,
   },
   {
     file: "coverImage",
     field: "coverImage",
+    storageField: "coverImageStorage",
     label: "Cover image",
     purpose: UPLOAD_PURPOSE.SUB_BRAND_COVER,
   },
@@ -163,17 +165,21 @@ exports.updateSubBrand = async (actor, payload, files = null) => {
     const file = uploads[slot.file];
     if (!file) continue;
 
-    const uploaded = await storage.uploadUrl({
+    const uploaded = await storage.uploadFromPath({
       filePath: file.tempFilePath,
       originalFile: file,
       purpose: slot.purpose,
       entityId: subBrand._id,
     });
     replaced.set(slot.field, {
-      previous: subBrand[slot.field] || null,
+      previous: {
+        url: subBrand[slot.field] || null,
+        storage: subBrand[slot.storageField],
+      },
       uploaded,
     });
-    subBrand[slot.field] = uploaded;
+    subBrand[slot.field] = uploaded.url;
+    subBrand[slot.storageField] = uploaded.storage;
   }
 
   try {
@@ -184,7 +190,7 @@ exports.updateSubBrand = async (actor, payload, files = null) => {
     // …and the pictures, which the row never ended up pointing at.
     for (const [field, { uploaded }] of replaced) {
       try {
-        await storage.deleteAsset({ url: uploaded });
+        await storage.deleteAsset(uploaded);
       } catch (deleteError) {
         console.error(`Failed to cleanup uploaded outlet ${field}:`, deleteError);
       }
@@ -194,9 +200,9 @@ exports.updateSubBrand = async (actor, payload, files = null) => {
 
   // Saved. The ones they replaced can go — best effort, an orphan is a log line.
   for (const [field, { previous }] of replaced) {
-    if (!previous) continue;
+    if (!previous.url) continue;
     try {
-      await storage.deleteAsset({ url: previous });
+      await storage.deleteAsset(previous);
     } catch (deleteError) {
       console.error(`Failed to delete old outlet ${field}:`, deleteError);
     }

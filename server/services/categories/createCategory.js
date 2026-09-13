@@ -21,11 +21,11 @@ exports.createCategory = async (payload, image) => {
   // this is the same value `create` would have produced.
   const _id = new mongoose.Types.ObjectId();
 
-  let imageUrl;
+  let uploaded = null;
   assertImageFile(image, "Category image");
 
   if (image) {
-    imageUrl = await storage.uploadUrl({
+    uploaded = await storage.uploadFromPath({
       filePath: image.tempFilePath,
       originalFile: image,
       purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
@@ -37,7 +37,8 @@ exports.createCategory = async (payload, image) => {
     _id,
     name,
     description,
-    image: imageUrl,
+    image: uploaded?.url,
+    imageStorage: uploaded?.storage,
     isActive,
   });
 };

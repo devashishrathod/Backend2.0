@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { storageSchema } = require("./storageSchema");
 const { OUTLET_TYPES } = require("../constants");
 const { isValidateStoreId } = require("../validator/common");
 const { emailField, mobileField, whatsappField } = require("./contactFields");
@@ -90,7 +91,12 @@ const subBrandSchema = new mongoose.Schema(
     },
     geo: { type: geoPointSchema, default: undefined },
     logo: { type: String },
+    // Sibling of the field above — provider + key, so a delete does not have
+    // to infer where the bytes are from the URL. Absent on rows written
+    // before this existed; `deleteAsset` falls back to the URL for those.
+    logoStorage: { type: storageSchema, default: undefined },
     coverImage: { type: String },
+    coverImageStorage: { type: storageSchema, default: undefined },
     description: { type: String },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },

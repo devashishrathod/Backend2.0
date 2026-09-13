@@ -6,6 +6,7 @@ const {
   SHOWCASE_COVER_IMAGE_MODE,
 } = require("../constants/showcase");
 const { STORAGE_PROVIDER } = require("../constants/storage");
+const { storageSchema } = require("./storageSchema");
 
 // ---------------------------------------------------------------------------
 // A brand's photo / video gallery, one document per section (album).
@@ -21,28 +22,6 @@ const { STORAGE_PROVIDER } = require("../constants/storage");
 // vendor or admin sees everything that is not deleted so they can toggle it
 // back on. Only the customer-facing services narrow further.
 // ---------------------------------------------------------------------------
-
-/**
- * Where a separately uploaded poster lives.
- *
- * ⚠️ `default: undefined` so the field is **absent** unless it was written.
- * Its presence is the whole signal — see `isCustomThumbnail`. A Mongoose nested
- * object without this materialises as `{}` on every document, which would make
- * "did the vendor upload this?" true for everything.
- */
-const thumbnailStorageSchema = new mongoose.Schema(
-  {
-    provider: {
-      type: String,
-      enum: Object.values(STORAGE_PROVIDER),
-      required: true,
-    },
-    publicId: { type: String },
-    bucket: { type: String },
-    key: { type: String },
-  },
-  { _id: false },
-);
 
 const mediaSchema = new mongoose.Schema(
   {
@@ -65,7 +44,7 @@ const mediaSchema = new mongoose.Schema(
      * null there, the comparison is skipped, and an auto poster reads as custom.
      * A field that is either there or not has no such gap.
      */
-    thumbnailStorage: { type: thumbnailStorageSchema, default: undefined },
+    thumbnailStorage: { type: storageSchema, default: undefined },
     storage: {
       provider: {
         type: String,
