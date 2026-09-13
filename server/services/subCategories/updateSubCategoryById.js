@@ -1,7 +1,8 @@
 const SubCategory = require("../../models/SubCategory");
 const Category = require("../../models/Category");
 const { throwError, validateObjectId } = require("../../utils");
-const { uploadImage, deleteImage } = require("../uploads");
+const storage = require("../storage");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
 exports.updateSubCategoryById = async (id, payload, image) => {
   validateObjectId(id, "SubCategory Id");
@@ -56,9 +57,16 @@ exports.updateSubCategoryById = async (id, payload, image) => {
     if (description) subcategory.description = description?.toLowerCase() || "";
   }
   if (image) {
-    if (subcategory.image) await deleteImage(subcategory.image);
-    const imageUrl = await uploadImage(image.tempFilePath);
-    subcategory.image = imageUrl;
+    // ⚠️ Upload first, delete second — see `updateCategoryById`. The old order
+    // destroyed the existing image before the replacement had arrived.
+    const previous = subcategory.image;
+    subcategory.image = await storage.uploadUrl({
+      filePath: image.tempFilePath,
+      originalFile: image,
+      purpose: UPLOAD_PURPOSE.SUBCATEGORY_IMAGE,
+      entityId: subcategory._id,
+    });
+    if (previous) await storage.deleteAsset({ url: previous });
   }
   subcategory.updatedAt = new Date();
   await subcategory.save();

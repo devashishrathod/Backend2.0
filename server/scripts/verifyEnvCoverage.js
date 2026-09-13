@@ -63,15 +63,25 @@ const DECLARED_UNUSED = Object.freeze({
   S3_BUCKET_ADMIN: "replaced by a public/private split in the S3 plan",
   S3_BUCKET_CUSTOMER: "replaced by a public/private split in the S3 plan",
   S3_BUCKET_VENDOR: "replaced by a public/private split in the S3 plan",
-  AWS_REGION: "for the S3 migration",
 });
 
 // `DEFAULT_PASSWORD` and `NODE_ENV` used to sit in the list above. Both are
 // read — the first by the seed scripts, the second by the log-format choice —
 // and their own notes said so while the list claimed they were unread.
 
-/** Read by code, and deliberately not in the schema. Empty for now. */
-const UNVALIDATED = Object.freeze({});
+/**
+ * Read by code, and deliberately **not** in the schema.
+ *
+ * These belong to somebody else's contract. The AWS SDK resolves its own
+ * credentials from the environment, and on EC2 there are no keys at all — the
+ * instance role answers instead. Putting them in the schema would either
+ * require them (breaking the correct production setup) or declare them and
+ * change nothing; either way it would imply we own a name we do not.
+ */
+const UNVALIDATED = Object.freeze({
+  AWS_ACCESS_KEY_ID: "the AWS SDK's own credential chain reads this, not us",
+  AWS_SECRET_ACCESS_KEY: "the AWS SDK's own credential chain reads this, not us",
+});
 
 const isDynamic = (key) => DYNAMIC_PREFIXES.some((p) => key.startsWith(p));
 

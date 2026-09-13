@@ -1,9 +1,7 @@
 const { throwError } = require("../../utils");
-const {
-  SHOWCASE_MEDIA_TYPE,
-  STORAGE_PROVIDER,
-} = require("../../constants/showcase");
-const { uploadImage } = require("../uploads");
+const { SHOWCASE_MEDIA_TYPE } = require("../../constants/showcase");
+const storage = require("../storage");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const { getShowcaseConfig } = require("../../helpers/settings");
 const {
   resolveSectionForActor,
@@ -86,8 +84,19 @@ exports.updateSectionMedia = async (actor, payload, thumbnailFile) => {
     // Not swallowed any more. The upload failure used to be logged and the
     // request answered `200`, so the vendor was told their new poster had been
     // saved while the old one was still live.
-    uploadedThumbnail = await uploadImage(thumbnailFile.tempFilePath);
-    media.thumbnail = uploadedThumbnail;
+    //
+    // ⚠️ The whole upload result is kept, not just its URL. `thumbnailStorage`
+    // is what marks this poster as one the vendor uploaded — without it,
+    // `isCustomThumbnail` has to guess from the URL, which is exactly the check
+    // that cannot work on S3.
+    uploadedThumbnail = await storage.uploadFromPath({
+      filePath: thumbnailFile.tempFilePath,
+      originalFile: thumbnailFile,
+      purpose: UPLOAD_PURPOSE.SHOWCASE_THUMBNAIL,
+      entityId: section._id,
+    });
+    media.thumbnail = uploadedThumbnail.url;
+    media.thumbnailStorage = uploadedThumbnail.storage;
   }
 
   // The cover follows the first visible media, so switching one off or changing
@@ -97,16 +106,9 @@ exports.updateSectionMedia = async (actor, payload, thumbnailFile) => {
   try {
     await section.save();
   } catch (error) {
-    if (uploadedThumbnail) {
-      await rollbackUploads([
-        {
-          type: SHOWCASE_MEDIA_TYPE.PHOTO,
-          url: uploadedThumbnail,
-          // `deleteMedia` dispatches on the provider, so it has to be named.
-          storage: { provider: STORAGE_PROVIDER.CLOUDINARY },
-        },
-      ]);
-    }
+    // The upload result already carries its own `storage`, so the provider
+    // comes from the upload rather than being asserted here.
+    if (uploadedThumbnail) await rollbackUploads([uploadedThumbnail]);
     throw error;
   }
 

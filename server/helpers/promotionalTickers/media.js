@@ -1,13 +1,12 @@
-const {
-  uploadImageWithMetadata,
-  deleteImage,
-} = require("../../services/uploads");
+const storage = require("../../services/storage");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const {
   TICKER_ICON_ALLOWED_MIME_TYPES,
 } = require("../../constants/promotionalTicker");
 const { throwError } = require("../../utils");
 
-exports.uploadTickerIcon = async (file) => {
+/** @param tickerId  goes into the object key. */
+exports.uploadTickerIcon = async (file, tickerId) => {
   if (!file) throwError(422, "Please upload an icon image.");
 
   if (!TICKER_ICON_ALLOWED_MIME_TYPES.includes(file.mimetype)) {
@@ -17,14 +16,20 @@ exports.uploadTickerIcon = async (file) => {
     );
   }
 
-  const media = await uploadImageWithMetadata(file.tempFilePath, file);
+  const media = await storage.uploadFromPath({
+    filePath: file.tempFilePath,
+    originalFile: file,
+    purpose: UPLOAD_PURPOSE.TICKER_ICON,
+    entityId: tickerId,
+  });
   return { url: media.url, storage: media.storage };
 };
 
+/** ⚠️ By stored `storage`, not by URL — see `services/storage`. */
 exports.deleteTickerIcon = async (icon) => {
   try {
     if (!icon?.url) return;
-    await deleteImage(icon.url);
+    await storage.deleteAsset({ url: icon.url, storage: icon.storage });
   } catch (error) {
     console.error("Failed to delete ticker icon:", error.message);
   }

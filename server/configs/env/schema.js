@@ -120,8 +120,40 @@ const schema = Joi.object({
    */
   CLOUDINARY_URL: optionalText,
 
-  // ── AWS S3 — the migration target, not wired up yet ──────────────────────
+  // ── Media provider ───────────────────────────────────────────────────────
+  /**
+   * Which provider **new** uploads go to.
+   *
+   * ⚠️ Only new ones. Deleting an existing asset follows that row's own
+   * `storage.provider`, never this — otherwise flipping the switch would strand
+   * every file uploaded before it.
+   */
+  MEDIA_PROVIDER: Joi.string()
+    .uppercase()
+    .valid("CLOUDINARY", "S3")
+    .default("CLOUDINARY"),
+
+  // ── AWS S3 ───────────────────────────────────────────────────────────────
   AWS_REGION: optionalText,
+  /**
+   * ⚠️ Credentials are deliberately **absent** from this schema.
+   *
+   * `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` are read by the SDK's own
+   * credential chain, not by us. On Render they come from the environment; on
+   * EC2 there are no keys at all and the SDK reads the instance role. Requiring
+   * them here would make the correct production setup — no keys — fail to boot.
+   * See `docs/aws_s3_setup.md` §6.
+   */
+  S3_BUCKET_PUBLIC: optionalText,
+  /** 🔴 Documents only. Block Public Access on, presigned GET only. */
+  S3_BUCKET_PRIVATE: optionalText,
+  /**
+   * Key prefix for this tier: `dev/`, `staging/`, empty in production. It is
+   * what lets development and staging share one bucket without sharing objects.
+   */
+  S3_PREFIX: Joi.string().allow("").default(""),
+  /** CloudFront in front of the public bucket. Falls back to the S3 URL. */
+  CDN_BASE_URL: Joi.string().uri().optional(),
   /**
    * ⚠️ Nothing reads these three, and the plan replaces them: media is split
    * public/private, not by role — an outlet video is uploaded by a vendor and

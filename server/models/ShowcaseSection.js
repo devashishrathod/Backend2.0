@@ -4,8 +4,8 @@ const {
   SHOWCASE_MEDIA_TYPE,
   SHOWCASE_SECTION_TYPE,
   SHOWCASE_COVER_IMAGE_MODE,
-  STORAGE_PROVIDER,
 } = require("../constants/showcase");
+const { STORAGE_PROVIDER } = require("../constants/storage");
 
 // ---------------------------------------------------------------------------
 // A brand's photo / video gallery, one document per section (album).
@@ -22,6 +22,28 @@ const {
 // back on. Only the customer-facing services narrow further.
 // ---------------------------------------------------------------------------
 
+/**
+ * Where a separately uploaded poster lives.
+ *
+ * ⚠️ `default: undefined` so the field is **absent** unless it was written.
+ * Its presence is the whole signal — see `isCustomThumbnail`. A Mongoose nested
+ * object without this materialises as `{}` on every document, which would make
+ * "did the vendor upload this?" true for everything.
+ */
+const thumbnailStorageSchema = new mongoose.Schema(
+  {
+    provider: {
+      type: String,
+      enum: Object.values(STORAGE_PROVIDER),
+      required: true,
+    },
+    publicId: { type: String },
+    bucket: { type: String },
+    key: { type: String },
+  },
+  { _id: false },
+);
+
 const mediaSchema = new mongoose.Schema(
   {
     type: {
@@ -33,6 +55,17 @@ const mediaSchema = new mongoose.Schema(
     // For a PHOTO this is the optimised delivery URL (same asset as `url`);
     // for a VIDEO it is the poster frame. Covers always prefer this field.
     thumbnail: { type: String },
+    /**
+     * Set **only** when the vendor uploaded the poster themselves.
+     *
+     * A photo's thumbnail is its own delivery URL, and a video's default poster
+     * is derived from the video — deleting either takes the media down with it.
+     * Telling those apart used to mean comparing URL strings against a
+     * Cloudinary transformation, which has no equivalent on S3: `publicId` is
+     * null there, the comparison is skipped, and an auto poster reads as custom.
+     * A field that is either there or not has no such gap.
+     */
+    thumbnailStorage: { type: thumbnailStorageSchema, default: undefined },
     storage: {
       provider: {
         type: String,

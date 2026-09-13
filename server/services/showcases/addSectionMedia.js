@@ -42,7 +42,7 @@ exports.addSectionMedia = async (actor, payload, files) => {
 
   let uploaded = [];
   try {
-    uploaded = await uploadMultipleMedia(uploadedFiles);
+    uploaded = await uploadMultipleMedia(uploadedFiles, section._id);
     const startSortOrder = getNextMediaSortOrder(section.medias);
     const medias = prepareMediaDocuments(
       uploaded,

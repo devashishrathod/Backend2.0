@@ -2,7 +2,8 @@ const { ROLES } = require("../../constants");
 const Customer = require("../../models/Customer");
 const User = require("../../models/User");
 const { throwError } = require("../../utils");
-const { uploadImage, deleteImage } = require("../uploads");
+const storage = require("../storage");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const { applyIdentityChange } = require("../../helpers/users");
 // const { isAdult } = require("../../helpers/users");
 
@@ -64,9 +65,17 @@ exports.updateUserById = async (userId, payload, image) => {
      */
   }
   if (image) {
-    if (user.image) await deleteImage(user.image);
-    const imageUrl = await uploadImage(image.tempFilePath);
-    user.image = imageUrl;
+    // ⚠️ Upload first, delete second. The old order removed the customer's
+    // existing photo before the new one had landed, so a failed upload left the
+    // profile with a dead URL and no way back.
+    const previous = user.image;
+    user.image = await storage.uploadUrl({
+      filePath: image.tempFilePath,
+      originalFile: image,
+      purpose: UPLOAD_PURPOSE.USER_AVATAR,
+      entityId: user._id,
+    });
+    if (previous) await storage.deleteAsset({ url: previous });
   }
   user.isSignUpCompleted = true;
 

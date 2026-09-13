@@ -43,6 +43,30 @@ exports.uploadFile = async (filePath, options = {}) => {
   }
 };
 
+/**
+ * Delete by public id — what every row written since `storage` was added has.
+ *
+ * ⚠️ `deleteFile` below can only work backwards from a URL, and it gives up
+ * silently on anything that does not look like a Cloudinary URL. That made
+ * sense when Cloudinary was the only provider; with two providers a URL is no
+ * longer proof of where the bytes are. Callers that hold a `storage` object
+ * should come here instead, where the id is the id and there is nothing to
+ * guess.
+ */
+exports.destroyPublicId = async (publicId, resourceType = "image") => {
+  if (!publicId) return false;
+  try {
+    const result = await cloudinary.uploader.destroy(publicId, {
+      resource_type: resourceType,
+    });
+    // "not found" counts: the object is gone, which is what was asked for.
+    return ["ok", "not found"].includes(result.result);
+  } catch (err) {
+    console.error("Cloudinary Delete Error:", err);
+    throwError(500, err.message || "Cloudinary delete failed.");
+  }
+};
+
 exports.getOptimizedImageUrl = (publicId) => {
   return cloudinary.url(publicId, {
     fetch_format: "auto",

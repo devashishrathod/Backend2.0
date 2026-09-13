@@ -1,7 +1,7 @@
 const BrandFeatures = require("../../models/BrandFeatures");
 const { resolveActorBrand } = require("../../helpers/brands");
 const { throwError } = require("../../utils");
-const { deleteImage } = require("../uploads");
+const storage = require("../storage");
 
 /**
  * @param {{ userId: string, role: string, brandId?: string }} actor
@@ -25,7 +25,7 @@ exports.deleteBrandFeature = async (actor, featureId) => {
   await feature.save();
   if (feature.icon) {
     try {
-      await deleteImage(feature.icon);
+      await storage.deleteAsset({ url: feature.icon });
     } catch (error) {
       console.error("Failed to delete feature icon:", error);
     }

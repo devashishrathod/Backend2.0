@@ -5,7 +5,8 @@ const SubCategory = require("../../models/SubCategory");
 const { SCREENS } = require("../../constants");
 const { DUPLICATE_KEY } = require("../../constants/mongo");
 const { throwError } = require("../../utils");
-const { uploadImage, deleteImage } = require("../uploads");
+const storage = require("../storage");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const {
   applyIdentityChange,
   assertCanWriteIdentity,
@@ -156,7 +157,12 @@ exports.updateBrand = async (brandId, payload = {}, logo = null, actor = null) =
       }
       if (logo) {
         oldLogo = brand.logo || null;
-        uploadedLogo = await uploadImage(logo.tempFilePath);
+        uploadedLogo = await storage.uploadUrl({
+          filePath: logo.tempFilePath,
+          originalFile: logo,
+          purpose: UPLOAD_PURPOSE.BRAND_LOGO,
+          entityId: brand._id,
+        });
         brand.logo = uploadedLogo;
       }
       brand.updatedAt = new Date();
@@ -166,7 +172,7 @@ exports.updateBrand = async (brandId, payload = {}, logo = null, actor = null) =
 
     if (uploadedLogo && oldLogo) {
       try {
-        await deleteImage(oldLogo);
+        await storage.deleteAsset({ url: oldLogo });
       } catch (deleteError) {
         console.error("Failed to delete old brand logo:", deleteError);
       }
@@ -175,7 +181,7 @@ exports.updateBrand = async (brandId, payload = {}, logo = null, actor = null) =
   } catch (error) {
     if (uploadedLogo) {
       try {
-        await deleteImage(uploadedLogo);
+        await storage.deleteAsset({ url: uploadedLogo });
       } catch (deleteError) {
         console.error("Failed to cleanup uploaded brand logo:", deleteError);
       }

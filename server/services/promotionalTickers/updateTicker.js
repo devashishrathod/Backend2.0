@@ -10,7 +10,7 @@ exports.updateTicker = async (userId, id, payload, files) => {
   if (!ticker) throwError(404, "Promotional ticker not found.");
 
   let newIcon = null;
-  if (files?.icon) newIcon = await uploadTickerIcon(files.icon);
+  if (files?.icon) newIcon = await uploadTickerIcon(files.icon, ticker._id);
 
   const previousIcon = ticker.icon?.toObject
     ? ticker.icon.toObject()

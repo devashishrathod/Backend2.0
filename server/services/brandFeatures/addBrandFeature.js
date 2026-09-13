@@ -1,7 +1,10 @@
+const mongoose = require("mongoose");
+
 const BrandFeatures = require("../../models/BrandFeatures");
 const { resolveActorBrand } = require("../../helpers/brands");
 const { throwError } = require("../../utils");
-const { uploadImage } = require("../uploads");
+const storage = require("../storage");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
 /**
  * @param {{ userId: string, role: string, brandId?: string }} actor
@@ -34,14 +37,25 @@ exports.addBrandFeature = async (actor, payload, icon) => {
   }
 
   if (!icon) throwError(400, "Feature icon is required!");
+
+  // Minted up front: the icon's key carries the feature id, and the upload has
+  // to happen before the row exists.
+  const _id = new mongoose.Types.ObjectId();
+
   let iconUrl;
   try {
-    iconUrl = await uploadImage(icon.tempFilePath);
+    iconUrl = await storage.uploadUrl({
+      filePath: icon.tempFilePath,
+      originalFile: icon,
+      purpose: UPLOAD_PURPOSE.BRAND_FEATURE_ICON,
+      entityId: _id,
+    });
   } catch (error) {
     console.error("Error on uploading feature icon", error.message);
     throwError(500, "Failed to upload feature icon!");
   }
   return await BrandFeatures.create({
+    _id,
     brandId: brand._id,
     title,
     description,

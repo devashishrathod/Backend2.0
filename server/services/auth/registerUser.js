@@ -1,8 +1,11 @@
+const mongoose = require("mongoose");
+
 const User = require("../../models/User");
 const { throwError } = require("../../utils");
 const { ROLES, LOGIN_TYPES } = require("../../constants");
 const { DUPLICATE_KEY } = require("../../constants/mongo");
-const { uploadImage } = require("../../services/uploads");
+const storage = require("../../services/storage");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const {
   generateUniqueUserId,
   generateReferralCode,
@@ -32,9 +35,22 @@ exports.registerUser = async (body, image) => {
     user = await User.findOne({ username });
     if (user) throwError(400, "Username already taken");
   }
+  // The avatar's key carries the user id, and the upload happens before the
+  // insert — so the id is minted here. Mongo generates ids client-side anyway.
+  const _id = new mongoose.Types.ObjectId();
+
   let imageUrl;
-  if (image) imageUrl = await uploadImage(image.tempFilePath);
+  if (image) {
+    imageUrl = await storage.uploadUrl({
+      filePath: image.tempFilePath,
+      originalFile: image,
+      purpose: UPLOAD_PURPOSE.USER_AVATAR,
+      entityId: _id,
+    });
+  }
+
   const userData = {
+    _id,
     name,
     password,
     email,

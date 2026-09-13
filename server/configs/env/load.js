@@ -153,11 +153,32 @@ const assertProductionIsProduction = (env) => {
     }
   }
 
-  for (const key of ["S3_BUCKET_ADMIN", "S3_BUCKET_CUSTOMER", "S3_BUCKET_VENDOR"]) {
+  /**
+   * ⚠️ The live two are first. The legacy three below are checked too, but a
+   * new bucket variable that is not in this list is the failure this guard is
+   * for: production quietly writing into the shared non-prod bucket.
+   */
+  for (const key of [
+    "S3_BUCKET_PUBLIC",
+    "S3_BUCKET_PRIVATE",
+    "S3_BUCKET_ADMIN",
+    "S3_BUCKET_CUSTOMER",
+    "S3_BUCKET_VENDOR",
+  ]) {
     const value = env[key];
     if (value && !/prod/i.test(value)) {
       problems.push(`${key} is "${value}" — not a production bucket.`);
     }
+  }
+
+  /**
+   * Production writes to the root of its own bucket. A prefix here means this
+   * is pointed at the shared dev/staging layout by mistake.
+   */
+  if (env.S3_PREFIX) {
+    problems.push(
+      `S3_PREFIX is "${env.S3_PREFIX}" — production writes to the bucket root.`,
+    );
   }
 
   if (problems.length) {

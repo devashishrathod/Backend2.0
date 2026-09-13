@@ -31,6 +31,7 @@ const { logPaymentAccounts, assertMoneyIndexes } = require("./helpers/transactio
 const { throwError } = require("./utils");
 const allRoutes = require("./routes");
 const { getIP } = require("./configs/render");
+const { logS3Config } = require("./configs/s3");
 const { startJobs } = require("./jobs");
 const { assertReachableAdmins } = require("./helpers/notifications");
 
@@ -259,6 +260,11 @@ app.use(errorHandler);
     // and whether each one can verify a webhook at all. A missing webhook secret
     // is otherwise invisible until a payment is captured and never settles.
     logPaymentAccounts();
+    // And the same for storage: which buckets, and — the part that bites —
+    // whether the credentials came from the environment or from an instance
+    // role. Environment keys win over a role, so a forgotten key survives the
+    // move to EC2 and fails silently on the day it is revoked.
+    logS3Config();
     // Background sweeps (subscription + voucher expiry). Started after the
     // listener so a slow first run never delays the port binding, and never
     // allowed to take the process down. Disable with ENABLE_JOBS=false.

@@ -1,99 +1,51 @@
-const fs = require("fs");
-const {
-  uploadFile,
-  deleteFile,
-  getOptimizedImageUrl,
-} = require("../../helpers/cloudinary");
+const storage = require("../storage");
+const { MEDIA_KIND, UPLOAD_PURPOSE } = require("../../constants/storage");
 
-exports.uploadImage = async (imagePath) => {
-  const result = await uploadFile(imagePath, {
-    resource_type: "image",
-    folder: "Images",
-  });
-  return getOptimizedImageUrl(result.public_id);
-};
-
-exports.uploadAudio = async (audioPath) => {
-  const result = await uploadFile(audioPath, {
-    resource_type: "video",
-    folder: "Audio",
-  });
-  return result.secure_url;
-};
-
-exports.uploadVideo = async (videoPath) => {
-  const result = await uploadFile(videoPath, {
-    resource_type: "video",
-    folder: "Videos",
-  });
-  return result.secure_url;
-};
+/**
+ * What is left of the old upload surface.
+ *
+ * Everything else moved to `services/storage`, where the call site names a
+ * purpose and an entity id and the key comes out as
+ * `<type>/<entity>/<entityId>/<uuid>.<ext>`. These two stay because neither is
+ * ready for that yet:
+ *
+ *   `uploadPDF`   — documents move to the **private** bucket in Phase 4, with a
+ *                   key built from the document number rather than a uuid.
+ *                   Until that bucket exists they keep the Cloudinary folder
+ *                   they have always had.
+ *   `uploadAudio` — has no caller anywhere in the app, and is kept deliberately.
+ *                   No `audio/` prefix will exist until something calls it.
+ *
+ * Both go through `UPLOAD_PURPOSE.LEGACY`, which pins them to Cloudinary's
+ * historic `Documents` / `Audio` folders so nothing that already exists moves.
+ */
 
 exports.uploadPDF = async (pdfPath, fileName) => {
-  const result = await uploadFile(pdfPath, {
-    resource_type: "auto",
-    folder: "Documents",
-    public_id: fileName.replace(".pdf", ""),
+  const media = await storage.uploadFromPath({
+    filePath: pdfPath,
+    purpose: UPLOAD_PURPOSE.LEGACY,
+    kind: MEDIA_KIND.DOCUMENT,
+    originalFile: { name: fileName, mimetype: "application/pdf" },
+    // A document number, not a uuid — somebody looking for one invoice should
+    // be able to find it.
+    publicId: fileName.replace(/\.pdf$/i, ""),
   });
-  if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
-  // Was dumping the entire Cloudinary response. This now runs on every
-  // subscription payment, so it is trimmed to the one useful line.
-  console.log(`PDF uploaded: ${result.secure_url}`);
-  return result.secure_url;
+  // ⚠️ The temp file is **not** deleted here. `generateAndUploadDocument` owns
+  // it and unlinks in a `finally`, which also covers the throwing path — this
+  // one only ran on success, and doing it twice just raced its own caller.
+  console.log(`PDF uploaded: ${media.url}`);
+  return media.url;
 };
 
-exports.deleteImage = async (url) => deleteFile(url, "image");
-exports.deleteAudioOrVideo = async (url) => deleteFile(url, "video");
-exports.deletePDF = async (url) => deleteFile(url, "raw");
+exports.deletePDF = async (url) =>
+  storage.deleteAsset({ url, kind: MEDIA_KIND.DOCUMENT });
 
-exports.uploadImageWithMetadata = async (imagePath, originalFile) => {
-  const result = await uploadFile(imagePath, {
-    resource_type: "image",
-    folder: "Images",
+/** ⚠️ No caller. Kept on purpose — see the note above. */
+exports.uploadAudio = async (audioPath) => {
+  const media = await storage.uploadFromPath({
+    filePath: audioPath,
+    purpose: UPLOAD_PURPOSE.LEGACY,
+    kind: MEDIA_KIND.AUDIO,
   });
-  return {
-    url: getOptimizedImageUrl(result.public_id),
-    thumbnail: getOptimizedImageUrl(result.public_id),
-    storage: {
-      provider: "CLOUDINARY",
-      publicId: result.public_id,
-      bucket: null,
-      key: null,
-    },
-    metadata: {
-      originalName: originalFile.name,
-      mimeType: originalFile.mimetype,
-      format: result.format,
-      size: result.bytes,
-      width: result.width,
-      height: result.height,
-      duration: 0,
-    },
-  };
-};
-
-exports.uploadVideoWithMetadata = async (videoPath, originalFile) => {
-  const result = await uploadFile(videoPath, {
-    resource_type: "video",
-    folder: "Videos",
-  });
-  return {
-    url: result.secure_url,
-    thumbnail: getOptimizedImageUrl(result.public_id),
-    storage: {
-      provider: "CLOUDINARY",
-      publicId: result.public_id,
-      bucket: null,
-      key: null,
-    },
-    metadata: {
-      originalName: originalFile.name,
-      mimeType: originalFile.mimetype,
-      format: result.format,
-      size: result.bytes,
-      width: result.width,
-      height: result.height,
-      duration: result.duration || 0,
-    },
-  };
+  return media.url;
 };

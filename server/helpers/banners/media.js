@@ -1,17 +1,17 @@
+const storage = require("../../services/storage");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const {
-  uploadImageWithMetadata,
-  uploadVideoWithMetadata,
-  deleteImage,
-  deleteAudioOrVideo,
-} = require("../../services/uploads");
-const {
-  BANNER_TYPE,
   BANNER_MEDIA_FIELD,
   BANNER_ALLOWED_MIME_TYPES,
 } = require("../../constants/banner");
 const { throwError } = require("../../utils");
 
-exports.uploadBannerMedia = async (type, file) => {
+/**
+ * @param bannerId  goes into the object key, so the file can be traced back to
+ *                  the row it belongs to. On a create it is minted before the
+ *                  insert, because the upload happens first.
+ */
+exports.uploadBannerMedia = async (type, file, bannerId) => {
   const field = BANNER_MEDIA_FIELD[type];
   if (!file)
     throwError(422, `Please upload a ${field} file for this banner type.`);
@@ -24,23 +24,27 @@ exports.uploadBannerMedia = async (type, file) => {
     );
   }
 
-  if (type === BANNER_TYPE.VIDEO) {
-    const media = await uploadVideoWithMetadata(file.tempFilePath, file);
-    return { url: media.url, storage: media.storage };
-  }
-
-  const media = await uploadImageWithMetadata(file.tempFilePath, file);
+  // ⚠️ The kind comes from the file's mime type, not from `type`. A GIF banner
+  // arrives as `image/gif` and must land under `gifs/`, away from the resize
+  // Lambda that would flatten its animation.
+  const media = await storage.uploadFromPath({
+    filePath: file.tempFilePath,
+    originalFile: file,
+    purpose: UPLOAD_PURPOSE.BANNER_MEDIA,
+    entityId: bannerId,
+  });
   return { url: media.url, storage: media.storage };
 };
 
+/**
+ * ⚠️ Deletes through the stored `storage`, not the URL — the row has carried
+ * one since the field was added, and a URL is no longer proof of where the
+ * bytes are. `type` goes along so a GIF is not destroyed as a plain image.
+ */
 exports.deleteBannerMedia = async (type, media) => {
   try {
     if (!media?.url) return;
-    if (type === BANNER_TYPE.VIDEO) {
-      await deleteAudioOrVideo(media.url);
-    } else {
-      await deleteImage(media.url);
-    }
+    await storage.deleteAsset({ url: media.url, storage: media.storage, type });
   } catch (error) {
     console.error(`Failed to delete banner ${type} media:`, error.message);
   }

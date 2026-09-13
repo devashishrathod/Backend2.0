@@ -37,9 +37,9 @@
  * it either way.
  */
 
-jest.mock("../../services/uploads", () => ({
-  uploadImage: jest.fn(async () => "https://example.test/icons/uploaded.png"),
-  deleteImage: jest.fn(async () => true),
+jest.mock("../../services/storage", () => ({
+  uploadUrl: jest.fn(async () => "https://example.test/icons/uploaded.png"),
+  deleteAsset: jest.fn(async () => true),
 }));
 
 const mongoose = require("mongoose");
@@ -60,7 +60,7 @@ const {
   updateBrandFeature,
   deleteBrandFeature,
 } = require("../../services/brandFeatures");
-const { uploadImage, deleteImage } = require("../../services/uploads");
+const { uploadUrl, deleteAsset } = require("../../services/storage");
 
 const oid = () => new mongoose.Types.ObjectId();
 
@@ -144,7 +144,7 @@ describe("who may write a brand's features", () => {
       ),
     ).rejects.toMatchObject({ statusCode: 403 });
 
-    expect(uploadImage).not.toHaveBeenCalled();
+    expect(uploadUrl).not.toHaveBeenCalled();
   });
 
   it("lets the owner create on their own brand", async () => {
@@ -197,8 +197,8 @@ describe("who may write a brand's features", () => {
       ),
     ).rejects.toMatchObject({ statusCode: 403 });
 
-    expect(uploadImage).not.toHaveBeenCalled();
-    expect(deleteImage).not.toHaveBeenCalled();
+    expect(uploadUrl).not.toHaveBeenCalled();
+    expect(deleteAsset).not.toHaveBeenCalled();
     expect((await BrandFeatures.findById(feature._id)).icon).toBe(
       "https://example.test/icons/existing.png",
     );
@@ -214,7 +214,7 @@ describe("who may write a brand's features", () => {
       ),
     ).rejects.toMatchObject({ statusCode: 403 });
 
-    expect(deleteImage).not.toHaveBeenCalled();
+    expect(deleteAsset).not.toHaveBeenCalled();
     expect((await BrandFeatures.findById(feature._id)).isDeleted).toBe(false);
   });
 
@@ -229,9 +229,9 @@ describe("who may write a brand's features", () => {
     const removed = await BrandFeatures.findById(feature._id);
     expect(removed.isDeleted).toBe(true);
     expect(removed.isActive).toBe(false);
-    expect(deleteImage).toHaveBeenCalledWith(
-      "https://example.test/icons/existing.png",
-    );
+    expect(deleteAsset).toHaveBeenCalledWith({
+      url: "https://example.test/icons/existing.png",
+    });
   });
 });
 

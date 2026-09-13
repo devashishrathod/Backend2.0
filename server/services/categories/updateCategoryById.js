@@ -1,6 +1,7 @@
 const Category = require("../../models/Category");
 const { throwError, validateObjectId } = require("../../utils");
-const { uploadImage, deleteImage } = require("../uploads");
+const storage = require("../storage");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
 exports.updateCategoryById = async (id, payload = 0, image) => {
   validateObjectId(id, "Category Id");
@@ -22,9 +23,18 @@ exports.updateCategoryById = async (id, payload = 0, image) => {
     if (description) category.description = description?.toLowerCase() || "";
   }
   if (image) {
-    if (category.image) await deleteImage(category.image);
-    const imageUrl = await uploadImage(image.tempFilePath);
-    category.image = imageUrl;
+    // ⚠️ Upload first, delete second. It used to be the other way round, so a
+    // failed upload left the category with its old image already destroyed and
+    // nothing to replace it — a broken tile in the customer's category list,
+    // from a request that answered 500 and looked recoverable.
+    const previous = category.image;
+    category.image = await storage.uploadUrl({
+      filePath: image.tempFilePath,
+      originalFile: image,
+      purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
+      entityId: category._id,
+    });
+    if (previous) await storage.deleteAsset({ url: previous });
   }
   category.updatedAt = new Date();
   await category.save();

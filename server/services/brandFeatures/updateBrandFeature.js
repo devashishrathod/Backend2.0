@@ -1,7 +1,8 @@
 const BrandFeatures = require("../../models/BrandFeatures");
 const { resolveActorBrand } = require("../../helpers/brands");
 const { throwError } = require("../../utils");
-const { uploadImage, deleteImage } = require("../uploads");
+const storage = require("../storage");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
 /**
  * @param {{ userId: string, role: string, brandId?: string }} actor
@@ -63,12 +64,16 @@ exports.updateBrandFeature = async (actor, payload, icon) => {
 
   if (icon) {
     const oldIcon = feature.icon;
-    const newIcon = await uploadImage(icon.tempFilePath);
-    feature.icon = newIcon;
+    feature.icon = await storage.uploadUrl({
+      filePath: icon.tempFilePath,
+      originalFile: icon,
+      purpose: UPLOAD_PURPOSE.BRAND_FEATURE_ICON,
+      entityId: feature._id,
+    });
     await feature.save();
     if (oldIcon) {
       try {
-        await deleteImage(oldIcon);
+        await storage.deleteAsset({ url: oldIcon });
       } catch (error) {
         console.error("Failed to delete old feature icon:", error);
       }

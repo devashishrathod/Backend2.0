@@ -95,10 +95,24 @@ describe("createBanner — the file is required, and named by the type", () => {
   ])("%s looks for the `%s` file", async (type, field) => {
     await createBanner(USER, { title: "t", type }, { [field]: file() });
 
-    expect(uploadBannerMedia).toHaveBeenCalledWith(type, expect.any(Object));
+    const [calledType, calledFile, calledId] = uploadBannerMedia.mock.calls[0];
+    expect(calledType).toBe(type);
+    expect(calledFile).toEqual(expect.any(Object));
+
     expect(Banner.create).toHaveBeenCalledWith(
       expect.objectContaining({ [field]: UPLOADED, type }),
     );
+
+    /**
+     * ⚠️ The id the object key is built from has to be the id the row gets.
+     *
+     * The upload happens *before* the insert, so `createBanner` mints the id
+     * itself and passes it both ways. If those two ever drifted apart the file
+     * would sit under `banners/<some id>/` that no row points at — invisible to
+     * any cleanup sweep, and impossible to trace back.
+     */
+    const created = Banner.create.mock.calls[0][0];
+    expect(String(calledId)).toBe(String(created._id));
   });
 
   test("a VIDEO banner will not accept an image file", async () => {
@@ -209,7 +223,9 @@ describe("createTicker — same shape, same rollback", () => {
       statusCode: 422,
     });
 
-    expect(uploadTickerIcon).toHaveBeenCalledWith(undefined);
+    // The missing file is still the first argument; the second is the id the
+    // object key would have been built from, minted before the upload.
+    expect(uploadTickerIcon).toHaveBeenCalledWith(undefined, expect.anything());
     expect(PromotionalTicker.create).not.toHaveBeenCalled();
   });
 });

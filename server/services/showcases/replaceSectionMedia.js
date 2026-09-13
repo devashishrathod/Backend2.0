@@ -59,13 +59,18 @@ exports.replaceSectionMedia = async (actor, payload, file) => {
   let uploaded = null;
 
   try {
-    uploaded = await uploadSingleMedia(uploadedFiles[0]);
+    uploaded = await uploadSingleMedia(uploadedFiles[0], section._id);
 
     media.type = uploaded.type;
     media.url = uploaded.url;
     media.thumbnail = uploaded.thumbnail;
     media.storage = uploaded.storage;
     media.metadata = uploaded.metadata;
+    // ⚠️ The replacement's poster is auto-generated, so the "vendor uploaded
+    // this" marker has to go with the old file. Leaving it behind would point
+    // at a poster that `deleteCustomThumbnail` is about to delete below, and
+    // the next poster change would try to delete it a second time.
+    media.thumbnailStorage = undefined;
 
     // The cover may have been this media's old poster. Recomputing keeps it
     // pointing at an image that still exists — and at an *image*: comparing
