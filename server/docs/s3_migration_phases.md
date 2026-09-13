@@ -675,13 +675,15 @@ paas poora media object hota hai, bare `storage` nahi, aur legacy rows me
 
 ---
 
-# Phase 3 · 6 surfaces ko `storage` field
+# Phase 3 · 6 surfaces ko `storage` field ✅ DONE
 
 | | |
 |---|---|
 | **Goal** | Har media ka provider + key DB me ho. Bina response badle. |
 | **Depends on** | Phase 2 |
 | **Client change** | ❌ |
+| **Infra** | ❌ |
+| **Status** | ✅ Natija §3.6 me |
 
 ## 3.1 ⚠️ Design correction
 
@@ -704,20 +706,20 @@ hai — delete aur re-upload ke liye. **Client ko pata bhi nahi chalega.**
 
 | Model | Naya field | |
 |---|---|---|
-| `models/storageSchema.js` | 🆕 shared sub-schema — 5 models me duplicate shape ek jagah | ⬜ |
-| `models/User.js` | `imageStorage` | ⬜ |
-| `models/Category.js` | `imageStorage` | ⬜ |
-| `models/SubCategory.js` | `imageStorage` | ⬜ |
-| `models/Brand.js` | `logoStorage` | ⬜ |
-| `models/BrandFeatures.js` | `iconStorage` | ⬜ |
-| `models/ShowcaseSection.js` | `media[].thumbnailStorage` | ✅ **Phase 2 me ho gaya** — L-4 ko iski zarurat thi |
+| `models/storageSchema.js` | 🆕 shared sub-schema — 6 models me duplicate shape ek jagah | ✅ |
+| `models/User.js` | `imageStorage` | ✅ |
+| `models/Category.js` | `imageStorage` | ✅ |
+| `models/SubCategory.js` | `imageStorage` | ✅ |
+| `models/Brand.js` | `logoStorage` · `coverImageStorage` | ✅ |
+| `models/SubBrand.js` | `logoStorage` · `coverImageStorage` | ✅ *(plan me nahi tha — cover ke saath aaya)* |
+| `models/BrandFeatures.js` | `iconStorage` | ✅ |
+| `models/ShowcaseSection.js` | `media[].thumbnailStorage` | ✅ Phase 2 — L-4 ko iski zarurat thi; ab shared schema par |
 
-Services (7 baaki): `registerUser`, `updateUserById`, `createCategory`,
-`updateCategoryById`, `createSubCategory`, `updateSubCategoryById`,
-`updateBrand`, `addBrandFeature`, `updateBrandFeature`. Sab pehle se
-`storage.uploadFromPath` call karti hain aur `{ url, storage, metadata }` paati
-hain — ab bas `storage` ko sibling field me likhna hai. `updateSectionMedia`
-✅ ho chuka.
+Services (11): `registerUser`, `updateUserById`, `createCategory`,
+`updateCategoryById`, `deleteCategoryById`, `createSubCategory`,
+`updateSubCategoryById`, `deleteSubCategoryById`, `updateBrand`,
+`updateSubBrand`, `addBrandFeature`, `updateBrandFeature`,
+`deleteBrandFeature`.
 
 ## 3.3 ✅ §8.3 Phase 2 me hi band ho gaya
 
@@ -764,11 +766,66 @@ guess ki jagah ek field ban jaata hai.
 
 ## 3.5 Done ka matlab
 
-- [ ] Sabhi 8 services `*Storage` likhein
-- [ ] **Response shape bilkul same** — Postman example byte-diff
-- [ ] Upload fail hone par purani image bachi rahe
-- [ ] Legacy rows abhi bhi delete ho
-- [ ] `node scripts/verifySchemaRelationships.js`
+- [x] Sabhi services `*Storage` likhein
+- [x] **Response shape bilkul same** — `logo` abhi bhi string hai, test me pinned
+- [x] Upload fail hone par purani image bachi rahe
+- [x] Legacy rows (URL hai, storage nahi) abhi bhi delete ho
+- [x] Naye row par field **absent** ho, `{}` nahi
+
+## 3.6 Natija
+
+### Ek shared sub-schema, chhe model
+
+`models/storageSchema.js` — `{ provider, publicId, bucket, key }`. Chhe jagah
+wahi shape copy karne se wo waqt ke saath alag ho jaati; ek jagah se nahi hoti.
+
+### 🔴 Sibling, nested nahi — aur yahi poora point hai
+
+Saaf shakl `image: { url, storage }` lagti hai. Wo **breaking response change**
+hai: har client jo `brand.logo` ko string ki tarah padhta hai use object mil
+jaata. Sibling — `logo` string hi rehta hai, `logoStorage` uske bagal me aata
+hai — client ko kuch dikhta hi nahi. Test isi ko pin karta hai.
+
+### ⚠️ `default: undefined`, har jagah
+
+Mongoose sub-document iske bina **har document par `{}`** bana deta hai — un
+purani rows par bhi jo is field se pehle ki hain. Aur `{}` ka matlab
+`provider: undefined` hai, jise facade "Unknown storage provider" keh kar mana
+karta hai.
+
+```
+absent  →  "is field se pehle likhi gayi, URL se kaam chalao"
+{}      →  "kisi tooti hui cheez ne likhi"
+```
+
+Dono ek jaise dikhte hain, aur inka farq hi delete ke chalne ya na chalne ka
+farq hai.
+
+### ⚠️ Purani jodi **overwrite se pehle** pakdi jaati hai
+
+```js
+const previous = { url: category.image, storage: category.imageStorage };
+// …upload…
+category.image = uploaded.url;
+category.imageStorage = uploaded.storage;
+if (previous.url) await storage.deleteAsset(previous);
+```
+
+Baad me pakadne ka matlab hota: abhi upload ki hui file delete, aur purani wahin
+padi — bilkul ulta. Mutation me yahi pinned hai.
+
+### §8.6 ab guess se ek field ban gaya
+
+`Category.image` ka **default hi ek shared URL hai**. Ab us default ke paas
+`imageStorage` hota hi nahi — to "ye hamara upload hai ya shared placeholder" ka
+jawab ek field hai, URL ke host ka andaaza nahi. URL wala guard bhi facade me
+laga hua hai; ye doosri, saaf layer hai.
+
+### `uploadUrl` hata
+
+Wo ek step ke liye tha: jin surfaces ke paas `storage` rakhne ki jagah hi nahi
+thi, unke call sites chhote rakhne ko. Ab har ek ke paas sibling hai aur sabko
+dono hisse chahiye — to uska koi caller bacha hi nahi.
 
 ---
 

@@ -800,15 +800,14 @@ Par active cloud `.env` me **`dtpy1lbmf`** hai. Do nateeje:
 defaults ko current cloud par migrate karna. Dono karne padenge — sirf migrate
 karna problem #2 ko live kar dega.
 
-> ⚠️ **Phase 2 ke baad ye aur zyada dhyan maangta hai.** `updateCategoryById` ab
-> upload safal hone ke **baad** purani image delete karta hai (§8.3 ka fix) — to
-> delete ka raasta pehle se zyada bharosemand hai. Bachav abhi bhi wahi ittefaq
-> hai: default `drvdnqydw` par hai, active cloud `dtpy1lbmf`, aur host check use
-> skip kar deta hai.
+> 🟢 **Phase 3 me ye saaf ho gaya.** `imageStorage` aa chuka hai, aur ek shared
+> default ke paas wo hota hi nahi — to "ye hamara upload hai ya shared
+> placeholder" ka jawab ab ek **field** hai, URL ke host ka andaaza nahi.
 >
-> 🟢 **Phase 3 ise saaf kar dega.** `imageStorage` aane ke baad ek shared default
-> ke paas koi `imageStorage` hoga hi nahi — to "ye hamara upload hai ya shared
-> default" ka jawab ek field ban jaata hai, URL ke host ka andaaza nahi.
+> Do layer ho gayi: facade URL-set se in defaults ko mana karta hai, aur row par
+> storage ka **na hona** dobara wahi baat kehta hai. Point 3 (defaults purane
+> cloud par hain) abhi bhi khula hai — par wo ab **delete ka** khatra nahi, sirf
+> ek dependency hai us account par.
 
 ### 8.7 3 media fields jo **kabhi likhe hi nahi jaate**
 
