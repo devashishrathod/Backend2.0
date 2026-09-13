@@ -227,9 +227,40 @@ exports.pickCoverMedia = (medias = []) => {
  * delete / reorder must leave it alone. The field existed on the model but
  * nothing read it, so a manual cover was silently overwritten by the next
  * reorder.
+ *
+ * 🔴 **A pin can outlive the thing it points at.** The vendor pins media #5 and
+ * then deletes it — or hides it — and without the check below the section keeps
+ * pointing at a file that is gone, because the MANUAL branch simply returned.
+ * The result is a dead tile on the brand's public profile, from an ordinary
+ * delete that reported success.
+ *
+ * So a pin is verified, not trusted: still there, not deleted, still visible.
+ * If any of that fails the section drops back to AUTO and recomputes. Losing
+ * the pin is a smaller loss than showing a broken picture — and the media it
+ * named is not there to show anyway.
+ *
+ * ⚠️ When the pin *is* still good the URL is refreshed rather than left alone,
+ * so replacing the pinned media's file moves the cover with it. That is what
+ * pinning an **id** buys over pinning a URL.
+ *
+ * ⚠️ Callers that load the section with a projection must include
+ * `coverMediaId`, or every pin here looks dangling and quietly resets to AUTO.
  */
 exports.syncSectionCoverImage = (section) => {
-  if (section.coverImageMode === SHOWCASE_COVER_IMAGE_MODE.MANUAL) return;
+  if (section.coverImageMode === SHOWCASE_COVER_IMAGE_MODE.MANUAL) {
+    const pinned = section.coverMediaId
+      ? section.medias?.id?.(section.coverMediaId)
+      : null;
+
+    if (pinned && !pinned.isDeleted && pinned.isActive) {
+      section.coverImage = exports.getMediaCoverImage(pinned);
+      return;
+    }
+
+    section.coverImageMode = SHOWCASE_COVER_IMAGE_MODE.AUTO;
+    section.coverMediaId = undefined;
+  }
+
   section.coverImage = exports.getMediaCoverImage(
     exports.pickCoverMedia(section.medias),
   );

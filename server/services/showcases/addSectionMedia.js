@@ -27,7 +27,7 @@ exports.addSectionMedia = async (actor, payload, files) => {
   // One read, reused. Ownership and the "is this section usable" check used to
   // be two separate queries for the same document.
   const section = await resolveSectionForActor(actor, payload.sectionId, {
-    projection: { medias: 1, coverImage: 1, coverImageMode: 1 },
+    projection: { medias: 1, coverImage: 1, coverImageMode: 1, coverMediaId: 1 },
     requireActive: true,
   });
 

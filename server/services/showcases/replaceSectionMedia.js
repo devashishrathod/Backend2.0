@@ -32,7 +32,7 @@ const mediaTypeOf = (file) =>
  */
 exports.replaceSectionMedia = async (actor, payload, file) => {
   const section = await resolveSectionForActor(actor, payload.sectionId, {
-    projection: { medias: 1, coverImage: 1, coverImageMode: 1 },
+    projection: { medias: 1, coverImage: 1, coverImageMode: 1, coverMediaId: 1 },
   });
 
   const media = section.medias.id(payload.mediaId);

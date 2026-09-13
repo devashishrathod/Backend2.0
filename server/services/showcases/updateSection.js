@@ -1,10 +1,13 @@
 const ShowcaseSection = require("../../models/ShowcaseSection");
 const { throwError } = require("../../utils");
 const { escapeRegex } = require("../../validator/common");
+const { SHOWCASE_COVER_IMAGE_MODE } = require("../../constants/showcase");
 const {
   resolveSectionForActor,
   generateUniqueSlug,
   formatSectionSummary,
+  getMediaCoverImage,
+  syncSectionCoverImage,
 } = require("../../helpers/showcases");
 
 /**
@@ -54,6 +57,44 @@ exports.updateSection = async (actor, payload) => {
   if (payload.isVisible !== undefined) section.isVisible = payload.isVisible;
   if (payload.isShowVideosInClips !== undefined) {
     section.isShowVideosInClips = payload.isShowVideosInClips;
+  }
+
+  /**
+   * ---------------- the cover: pinned, or following the media ----------------
+   *
+   * `coverImageMode: MANUAL` was honoured by `syncSectionCoverImage` from the
+   * day it was written, but **nothing could set it** — no endpoint touched the
+   * field, so every section was AUTO for ever and a vendor could not choose
+   * which picture represented their section. This is the missing half.
+   */
+  if (payload.coverMediaId !== undefined) {
+    const media = section.medias.id(payload.coverMediaId);
+
+    // ⚠️ Checked against this section's own media, so a mediaId copied from
+    // another section — or another brand's — cannot become this section's cover.
+    if (!media || media.isDeleted) {
+      throwError(404, "That media is not in this section.");
+    }
+    /**
+     * A hidden media cannot be the cover. It would show the customer a picture
+     * that is deliberately not in the gallery, and the moment `syncSectionCoverImage`
+     * ran for any other reason the cover would jump somewhere else anyway.
+     */
+    if (!media.isActive) {
+      throwError(422, "A hidden media cannot be the cover. Show it first.");
+    }
+
+    section.coverImage = getMediaCoverImage(media);
+    section.coverImageMode = SHOWCASE_COVER_IMAGE_MODE.MANUAL;
+    // The id, not just the URL — so the pin survives that media being replaced
+    // and can be noticed when it is deleted.
+    section.coverMediaId = media._id;
+  } else if (payload.coverImageMode === SHOWCASE_COVER_IMAGE_MODE.AUTO) {
+    // Unpin. Recomputed here rather than left for the next add or reorder, so
+    // the vendor sees the answer in this response.
+    section.coverImageMode = SHOWCASE_COVER_IMAGE_MODE.AUTO;
+    section.coverMediaId = undefined;
+    syncSectionCoverImage(section);
   }
 
   await section.save();

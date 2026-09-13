@@ -123,6 +123,17 @@ const showcaseSectionSchema = new mongoose.Schema(
       enum: Object.values(SHOWCASE_COVER_IMAGE_MODE),
       default: SHOWCASE_COVER_IMAGE_MODE.AUTO,
     },
+    /**
+     * Which media the vendor pinned, when `coverImageMode` is MANUAL.
+     *
+     * ⚠️ The id, not the URL. A pin means "show *this* media", so replacing that
+     * media's file must keep the pin and follow the new picture — a URL would
+     * silently stop matching and the cover would jump elsewhere. It is also what
+     * lets `syncSectionCoverImage` notice that a pinned media has been deleted
+     * or hidden, which is the only way the cover can fall back instead of
+     * pointing at something the customer can no longer see.
+     */
+    coverMediaId: { type: mongoose.Schema.Types.ObjectId, default: undefined },
     sectionType: {
       type: String,
       enum: Object.values(SHOWCASE_SECTION_TYPE),
