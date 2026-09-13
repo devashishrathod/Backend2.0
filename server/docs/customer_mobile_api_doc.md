@@ -3989,6 +3989,17 @@ Brand profile screen ka **single call** — brand, features, visible showcase pr
 
 > 🔄 **v1.2.0 me badla.** Pehle yahan `GET /brands/get?brandId=` document tha. Wo endpoint ab **customer ke liye band hai** (`isVendorOrAdmin`) — wo brand ka PAN, GSTIN, bank account aur subscription billing return karta tha. Ye naya endpoint sirf wahi banata hai jo profile screen render karti hai, to usme strip karne layak kuch hai hi nahi.
 
+> 🆕 **`coverImage` ab sach me aa sakta hai.** Ye field hamesha se response me
+> thi, par use likhne ka koi endpoint hi nahi tha — to **har brand par hamesha
+> `null`** rehta tha. Ab vendor `PUT /brands/update` se cover set kar sakta hai.
+>
+> ⚠️ App ko phir bhi `null` sambhaalna hoga: jis brand ne abhi tak cover upload
+> nahi kiya uska field khaali hi rahega. Farq itna hai ki ab wo "kabhi nahi
+> aayega" se "jab vendor daale tab aayega" ho gaya hai.
+>
+> Yahi baat `outlets[].logo` aur `outlets[].coverImage` par bhi lagu hai —
+> `PUT /subBrands/update/:subBrandId` se.
+
 ### Headers
 | Header | Value | Required |
 |---|---|---|

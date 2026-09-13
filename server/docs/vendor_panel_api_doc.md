@@ -2574,7 +2574,19 @@ Brand ki public profile update.
 | `isActive` | boolean\|string | – | |
 | `isOnboarding` | boolean | Default `false` | ⚠️ `true` pe `subCategoryId` **required** ho jaata hai |
 | `subCategoryId` | ObjectId | – | `isOnboarding: true` pe required |
-| `logo` | file | – | **Multipart only**, field name `logo` |
+| `logo` | file | JPG · PNG · WebP · GIF | **Multipart only**, field name `logo` |
+| `coverImage` | file | JPG · PNG · WebP · GIF | 🆕 **Multipart only**, field name `coverImage` |
+
+**Cover image** — brand profile ke peeche wali chaudi tasveer. Pehle ye field
+model me thi aur 8 read pipelines use maangti thi, par **likhne ka koi raasta hi
+nahi tha** — customer app ko hamesha `null` milta tha.
+
+Dono file alag-alag hain: sirf `coverImage` bhejne se logo waisa hi rehta hai,
+aur ulta bhi. Jo tasveer replace hoti hai wahi delete hoti hai, **save ke baad**.
+
+⚠️ Ab file ka type check hota hai. Galat file par `422` milega jisme accepted
+types likhe honge — pehle wo `500 Something went wrong` ban jaata tha aur kahin
+nahi likha hota tha ki file ki wajah se hai.
 
 ```json
 { "brandName": "Cafe Mocha", "description": "Artisanal coffee and continental bites", "email": "hello@cafemocha.in" }
@@ -2939,10 +2951,24 @@ Outlet details update.
 | `joinedDate` | date | – | |
 | `description` | string | – | |
 | `isActive` | boolean | – | ⚠️ **Sirf tab apply hota hai jab explicitly bhejo** |
+| `logo` | file | JPG · PNG · WebP · GIF | 🆕 **Multipart only**, field name `logo` |
+| `coverImage` | file | JPG · PNG · WebP · GIF | 🆕 **Multipart only**, field name `coverImage` |
 
 ```json
 { "description": "Vijay Nagar flagship outlet", "email": "vn@cafemocha.in" }
 ```
+
+> ### 🆕 Outlet ki apni tasveerein
+>
+> `SubBrand.logo` aur `SubBrand.coverImage` model me pehle se thin aur **koi
+> endpoint unhe likhta hi nahi tha** — outlet hamesha bina tasveer ke rehta tha.
+>
+> ⚠️ Ye endpoint **ab multipart leta hai**, pehle nahi leta tha. JSON body waise
+> hi kaam karti rahegi; file bhejni ho tabhi `multipart/form-data` chahiye.
+>
+> Brand ki tarah hi: dono field alag hain, jo replace hoti hai wahi delete hoti
+> hai (save ke baad), aur galat file par `422` milta hai. Ownership wahi hai jo
+> baaki update par — vendor sirf apne brand ka outlet, admin koi bhi.
 
 **Type change:**
 ```json
@@ -3809,10 +3835,43 @@ Panel me "Hidden" tab chahiye to `?isVisible=false` bhejein.
 | `isActive` | boolean | – |
 | `isVisible` | boolean | – |
 | `isShowVideosInClips` | boolean | – |
+| `coverMediaId` | ObjectId | 🆕 Is section ki kisi media ka id — use cover **pin** kar deta hai |
+| `coverImageMode` | string | 🆕 Sirf `AUTO` — pin hata deta hai |
 
 ```json
 { "description": "Our cozy interiors, refreshed", "isShowVideosInClips": false }
 ```
+
+> ### 🆕 Cover pin karna
+>
+> **Default hamesha se kaam karta raha hai:** cover section ki pehli dikhne wali
+> media ka hota hai aur har add, delete aur reorder par khud badal jaata hai.
+> Isme kuch karna nahi padta.
+>
+> Jo nahi tha wo ye: vendor apni pasand ki tile chun sake. `coverImageMode:
+> MANUAL` code me pehle se honour hota tha par **koi endpoint use set nahi karta
+> tha** — wo branch mara pada tha.
+>
+> ```json
+> { "coverMediaId": "68f1a2b3c4d5e6f7a8b9c6b2" }   // pin — mode MANUAL ho jaata hai
+> { "coverImageMode": "AUTO" }                      // unpin — pehli media par wapas
+> ```
+>
+> | Case | Jawab |
+> |---|---|
+> | Kisi **doosre section** ki media id | `404 That media is not in this section.` |
+> | **Chhupi hui** media (`isActive: false`) | `422 A hidden media cannot be the cover. Show it first.` |
+> | **Deleted** media | `404` |
+> | `coverImageMode: "MANUAL"` | `422` — MANUAL pin karne ka **nateeja** hai, request nahi |
+> | Dono ek saath | `422` — ek hi bhejein |
+>
+> 🔴 **Pin ki hui media delete ya chhupa di jaaye to cover apne aap `AUTO` par
+> wapas aa jaata hai** aur pehli dikhne wali media par chala jaata hai. Iske bina
+> section ek aisi file par point karta rehta jo ja chuki hai — brand profile par
+> tooti hui tile, ek aam delete se jo success bhi keh deta.
+>
+> ⚠️ Pin **media ke id** se bandha hai, URL se nahi. Isliye us media ki file
+> replace karne par cover uske saath chalta hai — pin bana rehta hai.
 
 ### Success — `200`
 ```json

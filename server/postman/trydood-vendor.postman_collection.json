@@ -6526,7 +6526,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n✅ **`isActive` ab default nahi hota.** Pehle `.default(true)` laga tha, matlab\nkoi bhi update — chahe usme `isActive` ho hi na — deactivated outlet ko\nchup-chaap **reactivate** kar deta tha.\n\nAb wo sirf tab apply hota hai jab explicitly bheja jaye.\n\n🔴 **`email` outlet ka apna field nahi hai** — wo us outlet ke **manager ke**\n**account** ka email hai, aur `SubBrand.email` uska mirror. Aap ye set kar sakte hain\n(apne hi outlet ka; doosre brand ke outlet par `403`), par flag **`false`** rehta hai —\nto isse us account me login nahi kiya ja sakta. Sirf manager khud verify kar sakta hai."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n✅ **`isActive` ab default nahi hota.** Pehle `.default(true)` laga tha, matlab\nkoi bhi update — chahe usme `isActive` ho hi na — deactivated outlet ko\nchup-chaap **reactivate** kar deta tha.\n\nAb wo sirf tab apply hota hai jab explicitly bheja jaye.\n\n🔴 **`email` outlet ka apna field nahi hai** — wo us outlet ke **manager ke**\n**account** ka email hai, aur `SubBrand.email` uska mirror. Aap ye set kar sakte hain\n(apne hi outlet ka; doosre brand ke outlet par `403`), par flag **`false`** rehta hai —\nto isse us account me login nahi kiya ja sakta. Sirf manager khud verify kar sakta hai.\n\n🆕 **Outlet ki apni tasveerein.** `logo` aur `coverImage` model me pehle se\nthin aur koi endpoint unhe likhta hi nahi tha — outlet hamesha bina tasveer ke\nrehta tha.\n\n⚠️ File bhejni ho to body **form-data** karni padegi; ye request JSON bhejti\nhai kyunki wahi aam istemaal hai. Fields: `logo`, `coverImage` (type: File).\n\nJo tasveer replace hoti hai wahi delete hoti hai, **save ke baad**. Galat file\npar `422` milta hai jisme accepted types likhe hote hain."
           },
           "response": [
             {
@@ -7995,7 +7995,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n`isVisible: false` karne pe album customer ke **brand profile** aur **full gallery** dono se gayab ho jaata hai (pehle gallery endpoint ye filter nahi lagata tha). Vendor ki apni list (#get-all) me wo phir bhi dikhta hai, taaki wapas on kiya ja sake."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n`isVisible: false` karne pe album customer ke **brand profile** aur **full gallery** dono se gayab ho jaata hai (pehle gallery endpoint ye filter nahi lagata tha). Vendor ki apni list (#get-all) me wo phir bhi dikhta hai, taaki wapas on kiya ja sake.\n\n🆕 **Cover pin karna.** Cover default me section ki pehli dikhne wali media\nka hota hai aur har add / delete / reorder par khud badal jaata hai — usme kuch\nkarna nahi padta.\n\nApni pasand ki tile chunni ho to:\n\n    { \"coverMediaId\": \"<is section ki kisi media ka id>\" }   // pin\n    { \"coverImageMode\": \"AUTO\" }                              // unpin\n\n- doosre section ki media id → `404`\n- chhupi hui media → `422` (pehle use dikhana hoga)\n- `coverImageMode: \"MANUAL\"` → `422`; MANUAL pin ka **nateeja** hai, request nahi\n- dono ek saath → `422`\n\n🔴 Pin ki hui media delete ya chhupa di jaaye to cover apne aap **AUTO** par\nwapas aa jaata hai. Iske bina section ek ja chuki file par point karta rehta —\nbrand profile par tooti hui tile."
           },
           "response": [
             {
