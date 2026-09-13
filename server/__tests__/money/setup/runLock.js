@@ -24,17 +24,26 @@ module.exports = Object.freeze({
    * describes as unrelated tests failing on correct assertions, which has already
    * cost two debugging detours.
    *
-   * ### Raised twice now, and the second time is why the margin is this wide
+   * ### Raised three times, and what each raise was actually measuring
    *
-   * 15 → 45 when a run measured 17.7 minutes. 45 → 90 now, because a full run is
-   * **32.6 minutes** across 55 suites — past the ~30 minute mark the previous
-   * note set as the trigger.
+   * | | Trigger | TTL |
+   * |---|---|---|
+   * | 1 | a run measured 17.7 min against a 15 min TTL | 45 |
+   * | 2 | 32.6 min across 55 suites | 90 |
+   * | 3 | **71.6 min across 76 suites** | **180** |
    *
-   * ⚠️ It is not the average that matters, it is the slowest run. Two runs of the
-   * same suite on the same machine measured 24.8 and 32.6 minutes: an eight
-   * minute spread, on a value that only has to be exceeded **once** to reproduce
-   * the bug. 45 minutes left twelve minutes of headroom against that spread,
-   * which is not headroom.
+   * ⚠️ It is not the average that matters, it is the slowest run — and the third
+   * raise is the one that shows why. Two runs of the **same** suite, back to
+   * back on this machine, measured 34.9 and 71.6 minutes. That is not noise, it
+   * is **contention**: anything else touching the cluster while the suite runs
+   * roughly doubles it, and a laptop running the suite is a laptop somebody is
+   * also working on.
+   *
+   * So the figure to set this against is the busy run, not the quiet one. At 90
+   * minutes the 71.6 run had eighteen minutes left before it would have outlived
+   * its own lock — which is the precise failure this exists to prevent, and it
+   * does not announce itself: it reads as a scatter of unrelated tests failing
+   * on assertions that are individually correct.
    *
    * ⚠️ A too-long TTL costs only a wait after a killed run — `--clear` is right
    * there. A too-short one costs a debugging session, twice already. The two
@@ -46,5 +55,5 @@ module.exports = Object.freeze({
    * node scripts/testRunLock.js --clear   # take it back
    * ```
    */
-  TTL_MS: 90 * 60 * 1000,
+  TTL_MS: 180 * 60 * 1000,
 });
