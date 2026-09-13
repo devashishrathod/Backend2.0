@@ -580,8 +580,24 @@ Ye sab **verify kiye gaye** hain, guess nahi. Har ek ke saath file:line diya hai
 
 | Status | Findings |
 |---|---|
-| ✅ **Fixed** | §8.1 (no size limit) · §8.9 (`/tmp` galat jagah) · §8.10 (temp files kabhi delete nahi) — sab **Phase 0** · §8.11 (🔴 ownership hole, + 2 aur bug) |
-| ⏳ **Abhi khula** | §8.2 · §8.3 · §8.4 · §8.5 · §8.6 · §8.7 · §8.8 · §8.12 · §8.13 · §8.14 · §8.15 · §8.16 |
+| ✅ **Fixed — Phase 0** | §8.1 (no size limit) · §8.9 (`/tmp` galat jagah) · §8.10 (temp files kabhi delete nahi) · §8.11 (🔴 ownership hole, + 2 aur bug) |
+| ✅ **Fixed — Phase 2** | §8.2 (har delete chup-chaap skip) · §8.3 (delete pehle, upload baad me) |
+| 🟡 **Aadha** | §8.5 (`uploadVideo` hata; `uploadAudio` rakha, `deletePDF` ka caller abhi bhi nahi) |
+| ⏳ **Abhi khula** | §8.4 · §8.6 · §8.7 · §8.8 · §8.12 · §8.13 · §8.14 · §8.15 · §8.16 |
+
+**Khule findings, asar ke hisaab se:**
+
+| # | Kya | Kab theek hoga |
+|---|---|---|
+| 🔴 §8.12 | `mimetype` **client ka bheja hua** hai — bytes kabhi padhe nahi jaate. Aaj Cloudinary bacha raha hai, **S3 par wo bachav nahi rahega** | Phase 5 — magic bytes |
+| 🟠 §8.13 | Voucher images me **SVG allowed**. Apne CDN par serve hote hi stored XSS | chhota fix, abhi ho sakta hai |
+| 🟠 §8.14 | PDF ka URL public + permanent + `Math.random()` se guessable | Phase 4 — private bucket |
+| 🟠 §8.6 | `DEFAULT_IMAGES` purane Cloudinary account par — **shared default delete ho sakta hai** | chhota fix (Phase 3 ke saath) |
+| 🟠 §8.4 | 6 endpoint me **koi mime check hi nahi** → PDF bhejne par 500, 422 nahi | chhota fix |
+| 🟠 §8.8 | **Banner aur ticker** delete par asset reh jaata hai — helper hai, call nahi | chhota fix |
+| 🟡 §8.7 | `Brand.coverImage`, `SubBrand.logo/coverImage` — padhe jaate hain, likhta koi nahi | faisla chahiye |
+| 🟡 §8.15 | Uploads serial — 15 image = 15 round trip | Phase 5 ke saath |
+| 🟡 §8.16 | Delivery URL me size nahi — 4000×3000 mobile card par bhi waisi hi | Phase 6 — resize Lambda |
 
 🔴 **Ownership ke teen aur hole, is doc ke bahar** — media se seedha rishta nahi,
 par wahi bimari: `PUT /locations/update/:id`, `DELETE /locations/delete/:id`
@@ -631,7 +647,18 @@ Tested: `__tests__/unit/uploadLimits.test.js` (real multipart request over a
 socket). Mutation-verified — `abortOnLimit: false` aur `limitHandler` hataane,
 dono par suite fail hoti hai.
 
-### 8.2 `CLOUD_BASE_URL` galat/khaali ho to **har delete chup-chaap skip**
+### 8.2 ✅ FIXED — `CLOUD_BASE_URL` galat/khaali ho to har delete chup-chaap skip
+
+> **Fixed in Phase 2** — [s3_migration_phases.md §2.8](./s3_migration_phases.md)
+>
+> Ab har row jiske paas `storage.publicId` hai, **id se** delete hoti hai —
+> `services/storage/providers/cloudinary.js` URL parse karta hi nahi. URL wala
+> raasta sirf un legacy rows ke liye bacha hai jinme `storage` hai hi nahi, aur
+> wahan URL ke alawa kuch hai bhi nahi.
+>
+> Yahi bug **teen aur jagah** mila jo is finding me likha nahi tha: banner,
+> voucher banner aur ticker — teenon ke paas `storage` object tha aur teenon URL
+> se delete kar rahe the. Teenon theek.
 
 ```js
 const CLOUD_BASE = process.env.CLOUD_BASE_URL;
@@ -649,7 +676,14 @@ assets permanently orphan ho jaate hain**, kyunki unka URL naye `CLOUD_BASE_URL`
 se match nahi karega. `.env` me `CLOUD_NAME=dtpy1lbmf #dbrkf1j5w` — commented
 out purana cloud isi migration ka nishaan hai.
 
-### 8.3 Users / categories / subCategories me **delete pehle, upload baad me**
+### 8.3 ✅ FIXED — users / categories / subCategories me delete pehle, upload baad me
+
+> **Fixed in Phase 2** — [s3_migration_phases.md §3.3](./s3_migration_phases.md)
+>
+> Teenon services ab **upload → assign → phir purana delete** karti hain. Ye
+> Phase 3 ke liye planned tha, par wahi teen lines waise bhi chhui ja rahi thin.
+
+Jo tha:
 
 | File | Line |
 |---|---|
@@ -697,23 +731,27 @@ kabhi nahi milta.
 Compare karein: banner/ticker/showcase/voucher-banner sab clean `422` dete hain
 expected mime types ki list ke saath.
 
-### 8.5 3 dead functions
+### 8.5 🟡 PARTLY FIXED — 3 dead functions
 
-[services/uploads/index.js](../services/uploads/index.js) me export hain, poore
+> **Phase 2:** `uploadVideo` hata diya gaya. `uploadAudio` aur `deletePDF`
+> jaan-boojh kar rakhe gaye — neeche wajah.
+
+[services/uploads/index.js](../services/uploads/index.js) me export the, poore
 codebase me **0 call sites**:
 
-| Function | Line |
+| Function | Ab |
 |---|---|
-| `uploadVideo` | [:24](../services/uploads/index.js#L24) |
-| `uploadAudio` | [:16](../services/uploads/index.js#L16) |
-| `deletePDF` | [:47](../services/uploads/index.js#L47) |
+| `uploadVideo` | ✅ **hata** — `helpers/showcases` aur `helpers/banners` ab seedha facade se jaate hain |
+| `uploadAudio` | 🟡 **rakha gaya** — faisla liya gaya ki aage audio aa sakta hai. Koi `audio/` prefix S3 par tab tak banega hi nahi jab tak koi ise call na kare |
+| `deletePDF` | 🟠 **rakha gaya, par abhi bhi koi caller nahi** — Phase 4 ka kaam |
 
 Iska practical matlab: **project me kahin bhi audio (mp3, wav) upload nahi
-hota.** `Audio/` folder Cloudinary par kabhi banega hi nahi. Aur `deletePDF`
-na hone ki wajah se **koi bhi generated PDF kabhi delete nahi hoti** — har
-invoice, receipt aur statement Cloudinary par permanent hai. Ye galat nahi hai
-(documents-of-record hone chahiye bhi), par ye jaan-boojh kar liya gaya faisla
-lagta nahi — sirf koi caller likha hi nahi gaya.
+hota.** Aur `deletePDF` ka koi caller na hone se **koi bhi generated PDF kabhi
+delete nahi hoti** — har invoice, receipt aur statement provider par permanent
+hai. Ye galat nahi hai (documents-of-record hone chahiye bhi), par ye jaan-boojh
+kar liya gaya faisla lagta nahi — sirf koi caller likha hi nahi gaya. **Phase 4
+me ye sawaal dobara uthega**, kyunki tab documents private bucket me jaayenge
+aur retention ka faisla lena hi padega.
 
 ### 8.6 `DEFAULT_IMAGES` **purane Cloudinary account** par hain
 
@@ -746,6 +784,16 @@ Par active cloud `.env` me **`dtpy1lbmf`** hai. Do nateeje:
 **Fix:** delete se pehle `if (image !== DEFAULT_IMAGES.CATEGORY)` guard, **aur**
 defaults ko current cloud par migrate karna. Dono karne padenge — sirf migrate
 karna problem #2 ko live kar dega.
+
+> ⚠️ **Phase 2 ke baad ye aur zyada dhyan maangta hai.** `updateCategoryById` ab
+> upload safal hone ke **baad** purani image delete karta hai (§8.3 ka fix) — to
+> delete ka raasta pehle se zyada bharosemand hai. Bachav abhi bhi wahi ittefaq
+> hai: default `drvdnqydw` par hai, active cloud `dtpy1lbmf`, aur host check use
+> skip kar deta hai.
+>
+> 🟢 **Phase 3 ise saaf kar dega.** `imageStorage` aane ke baad ek shared default
+> ke paas koi `imageStorage` hoga hi nahi — to "ye hamara upload hai ya shared
+> default" ka jawab ek field ban jaata hai, URL ke host ka andaaza nahi.
 
 ### 8.7 3 media fields jo **kabhi likhe hi nahi jaate**
 
@@ -1030,19 +1078,22 @@ short-TTL presigned GET. Tab token sach me ek credential ban jaata hai.
 ### 8.15 🟡 Uploads serial hain — 15 images = 15 sequential round trips
 
 ```js
-exports.uploadMultipleMedia = async (files = []) => {
+exports.uploadMultipleMedia = async (files = [], sectionId) => {
   const uploaded = [];
   for (const file of files) {
-    const media = await exports.uploadSingleMedia(file);   // ek-ek karke
+    const media = await exports.uploadSingleMedia(file, sectionId);  // ek-ek karke
     uploaded.push(media);
   }
   return uploaded;
 };
 ```
-[helpers/showcases/upload.js:30-37](../helpers/showcases/upload.js#L30-L37)
+[helpers/showcases/upload.js](../helpers/showcases/upload.js)
 
 Wahi shape `uploadVoucherImages` me bhi hai
-([validateImagesFiles.js:36](../helpers/vouchers/validateImagesFiles.js#L36)).
+([validateImagesFiles.js](../helpers/vouchers/validateImagesFiles.js)).
+
+> ⚠️ Phase 2 me in dono ne `entityId` liya aur facade par chale gaye, par
+> **serial hi rahe** — badalna sirf key tha, concurrency nahi. Finding khula hai.
 
 Showcase ek section me **15 items** allow karta hai. Har upload ka apna TLS
 handshake + transfer hai, to 15 images ka matlab 15 sequential round trips — jab

@@ -1435,11 +1435,84 @@ Location ID se detail fetch.
 | `422` | `Location ID is required` | Missing |
 | `422` | `Invalid location ID format` | Valid ObjectId nahi |
 
+### Errors — ownership
+
+| Status | Message |
+|---|---|
+| `403` | `Forbidden` |
+
 ### ⚠️ Notes
 
-**1. Koi ownership check nahi hai.** Kisi bhi valid location ID se koi bhi user data fetch kar sakta hai — dusre customers ke addresses, brand addresses, outlet addresses sab. → [Appendix B](#appendix-b--known-issues)
+**1. ✅ Ownership check hai — aur ye note pehle ulta likha tha.**
+
+Gate sirf "signed in" poochta hai, par service har role ke liye alag se tay karti
+hai ki kaun sa address dikh sakta hai:
+
+| Role | Kya dikhega |
+|---|---|
+| **CUSTOMER** | sirf apna — `location.userId` token se match karna chahiye |
+| **VENDOR** | apne brand ka registered address, ya apne kisi outlet ka |
+| **ADMIN** | sab |
+
+Vendor ka outlet wala check `SubBrand` se hota hai, token ke cached `brandId` se
+nahi — taaki purana token access widen na kar sake.
+
+> Pehle yahan sach me koi check nahi tha: kisi bhi valid id se koi bhi user kisi
+> ka bhi address padh sakta tha, **customer ke ghar ke pate aur GPS coordinates**
+> samet. Wo band ho chuka hai; ye doc us par pichhe reh gaya tha.
 
 **2. Practically ye endpoint optional hai** — customer ki location already `GET /users/get` ke response me nested aa jaati hai (`data.customerId.locationId`). Ye sirf tab chahiye jab specific location ID se refresh karna ho.
+
+---
+
+## 8b. DELETE /locations/delete/:id 🆕
+
+Customer apna saved address hata sakta hai.
+
+**Access:** 🔒 **Koi bhi signed-in role** (`verifyJwtToken`) — ownership service tay karti hai
+
+> Gate par koi role nahi, kyunki sawaal role ka hai hi nahi: *ye address kiska
+> hai*. Customer sirf apna hata sakta hai; doosre customer ka, ya kisi brand /
+> outlet ka address chhune par `403`.
+
+### Path Params
+| Param | Type | Required |
+|---|---|---|
+| `id` | ObjectId | ✅ |
+
+### Success — `200`
+```json
+{ "success": true, "message": "Location deleted successfully" }
+```
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `403` | `Forbidden: You do not have permission to perform this action.` | Address kisi aur ka |
+| `404` | `Location not found` | Id nahi mili ya pehle se deleted |
+| `422` | `Invalid location ID format` | |
+
+### 🔴 App ke liye — ye button dikhne se bada hai
+
+Address hatate hi `Customer.locationId` `null` ho jaata hai. **Voucher feed usi
+address se banta hai**, to uske baad:
+
+```
+GET /vouchers/customer/get-all   →  400  "Location is required. Send latitude
+                                          and longitude, or save an address first."
+```
+
+| App GPS bhejti hai | 🟢 kuch nahi hota — feed chalti rahegi |
+|---|---|
+| App saved address par tikti hai | 🔴 **feed, single voucher, search — sab band** |
+
+To delete se **pehle** user ko batana chahiye ki feed ke liye location chahiye
+hogi, aur delete ke baad seedha address screen kholni chahiye — warna wo ek khali
+feed dekhega aur samajh nahi paayega kyun.
+
+> Soft delete hai — row `isDeleted: true` hoti hai, aur `POST /locations/upsert`
+> (#7) usi row ko wapas zinda kar deta hai. Yaani "hata kar naya daalna" kaam
+> karta hai; dobara `upsert` karne par duplicate nahi banta.
 
 ---
 
@@ -5825,9 +5898,14 @@ Ye endpoints backend me exist karte hain par **customer app inko use na kare**. 
 ### Outlets & Work Hours (4)
 `POST /subBrands/signUp-with-whatsapp` · `GET /subBrands/get-all` · `PUT /subBrands/update/:subBrandId` · `POST /workHours/upsert`
 
-### Locations — write/list operations (4)
-`POST /locations/create` · `GET /locations/getAll` · `PUT /locations/update/:id` · `DELETE /locations/delete/:id`
-> Customer sirf `POST /locations/upsert` (#7) aur `GET /locations/get/:id` (#8) use kare
+### Locations — write/list operations (3)
+`POST /locations/create` · `GET /locations/getAll` · `PUT /locations/update/:id`
+> Customer ke liye `POST /locations/upsert` (#7), `GET /locations/get/:id` (#8)
+> aur 🆕 `DELETE /locations/delete/:id` (#8b) hain. Baaki teen brand-side hain —
+> customer ka token unpar `403` khaayega.
+>
+> ⚠️ `upsert` hi customer ka "save" aur "update" dono hai: wo usi row par likhta
+> hai, isliye `PUT /update/:id` ki zarurat nahi padti.
 
 ### Showcase management (11)
 `POST /showcase/section/add` · `GET /showcase/section/get/:sectionId` · `GET /showcase/section/get-all` · `PUT /showcase/section/update/:sectionId` · `PUT /showcase/section/:brandId/reorder` · `DELETE /showcase/section/delete/:sectionId` · `POST /showcase/section/:sectionId/add-media` · `PATCH /showcase/section/:sectionId/media/update/:mediaId` · `PUT /showcase/section/:sectionId/media/replace/:mediaId` · `PUT /showcase/section/:sectionId/media/reorder` · `DELETE /showcase/section/:sectionId/media/delete/:mediaId`

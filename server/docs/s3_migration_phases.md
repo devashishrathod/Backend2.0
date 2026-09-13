@@ -1,8 +1,10 @@
 # S3 Migration — Phase-by-Phase Execution Plan
 
-> **Status:** Phase 0 ✅ done. Phase 1-9 abhi shuru nahi hue.
+> **Status:** Phase 0 ✅ · Phase 1 ✅ · Phase 2 ✅ (step A **aur** B).
+> Phase 3-9 abhi shuru nahi hue.
 >
 > Design + edge cases: [s3_media_migration_plan.md](./s3_media_migration_plan.md)
+> **AWS setup runbook: [aws_s3_setup.md](./aws_s3_setup.md)**
 > Aaj ka media flow: [media_upload_map.md](./media_upload_map.md)
 > Env / services: [environment_and_services_map.md](./environment_and_services_map.md)
 
@@ -25,6 +27,14 @@
 | L-1 | Limit | Global **100 MB** ceiling. Per-surface limits sirf showcase par (10/50 MB) |
 | DB-1 | Data | Sab test data. **Koi migration script nahi** |
 | FE-1 | Clients | Panels + app **doosri team** ke paas |
+| **B-1** | Bucket split | **Public / private — role se nahi.** Uploader ka role ye batata hi nahi ki file khuli rakhi ja sakti hai ya nahi |
+| **B-2** | Bucket count | **4** — `trydood-prod-{public,private}` + `trydood-nonprod-{public,private}`. Dev/staging prefix se alag |
+| **B-3** | Credentials | Render par **IAM user key**, AWS par **instance role**. SDK ki default chain dono sambhaalti hai — **code me koi `if` nahi** |
+| **B-4** | Order | **Facade pehle**, S3 provider baad me. Step A bina AWS ke ship hota hai |
+| **B-5** | Key shape | **`<prefix><type>/<entity>/<entityId>/<uuid>.<ext>`** — type upar (Lambda/lifecycle/GIF), entity andar (orphan sweep). `audio/` abhi nahi |
+
+> Ye chaar [aws_s3_setup.md](./aws_s3_setup.md) me poore detail me hain — wajah,
+> policy JSON, aur har `aws` command.
 
 ---
 
@@ -33,8 +43,8 @@
 | Phase | Kaam | Client change | Infra | Ship alone | Kis par depend |
 |---|---|---|---|---|---|
 | **0** ✅ | Temp leak + upload limits — **DONE** | ❌ | ❌ | ✅ | — |
-| **1** | `configs/env/` + Joi + 3 guards | ❌ | ❌ | ✅ | — |
-| **2** | `services/storage` facade + S3 provider · **L-1…L-4 fix** | ❌ | 🟡 bucket chahiye | ✅ | 1 |
+| **1** ✅ | `configs/env/` + Joi + 3 guards — **DONE** | ❌ | ❌ | ✅ | — |
+| **2** ✅ | `services/storage` facade + S3 provider · **L-1…L-4 fix — DONE** | ❌ | ❌ | ✅ | 1 |
 | **3** | 6 surfaces ko `storage` sibling field | ❌ | ❌ | ✅ | 2 |
 | **4** | PDF → private bucket + presigned GET | ❌ | 🟡 private bucket | ✅ | 2 |
 | **5** | `POST /uploads/presign` + confirm (**dual mode**) | ✅ naya raasta | ❌ | ✅ | 2, 3 |
@@ -45,7 +55,14 @@
 
 **Phase 0-4 me doosri team ko kuch nahi karna.** Unka contract Phase 5 par milta hai.
 
-**Infra ka lead time:** Phase 2 ko S3 bucket chahiye. Wo Terraform Phase 1 ke saath hi likh dunga taaki aap parallel me chala sakein.
+**Infra ka lead time:** Q-7 me tay hua tha ki main Terraform likhunga. Baad me ye
+**console + CLI runbook** ban gaya — [aws_s3_setup.md](./aws_s3_setup.md) — kyunki
+4 bucket + 2 policy ek baar ka kaam hai aur Terraform state sambhaalne ka bojh
+uske faayde se zyada hai. Runbook me har `aws` command likhi hai.
+
+**Phase 2 step A ko AWS ki zarurat nahi** — facade Cloudinary par banega aur
+L-1…L-4 wahin marenge. Bucket step B par chahiye. Yaani aap runbook chala rahe
+hon, tab bhi Phase 2 shuru ho sakta hai.
 
 ---
 
@@ -362,14 +379,15 @@ same frozen object, kabhi re-parse nahi.
 
 ---
 
-# Phase 2 · `services/storage` facade + S3 provider
+# Phase 2 · `services/storage` facade + S3 provider ✅ DONE
 
 | | |
 |---|---|
 | **Goal** | Ek jagah provider decide ho. **L-1…L-4 landmines yahin marte hain.** |
 | **Depends on** | Phase 1 |
 | **Client change** | ❌ |
-| **Infra** | S3 bucket + IAM (Terraform main dunga) |
+| **Infra** | ❌ — dono step bina AWS ke ship hue. S3 provider likha hua hai, `MEDIA_PROVIDER=S3` par jaga hoga |
+| **Status** | ✅ Step A + Step B. Natija §2.8 me |
 
 ## 2.1 Files
 
@@ -401,11 +419,22 @@ bugs mar jaate hain. Step B mechanical hai.
 ## 2.3 Facade contract
 
 ```js
-// services/storage/index.js
-uploadFromPath({ filePath, purpose, ownerId, originalFile })  // → { url, thumbnail, storage, metadata }
-deleteAsset(storage)                                          // provider dekh kar route
-publicUrl(storage, { width } = {})                            // CloudFront ?w=  |  Cloudinary transform
+// services/storage/index.js   — jaisa ship hua
+uploadFromPath({ filePath, purpose, entityId, originalFile, kind })
+                              // → { url, thumbnail, storage, metadata }
+deleteAsset(asset)            // asset = { url, storage, type|kind|metadata }
+deleteAssets(assets)          // → { deleted, failed }
+publicUrl(asset)
 ```
+
+> ⚠️ **Plan me `deleteAsset(storage)` tha, ship `deleteAsset(asset)` hua.**
+> Callers ke paas ek media object hota hai (`{ url, storage, type, metadata }`),
+> bare `storage` nahi. Sirf `storage` lene ka matlab hota ki har call site pehle
+> use tod kar nikaale — aur `url` ke bina legacy rows (jinme `storage` hai hi
+> nahi) delete ho hi nahi sakti. Poora object lene se provider row se aata hai
+> aur kind `metadata.mimeType` se — jo Cloudinary ke `resource_type` ke liye
+> zaroori hai, warna ek video ko image ki tarah destroy karne par wo "not found"
+> keh kar file chhod deta hai.
 
 ```js
 exports.deleteAsset = async (storage) => {
@@ -451,18 +480,67 @@ par **poster gayab** ho jaata aur section me kaali tile reh jaati.
 
 ## 2.5 Key layout
 
+**Shape: `<prefix><type>/<entity>/<entityId>/<uuid>.<ext>`** — type sabse upar,
+entity uske andar. Dono chahiye, alag-alag wajah se (B-5).
+
+**PUBLIC bucket** (`S3_BUCKET_PUBLIC`) — CloudFront ke peeche:
+
 ```
 <prefix>staging/<userId>/<uuid>.<ext>          ← unvalidated, lifecycle 24h, CloudFront DENY
-<prefix>showcase/<sectionId>/<uuid>.<ext>
-<prefix>brands/<brandId>/logo/<uuid>.<ext>
-<prefix>vouchers/<voucherId>/images/<uuid>.<ext>
-<prefix>banners/<bannerId>/<uuid>.<ext>
-<prefix>categories/<categoryId>/<uuid>.<ext>
-<prefix>users/<userId>/avatar/<uuid>.<ext>
+
+<prefix>images/brands/<brandId>/<uuid>.<ext>
+<prefix>images/showcase/<sectionId>/<uuid>.<ext>        ← poster
+<prefix>images/vouchers/<voucherId>/<uuid>.<ext>
+<prefix>images/banners/<bannerId>/<uuid>.<ext>
+<prefix>images/categories/<categoryId>/<uuid>.<ext>
+<prefix>images/subcategories/<subCategoryId>/<uuid>.<ext>
+<prefix>images/tickers/<tickerId>/<uuid>.<ext>
+<prefix>images/users/<userId>/<uuid>.<ext>
+
+<prefix>videos/showcase/<sectionId>/<uuid>.<ext>
+<prefix>videos/banners/<bannerId>/<uuid>.<ext>
+<prefix>videos/vouchers/<voucherId>/<uuid>.<ext>
+
+<prefix>gifs/banners/<bannerId>/<uuid>.<ext>
+<prefix>gifs/vouchers/<voucherId>/<uuid>.<ext>
+```
+
+**PRIVATE bucket** (`S3_BUCKET_PRIVATE`) — koi CloudFront nahi, sirf presigned GET:
+
+```
+<prefix>documents/<year>/<series>/<documentNumber>.pdf     ← Phase 4
 ```
 
 `<prefix>` — prod me khaali, non-prod me `dev/` ya `staging/`.
 Har upload ka **naya uuid** — kabhi overwrite nahi ⇒ CloudFront invalidation kabhi nahi chahiye.
+
+### Type upar kyun
+
+| Cheez | Type prefix se |
+|---|---|
+| **Resize Lambda** (Phase 6) | `images/*` par ek CloudFront behaviour. Entity-first hota to `*.mp4` extension par route karna padta |
+| **🔴 GIF ka bachav** | `gifs/*` resizer se **bahar** rehta hai. `images/` me hota to Lambda uski **animation maar deta** |
+| **Lifecycle** | `videos/*` → 90 din baad Infrequent Access. Bade sirf video hi hain |
+| **Cache TTL** | video aur image ke liye alag behaviour |
+
+### Entity andar kyun
+
+Aaj Cloudinary par sab `folder: "Images"` me ek random `public_id` ke saath
+girta hai — **key se pata hi nahi chalta file kiski hai**. Isiliye
+[cleanupOrphans.js](../scripts/cleanupOrphans.js) me media ka ek bhi sweep
+nahi hai: orphan image dhoondhne ka koi rasta hi nahi. Entity key me aate hi
+wo mumkin ho jaata hai.
+
+> ⚠️ `staging/` **prefix** ka `STAGING` **tier** se koi rishta nahi. Non-prod
+> staging par path `staging/staging/…` banta hai — dekhne me ajeeb, par sahi.
+>
+> 🟢 Aur `staging/` type-tree ke **bahar** hai, jaan-boojh kar: us waqt type abhi
+> **saabit nahi hua** hota. Type folder §5.4 ke magic-byte check ke **baad**
+> milta hai. Ek type-named prefix content ka daawa hai, aur wo daawa tabhi banega
+> jab bytes dekh li gayi hon.
+>
+> `audio/` abhi **nahi** banega — `uploadAudio` zinda hai par uska koi caller
+> nahi. Table me row rahegi; object tab girega jab koi sach me audio bhejega.
 
 ## 2.6 Edge cases
 
@@ -471,18 +549,129 @@ Har upload ka **naya uuid** — kabhi overwrite nahi ⇒ CloudFront invalidation
 | P2-1 | Legacy row me `storage` nahi | `?? CLOUDINARY` |
 | P2-2 | `storage.provider` unknown | **throw** — chup nahi |
 | P2-3 | S3 delete par `NoSuchKey` | Success maano (Cloudinary ka `"not found"` bhi aisa hi treat hota hai) |
-| P2-4 | S3 credentials galat | Boot par nahi, pehle upload par. **Phase 1 Guard 3 + ek boot-time `HeadBucket` check** |
+| P2-4 | S3 credentials galat | Boot par ek **credential-source line** (§2.6.1), aur setup ke baad `aws` probe — [aws_s3_setup.md §7](./aws_s3_setup.md) |
 | P2-5 | Cloudinary flag se on kiya gaya | `config.media.provider` — dono raaste tested |
 | P2-6 | Barrel cycle (`services/storage` ↔ `helpers/*`) | `verifyImports.js` |
 
+### 2.6.1 ⚠️ `HeadBucket` **nahi** — wo policy tod deta
+
+Pehle yahan likha tha "boot par `HeadBucket` check". Wo galat tha:
+**`HeadBucket` ke liye `s3:ListBucket` chahiye**, aur wo permission
+[aws_s3_setup.md §5.1](./aws_s3_setup.md) me jaan-boojh kar nahi di gayi.
+
+Sirf is check ke liye `ListBucket` dene ka matlab hota: ek leaked key se koi
+private bucket ki **poori key list** padh leta — yaani har invoice ka
+`documentNumber`, har brand ka id. Ek boot-time nicety ke liye ye sauda mehenga hai.
+
+`HeadObject` bhi kaam nahi karta: `ListBucket` ke bina missing key par S3
+**403 deta hai, 404 nahi** — to "credential kharab" aur "file hai hi nahi" me
+farq hi nahi kar paate.
+
+**Jo hoga:**
+
+1. **Boot par, bina network ke** — SDK se credentials *resolve* karwa kar unka
+   **source** log karo (`instance role` / `environment key (…7Q)`). Ye batata hai
+   ki kaunsi identity use hogi — [aws_s3_setup.md §6.3](./aws_s3_setup.md) ka
+   stale-key khatra yahin pakda jaata hai. Koi S3 call nahi, boot slow nahi.
+2. **Setup ke baad ek baar** — [aws_s3_setup.md §7](./aws_s3_setup.md) ke `aws`
+   probe commands. Wo ye bhi saabit karte hain ki non-prod credential se
+   production bucket par likha **nahi** ja sakta — jo `HeadBucket` kabhi
+   batata hi nahi.
+
 ## 2.7 Done ka matlab
 
-- [ ] `deleteAsset` dono provider par sach me delete kare
-- [ ] Unknown provider par **throw**, silent skip nahi
-- [ ] Legacy URL-only row Cloudinary se delete ho
-- [ ] `MEDIA_PROVIDER=CLOUDINARY` se purana behaviour wapas aaye
-- [ ] `verifyImports.js` clean, koi cycle nahi
-- [ ] `npm test` — 75/75
+- [x] `deleteAsset` dono provider par sach me delete kare
+- [x] Unknown provider par **throw**, silent skip nahi
+- [x] Legacy URL-only row Cloudinary se delete ho
+- [x] `MEDIA_PROVIDER=CLOUDINARY` se purana behaviour wapas aaye
+- [x] `verifyImports.js` clean, koi cycle nahi — 877 modules
+- [x] Unit suite 73/73, `verifyEnvCoverage` teeno list agree
+
+## 2.8 Natija — jo sach me ship hua
+
+### Naye files
+
+| File | Kya |
+|---|---|
+| `constants/storage.js` | `STORAGE_PROVIDER`, `MEDIA_KIND`, `MEDIA_KIND_PREFIX`, `STORAGE_BUCKET`, **`UPLOAD_PURPOSES`** (14 rows), `kindFromMime` |
+| `services/storage/index.js` | Facade — `uploadFromPath` · `uploadUrl` · `deleteAsset` · `deleteAssets` · `publicUrl` |
+| `services/storage/keys.js` | `buildKey` · `buildDocumentKey` · `buildStagingKey` · `bucketFor` · `cloudinaryFolder` |
+| `services/storage/providers/cloudinary.js` | folder + `public_id` + `resource_type` sab yahin |
+| `services/storage/providers/s3.js` | `PutObject` / `DeleteObject`, CDN URL, private bucket par URL **refuse** |
+| `configs/s3.js` | Lazy `S3Client`, `bucketName`, **`logS3Config`** (credential-source line) |
+| `__tests__/unit/storage.test.js` | 32 test |
+
+### Chaar landmine
+
+| | Kya tha | Ab |
+|---|---|---|
+| **L-1** | `case "S3": // Future Implementation` — return karta tha jaise delete ho gaya ho. `default` branch `console.warn` karke return | Facade dispatch karta hai; **unknown provider par throw** |
+| **L-2** | `deleteFile` URL ko `CLOUD_BASE_URL` se match karta tha; match na ho to `console.log` aur `false` | `storage.publicId` se delete — URL parse hi nahi hota |
+| **L-3** | Voucher rollback `deleteImage(url)` se — yaani L-2 wala silent skip | `deleteAssets(uploaded)`, jo `{ deleted, failed }` ginta hai |
+| **L-4** | S3 par `publicId` null → URL comparison skip → **auto poster "custom" pada jaata** → vendor ka live poster delete | `media[].thumbnailStorage` — hai ya nahi, bas. Legacy Cloudinary rows purani heuristic par |
+
+### 🔴 Wahi bug teen aur jagah mila (plan me nahi tha)
+
+Banner, voucher banner aur ticker — teenon ke paas row par `storage` object **tha**, par teenon URL se delete kar rahe the. Yaani L-2 ka silent skip un teenon par bhi lagta. Ab teenon `deleteAsset({ url, storage, type })` se jaate hain, aur `type` isliye jaata hai ki ek GIF plain image ki tarah destroy na ho — Cloudinary galat `resource_type` par `"not found"` keh kar file chhod deta hai.
+
+### Step B — 19 call site
+
+Har call site ab `purpose` + `entityId` deta hai, to key aisi banti hai:
+
+```
+dev/images/brands/<brandId>/<uuid>.webp
+dev/videos/showcase/<sectionId>/<uuid>.mp4
+dev/gifs/banners/<bannerId>/<uuid>.gif
+```
+
+⚠️ **Create flows me id upload se pehle mint hoti hai.** `createCategory`,
+`createSubCategory`, `registerUser`, `createBanner`, `createTicker`,
+`createVoucher`, `addBrandFeature` — sab me upload insert se pehle hota hai, to
+key ko id chahiye thi. Mongo ids waise bhi client-side bante hain, to ye wahi
+value hai jo `create` khud banata.
+
+`services/uploads/index.js` **delete nahi hua** — usme `uploadPDF` (Phase 4 me
+private bucket par jaayega) aur `uploadAudio` (koi caller nahi, jaan-boojh kar
+rakha) bache hain. `uploadImage`, `uploadVideo`, `deleteImage`,
+`deleteAudioOrVideo`, `upload*WithMetadata` sab chale gaye.
+
+### Saath me band hua
+
+- **§8.2** — `CLOUD_BASE_URL` khaali/galat hone par har delete skip *(L-2 ka hi doosra chehra)*
+- **§8.3** — `updateCategoryById`, `updateSubCategoryById`, `updateUserById` me
+  **delete pehle, upload baad me** tha. Upload fail = purani image ja chuki, nayi
+  aayi nahi. Ab ulta: upload → assign → phir purani delete
+- **§8.5** — `uploadVideo` dead tha, hata
+
+### Proof
+
+9 mutant banaye, **9 ke 9 killed** — har fix ke bina uska test sach me fail hota hai:
+
+```
+killed  L-1  unknown provider warns and returns (the old behaviour)
+killed  L-1  delete follows MEDIA_PROVIDER instead of the row
+killed  L-2  delete by URL first, public id ignored
+killed  L-4  isCustomThumbnail drops the provider guard
+killed  L-4  thumbnailStorage ignored
+killed  GIF  treated as a plain image
+killed  keys path traversal not stripped
+killed  keys purpose/kind mismatch allowed
+killed  keys reuse one key instead of a fresh uuid
+```
+
+### ⚠️ Do cheezein jo implement karte waqt badalni padi
+
+**1. `kinds` security boundary nahi hai.** Pehle har image purpose me sirf
+`[IMAGE]` tha. Par ek GIF `image/gif` hai, aur voucher images sirf
+`startsWith("image/")` check karti hain jabki logo/avatar **kuch bhi check nahi
+karte** (§8.4). To ek GIF aa sakta hai — aur `kinds` me na hone se wo S3 par ek
+uljhan bhara 422 ban jaata. Ab har image purpose `GIF` bhi list karta hai: file
+`gifs/` me jaati hai (resizer se bahar), aur **rokne ka kaam mime allow-lists ka
+hai**, is table ka nahi.
+
+**2. `deleteAsset(storage)` → `deleteAsset(asset)`.** §2.3 dekhein — callers ke
+paas poora media object hota hai, bare `storage` nahi, aur legacy rows me
+`storage` hai hi nahi.
 
 ---
 
@@ -513,33 +702,55 @@ hai — delete aur re-upload ke liye. **Client ko pata bhi nahi chalega.**
 
 ## 3.2 Files
 
-| Model | Naya field |
-|---|---|
-| `models/User.js` | `imageStorage` |
-| `models/Category.js` | `imageStorage` |
-| `models/SubCategory.js` | `imageStorage` |
-| `models/Brand.js` | `logoStorage` |
-| `models/BrandFeatures.js` | `iconStorage` |
-| `models/ShowcaseSection.js` | `media[].thumbnailStorage` (L-4 ke liye) |
-| `models/storageSchema.js` | 🆕 shared sub-schema — 5 models me duplicate shape ek jagah |
+| Model | Naya field | |
+|---|---|---|
+| `models/storageSchema.js` | 🆕 shared sub-schema — 5 models me duplicate shape ek jagah | ⬜ |
+| `models/User.js` | `imageStorage` | ⬜ |
+| `models/Category.js` | `imageStorage` | ⬜ |
+| `models/SubCategory.js` | `imageStorage` | ⬜ |
+| `models/Brand.js` | `logoStorage` | ⬜ |
+| `models/BrandFeatures.js` | `iconStorage` | ⬜ |
+| `models/ShowcaseSection.js` | `media[].thumbnailStorage` | ✅ **Phase 2 me ho gaya** — L-4 ko iski zarurat thi |
 
-Services (8 call sites): `registerUser`, `updateUserById`, `createCategory`,
+Services (7 baaki): `registerUser`, `updateUserById`, `createCategory`,
 `updateCategoryById`, `createSubCategory`, `updateSubCategoryById`,
-`updateBrand`, `addBrandFeature` / `updateBrandFeature`, `updateSectionMedia`.
+`updateBrand`, `addBrandFeature`, `updateBrandFeature`. Sab pehle se
+`storage.uploadFromPath` call karti hain aur `{ url, storage, metadata }` paati
+hain — ab bas `storage` ko sibling field me likhna hai. `updateSectionMedia`
+✅ ho chuka.
 
-## 3.3 Saath me — §8.3 ka fix
+## 3.3 ✅ §8.3 Phase 2 me hi band ho gaya
 
-In me se 3 jagah **purana delete pehle, naya upload baad me** hota hai
-(Pattern C, [media_upload_map.md §8.3](./media_upload_map.md)):
+Ye Phase 3 ke saath hona tha, par teenon services wahin chhui ja rahi thin to
+usi waqt theek kar di gayin:
 
 ```
-aaj:   deleteImage(purana)  →  uploadImage(naya)   ← upload fail = dono gaye
-sahi:  uploadImage(naya)    →  save                →  deleteAsset(purana)
+tha:  deleteImage(purana)  →  uploadImage(naya)   ← upload fail = dono gaye
+ab:   uploadUrl(naya)      →  assign             →  deleteAsset(purana)
 ```
 
-🔴 **Customer ko kya hota hai aaj:** user profile photo badalta hai, upload fail
-ho jaata hai — **purani photo bhi ja chuki hoti hai.** Ab uske paas koi photo
-nahi, aur wo kuch nahi kar sakta.
+`updateCategoryById`, `updateSubCategoryById`, `updateUserById` — teenon.
+
+🔴 **Customer ko kya hota tha:** profile photo badalta, upload fail hota —
+**purani photo bhi ja chuki hoti.** Ab uske paas koi photo nahi hoti, aur wo kuch
+nahi kar sakta tha.
+
+### ⚠️ Phase 3 ke saath ek aur cheez dekhni hai — §8.6
+
+`Category.image` aur `SubCategory.image` ka **default hi ek shared URL hai**
+(`DEFAULT_IMAGES.CATEGORY`). Jis category ne apni image kabhi upload nahi ki,
+uska `image` wahi shared default hai — aur update/delete ab use `deleteAsset`
+par bhejte hain.
+
+Aaj ye **sirf ittefaq se safe hai**: default purane cloud `drvdnqydw` par hai
+aur active cloud `dtpy1lbmf`, to host check use skip kar deta hai. Jis din koi
+in defaults ko current cloud par le aayega, **ek category delete karne se har
+default-image wali category ki image toot jaayegi.**
+
+Fix: delete se pehle `if (image !== DEFAULT_IMAGES.CATEGORY)` guard. Phase 3 me
+`imageStorage` aane ke baad ye aur saaf ho jaata hai — default ka koi
+`imageStorage` hoga hi nahi, to "hamara upload hai ya shared default" ka jawab
+guess ki jagah ek field ban jaata hai.
 
 ## 3.4 Edge cases
 
@@ -681,21 +892,35 @@ Ek row = **allowed types + kaun kar sakta hai + kiska hai + kitna bada + kahan j
 2. HeadObject                                           → 400 agar nahi hai
 3. GetObject Range: bytes=0-1023  → magic bytes          → 400 + object delete
 4. Image ho to header se width/height                    → metadata
-5. CopyObject staging/… → <prefix>/…
-6. Mongo transaction: row + consumedAt
-7. DeleteObject staging/…  (best effort)
+5. Verified type se hi type-prefix chuno                 → images/ | videos/ | gifs/
+6. CopyObject staging/… → <prefix><type>/<entity>/…
+   ContentType: **verified type se**, ContentTypeDirective: REPLACE
+7. Mongo transaction: row + consumedAt
+8. DeleteObject staging/…  (best effort)
 ```
 
 Magic bytes — F-12 aur F-13 ka asli fix:
 
-| Bytes | Type |
-|---|---|
-| `FF D8 FF` | JPEG |
-| `89 50 4E 47` | PNG |
-| `52 49 46 46 … 57 45 42 50` | WebP |
-| `… 66 74 79 70` | MP4 / MOV |
-| `1A 45 DF A3` | WebM / MKV |
-| `<?xml` / `<svg` | ❌ **reject** (F-13) |
+| Bytes | Type | Prefix |
+|---|---|---|
+| `FF D8 FF` | JPEG | `images/` |
+| `89 50 4E 47` | PNG | `images/` |
+| `52 49 46 46 … 57 45 42 50` | WebP | `images/` |
+| **`47 49 46 38`** (`GIF8`) | **GIF** | **`gifs/`** |
+| `… 66 74 79 70` | MP4 / MOV | `videos/` |
+| `1A 45 DF A3` | WebM / MKV | `videos/` |
+| `<?xml` / `<svg` | ❌ **reject** (F-13) | — |
+
+> 🔴 **GIF pehle is table me tha hi nahi**, jabki `BANNER_TYPE.GIF` aur
+> `VOUCHER_BANNER_TYPE.GIF` live supported types hain (`image/gif`). Uske bina
+> har banner GIF confirm par 400 kha jaata.
+
+> 🔴 **`Content-Type` client se mat lo — verified type se set karo.** Presigned
+> POST me client `Content-Type` khud bhejta hai. Agar wahi copy kar diya, to ek
+> MP4 `image/jpeg` ban kar CloudFront par **permanently cache** ho jaayega:
+> browser broken-image dikhayega aur kisi bhi log me ek line nahi aayegi.
+> `CopyObject` par `MetadataDirective: "REPLACE"` chahiye — warna S3 source ka
+> `Content-Type` chupke se carry kar leta hai.
 
 Wahi 1 KB image ke dimensions bhi de deta hai (JPEG SOF0 / PNG IHDR / WebP VP8X)
 — isliye image ke liye Lambda chahiye hi nahi.

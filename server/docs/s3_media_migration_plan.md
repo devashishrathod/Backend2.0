@@ -1,7 +1,10 @@
 # AWS S3 Media Migration — Complete Flow & Design Plan
 
-> **Status:** DRAFT — confirmation ke liye. **Abhi koi code change nahi hua.**
+> **Status:** ✅ Confirm ho chuka. Phase 0 aur Phase 1 ship ho chuke hain —
+> live progress [s3_migration_phases.md](./s3_migration_phases.md) me.
 >
+> Execution: [s3_migration_phases.md](./s3_migration_phases.md) ·
+> **AWS setup: [aws_s3_setup.md](./aws_s3_setup.md)**
 > Related: [media_upload_map.md](./media_upload_map.md) ·
 > [environment_and_services_map.md](./environment_and_services_map.md) ·
 > [dead_code_audit.md](./dead_code_audit.md)

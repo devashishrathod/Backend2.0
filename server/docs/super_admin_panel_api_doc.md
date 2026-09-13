@@ -2587,7 +2587,15 @@ Global middleware: `router.use(verifyJwtToken)` — ⚠️ **koi role gate nahi*
 
 ## 31. POST /locations/create
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** **VENDOR+SUB_VENDOR+ADMIN**, ownership verified ✅ · admin kisi bhi brand / outlet / **customer** ka
+
+> 🆕 **Admin ab customer ka address bhi bana sakta hai** — `userId` me us customer
+> ke user ki id bhejein, aur `isBrandAddress` / `isSubBrandAddress` dono chhod
+> dein. Row par `userId` aur `customerId` **customer ke** rehte hain; admin
+> `createdBy` / `updatedBy` me darj hota hai. Isi wajah se dono alag rakhe gaye
+> hain — warna admin ke banaye address ko customer apna maan hi nahi paata.
+>
+> `userId` na bhejne par `422 "userId is required when an admin acts on a customer address"`.
 
 ### Body
 | Field | Type | Required | Default | Validation |
@@ -2644,7 +2652,11 @@ Global middleware: `router.use(verifyJwtToken)` — ⚠️ **koi role gate nahi*
 
 ## 32. GET /locations/getAll
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** **VENDOR+SUB_VENDOR+ADMIN**, scope enforced ✅ · admin ko sab dikhta hai
+
+> 🆕 **Vendor ko ab sirf apna brand aur apne outlets dikhte hain.** Pehle koi
+> scope tha hi nahi — bina filter ke ek request platform ke saare address de
+> deti thi, customer ke ghar ke pate samet. Admin par koi rok nahi.
 
 ### Query Params
 | Param | Type | Required | Notes |
@@ -2714,7 +2726,7 @@ Koi ownership check nahi — admin ke liye theek, par sabke liye khula hai.
 
 ## 34. PUT /locations/update/:id
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · admin kisi ka bhi
 
 ### Path Params
 | Param | Type | Required |
@@ -2739,7 +2751,7 @@ Koi ownership check nahi — admin ke liye theek, par sabke liye khula hai.
 
 ## 35. DELETE /locations/delete/:id
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · admin kisi ka bhi
 
 ### Path Params
 | Param | Type | Required |

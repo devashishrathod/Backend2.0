@@ -3,8 +3,12 @@
 Har third-party service, har external dependency aur har environment variable —
 category-wise, aur **NODE_ENV ke base par kaun sa kya switch karega**.
 
-> Ye doc **design** hai, code nahi. Iske approve hone ke baad `configs/` layer
-> banegi, phir uske upar AWS-S3 migration hoga.
+> ⚠️ **§0 aur §2 superseded hain.** Wo `NODE_ENV` par tier rakhne ka design
+> hain. Implement karte waqt wo **is machine par boot hi rok deta tha** —
+> `NODE_ENV` yahan `production` hai jabki DB aur keys development ke hain. Tier
+> ab `CONFIG_PROFILE` ke paas hai; asli design **[§3](#3-config-architecture--✅-ho-gaya)**
+> me hai, aur wahi ship hua hai. Do sections record ke liye rakhe hain.
+>
 > Media ka poora current flow: [media_upload_map.md](./media_upload_map.md)
 
 ---
@@ -65,9 +69,15 @@ nahi sakte. `STAGING` hai hi nahi.
 
 ---
 
-## 2. ⚠️ `NODE_ENV` chunne ka khatra, aur uska guard
+## 2. ⚠️ `NODE_ENV` chunne ka khatra, aur uska guard — *(superseded, §3 dekho)*
 
-Ye section sabse important hai. `CLAUDE.md` khud likhta hai:
+> Is section ne sahi khatra pehchana tha, par uska hal galat tha: wo `NODE_ENV`
+> ko switch maan kar uske upar guards lagata hai. Implement karte waqt saaf hua
+> ki jo cheez jhooth bol sakti hai use switch banana hi nahi chahiye —
+> `CONFIG_PROFILE` env file ke andar rehta hai, to wo jhooth bol hi nahi sakta.
+> **Shipped design: [§3](#3-config-architecture--✅-ho-gaya).**
+
+Ye section sabse important tha. `CLAUDE.md` khud likhta hai:
 
 > *"`NODE_ENV=production` is set in some shells here… anything that changes
 > behaviour must not hang off it — the money paths and index handling all read
@@ -107,35 +117,49 @@ Har env file me ek marker line:
 
 ```ini
 # .env.staging
-CONFIG_PROFILE=staging
+CONFIG_PROFILE=STAGING
 ```
 
-Loader `CONFIG_PROFILE === NODE_ENV` assert karta hai. Agar kisi ne
-`.env.staging` ko copy karke `.env.production` bana diya aur values badalna
-bhool gaya — boot fail:
+⚠️ **Value UPPERCASE, filename lowercase** — jaan-boojh kar. Value hamari hai aur
+repo ka niyam hai ki enums capital me hote hain; `.env.staging` ek *path* hai,
+aur har tool (dotenv ke docs, deploy templates, `.gitignore` patterns) use
+lowercase me hi dhoondhta hai. [load.js:57-64](../configs/env/load.js#L57) me
+yahi likha hai.
+
+Loader **shell ka `CONFIG_PROFILE` aur file ka `CONFIG_PROFILE` match** karvata
+hai ([load.js:108](../configs/env/load.js#L108)). Agar kisi ne `.env.staging` ko
+copy karke `.env.production` bana diya aur marker badalna bhool gaya — boot fail:
 
 ```
-❌ NODE_ENV=production but .env.production declares CONFIG_PROFILE=staging.
+❌ CONFIG_PROFILE disagrees with itself.
+   Resolved profile: PRODUCTION
+   After loading files: STAGING
 ```
 
 Ye wo galti pakadta hai jo file-per-env model me sabse aam hai.
 
 ### Guard 3 — production apne aap ko pehchanti hai
 
-`NODE_ENV=production` par boot ye bhi assert karega:
+`CONFIG_PROFILE=PRODUCTION` par boot ye assert karta hai
+([load.js:130](../configs/env/load.js#L130)):
 
-- `MONGO_URL` ka database naam production wala hai (test/staging/dev naam **refuse**)
-- S3 bucket naam `-prod-` carry karta hai
-- dono Razorpay key ids `rzp_live_` se shuru hoti hain
-- `ENABLE_NGROK` set nahi hai
+- `MONGO_URL` ka database naam me `prod` ho (test/staging/dev naam **refuse**)
+- dono Razorpay key ids `rzp_live_` se shuru hon
+- har set `S3_BUCKET_*` ka naam me `prod` ho
+
+> ⚠️ **Ye `NODE_ENV` par nahi chalta.** Is machine par `NODE_ENV=production` hai
+> jabki DB development ka hai aur Razorpay keys test ki. `NODE_ENV` par key karne
+> ka matlab hota: guard laptop par firing, aur jahan zaroorat hai wahan chup.
+> `CONFIG_PROFILE` env **file ke andar** rehta hai, isliye file jhooth nahi bol
+> sakti.
 
 Aapki memory me pehle se yahi principle hai — *"guard on DB name, never
 NODE_ENV"*. Money suite ka `testDb.js` yahi karta hai (`_test` se end na ho to
 connect refuse). Ye uska production wala mirror hai.
 
-> **Teenon milkar:** `NODE_ENV` switch karta hai, par wo **akela** kuch decide
-> nahi karta. Har environment ko ek file chahiye jo maujood ho, khud ko declare
-> kare, aur jiski values apni tier se match karein.
+> **Teenon milkar:** `CONFIG_PROFILE` switch karta hai, par wo **akela** kuch
+> decide nahi karta — Guard 3 har cheez **value** par check karta hai, label par
+> nahi.
 
 ### Ek chhota npm side-effect
 
@@ -147,9 +171,56 @@ likhna hoga.
 
 ---
 
-## 3. Config architecture
+## 3. Config architecture — ✅ HO GAYA
 
-### 3.1 Aaj ka problem
+> **Phase 1 done.** `configs/env/` maujood hai: Joi schema (80 vars), 3 guards,
+> aur boot par fail-fast. `index.js` ab `process.env` ek baar bhi nahi padhta.
+>
+> ### ⚠️ Ek badlaav plan se — tier `NODE_ENV` se nahi, `CONFIG_PROFILE` se
+>
+> Plan `NODE_ENV` par tier rakhta tha. Wo **is machine par boot hi rok deta**:
+> `NODE_ENV` yahan `production` hai, jabki DB `Trydood2` hai aur Razorpay keys
+> `rzp_test_…`. Guard 3 turant fail karta.
+>
+> `CONFIG_PROFILE` env **file ke andar** rehta hai, to file khud batati hai wo
+> kaun si hai. Values `DEVELOPMENT` / `STAGING` / `PRODUCTION` — upper case,
+> jaisa is repo ka har enum.
+>
+> ⚠️ `NODE_ENV` **lower case hi rahega**. Wo hamara enum hai hi nahi: npm
+> `production` padh kar devDependencies skip karta hai, aur Express
+> `app.get("env")` ko `"production"` se compare karke tay karta hai ki error
+> stack trace client ko dikhana hai ya nahi. `NODE_ENV=PRODUCTION` **kisi se
+> match nahi karta** — yaani production server stack traces leak karta rehta aur
+> dikhne me sab theek lagta. Naapa hua:
+>
+> ```
+> NODE_ENV="production"   -> express app.get("env") = "production"
+> NODE_ENV="PRODUCTION"   -> express app.get("env") = "PRODUCTION"
+> ```
+>
+> Ab `NODE_ENV` ka ek hi kaam bacha hai — log format.
+>
+> **Guards (naape hue, teenon `exit 1` dete hain):**
+>
+> | | Kya |
+> |---|---|
+> | 1 | `.env` ya platform environment — dono na ho to boot fail |
+> | 2 | `CONFIG_PROFILE` file me aur shell me dono ho to **match karein** |
+> | 3 | `PRODUCTION` ⇒ DB naam me `prod`, Razorpay `rzp_live_`, S3 bucket me `prod` |
+>
+> **Ek consolidation:** `configs/uploadLimit.js` (Phase 0 ka stopgap) hata diya —
+> Joi wahi kaam **behtar** karta hai: `"100MB"` ko bhi reject karta hai (parseInt
+> use 100 maan leta tha) aur ek maximum bhi lagata hai.
+>
+> Tests: `__tests__/unit/envSchema.test.js` — 20 tests.
+>
+> ⚠️ Baaki ~60 call sites abhi bhi `process.env` padhte hain aur **theek kaam
+> karte hain** — loader validated values wapas `process.env` me likhta hai, to
+> schema ke defaults unhe bhi milte hain. Unhe ek saath badalna jaan-boojh kar
+> nahi kiya: 60 files me ek typo aise code path me chhup jaata hai jo mahine baad
+> chalta hai — wahi bimari jise ye layer khatam karne aayi hai.
+
+### 3.1 Purana problem (record ke liye)
 
 `process.env.*` **poore codebase me bikhra hua hai**:
 
@@ -350,11 +421,14 @@ assets **permanently orphan** hain.
 | **Client** | `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` *(abhi install nahi hai)* |
 | **Switch** | ✅ **Prod tier alag bucket, dev+staging shared bucket alag prefix** |
 
+> **Poora setup runbook — bucket, IAM, CloudFront, har `aws` command:**
+> **[aws_s3_setup.md](./aws_s3_setup.md)**
+
 | Variable | Production | Non-prod (dev + staging) |
 |---|---|---|
 | `AWS_REGION` | `ap-south-1` | `ap-south-1` |
-| `AWS_ACCESS_KEY_ID` | prod IAM user | non-prod IAM user |
-| `AWS_SECRET_ACCESS_KEY` | prod | non-prod |
+| `AWS_ACCESS_KEY_ID` | ❌ *(EC2 par — instance role)* | non-prod IAM user *(Render)* |
+| `AWS_SECRET_ACCESS_KEY` | ❌ *(instance role)* | non-prod *(Render)* |
 | `S3_BUCKET_PUBLIC` | `trydood-prod-public` | `trydood-nonprod-public` |
 | `S3_BUCKET_PRIVATE` | `trydood-prod-private` | `trydood-nonprod-private` |
 | `S3_PREFIX` | *(khaali)* | `dev/` ya `staging/` |
@@ -362,14 +436,19 @@ assets **permanently orphan** hain.
 
 **Bucket layout:**
 
+**`<prefix><type>/<entity>/<entityId>/<uuid>.<ext>`** — poora rationale
+[aws_s3_setup.md §4](./aws_s3_setup.md) me.
+
 ```
 trydood-<tier>-public          ← CloudFront ke peeche, cacheable, immutable keys
-  <prefix>brands/<brandId>/logo/<uuid>.webp
-  <prefix>vouchers/<voucherId>/images/<uuid>.webp
-  <prefix>showcase/<sectionId>/<uuid>.mp4
-  <prefix>banners/<bannerId>/<uuid>.webp
-  <prefix>categories/<categoryId>/<uuid>.webp
-  <prefix>users/<userId>/avatar/<uuid>.webp
+  <prefix>images/brands/<brandId>/<uuid>.webp
+  <prefix>images/vouchers/<voucherId>/<uuid>.webp
+  <prefix>images/showcase/<sectionId>/<uuid>.webp
+  <prefix>images/banners/<bannerId>/<uuid>.webp
+  <prefix>images/categories/<categoryId>/<uuid>.webp
+  <prefix>images/users/<userId>/<uuid>.webp
+  <prefix>videos/showcase/<sectionId>/<uuid>.mp4
+  <prefix>gifs/banners/<bannerId>/<uuid>.gif      ← resizer se bahar, animation bachti hai
 
 trydood-<tier>-private         ← Block Public Access ON, sirf presigned GET
   <prefix>documents/<year>/<series>/<documentNumber>.pdf
@@ -387,12 +466,25 @@ sach me ek credential ban jaata hai.
 role ke hisaab se teen. Ye teenon **replace ho rahe hain**, kyunki is system me
 media role se nahi banta: ek showcase video vendor upload karta hai par customer
 dekhta hai, aur ek invoice vendor aur customer dono ko dikhta hai. Asli farq
-**public vs private** ka hai, role ka nahi. Purani teen keys hata dena.
+**public vs private** ka hai, role ka nahi.
+
+Ye teen abhi `.env` me **pade rahenge** (koi runtime code inhe padhta nahi), aur
+S3 shift poora hone par ek saath hatenge. 🔴 Par **production ke env me ye teen
+likhni hi nahi hain** — [configs/env/load.js:156](../configs/env/load.js#L156) ka
+Guard 3 `PRODUCTION` par har bucket naam me `prod` maangta hai, aur
+`trydood-admin` me `prod` nahi hai, to boot fail ho jaayega.
+[aws_s3_setup.md §10.1](./aws_s3_setup.md) me poora detail.
 
 ⚠️ `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` abhi `.env` me hain hi nahi.
-EC2 par inki jagah **IAM instance role** behtar hai — koi static key hi nahi,
-to leak hone ke liye kuch nahi. Local dev ke liye ek restricted IAM user
-chahiye jiske paas sirf non-prod buckets ka access ho.
+**Kahan chahiye ye host par nirbhar hai, profile par nahi:** Render par IAM user
+ki key (SDK env se uthata hai), EC2 par kuch nahi — instance role
+(SDK IMDS se uthata hai). Code me dono ke liye ek hi line:
+`new S3Client({ region: config.AWS_REGION })`, koi `if` nahi.
+
+🔴 EC2 par shift karte waqt **purani key env se hatana zaroori hai** — SDK ki
+chain me env keys instance role se pehle aati hain, to server chalta rahega par
+galat identity se, aur key revoke hone ke din uploads chup-chaap band ho
+jaayenge. [aws_s3_setup.md §6.3](./aws_s3_setup.md).
 
 ---
 
@@ -649,8 +741,13 @@ mahine baad dikhega.
 | Variable | Production | Staging | Development | Default (aaj) |
 |---|---|---|---|---|
 | `PORT` | platform deta hai | `8080` | `8080` | `8080` |
-| `NODE_ENV` | `production` | `staging` | `development` | — |
-| `CONFIG_PROFILE` | `production` | `staging` | `development` | 🆕 naya |
+| `NODE_ENV` | `production` | `staging` | `development` | `development` |
+| `CONFIG_PROFILE` | `PRODUCTION` | `STAGING` | `DEVELOPMENT` | `DEVELOPMENT` |
+
+> ⚠️ Dono ki spelling alag hai aur ye **galti nahi hai**: `CONFIG_PROFILE` hamara
+> enum hai (capital), `NODE_ENV` npm aur Express ka hai (lowercase). `PRODUCTION`
+> likhne par Express `app.get("env") !== "production"` dekhta hai aur **client ko
+> stack trace bhej deta hai**. [schema.js:24-28](../configs/env/schema.js#L24)
 | `TRUST_PROXY` | `1` (Render/ALB) ya `0` (bare EC2) | `1` | `0` | `1` |
 | `RATE_LIMIT_MAX` | `3000` | `10000` | `100000` | `3000` |
 | `LOG_FORMAT` | `combined` | `combined` | `dev` | env par depend |
@@ -752,15 +849,15 @@ code me default maujood hai. Status column aaj ki haalat hai.
 | 17 | `CLOUD_BASE_URL` | C1 | ✅ | alag |
 | 18 | `CLOUDINARY_URL` | C1 | 🟡 | **hatao** |
 | 19 | `AWS_REGION` | C2. S3 | 🟡 → ✅ | same |
-| 20 | `AWS_ACCESS_KEY_ID` | C2 | 🔴 naya | **alag** |
-| 21 | `AWS_SECRET_ACCESS_KEY` | C2 | 🔴 naya | **alag** |
+| 20 | `AWS_ACCESS_KEY_ID` | C2 | 🔴 naya | **sirf Render par** *(EC2 = role)* |
+| 21 | `AWS_SECRET_ACCESS_KEY` | C2 | 🔴 naya | **sirf Render par** *(EC2 = role)* |
 | 22 | `S3_BUCKET_PUBLIC` | C2 | 🔴 naya | **alag** |
 | 23 | `S3_BUCKET_PRIVATE` | C2 | 🔴 naya | **alag** |
 | 24 | `S3_PREFIX` | C2 | 🔴 naya | **alag (dev/ vs staging/)** |
 | 25 | `CDN_BASE_URL` | C2 | 🔴 naya | **alag** |
-| 26 | `S3_BUCKET_ADMIN` | C2 | 🟡 | **hatao** |
-| 27 | `S3_BUCKET_CUSTOMER` | C2 | 🟡 | **hatao** |
-| 28 | `S3_BUCKET_VENDOR` | C2 | 🟡 | **hatao** |
+| 26 | `S3_BUCKET_ADMIN` | C2 | 🟡 | non-prod me pada rahe · **prod me likhna hi nahi** ⚠️ |
+| 27 | `S3_BUCKET_CUSTOMER` | C2 | 🟡 | non-prod me pada rahe · **prod me likhna hi nahi** ⚠️ |
+| 28 | `S3_BUCKET_VENDOR` | C2 | 🟡 | non-prod me pada rahe · **prod me likhna hi nahi** ⚠️ |
 | 29 | `TENDIGIT_BASEURL` | D. WA/SMS | ✅ | same |
 | 30 | `TENDIGIT_LICENSE` | D | ✅ | **alag** |
 | 31 | `TENDIGIT_APIKEY` | D | ✅ | **alag** |

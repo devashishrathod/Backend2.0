@@ -118,7 +118,7 @@ Vendor panel 22 functional areas cover karta hai:
 
 **Important architecture notes:**
 
-- **Role gates har vendor-write pe lag chuke hain** — `isVendorOrAdmin`. Ownership uske baad service ka kaam hai; do endpoints me wo abhi bhi missing hai → [Appendix B](#appendix-b--known-issues)
+- **Do alag sawaal, do alag jagah.** Route ka gate poochta hai *kya aap is tarah ke caller ho* (`isVendorOrAdmin`, `isBrandSideOrAdmin`); service poochti hai *ye cheez aapki hai* — `resolveActorBrand`, `resolveSectionForActor`, `resolveLocationTarget`. Gate akela kabhi kaafi nahi: wo batata hai ki aap **ek** vendor ho, ye nahi ki **is** brand ke. Ab dono har vendor-write par hain → [Appendix B](#appendix-b--known-issues)
 - **Ownership `resolveActorBrand` se enforce hoti hai** — 11 services isko use karte hain. Vendor sirf apna brand touch kar sakta hai, aur wo check brand ke apne `userId` se hota hai, token ke cached `brandId` se nahi
 - **Paid features subscription gate ke peeche hain** — outlets, vouchers, showcase sections ke liye active plan chahiye → [Subscription Gate](#subscription-gate)
 - **Soft delete pattern** — kuch bhi actually delete nahi hota, `isDeleted: true` set hota hai
@@ -2623,7 +2623,7 @@ Brand ki public profile update.
 
 **3. `brandName` lowercase me store** — display pe capitalize karein.
 
-**4. ⚠️ Role gate missing** — customer bhi call kar sakta hai ([Appendix B](#appendix-b--known-issues)).
+**4. ✅ Role gate lag chuka hai** — `isVendorOrAdmin`. Pehle customer bhi call kar sakta tha.
 
 **5. 🔴 `email` aur `mobile` ab brand ke apne field nahi hain — wo account ke mirror hain.**
 
@@ -2732,7 +2732,7 @@ Brand ke verification lifecycle ka audit trail.
 
 **4. `attemptNumber` batata hai kaunsa attempt tha** — resubmit pe badhta hai.
 
-**5. ⚠️ Customer ko bhi khula hai** — security finding #13 ([Appendix B](#appendix-b--known-issues)).
+**5. ✅ Ab customer ko khula nahi hai** — `isVendorOrAdmin` laga hua hai.
 
 > 📖 Full detail → [brand_verification_api_doc.md](./brand_verification_api_doc.md) (Section 5)
 
@@ -3118,7 +3118,7 @@ Brand ya outlet ke weekly timings set karta hai. Upsert hai — dobara call karn
 
 **6. Response `201` deta hai** chahe update hi kyun na ho — upsert hai.
 
-**7. ⚠️ Role gate missing** — koi bhi authenticated user kisi bhi brand/outlet ke work hours badal sakta hai ([Appendix B](#appendix-b--known-issues)).
+**7. ✅ Role gate lag chuka hai** — `isVendorOrAdmin`. Pehle koi bhi authenticated user kisi bhi brand/outlet ke work hours badal sakta tha.
 
 ---
 
@@ -3134,7 +3134,7 @@ Global middleware: `router.use(verifyJwtToken)` — ⚠️ **koi role gate nahi*
 
 Brand ya outlet ka address banata hai.
 
-**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** ⚠️
+**Access:** **VENDOR+SUB_VENDOR+ADMIN**, ownership verified ✅ · vendor apna brand, outlet manager sirf **apna outlet**, admin koi bhi
 
 ### Body
 | Field | Type | Required | Default | Validation |
@@ -3193,9 +3193,12 @@ Brand ya outlet ka address banata hai.
   "message": "Location created successfully",
   "data": {
     "_id": "68f1a2b3c4d5e6f7a8b9c4b1",
+    "kind": "SUB_BRAND",
     "subBrandId": "68f1a2b3c4d5e6f7a8b9c4a1",
-    "brandId": null,
-    "userId": null,
+    "brandId": "68f1a2b3c4d5e6f7a8b9c3a1",
+    "userId": "68f1a2b3c4d5e6f7a8b9c2a1",
+    "createdBy": "68f1a2b3c4d5e6f7a8b9c2b7",
+    "updatedBy": "68f1a2b3c4d5e6f7a8b9c2b7",
     "addressLine1": "Shop 4, Scheme 54",
     "addressLine2": "Vijay Nagar",
     "landmark": "Opposite C21 Mall",
@@ -3220,10 +3223,11 @@ Brand ya outlet ka address banata hai.
 ### Errors
 | Status | Message | Kab |
 |---|---|---|
+| `403` | 🆕 `Forbidden: You do not have permission to perform this action on this brand.` | Doosre brand ya uske outlet ki id |
 | `400` | `Location cannot be both Brand address and SubBrand address` | Dono flags `true` |
-| `400` | `brandId is required for Brand address` | Flag `true` par id nahi |
 | `400` | `subBrandId is required for SubBrand address` | |
-| `404` | `Brand not found` / `SubBrand not found` | |
+| `404` | `Brand not found!` / `SubBrand not found` | |
+| `409` | 🆕 Duplicate key | Us brand/outlet ka **live address pehle se hai** — pehle purana delete karein |
 | `422` | `Address Line 1 is required` / `City is required` / `State is required` | |
 | `422` | `Zip Code/Postal Code is required` / `Invalid Zip Code/Postal Code` | |
 | `422` | `Coordinates are required.` | |
@@ -3235,9 +3239,11 @@ Brand ya outlet ka address banata hai.
 
 **1. Coordinates ka order `[longitude, latitude]` hai** — GeoJSON standard. Ye **ulta** hai us se jo maps APIs usually dete hain (`lat, lng`). **Ye sabse common bug hai.** Indore = `[75.8951, 22.7548]`, `[22.7548, 75.8951]` **nahi**.
 
-**2. Sync automatic hota hai:**
-- `isBrandAddress: true` → `brand.locationId` set ho jaata hai
-- `isSubBrandAddress: true` → `subBrand.locationId` **aur** `subBrand.geo` dono sync hote hain
+**2. 🆕 Sync ek hi transaction me hota hai** — address aur parent ka pointer, dono ya koi nahi:
+- `isBrandAddress: true` → `brand.locationId`
+- `isSubBrandAddress: true` → `subBrand.locationId` **aur** `subBrand.geo`
+
+> Pehle ye do alag writes the, aur `Location.create()` **brand check se pehle** chalta tha — galat `brandId` par `404` aata tha par row ban chuki hoti thi. Development DB me 7 aise address the jinpar koi parent point nahi karta tha.
 
 **3. Outlet ka geo customer voucher listing ke liye critical hai.** `GET /vouchers/customer/get-all` outlets pe `$geoNear` chalata hai — bina location wale outlets ke vouchers customer ko **kabhi nahi dikhenge**, chahe voucher published ho.
 
@@ -3245,15 +3251,32 @@ Brand ya outlet ka address banata hai.
 
 **5. `formattedAddress` auto-generate hota hai** agar na bhejein — saare parts comma-separated, lowercase.
 
-**6. `userId` vendor flow me na bhejein** — brand/outlet address pe wo `undefined` set ho jaata hai (service khud handle karta hai).
+**6. 🆕 `userId` bhejne ki zarurat nahi — wo entity se derive hota hai.**
+
+| Kind | `userId` | `brandId` | `subBrandId` |
+|---|---|---|---|
+| Brand address | brand ke owner ki | brand ki | – |
+| **Outlet address** | outlet ke user ki | 🆕 **brand ki bhi** | outlet ki |
+| Customer address *(sirf admin)* | customer ke user ki | – | – |
+
+Pehle brand/outlet address par `userId` **jaan-boojh kar khaali** chhoda jaata tha (24 me se 19 rows).
+
+**7. 🆕 `kind` field** — `BRAND` \| `SUB_BRAND` \| `CUSTOMER`. `isBrandAddress` / `isSubBrandAddress` isi se derive hote hain aur response me pehle jaise hi aate hain. Banane ke baad **badla nahi ja sakta**.
+
+**8. 🆕 Outlet ke address par `brandId` bhi aata hai** — isse ek brand ke saare outlets ke address ek query me nikal jaate hain.
 
 ---
 
 ## 39. GET /locations/getAll
 
-Locations ki paginated list.
+Locations ki paginated list — **apne brand ki**.
 
-**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** ⚠️
+**Access:** **VENDOR+SUB_VENDOR+ADMIN**, scope enforced ✅ · vendor ko apna brand + apne outlets, outlet manager ko **sirf apna outlet**
+
+> 🆕 Pehle koi scope **tha hi nahi**. Filters optional hain, to bina filter ke ek
+> request **platform ke saare address** de deti thi — customer ke ghar ke pate
+> aur GPS coordinates samet. Ab vendor ko sirf apne brand ka apna address aur
+> apne outlets ke address dikhte hain. Customer ke address **kabhi nahi**.
 
 ### Query Params
 | Param | Type | Required | Default | Notes |
@@ -3261,7 +3284,7 @@ Locations ki paginated list.
 | `page` | number | ❌ | `1` | |
 | `limit` | number | ❌ | `10` | |
 | `search` | string | ❌ | – | addressLine1/2, landmark, city, district, state, zipcode, country, formattedAddress me match |
-| `brandId` | ObjectId | ⚠️ | – | **Vendor ko bhejna chahiye** — warna sabke addresses aayenge |
+| `brandId` | ObjectId | ❌ | – | 🆕 Vendor ke liye optional — scope apne aap lagta hai. **Doosre brand ki id bhejne par `403`** |
 | `subBrandId` | ObjectId | ❌ | – | |
 | `userId` · `customerId` | ObjectId | ❌ | – | |
 | `city` · `district` · `state` · `zipcode` · `country` | string | ❌ | – | Exact match, lowercase |
@@ -3312,7 +3335,7 @@ GET /locations/getAll?brandId=68f1a2b3c4d5e6f7a8b9c3a1&isSubBrandAddress=true
 
 ### ⚠️ Notes
 
-**1. ⚠️ Scoped nahi hai.** Bina `brandId` ke ye **platform ke saare addresses** deta hai — dusre customers ke ghar ke pate bhi. Vendor panel ko hamesha `brandId` bhejna chahiye ([Appendix B](#appendix-b--known-issues)).
+**1. ✅ Ab scoped hai.** Pehle bina `brandId` ke ye **platform ke saare addresses** deta tha — dusre customers ke ghar ke pate bhi. Ab service khud caller ke hisaab se kaatti hai: ADMIN ko sab, VENDOR ko apna brand + uske outlets, SUB_VENDOR ko sirf apna outlet. `brandId` bhejna ab **filter** hai, security nahi.
 
 **2. City/state/zipcode filters lowercase me match karte hain** — service khud `.toLowerCase()` karta hai, to input case matter nahi karta.
 
@@ -3355,13 +3378,25 @@ GET /locations/getAll?brandId=68f1a2b3c4d5e6f7a8b9c3a1&isSubBrandAddress=true
 | `422` | `Location ID is required` / `Invalid location ID format` |
 
 ### ⚠️ Note
-**Koi ownership check nahi hai** — kisi bhi valid location ID se koi bhi address mil jaata hai ([Appendix B](#appendix-b--known-issues)).
+
+**1. ✅ Ownership ab check hoti hai.** Pehle kisi bhi valid location ID se koi bhi
+address mil jaata tha. Ab
+[services/locations/getLocation.js](../services/locations/getLocation.js) role ke
+hisaab se resolve karta hai: ADMIN ko sab · CUSTOMER ko sirf apna · VENDOR ko apne
+brand ka address ya apne kisi outlet ka. Outlet ka rishta **`SubBrand` se** verify
+hota hai, token ke `brandId` se nahi — taaki stale claim jawab chaudा na kar sake.
+
+**2. ⚠️ `SUB_VENDOR` ko yahan `403` milta hai.** Wo `PUT /locations/update/:id`
+se apne outlet ka address **badal** sakta hai, par id se **padh** nahi sakta —
+`getLocation` me SUB_VENDOR ki branch hai hi nahi. Apna address `GET
+/locations/getAll` se mil jaata hai (wo SUB_VENDOR ko scope karta hai), to ye
+security hole nahi, ek inconsistency hai.
 
 ---
 
 ## 41. PUT /locations/update/:id
 
-**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** ⚠️
+**Access:** **VENDOR+SUB_VENDOR+ADMIN**, ownership verified ✅ · outlet manager sirf apna outlet
 
 ### Path Params
 | Param | Type | Required |
@@ -3378,7 +3413,8 @@ GET /locations/getAll?brandId=68f1a2b3c4d5e6f7a8b9c3a1&isSubBrandAddress=true
 | `formattedAddress` | string | 1–500 chars |
 | `coordinates` | number[] | `[longitude, latitude]`, range-checked |
 | `addressType` | string | `HOME` \| `WORK` \| `OTHER` |
-| `isBrandAddress` · `isSubBrandAddress` · `isDefault` | boolean\|string | – |
+| `isDefault` | boolean\|string | – |
+| `isBrandAddress` · `isSubBrandAddress` | boolean\|string | 🆕 **Badle nahi ja sakte.** Jo abhi hai wahi bhejo, ya bhejo hi mat — alag value par `400` |
 
 ```json
 { "addressLine1": "Shop 4-A, Scheme 54", "coordinates": [75.8952, 22.7549] }
@@ -3396,6 +3432,8 @@ GET /locations/getAll?brandId=68f1a2b3c4d5e6f7a8b9c3a1&isSubBrandAddress=true
 ### Errors
 | Status | Message |
 |---|---|
+| `403` | 🆕 `Forbidden: You do not have permission to perform this action on this brand.` |
+| `400` | 🆕 `A location's type cannot be changed. Delete it and create a new one.` |
 | `404` | `Location not found` |
 | `422` | `Invalid Zip Code/Postal Code` |
 | `422` | `Coordinates must be [longitude, latitude].` / `Invalid longitude/latitude.` |
@@ -3403,15 +3441,27 @@ GET /locations/getAll?brandId=68f1a2b3c4d5e6f7a8b9c3a1&isSubBrandAddress=true
 
 ### ⚠️ Notes
 
-**1. Coordinates update karne pe outlet ka `geo` bhi sync hona chahiye** — verify karein ki voucher listing sahi chal rahi hai, kyunki `SubBrand.geo` alag se store hota hai.
+**1. 🆕 Coordinates badalne par outlet ka `geo` usi transaction me sync hota hai.** Pehle wo call `await` ke bina tha — fail ho jaata to chup-chaap, aur panel naya pata dikhata jabki customer ko "near me" me outlet **purani jagah** dikhta. Ab sync fail hone par poori request fail hoti hai aur address bhi nahi hilta.
 
-**2. ⚠️ Ownership check nahi hai** — koi bhi kisi ka address edit kar sakta hai ([Appendix B](#appendix-b--known-issues)).
+> `SubBrand.geo` hi wo field hai jo customer ka nearest search padhta hai (`$geoNear` `SubBrand` par chalta hai, `Location` par nahi).
+
+**2. 🆕 Location ka **type** badal nahi sakta.** `isBrandAddress` / `isSubBrandAddress` flip karne par `400`. Type badalne ka matlab `Brand.locationId`, `SubBrand.locationId` aur `Customer.locationId` teenon ka re-sync — jo hota nahi tha, to row ek jagah aur pointer doosri jagah reh jaata tha. Badalna ho to delete karke naya banaayein.
+
+**3. ✅ Ownership ab enforce hoti hai.** Row ka maalik caller se match karna chahiye (admin koi bhi). Pehle sirf `id` kaafi thi — aur ek Location **customer ki** bhi ho sakti hai, jiska voucher feed usi address se banta hai.
+
+**4. 🆕 `updatedBy` har update par set hota hai**, `createdBy` waisa hi rehta hai. Admin kisi ka address theek kare to `userId` (maalik) nahi badalta — sirf `updatedBy` admin ka ho jaata hai.
 
 ---
 
 ## 42. DELETE /locations/delete/:id
 
-**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** ⚠️
+**Access:** **Koi bhi signed-in role**, ownership verified ✅
+
+> 🆕 Gate ab `verifyJwtToken` hai, koi role gate nahi — wahi shape jo
+> `GET /locations/get/:id` ka hai. Sawaal role ka hai hi nahi: *ye address kiska
+> hai*. `resolveLocationTarget` wo tay karta hai — vendor apna brand, outlet
+> manager apna outlet, **customer apna ghar ka pata**, admin koi bhi. Baaki
+> sabko `403`.
 
 ### Path Params
 | Param | Type | Required |
@@ -3426,6 +3476,7 @@ GET /locations/getAll?brandId=68f1a2b3c4d5e6f7a8b9c3a1&isSubBrandAddress=true
 ### Errors
 | Status | Message |
 |---|---|
+| `403` | 🆕 `Forbidden: You do not have permission to perform this action on this brand.` |
 | `404` | `Location not found` |
 | `422` | `Invalid location ID format` |
 
@@ -3433,9 +3484,11 @@ GET /locations/getAll?brandId=68f1a2b3c4d5e6f7a8b9c3a1&isSubBrandAddress=true
 
 **1. Soft delete hai** — `isDeleted: true`, record rehta hai.
 
-**2. ⚠️ Outlet ka address delete karne se pehle sochein** — `subBrand.locationId` dangling reference ban jayega, aur us outlet ke vouchers customer listing se gayab ho jayenge (geo query fail hogi).
+**2. 🆕 Parent ka pointer usi transaction me clear hota hai** — `subBrand.locationId` ab dangling nahi rehta. Outlet ka `geo` **hata** diya jaata hai (pehle `[0,0]` set hota tha, jo Gulf of Guinea ka ek asli point hai aur 2dsphere index me pada rehta tha).
 
-**3. ⚠️ Ownership check nahi hai** ([Appendix B](#appendix-b--known-issues)).
+**3. ⚠️ Outlet ka address delete karne se pehle sochein** — us outlet ke vouchers customer listing se **gayab ho jaayenge**, kyunki nearest search ko uski position hi nahi milegi. Aur naya voucher banate waqt ab saaf `400` aayega: *"outlet has no address yet"*.
+
+**4. ✅ Ownership ab enforce hoti hai.** Pehle sirf `id` kaafi thi — koi bhi vendor token kisi **customer ka ghar ka pata** mita sakta tha, aur uske saath `Customer.locationId` bhi.
 
 ---
 
@@ -4437,7 +4490,18 @@ bannerImage:  <file>
 
 **2. `offers` JSON string ho sakta hai** — multipart me array bhejna mushkil hai, isliye validator string parse kar leta hai. Error message me index bhi aata hai (`Offer 1: …`).
 
-**3. `subBrandIds` mandatory hai** — voucher kis outlet pe valid hai. **Bina location wale outlets ke vouchers customer ko nahi dikhenge** (geo query fail hogi) — pehle outlet ki location set karein.
+**3. 🆕 `subBrandIds` mandatory hai, aur har outlet ka address hona chahiye.**
+
+Bina address wale outlet par ab `400` aata hai:
+
+> `One of the selected outlets has no address yet. Add its address first — a voucher on an outlet with no location is never shown to customers.`
+
+🔴 **Pehle ye chup-chaap hota tha.** Outlet bina address ke `[0,0]` par (Gulf of
+Guinea) baith jaata tha, voucher ban jaata, approve hota, publish hota — aur
+**customer ko kabhi nahi dikhta**. Kahin koi error nahi, koi warning nahi. Ab
+vendor ko pehle hi bata diya jaata hai ki kaunsa outlet theek karna hai.
+
+Yahi check `PUT /vouchers/update/:id` par bhi lagta hai — dono ek hi gate se jaate hain.
 
 **4. Version 1 auto-create hota hai** `DRAFT` status me. `voucher.currentVersionId` uspe point karta hai.
 
@@ -4603,7 +4667,7 @@ Koi nahi.
 
 Approved version ko live karta hai.
 
-**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN**
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · vendor sirf apne brand ka
 
 ### Path Params
 | Param | Type | Required | Notes |
@@ -4634,7 +4698,8 @@ Koi nahi.
 ### Errors
 | Status | Message | Kab |
 |---|---|---|
-| `401` | `User authentication is required.` | |
+| `401` | `User authentication is required.` | Token se `userId` nahi mila |
+| `403` | 🆕 `Forbidden: You do not have permission to perform this action on this brand.` | Voucher kisi aur brand ka |
 | `400` | `Invalid voucher version ID.` | Format |
 | `404` | `Voucher version not found.` | |
 | `400` | `Only an approved voucher version can be published. Current status: DRAFT.` | Admin ne approve nahi kiya |
@@ -4652,13 +4717,21 @@ Koi nahi.
 
 **2. Sirf `APPROVED` version publish ho sakta hai** — admin ke `POST /vouchers/review/:versionId` ke baad.
 
+**3. 🆕 Ownership ab check hoti hai.** Voucher ka `brandId` caller ke brand se match karna chahiye (admin koi bhi). Pehle sirf `versionId` kaafi tha — `userId` andar aata tha par **sirf audit fields** (`updatedBy`, `publishedBy`, `performedBy`, `archivedBy`) me kharch hota tha.
+
+🔴 Publish sirf status nahi badalta — wo **jo version live hai use ARCHIVE** kar deta hai. To koi bhi vendor doosre brand ka **chalta hua voucher hata kar** dusra live kar sakta tha, aur approval history me **uska apna naam** darj hota — ek aise brand par jisse uska koi rishta nahi.
+
 **3. Publish karte hi version `isImmutable: true` ho jaata hai** — ab wo kabhi edit nahi ho sakta. Change chahiye to naya version.
 
 **4. Expired voucher publish nahi hota** — `endAt` future me honi chahiye.
 
 **5. Publish ke baad customer ko dikhne lagta hai** — `GET /vouchers/customer/get-all` me, agar outlet radius me ho aur `startAt <= now < endAt`.
 
-**6. ⚠️ Ownership check yahan nahi hai** — service sirf `userId` leta hai, `resolveActorBrand` use nahi karta. Role gate hai par brand-level nahi ([Appendix B](#appendix-b--known-issues)).
+**6. ✅ Ownership ab check hoti hai** — service voucher load karke uske `brandId`
+ke against `resolveActorBrand` chalati hai. Ye sabse mehenga hole tha: publish
+sirf status nahi badalta, wo **jo version live hai use archive** kar deta hai —
+yaani koi bhi vendor doosre brand ka chalta hua voucher hata sakta tha, aur
+approval history me uska apna naam darj hota.
 
 ---
 
@@ -4910,7 +4983,10 @@ isActive:    true
 
 **1. 10-limit sirf active features pe hai.** `isActive: false` wale count nahi hote. 10 ho jaayein to kisi ko deactivate karke naya add kar sakte hain.
 
-**2. `brandId` body me mandatory hai** — token se resolve nahi hota, aur ⚠️ ownership check bhi nahi hai. Koi bhi authenticated user kisi bhi brand ke features add kar sakta hai ([Appendix B](#appendix-b--known-issues)).
+**2. `brandId` body me mandatory hai** — token se resolve nahi hota, par ✅ ab
+`resolveActorBrand` se **verify** hota hai: vendor sirf apna brand naam de sakta
+hai, admin koi bhi. Pehle koi bhi authenticated user kisi bhi brand me feature
+jod sakta tha.
 
 **3. Icon mandatory hai** — bina icon ke feature nahi banta.
 
@@ -6779,14 +6855,25 @@ Role gate lag gaya hai (customer ab in pe nahi aa sakta), par **vendor A abhi bh
 ka resource** touch kar sakta hai — service sirf ye check karti hai ki caller vendor hai,
 ye nahi ki wo **is** brand ka vendor hai.
 
-| Endpoint | Kya ho sakta hai |
-|---|---|
-| `PUT /locations/update/:id` | Kisi bhi brand/outlet ka address edit. ⚠️ `updateLocation(userId, payload)` `userId` **leta hai par use karta hi nahi** — aur ek Location **customer** ki bhi ho sakti hai |
-| `DELETE /locations/delete/:id` | Wahi, delete ke saath. `deleteLocation(payload)` `userId` **leta hi nahi** |
-| `POST /vouchers/publish/:versionId` | Kisi bhi brand ka approved voucher publish — `publishVoucher(userId, versionId)` `userId` leta hai par use ownership ke liye **use hi nahi karta** |
+**Har vendor-*write* par ab check hai.** `resolveActorBrand`,
+`resolveSectionForActor` aur `resolveLocationTarget` 28 services me chal rahe
+hain; naya vendor-write likhte waqt inme se ek use karna hai, warna route ka gate
+sirf itna kehta hai ki caller *koi* vendor hai.
 
-Pattern repo me maujood hai — `resolveActorBrand` aur `resolveSectionForActor` 23
-services me chal rahe hain. In teen me apply karna baaki hai.
+### 🟠 Do **read** endpoints abhi bhi scope nahi hote
+
+Role gate dono par hai (`isVendorOrAdmin`), par service `brandId` ko **query se**
+leti hai aur token se resolve nahi karti — to `brandId` bheje bina **poore
+platform ka data** aata hai, aur doosre brand ka `brandId` bhejne par uska:
+
+| Endpoint | Service |
+|---|---|
+| `GET /subBrands/get-all` | [getAllSubBrands.js:37](../services/subBrands/getAllSubBrands.js#L37) — `if (brandId)` ke bahar koi scope nahi |
+| `GET /vouchers/versions/get-all` | [getAllVoucherVersions.js:46](../services/vouchers/getAllVoucherVersions.js#L46) — wahi shape |
+
+Yahi bug `GET /locations/getAll` me tha aur wo `scopeToActor` se band hua — wahi
+pattern in dono par lagana hai. **Vendor panel ko tab tak hamesha `brandId`
+bhejna chahiye.**
 
 ### ✅ Band ho chuke
 
@@ -6795,8 +6882,20 @@ services me chal rahe hain. In teen me apply karna baaki hai.
 | `POST /brandFeatures/add` | ✅ `resolveActorBrand` — vendor sirf apna brand |
 | `PUT /brandFeatures/update/:featureId` | ✅ Feature ke `brandId` ke against |
 | `DELETE /brandFeatures/delete/:featureId` | ✅ Wahi |
+| `POST /locations/create` | ✅ `resolveLocationTarget` |
+| `PUT /locations/update/:id` | ✅ Row ke maalik ke against |
+| `DELETE /locations/delete/:id` | ✅ Wahi |
+| `GET /locations/getAll` | ✅ Vendor ko sirf apna brand + outlets — **pehle koi scope tha hi nahi** |
+| `POST /vouchers/publish/:versionId` | ✅ Voucher ke `brandId` ke against |
 
-Teenon ka test: `__tests__/money/brandFeatureOwnership.test.js`.
+⚠️ Publish wala sabse mehenga tha: wo sirf ek status nahi badalta, wo **jo version
+live hai use archive** kar deta hai. Yaani koi bhi vendor doosre brand ka chalta
+hua voucher hata kar dusra live kar sakta tha — aur approval history me uska apna
+naam darj hota, ek aise brand par jisse uska koi rishta nahi.
+
+Tests: `__tests__/money/brandFeatureOwnership.test.js` (13),
+`__tests__/money/locationOwnership.test.js` (42),
+`__tests__/money/voucherVersionLifecycle.test.js` (12).
 
 **Vendor panel pe impact:** apne hi resources ke ids use karein. Ye "defensive coding"
 wali salaah nahi hai — ye batana hai ki backend abhi aapko rok nahi raha, to accidental
@@ -6967,7 +7066,7 @@ aur settlement eligibility teeno saath badalne padenge.
 **Security discipline**
 - [ ] **`?userId` param support hi nahi hota** — hata diya gaya, token se user resolve hota hai
 - [ ] **`password` ab response me aata hi nahi** — `sanitizeUser()` har auth response se strip karta hai
-- [ ] **Apne resources ke ids hi use karein** — 5 endpoints pe ownership check abhi bhi missing hai ([Appendix B](#-ownership--abhi-bhi-khuli-hai))
+- [x] **Ownership ab backend enforce karta hai** — pehle 5 endpoints par check missing tha, ab ek bhi nahi ([Appendix B](#-ownership--abhi-bhi-khuli-hai)). Apne hi resources ke ids bhejna phir bhi sahi aadat hai: cross-brand id ab **403** degi, chup-chaap chalegi nahi
 - [ ] **Password / "Set password" screen mat banayein** — vendor ke liye wo flow band hai
 - [ ] **`brand.isApproved` pe bharosa na karein** — hamesha `false` rehta hai; `SystemVerify.status` dekhein
 - [ ] **Appendix A ke endpoints kabhi call na karein**

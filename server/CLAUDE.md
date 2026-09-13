@@ -123,41 +123,31 @@ database name ends in `_test`. Never bypass it, and never point a test at
 > separate debugging detours before the cause was obvious.
 >
 > `globalSetup` now takes a lock and a second run is refused by name. If a run is
-> killed the lock self-heals after 90 minutes, or:
+> killed the lock self-heals after **180 minutes**, or:
 >
-> ⚠️ That TTL has been raised twice. It began at 15 minutes against a comment
-> claiming the suite took about four, so the lock was quietly lapsing mid-run —
-> protecting nothing at the one moment it was needed. Raised to 45 when a run
-> measured 17.7 minutes; raised to **90** when a full run was 32.6 minutes across
-> 55 suites.
+> ⚠️ Raised three times. 15 → 45 when a run measured 17.7 minutes; 45 → 90 at
+> 32.6 minutes across 55 suites; 90 → **180** now. It began at 15 against a
+> comment claiming the suite took about four, so the lock was quietly lapsing
+> mid-run — protecting nothing at the one moment it was needed.
 >
-> ⚠️ Set it against the **slowest** run, not the average. Two runs of the same
-> suite on this machine measured 24.8 and 32.6 minutes — an eight minute spread,
-> on a value that only has to be exceeded once to reproduce the bug. A too-long
-> TTL costs a wait and a `--clear`; a too-short one has cost a debugging session
-> twice. Keep it at roughly 3× the slowest run you have seen.
->
-> 🔴 **The suite has grown since that was written and the TTL has not. The margin
-> is not thin any more — it is nearly gone.** Two runs measured back to back on
-> this machine:
+> ⚠️ Set it against the **slowest** run, not the average. Two runs measured back
+> to back on this machine:
 >
 > | Run | Suites / tests | Time |
 > |---|---|---|
 > | idle machine | 74 / 1491 | **36.1 min** |
 > | with other work in parallel | 75 / 1504 | **71.6 min** |
 >
-> The TTL is **90 minutes**. The rule above asks for 3× the slowest run seen,
-> which would now be **215**. The slower of those two was 71.6 — eighteen minutes
-> from lapsing *during its own run*, which is exactly the failure the lock exists
-> to prevent, and which reads as a scatter of unrelated tests failing on correct
-> assertions rather than as a lock problem.
+> At **90** the 71.6 run had eighteen minutes left before it would have outlived
+> its own lock — the precise failure this exists to prevent, and one that reads
+> as a scatter of unrelated tests failing on correct assertions rather than as a
+> lock problem.
 >
 > Note what the second row means: the spread is not noise, it is **contention**.
 > Anything else touching the cluster while the suite runs roughly doubles it, so
-> the number to set the TTL against is the busy one, not the quiet one.
->
-> One line in `__tests__/money/setup/runLock.js`. Not changed here because the
-> value is a judgement call, not a fact — but it should be changed.
+> the number to set the TTL against is the busy run, not the quiet one. 3× 71.6
+> is 215; **180** is the value, on the reasoning that a too-long TTL costs a
+> `--clear` and a too-short one has cost two debugging sessions.
 >
 > ```bash
 > node scripts/testRunLock.js           # who holds it
@@ -990,6 +980,14 @@ moving — no error anywhere. If you add a third webhook, add it to
   > — so the resulting pile was invisible while working: **493 files, 7.70 GB**,
   > the largest a single 2,615 MB upload. On a real host that is a disk filling
   > up with no line in any log saying why.
+
+- **S3 credentials need no code change.** The SDK's default chain reads env keys
+  on Render and instance metadata on EC2, so `new S3Client({ region })` is the
+  whole story — no host branch. 🔴 When you attach the instance role, **delete
+  `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` from the environment**: env keys
+  win over the role, so the server keeps running on the old identity and stops
+  the day that key is revoked, with nothing in any log explaining it.
+  Full runbook: [`docs/aws_s3_setup.md`](./docs/aws_s3_setup.md).
 
 ## Working agreement
 
