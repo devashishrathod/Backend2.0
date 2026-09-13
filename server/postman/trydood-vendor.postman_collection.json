@@ -6788,7 +6788,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"brandId\": \"{{brand_id}}\",\n  \"addressLine1\": \"postman se banaya gaya address\",\n  \"addressLine2\": \"scheme 54\",\n  \"landmark\": \"opposite c21 mall\",\n  \"city\": \"indore\",\n  \"district\": \"indore\",\n  \"state\": \"madhya pradesh\",\n  \"country\": \"india\",\n  \"zipcode\": \"452010\",\n  \"coordinates\": [\n    75.8937,\n    22.7533\n  ],\n  \"isBrandAddress\": true\n}",
+              "raw": "{\n  \"subBrandId\": \"{{sub_brand_id}}\",\n  \"isSubBrandAddress\": true,\n  \"addressLine1\": \"postman se banaya gaya address\",\n  \"addressLine2\": \"scheme 54\",\n  \"landmark\": \"opposite c21 mall\",\n  \"city\": \"indore\",\n  \"district\": \"indore\",\n  \"state\": \"madhya pradesh\",\n  \"country\": \"india\",\n  \"zipcode\": \"452010\",\n  \"coordinates\": [\n    75.8937,\n    22.7533\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6815,7 +6815,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\nZipcode `country` ke hisaab se validate hota hai (India: 6 digits). `country` na bhejein to `india` default hai."
+            "description": "Outlet ka address. Vendor ko brandId bhejne ki zarurat nahi — ownership token se resolve hoti hai, aur brandId outlet se khud aa jaata hai.\n\nEk owner ka ek hi live address ho sakta hai (partial unique index), to dobara chalane par 409 aayega — pehle purana delete karein."
           },
           "response": [
             {

@@ -153,6 +153,7 @@ const run = async () => {
   const Brand = require("../models/Brand");
   const SubBrand = require("../models/SubBrand");
   const Location = require("../models/Location");
+  const { LOCATION_KINDS } = require("../constants/location");
   const WorkHours = require("../models/WorkHours");
   const Category = require("../models/Category");
   const SubCategory = require("../models/SubCategory");
@@ -265,6 +266,17 @@ const run = async () => {
     const userIds = users.map((u) => u._id);
 
     /**
+     * Resolved **before** the outlets are deleted, because their addresses are
+     * keyed on them and a `SubBrand.deleteMany` a few lines down takes the
+     * handle away. This is the same shape as the `customerIds` note below: the
+     * child has to be found while its parent still exists.
+     */
+    const seededOutlets = await SubBrand.find({
+      brandId: { $in: brandIds },
+    }).select("_id");
+    const subBrandIds = seededOutlets.map((s) => s._id);
+
+    /**
      * The money rows go first, and they are keyed on the **customer**, not the
      * user — a `VoucherClaim` carries `customerId`, so deleting the `User` rows
      * without resolving their `Customer` first leaves orphaned claims that the
@@ -369,7 +381,28 @@ const run = async () => {
       SubBrand.deleteMany({ brandId: { $in: brandIds } }),
       ShowcaseSection.deleteMany({ brandId: { $in: brandIds } }),
       BrandFeatures.deleteMany({ brandId: { $in: brandIds } }),
-      Location.deleteMany({ userId: { $in: userIds } }),
+      /**
+       * ⚠️ By the parent ids as well as by `userId`.
+       *
+       * `userId` alone was the filter, and this script's own rows carry one —
+       * but `createLocation` deliberately set it to `undefined` for anything
+       * that was not a customer's own address, so **the API's brand and outlet
+       * addresses were invisible to this clear**: 19 of the 24 rows in the
+       * development database. Meanwhile `SubBrand.deleteMany` below removed
+       * their parents, so every run left an address behind with nothing
+       * pointing at it.
+       *
+       * The service now always records an owner, which fixes it going forward.
+       * The parent ids are here because a clear should not depend on a field
+       * being right in every row it is meant to reach.
+       */
+      Location.deleteMany({
+        $or: [
+          { userId: { $in: userIds } },
+          { brandId: { $in: brandIds } },
+          { subBrandId: { $in: subBrandIds } },
+        ],
+      }),
       WorkHours.deleteMany({ brandId: { $in: brandIds } }),
       SystemVerify.deleteMany({ userId: { $in: userIds } }),
       Subscribed.deleteMany({ brandId: { $in: brandIds } }),
@@ -585,7 +618,16 @@ const run = async () => {
     });
 
     const location = await Location.create({
+      /**
+       * ⚠️ `kind` is required, and `isBrandAddress` is no longer set by hand —
+       * the model derives both flags from it. Setting them here is how the
+       * inconsistent rows appeared in the first place: three carried a
+       * `brandId` with `isBrandAddress: false`.
+       */
+      kind: LOCATION_KINDS.BRAND,
       userId: user._id,
+      createdBy: user._id,
+      updatedBy: user._id,
       brandId: brand._id,
       addressLine1: `${name} street`,
       addressLine2: "scheme 54",
@@ -597,7 +639,6 @@ const run = async () => {
       zipcode: "452010",
       formattedAddress: `${name} street, scheme 54, indore, madhya pradesh, 452010, india`,
       geo: { type: "Point", coordinates: coords },
-      isBrandAddress: true,
     });
 
     await Brand.updateOne(

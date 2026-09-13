@@ -97,6 +97,35 @@ exports.validateVoucherSubBrands = async (subBrandIds, brandId, session) => {
       "One or more SubBrands are invalid or do not belong to this brand.",
     );
   }
+
+  /**
+   * ⚠️ An outlet with no position cannot carry a voucher, and it has to be said
+   * out loud here.
+   *
+   * The customer's voucher listing starts with `$geoNear` over `SubBrand.geo`.
+   * An outlet with no coordinates matches nothing, so **every voucher attached
+   * to it is invisible to every customer** — while the vendor sees it created,
+   * approved and published exactly like any other. Nothing errors and nothing
+   * is logged; the voucher simply never appears.
+   *
+   * This was not merely possible, it was the default: `geo.coordinates` used to
+   * default to `[0, 0]` and `signUpSubBrandWithWhatsapp` never sets it, so a
+   * new outlet began life at a point in the Gulf of Guinea and stayed there
+   * until somebody added an address. The default is gone; this is the message
+   * that replaces the silence.
+   */
+  const withoutPosition = subBrands.filter(
+    (subBrand) => !Array.isArray(subBrand.geo?.coordinates),
+  );
+  if (withoutPosition.length) {
+    throwError(
+      400,
+      withoutPosition.length === 1
+        ? "One of the selected outlets has no address yet. Add its address first — a voucher on an outlet with no location is never shown to customers."
+        : `${withoutPosition.length} of the selected outlets have no address yet. Add their addresses first — a voucher on an outlet with no location is never shown to customers.`,
+    );
+  }
+
   return subBrands;
 };
 

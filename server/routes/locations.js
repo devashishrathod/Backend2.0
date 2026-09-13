@@ -5,7 +5,7 @@ const {
   validateSchema,
   verifyJwtToken,
   isCustomer,
-  isVendorOrAdmin,
+  isBrandSideOrAdmin,
 } = require("../middlewares");
 const {
   create,
@@ -32,29 +32,47 @@ const {
 // included.
 // ---------------------------------------------------------------------------
 
-// Brand and outlet addresses. A vendor is bound to their own brand inside the
-// service; an admin may act on any.
+// Brand and outlet addresses.
+//
+// `isBrandSideOrAdmin` rather than `isVendorOrAdmin`: an outlet manager may keep
+// their **own** outlet's address. Which brand or outlet any of them may touch is
+// decided by `resolveLocationTarget` inside the service — a vendor is bound to
+// their own brand, a sub-vendor to the single outlet on their token, and an
+// admin may act for anyone. A gate decides *whether*, not *whose*.
 router.post(
   "/create",
-  isVendorOrAdmin,
+  isBrandSideOrAdmin,
   validateSchema(validateCreateLocation),
   create,
 );
 router.get(
   "/getAll",
-  isVendorOrAdmin,
+  isBrandSideOrAdmin,
   validateSchema(validateGetAllLocationsQuery),
   getAll,
 );
 router.put(
   "/update/:id",
-  isVendorOrAdmin,
+  isBrandSideOrAdmin,
   validateSchema(validateUpdateLocation),
   update,
 );
+/**
+ * ⚠️ `verifyJwtToken`, not a role gate — the same shape as `GET /get/:id` below.
+ *
+ * A customer may remove their own address, and there is no role that describes
+ * "customer, vendor, outlet manager or admin" because the question is not about
+ * roles at all: it is whether this address is yours. `resolveLocationTarget`
+ * answers that, per kind, and refuses anyone else with a 403.
+ *
+ * ⚠️ For a customer this is a bigger button than it looks. Their voucher feed is
+ * built from this address — `resolveCustomerCoordinates` — so once it is gone
+ * the feed answers "Location is required" until the app sends coordinates or
+ * they save a new one. The app should say so before asking.
+ */
 router.delete(
   "/delete/:id",
-  isVendorOrAdmin,
+  verifyJwtToken,
   validateSchema(validateGetLocation),
   deleteLocation,
 );
