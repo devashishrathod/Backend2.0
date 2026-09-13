@@ -582,19 +582,16 @@ Ye sab **verify kiye gaye** hain, guess nahi. Har ek ke saath file:line diya hai
 |---|---|
 | ✅ **Fixed — Phase 0** | §8.1 (no size limit) · §8.9 (`/tmp` galat jagah) · §8.10 (temp files kabhi delete nahi) · §8.11 (🔴 ownership hole, + 2 aur bug) |
 | ✅ **Fixed — Phase 2** | §8.2 (har delete chup-chaap skip) · §8.3 (delete pehle, upload baad me) |
+| ✅ **Fixed — chhote fix** | §8.4 (6 endpoint par koi mime check nahi) · §8.6 (shared default delete ho sakta tha) · §8.8 (banner/ticker delete par asset reh jaata tha) · §8.13 (voucher images me SVG) |
 | 🟡 **Aadha** | §8.5 (`uploadVideo` hata; `uploadAudio` rakha, `deletePDF` ka caller abhi bhi nahi) |
-| ⏳ **Abhi khula** | §8.4 · §8.6 · §8.7 · §8.8 · §8.12 · §8.13 · §8.14 · §8.15 · §8.16 |
+| ⏳ **Abhi khula** | §8.7 · §8.12 · §8.14 · §8.15 · §8.16 |
 
 **Khule findings, asar ke hisaab se:**
 
 | # | Kya | Kab theek hoga |
 |---|---|---|
-| 🔴 §8.12 | `mimetype` **client ka bheja hua** hai — bytes kabhi padhe nahi jaate. Aaj Cloudinary bacha raha hai, **S3 par wo bachav nahi rahega** | Phase 5 — magic bytes |
-| 🟠 §8.13 | Voucher images me **SVG allowed**. Apne CDN par serve hote hi stored XSS | chhota fix, abhi ho sakta hai |
+| 🔴 §8.12 | `mimetype` **client ka bheja hua** hai — bytes kabhi padhe nahi jaate. Aaj Cloudinary bacha raha hai, **S3 par wo bachav nahi rahega**. §8.4/§8.13 ne saamne ka darwaaza band kiya hai; ye poora taala hai | Phase 5 — magic bytes |
 | 🟠 §8.14 | PDF ka URL public + permanent + `Math.random()` se guessable | Phase 4 — private bucket |
-| 🟠 §8.6 | `DEFAULT_IMAGES` purane Cloudinary account par — **shared default delete ho sakta hai** | chhota fix (Phase 3 ke saath) |
-| 🟠 §8.4 | 6 endpoint me **koi mime check hi nahi** → PDF bhejne par 500, 422 nahi | chhota fix |
-| 🟠 §8.8 | **Banner aur ticker** delete par asset reh jaata hai — helper hai, call nahi | chhota fix |
 | 🟡 §8.7 | `Brand.coverImage`, `SubBrand.logo/coverImage` — padhe jaate hain, likhta koi nahi | faisla chahiye |
 | 🟡 §8.15 | Uploads serial — 15 image = 15 round trip | Phase 5 ke saath |
 | 🟡 §8.16 | Delivery URL me size nahi — 4000×3000 mobile card par bhi waisi hi | Phase 6 — resize Lambda |
@@ -706,7 +703,16 @@ aur ab customer app me us category ki tile blank ho jaati hai.
 
 **Fix:** Pattern A (§7) apply karein — upload → save → purana delete.
 
-### 8.4 6 endpoint groups me **koi mime-type check hi nahi**
+### 8.4 ✅ FIXED — 6 endpoint groups me koi mime-type check hi nahi tha
+
+> **Fixed** — ek shared [`assertImageFile`](../helpers/media/assertImageFile.js)
+> ab in chhe jagah chalta hai, allow-list par (`jpeg/jpg/png/webp/gif`), aur
+> `422` deta hai jisme accepted types aur jo aaya wo dono likhe hote hain.
+>
+> ⚠️ Ye **declared** mime hai, jo client likhta hai — §8.12 abhi khula hai. Ye
+> saamne ka darwaaza band karta hai, poora taala nahi.
+
+Jo tha:
 
 | Endpoint | File | Check |
 |---|---|---|
@@ -753,7 +759,16 @@ kar liya gaya faisla lagta nahi — sirf koi caller likha hi nahi gaya. **Phase 
 me ye sawaal dobara uthega**, kyunki tab documents private bucket me jaayenge
 aur retention ka faisla lena hi padega.
 
-### 8.6 `DEFAULT_IMAGES` **purane Cloudinary account** par hain
+### 8.6 ✅ FIXED (khatra) — `DEFAULT_IMAGES` purane Cloudinary account par hain
+
+> **Fixed** — `services/storage` ab har shared default URL ko delete se **mana**
+> karta hai, chaahe wo kis cloud par ho. Guard facade me hai, call sites me
+> nahi, isliye koi naya surface ise dobara la nahi sakta.
+>
+> ⚠️ Defaults abhi bhi purane cloud (`drvdnqydw`) par hi hain — wo alag baat hai
+> aur khuli hai (neeche point 3). Ab sirf **delete** ka khatra nahi raha.
+
+Jo tha:
 
 [constants.js:293-303](../constants.js#L293-L303)
 
@@ -812,9 +827,9 @@ Isi tarah **`ShowcaseSection.coverImageMode`**: `MANUAL` value
 lekin **koi endpoint use `MANUAL` set nahi karta** — validator me bhi nahi. Yaani
 vendor cover pin kar hi nahi sakta; wo hamesha AUTO hi rehta hai.
 
-### 8.8 Delete par media cleanup **inconsistent** hai
+### 8.8 ✅ FIXED — banner aur ticker delete par asset reh jaata tha
 
-| Domain | Record delete | Cloudinary asset |
+| Domain | Record delete | Storage asset |
 |---|---|---|
 | Showcase media | soft | ✅ destroy |
 | Showcase section | soft | ✅ destroy (saare) |
@@ -822,17 +837,25 @@ vendor cover pin kar hi nahi sakta; wo hamesha AUTO hi rehta hai.
 | Category / SubCategory | soft | ✅ destroy |
 | Voucher banner | field clear | ✅ destroy |
 | Voucher images (draft version) | replace | ✅ destroy |
-| **Banner** | soft | ❌ **rah jaata hai** |
-| **Promotional ticker** | soft | ❌ **rah jaata hai** |
+| **Banner** | soft | ✅ **ab destroy** |
+| **Promotional ticker** | soft | ✅ **ab destroy** |
 | Voucher (poora voucher delete) | — | ❌ koi delete endpoint hi nahi |
 | PDF documents | — | ❌ kabhi delete nahi (§8.5) |
 
 Banner aur ticker sabse zyada churn wale content hain (campaign-based, har hafte
-badalte hain) — aur wahi do assets peeche chhod jaate hain.
-[services/banners/deleteBanner.js](../services/banners/deleteBanner.js) aur
-[services/promotionalTickers/deleteTicker.js](../services/promotionalTickers/deleteTicker.js)
-me `deleteBannerMedia` / `deleteTickerIcon` ka koi call hi nahi hai — helpers
-maujood hain, sirf use nahi hue.
+badalte hain) — aur wahi do assets peeche chhod jaate the. Helpers maujood the,
+bas `deleteBanner.js` / `deleteTicker.js` unhe call hi nahi karte the.
+
+Ye chhota leak nahi tha: delete soft hai, par row **wapas nahi aa sakti** — koi
+restore endpoint nahi hai aur har read `isDeleted: false` filter karti hai. To
+file har mahine paid rehti thi, ek aisi row ke naam par jisse koi pahunch hi
+nahi sakta.
+
+⚠️ Delete **save ke baad** hota hai, pehle nahi — warna save fail hone par ek
+zinda banner aise asset ko point karta jo ja chuka ho. Aur `type` bhi saath
+jaata hai, taaki ek GIF plain image ki tarah destroy na ho (galat
+`resource_type` par Cloudinary "not found" keh kar file chhod deta hai).
+Dono cheezein test me pinned hain.
 
 ### 8.9 ✅ FIXED — `/tmp/` Windows par galat jagah banta tha
 
@@ -1027,7 +1050,14 @@ aur usi content-type se serve karega.
 allowlist **sniffed** type par lagayein — bheje gaye header par nahi. Provider ko
 bhi wahi sniffed type diya jaaye.
 
-### 8.13 🟠 Voucher images me SVG allowed hai
+### 8.13 ✅ FIXED — voucher images me SVG allowed tha
+
+> **Fixed** — `validateVoucherImages` ab
+> [`assertImageFile`](../helpers/media/assertImageFile.js) use karta hai, jo ek
+> allow-list hai. GIF jaan-boojh kar allowed rakha gaya (wo aaj bhi chalta hai,
+> use hataana product faisla hota, security fix nahi); SVG aur baaki sab mana.
+
+Jo tha:
 
 ```js
 if (!mimeType || !mimeType.startsWith("image/")) throwError(400, ...);

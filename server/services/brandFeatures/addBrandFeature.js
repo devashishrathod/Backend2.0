@@ -4,6 +4,7 @@ const BrandFeatures = require("../../models/BrandFeatures");
 const { resolveActorBrand } = require("../../helpers/brands");
 const { throwError } = require("../../utils");
 const storage = require("../storage");
+const { assertImageFile } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
 /**
@@ -37,6 +38,7 @@ exports.addBrandFeature = async (actor, payload, icon) => {
   }
 
   if (!icon) throwError(400, "Feature icon is required!");
+  assertImageFile(icon, "Feature icon");
 
   // Minted up front: the icon's key carries the feature id, and the upload has
   // to happen before the row exists.

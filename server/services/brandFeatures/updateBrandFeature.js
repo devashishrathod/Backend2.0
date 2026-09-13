@@ -2,6 +2,7 @@ const BrandFeatures = require("../../models/BrandFeatures");
 const { resolveActorBrand } = require("../../helpers/brands");
 const { throwError } = require("../../utils");
 const storage = require("../storage");
+const { assertImageFile } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
 /**
@@ -61,6 +62,8 @@ exports.updateBrandFeature = async (actor, payload, icon) => {
    * with no icon sent the real boolean and was silently dropped.
    */
   if (isActive !== undefined) feature.isActive = requestedActive;
+
+  assertImageFile(icon, "Feature icon");
 
   if (icon) {
     const oldIcon = feature.icon;

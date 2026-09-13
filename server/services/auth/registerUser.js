@@ -5,6 +5,7 @@ const { throwError } = require("../../utils");
 const { ROLES, LOGIN_TYPES } = require("../../constants");
 const { DUPLICATE_KEY } = require("../../constants/mongo");
 const storage = require("../../services/storage");
+const { assertImageFile } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const {
   generateUniqueUserId,
@@ -40,6 +41,8 @@ exports.registerUser = async (body, image) => {
   const _id = new mongoose.Types.ObjectId();
 
   let imageUrl;
+  assertImageFile(image, "Profile photo");
+
   if (image) {
     imageUrl = await storage.uploadUrl({
       filePath: image.tempFilePath,

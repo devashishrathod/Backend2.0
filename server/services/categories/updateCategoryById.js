@@ -1,6 +1,7 @@
 const Category = require("../../models/Category");
 const { throwError, validateObjectId } = require("../../utils");
 const storage = require("../storage");
+const { assertImageFile } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
 exports.updateCategoryById = async (id, payload = 0, image) => {
@@ -22,6 +23,8 @@ exports.updateCategoryById = async (id, payload = 0, image) => {
     }
     if (description) category.description = description?.toLowerCase() || "";
   }
+  assertImageFile(image, "Category image");
+
   if (image) {
     // ⚠️ Upload first, delete second. It used to be the other way round, so a
     // failed upload left the category with its old image already destroyed and

@@ -191,6 +191,32 @@ const UPLOAD_PURPOSES = Object.freeze({
 });
 
 /**
+ * What counts as an image anywhere a surface has no allow-list of its own.
+ *
+ * 🔴 `mimetype.startsWith("image/")` is **not** a safe test, and six upload
+ * paths used to do exactly that or no test at all. `image/svg+xml` passes it,
+ * and an SVG is an XML document that can carry a `<script>`. Today those are
+ * served from a Cloudinary domain, so a panel session is cross-origin and out
+ * of reach — but the moment media moves to our own CDN, and especially if that
+ * CDN is ever a subdomain of a panel, the same file is stored XSS.
+ *
+ * ⚠️ GIF is in, and deliberately: voucher images accept one today and removing
+ * it would be a product change, not a security fix. It routes to `gifs/`, clear
+ * of the resize Lambda.
+ *
+ * ⚠️ And this is still only the **declared** type, which the client writes. The
+ * real fix is reading the file's magic bytes, which arrives with the presigned
+ * upload flow. This closes the front door; it is not the whole lock.
+ */
+const IMAGE_MIME_TYPES = Object.freeze([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+
+/**
  * Cloudinary has folders rather than keys, and the ones below are the folders
  * it has been writing to since before any of this existed. Step A must not move
  * a single existing asset, so `LEGACY` keeps pointing at them.
@@ -211,5 +237,6 @@ module.exports = {
   UPLOAD_PURPOSE,
   UPLOAD_PURPOSES,
   CLOUDINARY_LEGACY_FOLDER,
+  IMAGE_MIME_TYPES,
   kindFromMime,
 };

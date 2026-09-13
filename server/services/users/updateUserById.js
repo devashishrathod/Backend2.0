@@ -3,6 +3,7 @@ const Customer = require("../../models/Customer");
 const User = require("../../models/User");
 const { throwError } = require("../../utils");
 const storage = require("../storage");
+const { assertImageFile } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const { applyIdentityChange } = require("../../helpers/users");
 // const { isAdult } = require("../../helpers/users");
@@ -64,6 +65,8 @@ exports.updateUserById = async (userId, payload, image) => {
      * set them is what left `isEmailVerified` unreachable in the first place.
      */
   }
+  assertImageFile(image, "Profile photo");
+
   if (image) {
     // ⚠️ Upload first, delete second. The old order removed the customer's
     // existing photo before the new one had landed, so a failed upload left the

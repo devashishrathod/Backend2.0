@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const Category = require("../../models/Category");
 const { throwError } = require("../../utils");
 const storage = require("../storage");
+const { assertImageFile } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
 exports.createCategory = async (payload, image) => {
@@ -21,6 +22,8 @@ exports.createCategory = async (payload, image) => {
   const _id = new mongoose.Types.ObjectId();
 
   let imageUrl;
+  assertImageFile(image, "Category image");
+
   if (image) {
     imageUrl = await storage.uploadUrl({
       filePath: image.tempFilePath,

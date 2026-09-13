@@ -2,6 +2,7 @@ const SubCategory = require("../../models/SubCategory");
 const Category = require("../../models/Category");
 const { throwError, validateObjectId } = require("../../utils");
 const storage = require("../storage");
+const { assertImageFile } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
 exports.updateSubCategoryById = async (id, payload, image) => {
@@ -56,6 +57,8 @@ exports.updateSubCategoryById = async (id, payload, image) => {
     }
     if (description) subcategory.description = description?.toLowerCase() || "";
   }
+  assertImageFile(image, "Subcategory image");
+
   if (image) {
     // ⚠️ Upload first, delete second — see `updateCategoryById`. The old order
     // destroyed the existing image before the replacement had arrived.

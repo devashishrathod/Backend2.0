@@ -6,6 +6,7 @@ const { SCREENS } = require("../../constants");
 const { DUPLICATE_KEY } = require("../../constants/mongo");
 const { throwError } = require("../../utils");
 const storage = require("../storage");
+const { assertImageFile } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const {
   applyIdentityChange,
@@ -21,6 +22,11 @@ const {
  * there is nobody to check, so a contact change is refused rather than assumed.
  */
 exports.updateBrand = async (brandId, payload = {}, logo = null, actor = null) => {
+  // Before the session opens, deliberately: a file this endpoint is never going
+  // to accept should not cost a transaction, and a 422 raised inside
+  // `withTransaction` would be rewritten as a 500 on the way out.
+  assertImageFile(logo, "Logo");
+
   const session = await mongoose.startSession();
   let oldLogo = null;
   let uploadedLogo = null;

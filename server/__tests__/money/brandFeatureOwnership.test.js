@@ -93,7 +93,19 @@ const vendorActor = (userId, brandId) => ({
 });
 const adminActor = () => ({ userId: oid(), role: ROLES.ADMIN });
 
-const iconUpload = { tempFilePath: "/does/not/matter", name: "icon.png" };
+/**
+ * ⚠️ `mimetype` is load-bearing now, not decoration.
+ *
+ * `addBrandFeature` / `updateBrandFeature` run `assertImageFile` before they
+ * upload anything, so a fixture without a content type is refused with a 422
+ * — which is the correct answer to a file that does not say what it is. The
+ * fixture was describing an upload that could not happen.
+ */
+const iconUpload = {
+  tempFilePath: "/does/not/matter",
+  name: "icon.png",
+  mimetype: "image/png",
+};
 
 let OWNER;
 let INTRUDER;

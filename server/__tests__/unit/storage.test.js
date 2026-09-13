@@ -225,6 +225,28 @@ describe("deleteAsset — L-1, the provider switch that did nothing", () => {
     await expect(storage.deleteAsset(null)).resolves.toBe(false);
     await expect(storage.deleteAsset({})).resolves.toBe(false);
   });
+
+  test("🔴 a shared default image is never destroyed", async () => {
+    // `Category.image` DEFAULTS to this URL, so every category that never got
+    // its own picture carries the same one. Deleting it on a single category
+    // delete would blank the tile on all of them.
+    const { DEFAULT_IMAGES } = require("../../constants");
+
+    await expect(
+      storage.deleteAsset({ url: DEFAULT_IMAGES.CATEGORY }),
+    ).resolves.toBe(false);
+    await expect(
+      storage.deleteAsset({ url: DEFAULT_IMAGES.SUBCATEGORY }),
+    ).resolves.toBe(false);
+
+    expect(cloudinary.deleteFile).not.toHaveBeenCalled();
+    expect(cloudinary.destroyPublicId).not.toHaveBeenCalled();
+  });
+
+  test("…but an ordinary uploaded image still is", async () => {
+    await storage.deleteAsset({ url: "https://res.cloudinary.test/Images/mine" });
+    expect(cloudinary.deleteFile).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("deleteAsset — L-2, the URL check that skipped silently", () => {

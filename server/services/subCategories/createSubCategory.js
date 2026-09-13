@@ -4,6 +4,7 @@ const Category = require("../../models/Category");
 const SubCategory = require("../../models/SubCategory");
 const { throwError } = require("../../utils");
 const storage = require("../storage");
+const { assertImageFile } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
 exports.createSubCategory = async (categoryId, payload, image) => {
@@ -27,6 +28,8 @@ exports.createSubCategory = async (categoryId, payload, image) => {
   const _id = new mongoose.Types.ObjectId();
 
   let imageUrl;
+  assertImageFile(image, "Subcategory image");
+
   if (image) {
     imageUrl = await storage.uploadUrl({
       filePath: image.tempFilePath,

@@ -1,6 +1,7 @@
 const path = require("path");
 
 const { config } = require("../../configs/env");
+const { DEFAULT_IMAGES } = require("../../constants");
 const {
   STORAGE_PROVIDER,
   MEDIA_KIND,
@@ -152,6 +153,23 @@ exports.uploadUrl = async (options) =>
   (await exports.uploadFromPath(options)).url;
 
 /**
+ * Every shared placeholder, as a set of URLs.
+ *
+ * 🔴 `Category.image` and `SubCategory.image` **default** to one of these, so a
+ * row that never had a picture of its own still carries a URL — and one URL is
+ * carried by every such row at once. Deleting it would blank the tile on every
+ * category using the default, from a single ordinary delete.
+ *
+ * Today that is prevented by an accident: the defaults live on an old
+ * Cloudinary cloud (`drvdnqydw`) while the active one is different, so the host
+ * comparison inside `deleteFile` refuses them. The day somebody re-uploads
+ * these to the current cloud — a perfectly reasonable thing to do — the
+ * accident stops protecting anything. This does not depend on where they are
+ * hosted.
+ */
+const SHARED_DEFAULTS = new Set(Object.values(DEFAULT_IMAGES));
+
+/**
  * Delete an asset, whoever is holding it.
  *
  * Accepts the shape the callers actually have — a media object with `url`,
@@ -167,6 +185,9 @@ exports.deleteAsset = async (asset) => {
     // media slot, and callers delete optimistically.
     return false;
   }
+  // A row holding a shared placeholder does not own it. Refusing here rather
+  // than at each call site means a new surface cannot reintroduce the bug.
+  if (asset.url && SHARED_DEFAULTS.has(asset.url)) return false;
 
   return providerFor(asset).remove({
     storage: asset.storage,
