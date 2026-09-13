@@ -2,7 +2,15 @@ const { asyncWrapper, sendSuccess } = require("../../utils");
 const { getAllSubBrands } = require("../../services/subBrands");
 
 exports.getAll = asyncWrapper(async (req, res) => {
-  const result = await getAllSubBrands(req.validatedData);
+  const result = await getAllSubBrands(
+    {
+      userId: req.userId,
+      role: req.role,
+      brandId: req.brandId,
+      subBrandId: req.subBrandId,
+    },
+    req.validatedData,
+  );
   return sendSuccess(
     res,
     200,

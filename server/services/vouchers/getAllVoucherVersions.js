@@ -1,10 +1,94 @@
 const mongoose = require("mongoose");
 const VoucherVersion = require("../../models/VoucherVersion");
+const SubBrand = require("../../models/SubBrand");
 const { buildAggregateLookup } = require("../../database");
-const { pagination, validateObjectId } = require("../../utils");
+const { ROLES } = require("../../constants");
+const { resolveActorBrand } = require("../../helpers/brands");
+const { escapeRegex } = require("../../validator/common");
+const { pagination, validateObjectId, throwError } = require("../../utils");
 const { VOUCHER_SORT_BY } = require("../../constants/voucher");
 
-exports.getAllVoucherVersions = async (query) => {
+
+/**
+ * A case-insensitive "contains", from text a caller typed.
+ *
+ * ⚠️ `escapeRegex` is the whole point. Six places here built a `RegExp` straight
+ * from the query string, which hands a caller the regex engine:
+ *
+ *   - `search=[` is not a pattern at all — `new RegExp` throws `SyntaxError`
+ *     before Mongo is reached, so a stray bracket in a search box is a 500
+ *   - `search=.*` matches every row, quietly turning a filter into no filter
+ *   - `search=(a+)+$` is catastrophic backtracking. The expression is evaluated
+ *     by **Mongo**, not here — building the query object costs nothing — but it
+ *     is then run against every document the query scans
+ *
+ * Same helper, same reasoning as `getAllLocations`.
+ */
+const contains = (text) => ({ $regex: new RegExp(escapeRegex(text), "i") });
+
+/**
+ * Restrict the listing to the brand this caller may actually read.
+ *
+ * ⚠️ There was no restriction. The route gate says the caller is *a* vendor;
+ * nothing said **which** brand — and `brandId` was an optional filter, so one
+ * request without it returned every voucher version on the platform, including
+ * other brands' unpublished drafts, their pricing and their rejection notes.
+ *
+ * Same shape as `getAllLocations` and `getAllSubBrands`: it is the same bug.
+ */
+const scopeToActor = async (actor, match, requestedBrandId) => {
+  if (actor?.role === ROLES.ADMIN) return match;
+
+  if (actor?.role === ROLES.VENDOR) {
+    const brand = await resolveActorBrand(actor, requestedBrandId);
+    match.brandId = brand._id;
+    return match;
+  }
+
+  /**
+   * A sub-vendor sees the brand's vouchers, not a narrower slice: a voucher
+   * belongs to the brand and is redeemed at every outlet, so an outlet-level
+   * cut would hide the very vouchers that counter accepts.
+   *
+   * ⚠️ **Not through `resolveActorBrand`.** That helper compares
+   * `brand.userId === actor.userId`, and an outlet manager's user id is never
+   * the one on the brand — so it answers 403 for a sub-vendor asking about
+   * their own brand. The brand is read off their outlet instead.
+   *
+   * ⚠️ And off the **outlet row**, not the token. `authenticate` copies a brand
+   * onto a sub-vendor's token; trusting that would let a stale or edited claim
+   * choose the brand.
+   */
+  if (actor?.role === ROLES.SUB_VENDOR) {
+    if (!actor.subBrandId) {
+      throwError(404, "No outlet is linked to your account");
+    }
+    const outlet = await SubBrand.findOne({
+      _id: actor.subBrandId,
+      isDeleted: false,
+    })
+      .select("brandId")
+      .lean();
+    if (!outlet) throwError(404, "No outlet is linked to your account");
+
+    if (
+      requestedBrandId &&
+      String(requestedBrandId) !== String(outlet.brandId)
+    ) {
+      throwError(
+        403,
+        "Forbidden: You do not have permission to perform this action on this brand.",
+      );
+    }
+
+    match.brandId = outlet.brandId;
+    return match;
+  }
+
+  throwError(403, "Forbidden: You do not have permission to perform this action.");
+};
+
+exports.getAllVoucherVersions = async (actor, query) => {
   let {
     page,
     limit,
@@ -43,10 +127,9 @@ exports.getAllVoucherVersions = async (query) => {
     validateObjectId(voucherId, "Voucher Id");
     match.voucherId = new mongoose.Types.ObjectId(voucherId);
   }
-  if (brandId) {
-    validateObjectId(brandId, "Brand Id");
-    match.brandId = new mongoose.Types.ObjectId(brandId);
-  }
+  // Validated here so a malformed id is a 422 rather than reaching the scope
+  // resolver as a lookup that finds nothing.
+  if (brandId) validateObjectId(brandId, "Brand Id");
   if (categoryId) {
     validateObjectId(categoryId, "Category Id");
     match.categoryId = new mongoose.Types.ObjectId(categoryId);
@@ -83,9 +166,9 @@ exports.getAllVoucherVersions = async (query) => {
   if (isActive !== undefined) {
     match.isActive = isActive === "true" || isActive === true;
   }
-  if (name) match.name = { $regex: new RegExp(name, "i") };
+  if (name) match.name = contains(name);
   if (versionCode) {
-    match.versionCode = { $regex: new RegExp(versionCode, "i") };
+    match.versionCode = contains(versionCode);
   }
 
   if (useRelevance) {
@@ -94,10 +177,10 @@ exports.getAllVoucherVersions = async (query) => {
     match.$text = { $search: search };
   } else if (search) {
     match.$or = [
-      { name: { $regex: new RegExp(search, "i") } },
-      { description: { $regex: new RegExp(search, "i") } },
-      { versionCode: { $regex: new RegExp(search, "i") } },
-      { tags: { $regex: new RegExp(search, "i") } },
+      { name: contains(search) },
+      { description: contains(search) },
+      { versionCode: contains(search) },
+      { tags: contains(search) },
     ];
   }
 
@@ -110,6 +193,11 @@ exports.getAllVoucherVersions = async (query) => {
       match.createdAt.$lte = d;
     }
   }
+
+  /**
+   * ⚠️ Last, after every caller-supplied filter, so nothing above can widen it.
+   */
+  await scopeToActor(actor, match, brandId);
 
   let sortStage;
   if (useRelevance) {
