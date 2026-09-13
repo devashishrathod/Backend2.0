@@ -238,11 +238,20 @@ if (role === ROLES.ADMIN) {
 
 > ⚠️ **`GET /notifications/get-all` exception hai** — admin `brandId` omit kare to error nahi, balki **admin-audience feed** milti hai (webhook failures, disputes, lapsed brands).
 
-### Jin endpoints pe `brandId` filter hai (ownership nahi)
-
-Ye endpoints scoped nahi hain — `brandId` sirf ek **query filter** hai. Admin ke liye ye actually convenient hai (sab kuch dikhta hai), par jaanein ki data platform-wide hai:
+### Jin endpoints pe `brandId` **admin ke liye** sirf ek filter hai
 
 `GET /subBrands/get-all` · `GET /locations/getAll` · `GET /vouchers/versions/get-all` · `GET /showcase/section/get-all` · `GET /brandFeatures/get-all` (yahan `brandId` **required** hai)
+
+Admin ke liye `brandId` ek query filter hai — omit karein to data **platform-wide** aata hai, aur wo jaan-boojh kar hai.
+
+> ⚠️ **Ye pehle har role ke liye sach tha, aur wahi bug tha.** Un teeno listings
+> (`subBrands`, `locations`, `vouchers/versions`) me ek vendor bhi `brandId`
+> chhod kar poore platform ka data le sakta tha — doosre brands ke outlets ke
+> pate aur manager contacts, aur unke unpublished voucher drafts.
+>
+> Ab service caller ke hisaab se kaatti hai: **admin ko sab**, vendor ko apna
+> brand, outlet manager ko apna daayra. Doosre brand ka `brandId` bhejne par
+> non-admin ko `403`. Admin ka behaviour bilkul nahi badla.
 
 ---
 

@@ -2924,7 +2924,7 @@ GET /subBrands/get-all?brandId=68f1a2b3c4d5e6f7a8b9c3a1&isActive=true&limit=50
 
 ### ⚠️ Notes
 
-**1. ⚠️ Ye endpoint scoped nahi hai.** Route pe sirf `verifyJwtToken` hai aur service `brandId` ko token se resolve nahi karti — jo query me aaye wahi filter hota hai. **Vendor panel ko `brandId` explicitly bhejna chahiye**, warna platform ke saare outlets aa jayenge. Ye security finding #1 ka hissa hai ([Appendix B](#appendix-b--known-issues)).
+**1. ✅ Ab scoped hai.** Pehle jo query me aaye wahi filter hota tha, to `brandId` bheje bina **platform ke saare outlets** aa jaate the. Ab service khud kaatti hai: vendor ko apna brand, outlet manager ko **sirf apna outlet**, admin ko sab. Doosre brand ka `brandId` bhejne par `403`. `brandId` bhejna ab **filter** hai, security nahi.
 
 **2. Empty pe 404 aata hai** — error nahi, empty-state.
 
@@ -4873,7 +4873,7 @@ GET /vouchers/versions/get-all?brandId=68f1a2b3c4d5e6f7a8b9c3a1&status=DRAFT&lim
 
 ### ⚠️ Notes
 
-**1. ⚠️ Scoped nahi hai.** Route pe sirf `verifyJwtToken` hai aur service `brandId` ko token se resolve nahi karti. **Vendor panel ko `brandId` explicitly bhejna chahiye** ([Appendix B](#appendix-b--known-issues)).
+**1. ✅ Ab scoped hai.** Pehle `brandId` bheje bina **har brand ke versions** aa jaate the — unpublished drafts, pricing aur rejection notes samet. Ab vendor ko apna brand milta hai, outlet manager ko apne brand ke sab (voucher brand ka hota hai, har counter par redeem hota hai), admin ko sab. Doosre brand ka `brandId` → `403`.
 
 **2. Ye **versions** deta hai, vouchers nahi.** Ek voucher ke multiple versions honge. Voucher-wise group karna ho to `voucherId` se filter karein ya client-side group karein.
 
@@ -6922,20 +6922,35 @@ ye nahi ki wo **is** brand ka vendor hai.
 hain; naya vendor-write likhte waqt inme se ek use karna hai, warna route ka gate
 sirf itna kehta hai ki caller *koi* vendor hai.
 
-### 🟠 Do **read** endpoints abhi bhi scope nahi hote
+### ✅ Do **read** endpoints bhi band ho gaye
 
-Role gate dono par hai (`isVendorOrAdmin`), par service `brandId` ko **query se**
-leti hai aur token se resolve nahi karti — to `brandId` bheje bina **poore
-platform ka data** aata hai, aur doosre brand ka `brandId` bhejne par uska:
+`GET /subBrands/get-all` aur `GET /vouchers/versions/get-all` par role gate to
+tha, par service `brandId` **query se** leti thi — to bina bheje **poore platform
+ka data** aata tha, aur doosre brand ka `brandId` bhejne par uska.
 
-| Endpoint | Service |
-|---|---|
-| `GET /subBrands/get-all` | [getAllSubBrands.js:37](../services/subBrands/getAllSubBrands.js#L37) — `if (brandId)` ke bahar koi scope nahi |
-| `GET /vouchers/versions/get-all` | [getAllVoucherVersions.js:46](../services/vouchers/getAllVoucherVersions.js#L46) — wahi shape |
+Dono par ab wahi `scopeToActor` hai jo locations par laga, aur **har
+caller-supplied filter ke baad** chalta hai, taaki upar ka koi filter dayra
+badha na sake.
 
-Yahi bug `GET /locations/getAll` me tha aur wo `scopeToActor` se band hua — wahi
-pattern in dono par lagana hai. **Vendor panel ko tab tak hamesha `brandId`
-bhejna chahiye.**
+| Endpoint | Vendor | Outlet manager | Admin |
+|---|---|---|---|
+| `GET /subBrands/get-all` | apna brand | **sirf apna outlet** | sab |
+| `GET /vouchers/versions/get-all` | apna brand | **apne brand ke sab** | sab |
+
+Doosre brand ka `brandId` bhejne par ab `403` — chup-chaap apne rows nahi, kyunki
+wo "filter ignore ho gaya" jaisa padha jaata.
+
+⚠️ Outlet manager ke liye dono jaan-boojh kar alag hain: outlet listing usko
+**sirf apne outlet** tak rakhti hai (bhai-outlets ke manager ki contact details
+uska kaam nahi), par voucher listing **poore brand** ke vouchers deti hai —
+voucher brand ka hota hai aur har counter par redeem hota hai, to outlet-level
+cut wahi vouchers chhupa deta jo us counter par chalte hain.
+
+🔴 Aur ek asli bug isi me mila: voucher listing me sub-vendor ko
+`resolveActorBrand` se nahi guzara ja sakta. Wo helper `brand.userId ===
+actor.userId` dekhta hai, aur outlet manager ka user id brand par hota hi nahi —
+to wo apne hi brand ke vouchers par `403` khaata. Brand ab uske **outlet row se**
+padha jaata hai, token se nahi.
 
 ### ✅ Band ho chuke
 
@@ -7082,7 +7097,7 @@ aur settlement eligibility teeno saath badalne padenge.
 
 **Request formatting**
 - [ ] **`role: "VENDOR"` bhejein** auth calls pe — WhatsApp flow ka default `CUSTOMER` hai, email/mobile ka `ADMIN`
-- [ ] **`brandId` hamesha bhejein** un endpoints pe jo scoped nahi hain (`subBrands/get-all`, `locations/getAll`, `vouchers/versions/get-all`)
+- [x] **Scoping ab backend karta hai** — `subBrands/get-all`, `locations/getAll` aur `vouchers/versions/get-all`, teeno. `brandId` bhejna ab ek filter hai; doosre brand ka bhejne par `403` milega, chup-chaap sab kuch nahi
 - [ ] **Coordinates `[longitude, latitude]`** order me — ulta karna sabse common bug
 - [ ] **`limit` default 10 hai** — categories/plans pe badhayein
 - [ ] **`isActive=true` bhejein** master data + legal pe
