@@ -3386,11 +3386,14 @@ hisaab se resolve karta hai: ADMIN ko sab · CUSTOMER ko sirf apna · VENDOR ko 
 brand ka address ya apne kisi outlet ka. Outlet ka rishta **`SubBrand` se** verify
 hota hai, token ke `brandId` se nahi — taaki stale claim jawab chaudा na kar sake.
 
-**2. ⚠️ `SUB_VENDOR` ko yahan `403` milta hai.** Wo `PUT /locations/update/:id`
-se apne outlet ka address **badal** sakta hai, par id se **padh** nahi sakta —
-`getLocation` me SUB_VENDOR ki branch hai hi nahi. Apna address `GET
-/locations/getAll` se mil jaata hai (wo SUB_VENDOR ko scope karta hai), to ye
-security hole nahi, ek inconsistency hai.
+**2. ✅ `SUB_VENDOR` ab apna outlet ka address padh sakta hai.** Pehle yahan
+`403` milta tha — wo `PUT /locations/update/:id` se address **badal** sakta tha
+par id se **padh** nahi sakta tha, kyunki `getLocation` me SUB_VENDOR ki branch
+hi nahi thi (aur controller `subBrandId` bhejta bhi nahi tha). Ab dono hain.
+
+⚠️ Check `actor.subBrandId` ke against hota hai, brand ke nahi — ek outlet
+manager ka brand uske outlet se udhaar liya hua hai, to brand-level ownership
+use bhai-outlet ka address bhi padhne deta.
 
 ---
 
