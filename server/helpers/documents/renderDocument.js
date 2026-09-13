@@ -1,9 +1,10 @@
+const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const PDFDocument = require("pdfkit");
 
-const { uploadPDF } = require("../../services/uploads");
+const { uploadDocument } = require("../../services/uploads");
 const {
   row,
   field,
@@ -190,7 +191,18 @@ const renderDocumentPdf = async (snapshot = {}, { compress = true } = {}) => {
     supplement,
   } = snapshot;
 
-  const fileName = `document_${Date.now()}_${Math.floor(Math.random() * 10000)}.pdf`;
+  /**
+   * A scratch name for a file that lives for one upload.
+   *
+   * ⚠️ `crypto.randomUUID()`, not `Math.random()`. This used to be
+   * `document_<Date.now()>_<Math.random()*10000>` and that name became the
+   * asset's **public id**, so the storage URL was guessable by anybody willing
+   * to try a few thousand — and it carried a customer's name, address, GSTIN
+   * and amount. The stored name is the document number now, and this one never
+   * leaves the disk; it is random because two renders in the same millisecond
+   * must not collide, not because anybody is guessing it.
+   */
+  const fileName = `document_${crypto.randomUUID()}.pdf`;
   // OS temp dir, not a folder inside the source tree.
   const tmpDir = path.join(os.tmpdir(), "trydood-documents");
   const filePath = path.join(tmpDir, fileName);
@@ -263,9 +275,16 @@ const renderDocumentPdf = async (snapshot = {}, { compress = true } = {}) => {
  * brand moves address.
  */
 const generateAndUploadDocument = async (snapshot = {}) => {
-  const { filePath, fileName } = await renderDocumentPdf(snapshot);
+  const { filePath } = await renderDocumentPdf(snapshot);
   try {
-    return await uploadPDF(filePath, fileName);
+    /**
+     * ⚠️ The **document number** names the object, not the scratch file.
+     *
+     * The temp file's name used to become the stored `public_id`, which is how
+     * a `Math.random()` scratch name ended up as the public, permanent URL of a
+     * document carrying somebody's address and GSTIN.
+     */
+    return await uploadDocument(filePath, snapshot.documentNumber);
   } finally {
     // Always clean up, whether the upload succeeded or threw — otherwise a failing
     // provider slowly fills the disk with PDFs nobody asked for.

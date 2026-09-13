@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { storageSchema } = require("./storageSchema");
 const { isValidEmail, isValidPhoneNumber } = require("../validator/common");
 const {
   userField,
@@ -214,6 +215,18 @@ const transactionSchema = new mongoose.Schema(
     razorpaySignature: { type: String },
     invoiceId: { type: String },
     invoiceUrl: { type: String },
+    /**
+     * Where the rendered PDF lives — provider, bucket and key.
+     *
+     * 🔴 The **key**, never a URL. A private object has no lasting link by
+     * design: one is minted per request and expires in minutes. Caching a URL
+     * here is exactly what made these documents readable for ever by anybody
+     * who had ever seen the link, including after the token was revoked.
+     *
+     * ⚠️ The `*Url` field above is kept and still read. Rows written before
+     * this existed have only that, and they must keep working.
+     */
+    documentStorage: { type: storageSchema, default: undefined },
     // Unguessable handle for the public invoice download link. The sequential
     // invoice number is a document-of-record and must never appear in a URL.
     documentToken: { type: String },

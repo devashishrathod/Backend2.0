@@ -230,5 +230,28 @@ exports.publicUrl = (asset) => {
   return providerFor(asset).url({ storage: asset.storage, url: asset.url });
 };
 
+/**
+ * A link to one document, minted now.
+ *
+ * 🔴 **Never stored.** A document's URL used to be cached on the record, and
+ * that cached string was the hole: it was public, permanent and built from
+ * `Math.random()`, and it carried the customer's name, address, GSTIN and
+ * amount. `documentToken` can be revoked; a URL already sitting in somebody's
+ * WhatsApp history cannot. So the record remembers the **key**, and the link is
+ * made fresh for each request and expires in minutes.
+ *
+ * On Cloudinary there is nothing short-lived to mint — its delivery URL is the
+ * only one there is. That is the old behaviour, unchanged, and it is why this
+ * finding is only really closed once documents live on S3.
+ */
+exports.documentUrl = async (asset) => {
+  if (!asset?.storage) return asset?.url ?? null;
+
+  const provider = providerFor(asset);
+  if (provider.signedGetUrl) return provider.signedGetUrl({ storage: asset.storage });
+
+  return provider.url({ storage: asset.storage, url: asset.url });
+};
+
 exports.resolveKind = resolveKind;
 exports.activeProvider = activeProvider;

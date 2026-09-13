@@ -107,18 +107,42 @@ const buildKey = ({ purpose, entityId, kind, mime, originalName }) => {
 /**
  * Documents are the one surface with a meaningful, stable name.
  *
- * `documentNumber` is already unique and already printed on the invoice, so a
- * uuid would only make the object harder to find when someone is looking for
- * one specific bill. Nothing overwrites here either: a document number is
- * issued once.
+ * `documentNumber` is already unique, already allotted from an atomic counter
+ * and already printed on the paper, so a uuid would only make the object harder
+ * to find when somebody is looking for one specific bill. Nothing overwrites
+ * here either: a number is issued once.
+ *
+ *     TD/VCH/26-27/000001
+ *      │   │    │      └── sequence, monotonic within the series
+ *      │   │    └───────── Indian financial year
+ *      │   └────────────── series — VCH claim · SUB subscription · REF refund …
+ *      └────────────────── issuer
+ *
+ *  →  documents/26-27/VCH/TD-VCH-26-27-000001.pdf
+ *
+ * ⚠️ The number's own slashes are **not** reused as path separators. They would
+ * work, but the year and series would then be decided by where a slash happened
+ * to fall in a string — so the two segments that matter for browsing and for
+ * lifecycle rules are lifted out deliberately, and the file name keeps the whole
+ * number so an object can be matched to a document by eye.
  */
-const buildDocumentKey = ({ year, series, documentNumber }) => {
-  const parts = [
-    segment(year, "a year"),
-    segment(series, "a series"),
-    segment(documentNumber, "a document number"),
-  ];
-  return `${prefix()}${MEDIA_KIND_PREFIX[MEDIA_KIND.DOCUMENT]}/${parts.join("/")}.pdf`;
+const DOCUMENT_NUMBER_PARTS = /^([A-Z]+)\/([A-Z]+)\/([\d-]+)\/(\d+)$/;
+
+const buildDocumentKey = (documentNumber) => {
+  const raw = String(documentNumber ?? "").trim();
+  const parts = DOCUMENT_NUMBER_PARTS.exec(raw);
+
+  if (!parts) {
+    throwError(500, `Not a document number: ${JSON.stringify(documentNumber)}`);
+  }
+
+  const [, , series, year] = parts;
+  const slug = segment(raw.replace(/\//g, "-"), "a document number");
+
+  return (
+    `${prefix()}${MEDIA_KIND_PREFIX[MEDIA_KIND.DOCUMENT]}/` +
+    `${segment(year, "a year")}/${segment(series, "a series")}/${slug}.pdf`
+  );
 };
 
 /**

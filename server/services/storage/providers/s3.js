@@ -3,7 +3,9 @@ const fs = require("fs");
 const {
   PutObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
 } = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
 const { getS3Client, bucketName } = require("../../../configs/s3");
 const { config } = require("../../../configs/env");
@@ -108,6 +110,41 @@ exports.upload = async ({
     },
   };
 };
+
+/**
+ * How long a minted document link stays valid.
+ *
+ * Long enough for a browser to follow a redirect and finish a download on a bad
+ * connection; short enough that a link pasted into a support chat or forwarded
+ * on WhatsApp is dead by the time anybody else opens it. That forwarding is not
+ * hypothetical — it is the normal life of these links, and it is the whole
+ * reason the permanent public URL had to go.
+ */
+const PRESIGNED_GET_TTL_SECONDS = 5 * 60;
+
+/**
+ * A short-lived link to one private object.
+ *
+ * 🔴 The only way to read a private object. A document's URL is **minted per
+ * request** rather than stored: storing one would recreate exactly the problem
+ * the private bucket exists to solve — a link that outlives the permission
+ * behind it. `documentToken` can be revoked; a URL already in somebody's
+ * message history cannot.
+ */
+exports.signedGetUrl = async ({ storage, expiresIn = PRESIGNED_GET_TTL_SECONDS }) => {
+  if (!storage?.key) throwError(500, "Cannot sign a URL without a key.");
+
+  return getSignedUrl(
+    getS3Client(),
+    new GetObjectCommand({
+      Bucket: storage.bucket || bucketName(STORAGE_BUCKET.PRIVATE),
+      Key: storage.key,
+    }),
+    { expiresIn },
+  );
+};
+
+exports.PRESIGNED_GET_TTL_SECONDS = PRESIGNED_GET_TTL_SECONDS;
 
 exports.remove = async ({ storage }) => {
   if (!storage?.key) return false;
