@@ -92,6 +92,9 @@ const kindFromMime = (mime) => {
  */
 const UPLOAD_PURPOSE = Object.freeze({
   BRAND_LOGO: "BRAND_LOGO",
+  BRAND_COVER: "BRAND_COVER",
+  SUB_BRAND_LOGO: "SUB_BRAND_LOGO",
+  SUB_BRAND_COVER: "SUB_BRAND_COVER",
   BRAND_FEATURE_ICON: "BRAND_FEATURE_ICON",
   CATEGORY_IMAGE: "CATEGORY_IMAGE",
   SUBCATEGORY_IMAGE: "SUBCATEGORY_IMAGE",
@@ -119,6 +122,26 @@ const { IMAGE, VIDEO, GIF, AUDIO, DOCUMENT } = MEDIA_KIND;
 const UPLOAD_PURPOSES = Object.freeze({
   [UPLOAD_PURPOSE.BRAND_LOGO]: {
     entity: "brands",
+    bucket: STORAGE_BUCKET.PUBLIC,
+    kinds: [IMAGE, GIF],
+  },
+  /**
+   * The wide image behind a brand profile. Same entity folder as the logo — one
+   * brand's pictures belong together, and which is which is the row's business,
+   * not the path's.
+   */
+  [UPLOAD_PURPOSE.BRAND_COVER]: {
+    entity: "brands",
+    bucket: STORAGE_BUCKET.PUBLIC,
+    kinds: [IMAGE, GIF],
+  },
+  [UPLOAD_PURPOSE.SUB_BRAND_LOGO]: {
+    entity: "outlets",
+    bucket: STORAGE_BUCKET.PUBLIC,
+    kinds: [IMAGE, GIF],
+  },
+  [UPLOAD_PURPOSE.SUB_BRAND_COVER]: {
+    entity: "outlets",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
   },

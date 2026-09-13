@@ -21,15 +21,44 @@ const {
  * lets the vendor edit their own and an admin edit anybody's; without an actor
  * there is nobody to check, so a contact change is refused rather than assumed.
  */
-exports.updateBrand = async (brandId, payload = {}, logo = null, actor = null) => {
+/**
+ * The brand's two pictures, handled identically.
+ *
+ * They differ only in which field they land on and what the error calls them,
+ * so they share one upload / replace / rollback path rather than two copies of
+ * it that drift apart.
+ */
+const IMAGE_SLOTS = Object.freeze([
+  { file: "logo", field: "logo", label: "Logo", purpose: UPLOAD_PURPOSE.BRAND_LOGO },
+  {
+    file: "coverImage",
+    field: "coverImage",
+    label: "Cover image",
+    purpose: UPLOAD_PURPOSE.BRAND_COVER,
+  },
+]);
+
+exports.updateBrand = async (brandId, payload = {}, files = null, actor = null) => {
+  /**
+   * ⚠️ `files` used to be the logo itself. It is an object of files now, because
+   * the brand has two pictures — a single positional file could never grow a
+   * second one without every caller changing shape.
+   *
+   * A bare file is still accepted so an older caller keeps working and means
+   * what it always meant.
+   */
+  const uploads = files?.tempFilePath ? { logo: files } : (files ?? {});
+
   // Before the session opens, deliberately: a file this endpoint is never going
   // to accept should not cost a transaction, and a 422 raised inside
   // `withTransaction` would be rewritten as a 500 on the way out.
-  assertImageFile(logo, "Logo");
+  for (const slot of IMAGE_SLOTS) {
+    assertImageFile(uploads[slot.file], slot.label);
+  }
 
   const session = await mongoose.startSession();
-  let oldLogo = null;
-  let uploadedLogo = null;
+  /** `field → { previous, uploaded }`, so rollback knows what to undo. */
+  const replaced = new Map();
   let brandResult = null;
   try {
     await session.withTransaction(async () => {
@@ -161,35 +190,47 @@ exports.updateBrand = async (brandId, payload = {}, logo = null, actor = null) =
         user.currentScreen = SCREENS.UNDER_REVIEW;
         await user.save({ session });
       }
-      if (logo) {
-        oldLogo = brand.logo || null;
-        uploadedLogo = await storage.uploadUrl({
-          filePath: logo.tempFilePath,
-          originalFile: logo,
-          purpose: UPLOAD_PURPOSE.BRAND_LOGO,
+      for (const slot of IMAGE_SLOTS) {
+        const file = uploads[slot.file];
+        if (!file) continue;
+
+        const uploaded = await storage.uploadUrl({
+          filePath: file.tempFilePath,
+          originalFile: file,
+          purpose: slot.purpose,
           entityId: brand._id,
         });
-        brand.logo = uploadedLogo;
+        replaced.set(slot.field, {
+          previous: brand[slot.field] || null,
+          uploaded,
+        });
+        brand[slot.field] = uploaded;
       }
       brand.updatedAt = new Date();
       await brand.save({ session });
       brandResult = brand;
     });
 
-    if (uploadedLogo && oldLogo) {
+    // The old pictures go only once the transaction has committed. Best effort:
+    // an orphan is worth a log line, not a failed request for a change that has
+    // already been saved.
+    for (const [field, { previous }] of replaced) {
+      if (!previous) continue;
       try {
-        await storage.deleteAsset({ url: oldLogo });
+        await storage.deleteAsset({ url: previous });
       } catch (deleteError) {
-        console.error("Failed to delete old brand logo:", deleteError);
+        console.error(`Failed to delete old brand ${field}:`, deleteError);
       }
     }
     return brandResult;
   } catch (error) {
-    if (uploadedLogo) {
+    // The transaction rolled back, so the row never pointed at these. Without
+    // this they would sit in storage referenced by nothing.
+    for (const [field, { uploaded }] of replaced) {
       try {
-        await storage.deleteAsset({ url: uploadedLogo });
+        await storage.deleteAsset({ url: uploaded });
       } catch (deleteError) {
-        console.error("Failed to cleanup uploaded brand logo:", deleteError);
+        console.error(`Failed to cleanup uploaded brand ${field}:`, deleteError);
       }
     }
     throw error;

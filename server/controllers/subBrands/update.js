@@ -5,6 +5,7 @@ exports.update = asyncWrapper(async (req, res) => {
   const result = await updateSubBrand(
     { userId: req.userId, role: req.role, brandId: req.brandId },
     req.validatedData,
+    req.files,
   );
   return sendSuccess(
     res,

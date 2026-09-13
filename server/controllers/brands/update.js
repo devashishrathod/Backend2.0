@@ -6,7 +6,9 @@ exports.update = asyncWrapper(async (req, res) => {
   const result = await updateBrand(
     brandId,
     req.validatedData,
-    req.files?.logo,
+    // Both pictures, not just the logo — the service picks out the fields it
+    // knows and ignores anything else in the multipart body.
+    req.files,
     /**
      * `email` and `mobile` on a brand are mirrors of the owning vendor's account
      * keys, so setting them writes that vendor's login identity. The actor comes
