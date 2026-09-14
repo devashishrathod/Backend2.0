@@ -683,6 +683,17 @@ paas poora media object hota hai, bare `storage` nahi, aur legacy rows me
 
 # Phase 3 · 6 surfaces ko `storage` field ✅ DONE
 
+> 📌 **Naam badal chuke hain — neeche jo likha hai wo tab sach tha.**
+>
+> M-1 me ye sidecars ek **generic shape** par aa gaye: `imageStorage` → `imageMedia`,
+> `logoStorage` → `logoMedia`, `coverImageStorage` → `coverImageMedia`,
+> `iconStorage` → `iconMedia` — aur `storageSchema` ki jagah `mediaSchema`, jisme
+> `kind`, `mimeType`, `sizeBytes`, dimensions aur `poster` bhi hain.
+>
+> Jo **nahi** badla: `image` / `logo` / `icon` abhi bhi plain URL string hain, aur
+> response shape bilkul wahi hai. Detail master plan ke **M-1a** me.
+
+
 | | |
 |---|---|
 | **Goal** | Har media ka provider + key DB me ho. Bina response badle. |
@@ -703,6 +714,8 @@ Sahi tarika — **sibling field**:
 // models/User.js
 image:        { type: String },                     // ← bilkul waisa hi, response nahi badla
 imageStorage: { type: storageSchema, default: undefined },   // ← naya, internal
+// ⚠️ M-1 me ye `imageMedia: { type: mediaSchema }` ban gaya — ek generic shape,
+// jisme kind, mimeType, size, dimensions aur poster bhi hain. Dekhein master plan M-1a.
 ```
 
 Response me `image` waisa hi string rahega. `imageStorage` sirf server padhta

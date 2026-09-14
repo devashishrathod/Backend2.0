@@ -171,12 +171,12 @@ bilkul waisa hi rahega, uske bagal me ek naya internal field.
 
 | Surface | Model | Aaj | Baad me |
 |---|---|---|---|
-| User profile image | `User` | `image: String` | `image` waisa hi **+ `imageStorage`** |
+| User profile image | `User` | `image: String` | `image` waisa hi **+ `imageMedia`** |
 | Register image | `User` | same | same |
-| Category image | `Category` | `image: String` | **+ `imageStorage`** |
-| SubCategory image | `SubCategory` | `image: String` | **+ `imageStorage`** |
-| Brand logo | `Brand` | `logo: String` | **+ `logoStorage`** |
-| BrandFeature icon | `BrandFeatures` | `icon: String` | **+ `iconStorage`** |
+| Category image | `Category` | `image: String` | **+ `imageMedia`** |
+| SubCategory image | `SubCategory` | `image: String` | **+ `imageMedia`** |
+| Brand logo | `Brand` | `logo: String` | **+ `logoMedia`** |
+| BrandFeature icon | `BrandFeatures` | `icon: String` | **+ `iconMedia`** |
 | Showcase thumbnail | `ShowcaseSection` | `thumbnail: String` | **+ `thumbnailStorage`** |
 
 `storage` ka shape wahi jo already 5 models me hai:

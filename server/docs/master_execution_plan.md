@@ -22,6 +22,7 @@
 | # | Faisla | Value |
 |---|---|---|
 | **M-1** | Ek hi generic media shape | **`models/mediaSchema.js`** — har jagah, bina exception. `storageSchema` sidecars **aur** har inline `storage` object isme milte hain |
+| **M-1a** | Sidecar kaise banega | **Sidecar hi rahega, par generic** — `logo: String` (delivery URL) + `logoMedia: mediaSchema`. `logo` ko khud `mediaSchema` banane ka matlab tha **55 read sites** (49 projection + 6 select, ~25 files) me se har ek ko map karna, aur aggregation ke `$project: { logo: 1 }` me koi mapper hota hi nahi — ek miss = us endpoint par string ki jagah object, **chupchaap**. Duplication (`url` do jagah) yahan sasti hai: dono hamesha ek hi service me, ek saath likhe jaate hain |
 | **M-2** | Provider enum | **`AWS_S3`** — aaj `"S3"` hai, badalna hai. Underscore, baaki har enum ki tarah |
 | **M-7** | Video poster | **Hamesha alag se upload hoga.** Provider se derive **kabhi nahi** — na Cloudinary par, na S3 par. Maujooda Cloudinary derivation **hatani hai** (wo galat URL banata hai, verified) |
 | **M-8** | Type-specific media fields | **Khatam.** `image`/`video`/`gif` jaise teen-field shapes ek `media: mediaSchema` ban jayenge; `type` `media.kind` se aayega |
@@ -864,12 +865,29 @@ naya `services/storage/preflight.js` · `services/storage/index.js` · `services
 
 ---
 
-## M-1 · Sidecar models → `mediaSchema`
-Brand ×2 · SubBrand ×2 · Category · SubCategory · BrandFeatures · User
-- [ ] `logoStorage` / `imageStorage` / `iconStorage` → `logo: mediaSchema` etc.
-- [ ] Har read par `toMediaResponse` → **URL string, koi client change nahi**
-- [ ] `DEFAULT_IMAGES` placeholder guard chalu rahe
-- [ ] **Proof:** response string hi rahe · shared placeholder delete na ho
+## M-1 · Sidecar models → `mediaSchema` — ✅ **DONE** (uncommitted)
+6 models · 11 services · naya `helpers/media/toMediaDocument.js` · 4 docs
+- [x] **M-1a ke mutabik**: `logo: String` waisa hi, `logoStorage: storageSchema` → **`logoMedia: mediaSchema`**. Aath field, chhe model
+- [x] `toMediaDocument(uploaded)` — ek jagah jo facade ke result ko model ke shape me badalti hai. Pehle gyarah services apni do line likhti thin (`url` + `storage`), isi liye platform ko file ke baare me **kuch aur pata hi nahi tha**
+- [x] `toDeletable(media, url)` — `mediaSchema` khud `{url, storage}` hai, to delete me seedha jaata hai; migration se pehle wali row apne URL se delete hoti hai
+- [x] `kind` **derive** hota hai, default nahi — na mile to throw. Galat `kind` prefix decide karta hai (`images/` vs `gifs/`), aur use koi dobara nahi poochta
+- [x] 11 services: 4 create · 4 update · 3 delete, + brand/subBrand ka `IMAGE_SLOTS` pattern
+- [x] **12 unit test** · **Mutation 9/9**
+- [x] Docs sync: `s3_media_migration_plan.md`, `media_upload_map.md`, `s3_migration_phases.md` (historical — banner ke saath)
+
+> ✅ **Response shape bilkul nahi hila.** Verify kiya: koi read path sidecar field
+> return karta hi nahi tha — na projection me, na `select` me. Isliye `toMediaResponse`
+> abhi kisi read me lagana nahi pada; wo M-3/M-4/M-5 me aayega jahan media sach me
+> response me jaata hai.
+
+> ⚠️ **Money-suite ka `brandImages.test.js` tootne wala tha** — 16 jagah purane
+> naam, aur rename ke baad path bhi galat ho jaate (`logoMedia.provider` ab
+> `logoMedia.storage.provider` hai). 60 minute ki suite chalane se pehle theek kiye.
+
+> 🔴 **Ek mutant pehle bacha tha** — `...(poster ? { poster } : {})` → `poster,`.
+> Dekha to Jest ka `toEqual` undefined keys ignore karta hai aur Mongoose ke liye
+> dono barabar hain. Par ek asli farak hai: `{ ...current, poster: undefined }`
+> maujood poster ko **mita** deta hai. Wahi pin karne wala test joda — ab 9/9.
 
 ## M-1b · Customer profile pic
 `models/Customer.js` · `services/users/updateUserById.js` · customer reads

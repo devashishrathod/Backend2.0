@@ -800,7 +800,7 @@ Par active cloud `.env` me **`dtpy1lbmf`** hai. Do nateeje:
 defaults ko current cloud par migrate karna. Dono karne padenge — sirf migrate
 karna problem #2 ko live kar dega.
 
-> 🟢 **Phase 3 me ye saaf ho gaya.** `imageStorage` aa chuka hai, aur ek shared
+> 🟢 **Phase 3 me ye saaf ho gaya.** `imageMedia` aa chuka hai, aur ek shared
 > default ke paas wo hota hi nahi — to "ye hamara upload hai ya shared
 > placeholder" ka jawab ab ek **field** hai, URL ke host ka andaaza nahi.
 >
