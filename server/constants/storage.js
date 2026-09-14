@@ -119,11 +119,39 @@ const UPLOAD_PURPOSE = Object.freeze({
 
 const { IMAGE, VIDEO, GIF, AUDIO, DOCUMENT } = MEDIA_KIND;
 
+const MB = 1024 * 1024;
+
+/**
+ * What a surface will accept, in bytes.
+ *
+ * ⚠️ This is the number S3 is asked to **enforce** on a presigned POST
+ * (`content-length-range`), so it is a real ceiling rather than something the
+ * server checks after the bytes have already arrived. It is per surface because
+ * a 50 MB showcase video and a 2 MB avatar are not the same question, and one
+ * global number has to be the larger of the two — which makes it no limit at
+ * all for the smaller one.
+ *
+ * These mirror `SHOWCASE_MEDIA_CONFIG`, which the multipart path already
+ * enforces. Where a surface had no stated limit, the number here is the first
+ * one it has ever had; the global `MAX_UPLOAD_SIZE_MB` stays above all of them
+ * as the thing that protects the disk.
+ */
+const MAX_BYTES = Object.freeze({
+  AVATAR: 5 * MB,
+  LOGO: 5 * MB,
+  ICON: 2 * MB,
+  IMAGE: 10 * MB,
+  VIDEO: 50 * MB,
+  DOCUMENT: 20 * MB,
+  AUDIO: 20 * MB,
+});
+
 const UPLOAD_PURPOSES = Object.freeze({
   [UPLOAD_PURPOSE.BRAND_LOGO]: {
     entity: "brands",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.LOGO,
   },
   /**
    * The wide image behind a brand profile. Same entity folder as the logo — one
@@ -134,82 +162,98 @@ const UPLOAD_PURPOSES = Object.freeze({
     entity: "brands",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.IMAGE,
   },
   [UPLOAD_PURPOSE.SUB_BRAND_LOGO]: {
     entity: "outlets",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.LOGO,
   },
   [UPLOAD_PURPOSE.SUB_BRAND_COVER]: {
     entity: "outlets",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.IMAGE,
   },
   [UPLOAD_PURPOSE.BRAND_FEATURE_ICON]: {
     entity: "brand-features",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.ICON,
   },
   [UPLOAD_PURPOSE.CATEGORY_IMAGE]: {
     entity: "categories",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.IMAGE,
   },
   [UPLOAD_PURPOSE.SUBCATEGORY_IMAGE]: {
     entity: "subcategories",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.IMAGE,
   },
   [UPLOAD_PURPOSE.USER_AVATAR]: {
     entity: "users",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.AVATAR,
   },
   [UPLOAD_PURPOSE.SHOWCASE_MEDIA]: {
     entity: "showcase",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF, VIDEO],
+    maxBytes: MAX_BYTES.VIDEO,
   },
   [UPLOAD_PURPOSE.SHOWCASE_THUMBNAIL]: {
     entity: "showcase",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.IMAGE,
   },
   [UPLOAD_PURPOSE.BANNER_MEDIA]: {
     entity: "banners",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, VIDEO, GIF],
+    maxBytes: MAX_BYTES.VIDEO,
   },
   [UPLOAD_PURPOSE.VOUCHER_IMAGE]: {
     entity: "vouchers",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.IMAGE,
   },
   [UPLOAD_PURPOSE.VOUCHER_BANNER]: {
     entity: "vouchers",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, VIDEO, GIF],
+    maxBytes: MAX_BYTES.VIDEO,
   },
   [UPLOAD_PURPOSE.TICKER_ICON]: {
     entity: "tickers",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.ICON,
   },
   /** 🔴 The only PRIVATE one. Invoices carry name, address, GSTIN and amount. */
   [UPLOAD_PURPOSE.DOCUMENT]: {
     entity: "documents",
     bucket: STORAGE_BUCKET.PRIVATE,
     kinds: [DOCUMENT],
+    maxBytes: MAX_BYTES.DOCUMENT,
   },
   [UPLOAD_PURPOSE.AUDIO]: {
     entity: "misc",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [AUDIO],
+    maxBytes: MAX_BYTES.AUDIO,
   },
   [UPLOAD_PURPOSE.LEGACY]: {
     entity: "misc",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, VIDEO, GIF, AUDIO, DOCUMENT],
+    maxBytes: MAX_BYTES.VIDEO,
   },
 });
 
