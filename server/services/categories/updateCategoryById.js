@@ -1,4 +1,5 @@
 const Category = require("../../models/Category");
+const { sameNameAs } = require("../../helpers/common");
 const { throwError, validateObjectId } = require("../../utils");
 const storage = require("../storage");
 const { assertImageFile } = require("../../helpers/media");
@@ -14,7 +15,8 @@ exports.updateCategoryById = async (id, payload = 0, image) => {
     if (name) {
       const existing = await Category.findOne({
         _id: { $ne: id },
-        name,
+        // Case-insensitive — see `createCategory`.
+        name: sameNameAs(name),
         isDeleted: false,
       });
       if (existing) throwError(400, "Another category exists with this name");

@@ -1,4 +1,5 @@
 const { throwError } = require("../../utils");
+const { normalizedNameKey } = require("../common");
 const Brand = require("../../models/Brand");
 const SubBrand = require("../../models/SubBrand");
 const Category = require("../../models/Category");
@@ -16,11 +17,16 @@ exports.removeDuplicateObjectIds = (ids = []) => {
   return [...new Set(ids.map((id) => String(id)))];
 };
 
-exports.normalizeVoucherName = (name) => {
-  return String(name || "")
-    .trim()
-    .replace(/\s+/g, " ");
-};
+/**
+ * The comparison key behind `{ brandId, normalizedName }`, which is a **unique
+ * index** — so it has to be lowercase.
+ *
+ * 🔴 The voucher's own `name` is stored exactly as the vendor typed it, and
+ * that is what the customer app renders. This is the other half: a key nobody
+ * sees, whose only job is to make "Pizza" and "pizza" the same voucher. Without
+ * the lowercase the index compares bytes, and both get created.
+ */
+exports.normalizeVoucherName = (name) => normalizedNameKey(name);
 
 exports.getUniqueTags = (tags = []) => {
   if (!Array.isArray(tags)) return [];

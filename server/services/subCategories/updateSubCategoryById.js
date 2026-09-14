@@ -1,4 +1,5 @@
 const SubCategory = require("../../models/SubCategory");
+const { sameNameAs } = require("../../helpers/common");
 const Category = require("../../models/Category");
 const { throwError, validateObjectId } = require("../../utils");
 const storage = require("../storage");
@@ -25,7 +26,8 @@ exports.updateSubCategoryById = async (id, payload, image) => {
     if (name) {
       const existingSubCategorywithCategory = await SubCategory.findOne({
         _id: { $ne: id },
-        name,
+        // Case-insensitive — see `createCategory`.
+        name: sameNameAs(name),
         categoryId: subcategory?.categoryId,
         isDeleted: false,
       });
@@ -40,7 +42,7 @@ exports.updateSubCategoryById = async (id, payload, image) => {
     if (name && categoryId) {
       const existingSubCategorywithCategory = await SubCategory.findOne({
         _id: { $ne: id },
-        name,
+        name: sameNameAs(name),
         categoryId,
         isDeleted: false,
       });

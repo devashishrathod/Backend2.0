@@ -8,7 +8,14 @@ const {
 } = require("./istDate");
 const { generateUniqueDisplayId } = require("./generateUniqueDisplayId");
 
+const {
+  sameNameAs,
+  normalizedNameKey,
+} = require("./caseInsensitiveName");
+
 module.exports = {
+  sameNameAs,
+  normalizedNameKey,
   IST_OFFSET_MINUTES,
   asIstParts,
   istDayStart,

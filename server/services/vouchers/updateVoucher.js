@@ -4,6 +4,7 @@ const VoucherVersion = require("../../models/VoucherVersion");
 const VoucherSubBrand = require("../../models/VoucherSubBrand");
 const { throwError } = require("../../utils");
 const {
+  normalizeVoucherName,
   getUniqueTags,
   validateVoucherDates,
   validateVoucherSubBrands,
@@ -249,7 +250,13 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
         ? String(payload.name).trim()
         : currentVersion.name;
     if (!name) throwError(400, "Voucher name cannot be empty.");
-    const normalizedName = name.trim();
+    /**
+     * ⚠️ The **same** helper create uses. These had drifted: create collapsed
+     * inner whitespace and update did not, so "Pizza  Hut" made one row on
+     * create and a second on update — past a unique index that saw two
+     * different strings.
+     */
+    const normalizedName = normalizeVoucherName(name);
 
     if (payload.name !== undefined) {
       const duplicateVoucher = await Voucher.findOne({

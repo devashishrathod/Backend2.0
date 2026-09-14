@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { sameNameAs } = require("../../helpers/common");
 
 const Category = require("../../models/Category");
 const { throwError } = require("../../utils");
@@ -8,7 +9,12 @@ const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
 exports.createCategory = async (payload, image) => {
   let { name, description, isActive } = payload;
-  const existingCategory = await Category.findOne({ name, isDeleted: false });
+  // ⚠️ Case-insensitive on purpose — the row stores what was typed, so an
+  // exact match would let "Pizza" and "pizza" both exist.
+  const existingCategory = await Category.findOne({
+    name: sameNameAs(name),
+    isDeleted: false,
+  });
   if (existingCategory) {
     throwError(400, "Category already exist with this name");
   }

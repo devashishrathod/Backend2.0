@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { sameNameAs } = require("../../helpers/common");
 
 const Category = require("../../models/Category");
 const SubCategory = require("../../models/SubCategory");
@@ -14,7 +15,8 @@ exports.createSubCategory = async (categoryId, payload, image) => {
   name = name.trim();
   description = description.trim();
   const existingSubCategory = await SubCategory.findOne({
-    name: name,
+    // Case-insensitive — see `createCategory`.
+    name: sameNameAs(name),
     categoryId: categoryId,
     isDeleted: false,
   });
