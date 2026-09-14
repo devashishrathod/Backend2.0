@@ -156,13 +156,23 @@ describe("buildKey", () => {
   });
 
   test("documents keep their number instead of a uuid", () => {
-    expect(
-      keys.buildDocumentKey({
-        year: "2026",
-        series: "INV",
-        documentNumber: "INV-2026-00042",
-      }),
-    ).toBe("dev/documents/2026/INV/INV-2026-00042.pdf");
+    // ⚠️ Takes the document **number**, not a bag of parts. The year and the
+    // series are read out of the number itself — `services/uploads/index.js`
+    // has only ever passed the string, and this test had been calling an older
+    // signature that no caller uses, so it was failing on a function that works.
+    expect(keys.buildDocumentKey("TD/VCH/26-27/000001")).toBe(
+      "dev/documents/26-27/VCH/TD-VCH-26-27-000001.pdf",
+    );
+  });
+
+  test("a number that is not a document number is refused, not guessed", () => {
+    // The old object form lands here now — which is the point: a caller that
+    // gets this wrong should hear about it rather than build a key from
+    // `[object Object]`.
+    expect(() => keys.buildDocumentKey({ documentNumber: "INV-2026" })).toThrow(
+      /Not a document number/,
+    );
+    expect(() => keys.buildDocumentKey("")).toThrow(/Not a document number/);
   });
 
   test("a staging key sits outside the type tree", () => {
