@@ -1932,8 +1932,18 @@ const brandFolder = folder(
           `  pm.expect(b, "distanceInMeters").to.not.have.property("distanceInMeters");`,
           `});`,
         ]),
+        // ⚠️ `merchantId` is deliberately NOT in this list. It used to be, and
+        // the assertion was simply wrong: every customer brand surface has
+        // returned it for as long as the projections have existed — including
+        // the guest voucher feed, whose saved example carries it. The rule was
+        // written on two endpoints, contradicted on a third, and enforced by
+        // nothing, so it read as a guarantee while guaranteeing nothing.
+        //
+        // It is not a credential: no endpoint accepts a `merchantId` as input,
+        // so knowing one opens nothing. `uniqueId` remains the id a customer is
+        // shown; this is the one support and reconciliation quote back.
         ...A.absent(
-          ["pan", "gst", "bank", "PANId", "GSTId", "BankId", "subscribedId", "merchantId"],
+          ["pan", "gst", "bank", "PANId", "GSTId", "BankId", "subscribedId"],
           { each: true },
         ),
       ],
@@ -2103,6 +2113,10 @@ const brandFolder = folder(
           `  pm.expect(o, "brandId").to.not.have.property("brandId");`,
           `});`,
         ]),
+        // `merchantId` removed for the reason given on the brand directory
+        // above. `subscribedId` and `subscription` stay: the customer gets the
+        // plan's **name** in `subscriptionPlan` and nothing else off the
+        // billing record.
         ...A.absent([
           "pan",
           "gst",
@@ -2112,7 +2126,6 @@ const brandFolder = folder(
           "BankId",
           "subscribedId",
           "subscription",
-          "merchantId",
           "verification",
         ]),
       ],

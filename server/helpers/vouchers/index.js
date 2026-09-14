@@ -40,6 +40,7 @@ const {
   buildCustomerVoucherDetailPipeline,
   mapCustomerVoucherDetail,
   mapCustomerVoucherListItem,
+  mapCustomerBrandBlock,
 } = require("./customerListing");
 const { pickVoucherBanner } = require("./pickVoucherBanner");
 const {
@@ -71,6 +72,9 @@ module.exports = {
   buildCustomerVoucherDetailPipeline,
   mapCustomerVoucherDetail,
   mapCustomerVoucherListItem,
+  // The customer-facing brand card. Shared by the list row and the detail so
+  // the two cannot drift.
+  mapCustomerBrandBlock,
   pickVoucherBanner,
   uploadVoucherBannerMedia,
   deleteVoucherBannerMedia,

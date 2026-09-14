@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { storageSchema } = require("./storageSchema");
 const {
   brandField,
   transactionField,
@@ -247,6 +248,18 @@ const settlementSchema = new mongoose.Schema(
      */
     commissionInvoiceNumber: { type: String, trim: true },
     documentUrl: { type: String, trim: true },
+    /**
+     * Where the rendered PDF lives — provider, bucket and key.
+     *
+     * 🔴 The **key**, never a URL. A private object has no lasting link by
+     * design: one is minted per request and expires in minutes. Caching a URL
+     * here is exactly what made these documents readable for ever by anybody
+     * who had ever seen the link, including after the token was revoked.
+     *
+     * ⚠️ The `*Url` field above is kept and still read. Rows written before
+     * this existed have only that, and they must keep working.
+     */
+    documentStorage: { type: storageSchema, default: undefined },
     /** Everything the statement prints, frozen when the payout was confirmed. */
     documentSnapshot: { type: documentSnapshotSchema },
     /** Unguessable handle for the public document link. One name across all four

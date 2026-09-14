@@ -1,17 +1,37 @@
 const BrandFeatures = require("../../models/BrandFeatures");
-const Brand = require("../../models/Brand");
-const { uploadImage, deleteImage } = require("../uploads");
+const { resolveActorBrand } = require("../../helpers/brands");
+const { throwError } = require("../../utils");
+const storage = require("../storage");
+const { assertImageFile } = require("../../helpers/media");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
-exports.updateBrandFeature = async (payload, icon) => {
+/**
+ * @param {{ userId: string, role: string, brandId?: string }} actor
+ * @param {object} payload  carries `featureId`; the brand comes off the feature
+ */
+exports.updateBrandFeature = async (actor, payload, icon) => {
   const { featureId, title, description, isActive } = payload;
   const feature = await BrandFeatures.findOne({
     _id: featureId,
     isDeleted: false,
   });
+  /**
+   * ⚠️ `throwError` was used on three lines of this file and imported on none,
+   * so each of them raised `ReferenceError: throwError is not defined` instead.
+   * A missing feature answered 500 rather than 404, and — worse — the ten-active
+   * limit below could not report itself either: a vendor at the cap got an
+   * unexplained server error instead of being told what the limit was.
+   */
   if (!feature) throwError(404, "Brand feature not found!");
 
-  const brand = await Brand.exists({ _id: feature.brandId, isDeleted: false });
-  if (!brand) throwError(404, "Brand not found!");
+  /**
+   * Was `Brand.exists({ _id: feature.brandId })` — existence, not ownership.
+   * Any vendor could edit any brand's feature by knowing its id, and replacing
+   * the icon destroys the previous one, so the damage was not limited to this
+   * record. Checked against the brand the feature belongs to, which is the only
+   * brand this call may touch.
+   */
+  await resolveActorBrand(actor, feature.brandId);
 
   const requestedActive =
     isActive === undefined
@@ -34,16 +54,31 @@ exports.updateBrandFeature = async (payload, icon) => {
 
   if (title) feature.title = title;
   if (description) feature.description = description;
-  if (isActive) feature.isActive = requestedActive;
+  /**
+   * ⚠️ `if (isActive)` before, which is falsy for the boolean `false` — so
+   * turning a feature **off** was accepted, answered "updated successfully",
+   * and changed nothing. It only appeared to work from the panel because a
+   * multipart form sends the string `"false"`, which is truthy; a JSON update
+   * with no icon sent the real boolean and was silently dropped.
+   */
+  if (isActive !== undefined) feature.isActive = requestedActive;
+
+  assertImageFile(icon, "Feature icon");
 
   if (icon) {
-    const oldIcon = feature.icon;
-    const newIcon = await uploadImage(icon.tempFilePath);
-    feature.icon = newIcon;
+    const oldIcon = { url: feature.icon, storage: feature.iconStorage };
+    const uploaded = await storage.uploadFromPath({
+      filePath: icon.tempFilePath,
+      originalFile: icon,
+      purpose: UPLOAD_PURPOSE.BRAND_FEATURE_ICON,
+      entityId: feature._id,
+    });
+    feature.icon = uploaded.url;
+    feature.iconStorage = uploaded.storage;
     await feature.save();
-    if (oldIcon) {
+    if (oldIcon.url) {
       try {
-        await deleteImage(oldIcon);
+        await storage.deleteAsset(oldIcon);
       } catch (error) {
         console.error("Failed to delete old feature icon:", error);
       }

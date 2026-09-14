@@ -10,6 +10,8 @@ const {
   SEARCH_RESULT_TYPES,
   SEARCH_TARGET_SCREENS,
 } = require("../../constants/search");
+// By file, not the barrel — see the note in `helpers/vouchers/customerListing.js`.
+const { buildBrandPlanLookup } = require("../subscribeds/brandPlanLookup");
 const { matchRankExpression } = require("./matchRank");
 const { searchRegex } = require("./searchTerm");
 
@@ -36,6 +38,8 @@ const toItem = (row) => {
     image: row.logo || null,
     meta: {
       uniqueId: row.uniqueId || null,
+      merchantId: row.merchantId || null,
+      subscriptionPlan: row.subscriptionPlan || null,
       isTopBrand: row.isTopBrand ?? false,
       isVerified: row.isVerified ?? false,
       followersCount: row.followersCount ?? 0,
@@ -75,6 +79,7 @@ exports.buildBrandSection = async ({
         brandName: 1,
         logo: 1,
         uniqueId: 1,
+        merchantId: 1,
         followersCount: 1,
         categoryId: 1,
         subCategoryId: 1,
@@ -161,11 +166,16 @@ exports.buildBrandSection = async ({
         _id: 1,
       },
     },
+    // The live plan, after the `$sort` so it joins on rows already in their
+    // final order. Same key the brand listing and the voucher feed use.
+    ...buildBrandPlanLookup({ localField: "_id", as: "subscriptionPlan" }),
     {
       $project: {
         brandName: 1,
         logo: 1,
         uniqueId: 1,
+        merchantId: 1,
+        subscriptionPlan: 1,
         followersCount: 1,
         isTopBrand: 1,
         isVerified: 1,

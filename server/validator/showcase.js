@@ -4,6 +4,7 @@ const objectId = require("./validJoiObjectId");
 const {
   SHOWCASE_SECTION_TYPE,
   SHOWCASE_MEDIA_TYPE,
+  SHOWCASE_COVER_IMAGE_MODE,
 } = require("../constants/showcase");
 
 exports.validateCreateSection = Joi.object({
@@ -119,10 +120,37 @@ exports.validateUpdateSection = {
     isShowVideosInClips: Joi.boolean().optional().messages({
       "boolean.base": "isShowVideosInClips must be true or false.",
     }),
+    /**
+     * Pin a cover: the media whose picture the section should show.
+     *
+     * Without it the cover follows the first visible media and moves on every
+     * add, delete and reorder. `coverImageMode: "AUTO"` gives that behaviour
+     * back.
+     */
+    coverMediaId: objectId().optional(),
+    /**
+     * ⚠️ **`AUTO` only** — `MANUAL` is not something a caller can ask for.
+     *
+     * `MANUAL` is what pinning *produces*, not an instruction. Accepting it on
+     * its own would mean a mode with nothing pinned: the cover would freeze
+     * wherever it happened to be and stop following anything, and the service
+     * has no media to point it at — so it would do nothing at all and still
+     * answer 200. Pin with `coverMediaId`; unpin with `AUTO`.
+     */
+    coverImageMode: Joi.string()
+      .valid(SHOWCASE_COVER_IMAGE_MODE.AUTO)
+      .optional()
+      .messages({
+        "any.only":
+          "coverImageMode can only be AUTO, which unpins the cover. To pin one, send coverMediaId.",
+      }),
   })
     .min(1)
+    .oxor("coverMediaId", "coverImageMode")
     .messages({
       "object.min": "Please provide at least one field to update.",
+      "object.oxor":
+        "Send coverMediaId to pin a cover, or coverImageMode: AUTO to unpin — not both.",
     }),
 };
 

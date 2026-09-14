@@ -7,6 +7,9 @@ const { buildAggregateLookup } = require("../../database");
 const { SYSTEM_VERIFICATION_STATUS } = require("../../constants");
 const { throwError } = require("../../utils");
 const { customerVisibleBrandFilter } = require("../../helpers/brands");
+// The live plan, resolved the same way on every customer surface — never off
+// the stale `Brand.subscribedId` pointer. See the helper for what that cost.
+const { buildBrandPlanLookup } = require("../../helpers/subscribeds");
 const {
   customerSectionMatch,
   sortedVisibleMedias,
@@ -118,6 +121,15 @@ const brandPipeline = (_id) => [
     as: "verification",
     project: { status: 1 },
   }),
+  /**
+   * The live plan's name, and nothing else off the plan.
+   *
+   * Note what this deliberately does not become: `getBrand` returns the whole
+   * `subscribed` document — price paid, dates, entitlements — and the header
+   * comment on this file exists precisely because that response is not one a
+   * customer may have. A plan **name** is a badge; the billing behind it is not.
+   */
+  ...buildBrandPlanLookup({ localField: "_id", as: "subscriptionPlan" }),
   {
     $project: {
       brandName: 1,
@@ -134,6 +146,7 @@ const brandPipeline = (_id) => [
       subCategory: 1,
       location: 1,
       workHours: 1,
+      subscriptionPlan: 1,
       /**
        * ⚠️ That comment said `isApproved` is "never written anywhere ... so it
        * is permanently false". Both halves were wrong:

@@ -33,7 +33,11 @@ exports.setVoucherBanner = async (actor, voucherId, bannerType, file) => {
       voucher.banner[previousField])
     : null;
 
-  const newMedia = await uploadVoucherBannerMedia(bannerType, file);
+  const newMedia = await uploadVoucherBannerMedia(
+    bannerType,
+    file,
+    voucher._id,
+  );
 
   voucher.banner = { type: bannerType, [field]: newMedia };
   voucher.updatedBy = userId;

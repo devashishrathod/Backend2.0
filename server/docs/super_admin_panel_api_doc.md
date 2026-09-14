@@ -238,11 +238,20 @@ if (role === ROLES.ADMIN) {
 
 > ⚠️ **`GET /notifications/get-all` exception hai** — admin `brandId` omit kare to error nahi, balki **admin-audience feed** milti hai (webhook failures, disputes, lapsed brands).
 
-### Jin endpoints pe `brandId` filter hai (ownership nahi)
-
-Ye endpoints scoped nahi hain — `brandId` sirf ek **query filter** hai. Admin ke liye ye actually convenient hai (sab kuch dikhta hai), par jaanein ki data platform-wide hai:
+### Jin endpoints pe `brandId` **admin ke liye** sirf ek filter hai
 
 `GET /subBrands/get-all` · `GET /locations/getAll` · `GET /vouchers/versions/get-all` · `GET /showcase/section/get-all` · `GET /brandFeatures/get-all` (yahan `brandId` **required** hai)
+
+Admin ke liye `brandId` ek query filter hai — omit karein to data **platform-wide** aata hai, aur wo jaan-boojh kar hai.
+
+> ⚠️ **Ye pehle har role ke liye sach tha, aur wahi bug tha.** Un teeno listings
+> (`subBrands`, `locations`, `vouchers/versions`) me ek vendor bhi `brandId`
+> chhod kar poore platform ka data le sakta tha — doosre brands ke outlets ke
+> pate aur manager contacts, aur unke unpublished voucher drafts.
+>
+> Ab service caller ke hisaab se kaatti hai: **admin ko sab**, vendor ko apna
+> brand, outlet manager ko apna daayra. Doosre brand ka `brandId` bhejne par
+> non-admin ko `403`. Admin ka behaviour bilkul nahi badla.
 
 ---
 
@@ -300,6 +309,7 @@ Ye endpoints scoped nahi hain — `brandId` sirf ek **query filter** hai. Admin 
 | `403` | Forbidden | Role not permitted, deactivated account |
 | `404` | Not Found | Resource nahi mila **ya empty list** |
 | `409` | Conflict | Duplicate (promo code, section title), banner capacity full, concurrent modification |
+| `413` | Payload Too Large | Uploaded file platform ki max size se badi |
 | `422` | Unprocessable Entity | Joi validation, invalid ObjectId, **`brandId` missing for admin** |
 | `500` | Server Error | Unexpected |
 | `503` | Service Unavailable | Razorpay down |
@@ -322,7 +332,25 @@ Ye endpoints scoped nahi hain — `brandId` sirf ek **query filter** hai. Admin 
 | `404` | `Brand not found!` | `brandId` galat |
 | `500` | `Authentication failed due to an unexpected error.` | JWT verify me unknown error |
 | `422` | *(field-wise Joi message)* | Validation fail |
+| `413` | `File is too large. The maximum upload size is 100 MB.` | Kisi bhi file upload par — niche dekho |
 | `404` | `Invalid API` | Galat path |
+
+### File upload limits
+
+| Layer | Limit | Response |
+|---|---|---|
+| **Platform ceiling** | `MAX_UPLOAD_SIZE_MB` (aaj **100 MB**) | `413` — **upload beech me hi kat jaata hai** |
+| **Per-surface rule** | Showcase: **10 MB** image / **50 MB** video (`Setting.vendor.showcase`) | `400` with the surface named |
+
+⚠️ Platform ceiling `.env` se aata hai aur **boot par padha jaata hai** —
+`express-fileupload` apne options `app.use()` ke waqt build karta hai, har
+request par nahi. Isliye ise badalne ke liye **restart chahiye**, aur wo admin
+panel se badla **nahi** ja sakta. Showcase ki per-surface limits `Setting` me
+hain aur `PUT /settings/update` se turant badal jaati hain.
+
+⚠️ `413` par connection **turant band** ho jaata hai — poori file bheji nahi
+jaati. Admin panel ko `fetch`/`XHR` ke abort ko error ki tarah handle karna
+chahiye.
 
 ### Validation error format
 
@@ -2568,7 +2596,15 @@ Global middleware: `router.use(verifyJwtToken)` — ⚠️ **koi role gate nahi*
 
 ## 31. POST /locations/create
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** **VENDOR+SUB_VENDOR+ADMIN**, ownership verified ✅ · admin kisi bhi brand / outlet / **customer** ka
+
+> 🆕 **Admin ab customer ka address bhi bana sakta hai** — `userId` me us customer
+> ke user ki id bhejein, aur `isBrandAddress` / `isSubBrandAddress` dono chhod
+> dein. Row par `userId` aur `customerId` **customer ke** rehte hain; admin
+> `createdBy` / `updatedBy` me darj hota hai. Isi wajah se dono alag rakhe gaye
+> hain — warna admin ke banaye address ko customer apna maan hi nahi paata.
+>
+> `userId` na bhejne par `422 "userId is required when an admin acts on a customer address"`.
 
 ### Body
 | Field | Type | Required | Default | Validation |
@@ -2625,7 +2661,11 @@ Global middleware: `router.use(verifyJwtToken)` — ⚠️ **koi role gate nahi*
 
 ## 32. GET /locations/getAll
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** **VENDOR+SUB_VENDOR+ADMIN**, scope enforced ✅ · admin ko sab dikhta hai
+
+> 🆕 **Vendor ko ab sirf apna brand aur apne outlets dikhte hain.** Pehle koi
+> scope tha hi nahi — bina filter ke ek request platform ke saare address de
+> deti thi, customer ke ghar ke pate samet. Admin par koi rok nahi.
 
 ### Query Params
 | Param | Type | Required | Notes |
@@ -2695,7 +2735,7 @@ Koi ownership check nahi — admin ke liye theek, par sabke liye khula hai.
 
 ## 34. PUT /locations/update/:id
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · admin kisi ka bhi
 
 ### Path Params
 | Param | Type | Required |
@@ -2720,7 +2760,7 @@ Koi ownership check nahi — admin ke liye theek, par sabke liye khula hai.
 
 ## 35. DELETE /locations/delete/:id
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · admin kisi ka bhi
 
 ### Path Params
 | Param | Type | Required |
@@ -3674,13 +3714,15 @@ Soft delete. `isActive: false` (#52) usually behtar hai.
 
 Brand ke USP points. Admin kisi bhi brand ke liye manage kar sakta hai.
 
-⚠️ Global middleware: `router.use(verifyJwtToken)` — **koi role gate nahi**
+Writes par `isVendorOrAdmin`, aur uske baad service me `resolveActorBrand`. Admin ke
+liye iska matlab hai: **`brandId` dena hoga** — vendor ki tarah token se resolve
+nahi hota. Reads par koi gate nahi (customer app brand profile par dikhati hai).
 
 ## 56. POST /brandFeatures/add
 
 **Multipart** — `icon` mandatory.
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · admin ko `brandId` dena hoga
 
 ### Body (multipart)
 | Field | Type | Required | Default | Validation |
@@ -3807,7 +3849,7 @@ Brand ke USP points. Admin kisi bhi brand ke liye manage kar sakta hai.
 
 ## 59. PUT /brandFeatures/update/:featureId
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · admin kisi bhi brand ka
 
 ### Path Params
 | Param | Type | Required |
@@ -3838,7 +3880,7 @@ Brand ke USP points. Admin kisi bhi brand ke liye manage kar sakta hai.
 
 ## 60. DELETE /brandFeatures/delete/:featureId
 
-**Access:** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · admin kisi bhi brand ka
 
 ### Path Params
 | Param | Type | Required |
@@ -3855,6 +3897,9 @@ Brand ke USP points. Admin kisi bhi brand ke liye manage kar sakta hai.
 |---|---|
 | `404` | `Brand feature not found!` |
 | `422` | `Invalid Feature ID format` |
+
+⚠️ Record soft-delete hota hai, par uska **icon Cloudinary se permanently hat jaata
+hai**. Wo wapas nahi aata — galat `featureId` par sirf row nahi, asset bhi jaata hai.
 
 ---
 

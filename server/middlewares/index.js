@@ -1,4 +1,5 @@
 const { errorHandler } = require("./errorHandler");
+const { cleanupTempFiles } = require("./cleanupTempFiles");
 const { buildAuthGate } = require("./authenticate");
 const {
   verifyJwtToken,
@@ -35,6 +36,9 @@ const {
 
 module.exports = {
   errorHandler,
+  // Deletes what `express-fileupload` leaves behind on a successful upload.
+  // Mount it **before** `fileUpload()` — see the note in the file.
+  cleanupTempFiles,
   buildAuthGate,
   verifyJwtToken,
   verifyJwtTokenEvenIfDeactivated,

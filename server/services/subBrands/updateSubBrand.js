@@ -4,6 +4,9 @@ const User = require("../../models/User");
 const { ROLES } = require("../../constants");
 const { DUPLICATE_KEY } = require("../../constants/mongo");
 const { throwError } = require("../../utils");
+const storage = require("../storage");
+const { assertImageFile } = require("../../helpers/media");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const { assertActiveSubscription } = require("../../helpers/subscribeds");
 const { switchOutletType } = require("../../helpers/subBrands");
 const {
@@ -26,9 +29,37 @@ const {
  *     that omitted it reactivated a deactivated outlet. It is now only applied
  *     when explicitly sent.
  */
-exports.updateSubBrand = async (actor, payload) => {
+/**
+ * The outlet's two pictures. Same shape as `updateBrand`'s, on purpose — an
+ * outlet is a brand's branch and the panel treats them the same way.
+ */
+const IMAGE_SLOTS = Object.freeze([
+  {
+    file: "logo",
+    field: "logo",
+    storageField: "logoStorage",
+    label: "Logo",
+    purpose: UPLOAD_PURPOSE.SUB_BRAND_LOGO,
+  },
+  {
+    file: "coverImage",
+    field: "coverImage",
+    storageField: "coverImageStorage",
+    label: "Cover image",
+    purpose: UPLOAD_PURPOSE.SUB_BRAND_COVER,
+  },
+]);
+
+exports.updateSubBrand = async (actor, payload, files = null) => {
   const { subBrandId, joinedDate, outletType, email, description, isActive } =
     payload;
+
+  const uploads = files ?? {};
+  // Before anything is loaded or any slot moved: a file this endpoint will not
+  // accept should cost nothing.
+  for (const slot of IMAGE_SLOTS) {
+    assertImageFile(uploads[slot.file], slot.label);
+  }
 
   const subBrand = await SubBrand.findById(subBrandId);
   if (!subBrand || subBrand.isDeleted) {
@@ -128,12 +159,53 @@ exports.updateSubBrand = async (actor, payload) => {
   // Only when the caller actually sent it — see note 3 above.
   if (isActive !== undefined) subBrand.isActive = isActive;
 
+  /** `field → { previous, uploaded }`, so a failed save knows what to undo. */
+  const replaced = new Map();
+  for (const slot of IMAGE_SLOTS) {
+    const file = uploads[slot.file];
+    if (!file) continue;
+
+    const uploaded = await storage.uploadFromPath({
+      filePath: file.tempFilePath,
+      originalFile: file,
+      purpose: slot.purpose,
+      entityId: subBrand._id,
+    });
+    replaced.set(slot.field, {
+      previous: {
+        url: subBrand[slot.field] || null,
+        storage: subBrand[slot.storageField],
+      },
+      uploaded,
+    });
+    subBrand[slot.field] = uploaded.url;
+    subBrand[slot.storageField] = uploaded.storage;
+  }
+
   try {
     await subBrand.save();
   } catch (error) {
     // Undo the counter movement so the pools do not drift from reality.
     if (revertCounters) await revertCounters();
+    // …and the pictures, which the row never ended up pointing at.
+    for (const [field, { uploaded }] of replaced) {
+      try {
+        await storage.deleteAsset(uploaded);
+      } catch (deleteError) {
+        console.error(`Failed to cleanup uploaded outlet ${field}:`, deleteError);
+      }
+    }
     throw error;
+  }
+
+  // Saved. The ones they replaced can go — best effort, an orphan is a log line.
+  for (const [field, { previous }] of replaced) {
+    if (!previous.url) continue;
+    try {
+      await storage.deleteAsset(previous);
+    } catch (deleteError) {
+      console.error(`Failed to delete old outlet ${field}:`, deleteError);
+    }
   }
 
   const updatedBrand = await Brand.findById(brand._id)

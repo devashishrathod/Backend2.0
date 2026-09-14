@@ -15,6 +15,11 @@ const { buildCheckoutPreview } = require("./buildCheckoutPreview");
 const { resolveSubscriptionAction } = require("./resolveSubscriptionAction");
 const { getActiveSubscription } = require("./getActiveSubscription");
 const {
+  buildBrandPlanLookup,
+  resolveBrandPlanNames,
+  resolveBrandPlanName,
+} = require("./brandPlanLookup");
+const {
   syncBrandSubscriptionState,
 } = require("./syncBrandSubscriptionState");
 const {
@@ -41,6 +46,9 @@ module.exports = {
   buildCheckoutPreview,
   resolveSubscriptionAction,
   getActiveSubscription,
+  buildBrandPlanLookup,
+  resolveBrandPlanNames,
+  resolveBrandPlanName,
   syncBrandSubscriptionState,
   recordSubscribedHistory,
   roleToPerformer,

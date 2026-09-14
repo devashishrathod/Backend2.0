@@ -1,5 +1,9 @@
 /**
- * Banner and ticker creation — the upload half, which nothing tested.
+ * Banner and ticker media — the whole life of the file, which nothing tested.
+ *
+ * Creation (upload + rollback) and deletion (cleanup). Both ends were invisible
+ * to the test suite, and both were wrong in the same direction: the file
+ * outlived the row.
  *
  * ### 🔴 Why this file exists
  *
@@ -49,8 +53,14 @@ jest.mock("../../helpers/promotionalTickers", () => ({
   deleteTickerIcon: jest.fn(),
 }));
 
-jest.mock("../../models/Banner", () => ({ create: jest.fn() }));
-jest.mock("../../models/PromotionalTicker", () => ({ create: jest.fn() }));
+jest.mock("../../models/Banner", () => ({
+  create: jest.fn(),
+  findOne: jest.fn(),
+}));
+jest.mock("../../models/PromotionalTicker", () => ({
+  create: jest.fn(),
+  findOne: jest.fn(),
+}));
 
 const Banner = require("../../models/Banner");
 const PromotionalTicker = require("../../models/PromotionalTicker");
@@ -65,12 +75,23 @@ const {
 } = require("../../helpers/promotionalTickers");
 
 const { createBanner } = require("../../services/banners/createBanner");
+const { deleteBanner } = require("../../services/banners/deleteBanner");
 const { createTicker } = require("../../services/promotionalTickers/createTicker");
+const { deleteTicker } = require("../../services/promotionalTickers/deleteTicker");
 
 const USER = new mongoose.Types.ObjectId();
 const UPLOADED = { url: "https://res.cloudinary.com/x/image/upload/a.png", publicId: "a" };
 
-const file = () => ({ name: "a.png", tempFilePath: "/tmp/a.png", size: 67 });
+// `mimetype` is not checked here — both uploaders are mocked, and the real mime
+// allow-list lives inside them. It is set anyway so the fixture describes a file
+// that could actually exist; the version without it is what made
+// `brandFeatureOwnership` fail the moment a real check appeared upstream.
+const file = () => ({
+  name: "a.png",
+  tempFilePath: "/tmp/a.png",
+  size: 67,
+  mimetype: "image/png",
+});
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -95,10 +116,24 @@ describe("createBanner — the file is required, and named by the type", () => {
   ])("%s looks for the `%s` file", async (type, field) => {
     await createBanner(USER, { title: "t", type }, { [field]: file() });
 
-    expect(uploadBannerMedia).toHaveBeenCalledWith(type, expect.any(Object));
+    const [calledType, calledFile, calledId] = uploadBannerMedia.mock.calls[0];
+    expect(calledType).toBe(type);
+    expect(calledFile).toEqual(expect.any(Object));
+
     expect(Banner.create).toHaveBeenCalledWith(
       expect.objectContaining({ [field]: UPLOADED, type }),
     );
+
+    /**
+     * ⚠️ The id the object key is built from has to be the id the row gets.
+     *
+     * The upload happens *before* the insert, so `createBanner` mints the id
+     * itself and passes it both ways. If those two ever drifted apart the file
+     * would sit under `banners/<some id>/` that no row points at — invisible to
+     * any cleanup sweep, and impossible to trace back.
+     */
+    const created = Banner.create.mock.calls[0][0];
+    expect(String(calledId)).toBe(String(created._id));
   });
 
   test("a VIDEO banner will not accept an image file", async () => {
@@ -209,7 +244,98 @@ describe("createTicker — same shape, same rollback", () => {
       statusCode: 422,
     });
 
-    expect(uploadTickerIcon).toHaveBeenCalledWith(undefined);
+    // The missing file is still the first argument; the second is the id the
+    // object key would have been built from, minted before the upload.
+    expect(uploadTickerIcon).toHaveBeenCalledWith(undefined, expect.anything());
     expect(PromotionalTicker.create).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Deleting a banner or a ticker used to keep the file.
+ *
+ * 🔴 Both helpers existed and both were only ever called from the create/update
+ * rollback paths — `deleteBanner.js` and `deleteTicker.js` never mentioned
+ * them. The row was soft-deleted and the asset simply stayed.
+ *
+ * That is not a small leak: the delete is soft, but nothing can bring the row
+ * back — there is no restore endpoint and every read filters `isDeleted: false`.
+ * So the file was paid for every month, referenced by a row nobody could reach.
+ * Banners and tickers are the highest-churn content in the system (campaigns
+ * change weekly), which is exactly why these two were the wrong ones to miss.
+ */
+describe("deleting a banner or ticker takes its file with it", () => {
+  const savedBanner = (type, field) => {
+    const doc = {
+      _id: new mongoose.Types.ObjectId(),
+      type,
+      [field]: UPLOADED,
+      save: jest.fn().mockResolvedValue(undefined),
+    };
+    Banner.findOne.mockResolvedValue(doc);
+    return doc;
+  };
+
+  test.each([
+    ["IMAGE", "image"],
+    ["VIDEO", "video"],
+    ["GIF", "gif"],
+  ])("%s banner — the %s file is deleted after the row is saved", async (type, field) => {
+    const doc = savedBanner(type, field);
+
+    await deleteBanner(USER, String(doc._id));
+
+    expect(doc.isDeleted).toBe(true);
+    expect(doc.isActive).toBe(false);
+    expect(doc.save).toHaveBeenCalled();
+    // The type goes along, so a GIF is not destroyed as a plain image —
+    // Cloudinary answers "not found" on the wrong resource_type and keeps it.
+    expect(deleteBannerMedia).toHaveBeenCalledWith(type, UPLOADED);
+  });
+
+  test("🔴 the row is saved BEFORE the file is destroyed", async () => {
+    // If the order ever flips, a failed save leaves a live banner pointing at
+    // an asset that is already gone — a blank slot on the home screen.
+    const order = [];
+    const doc = savedBanner("IMAGE", "image");
+    doc.save.mockImplementation(async () => order.push("save"));
+    deleteBannerMedia.mockImplementation(async () => order.push("delete"));
+
+    await deleteBanner(USER, String(doc._id));
+
+    expect(order).toEqual(["save", "delete"]);
+  });
+
+  test("a missing banner is a 404, and nothing is deleted", async () => {
+    Banner.findOne.mockResolvedValue(null);
+
+    await expect(deleteBanner(USER, String(new mongoose.Types.ObjectId())))
+      .rejects.toMatchObject({ statusCode: 404 });
+
+    expect(deleteBannerMedia).not.toHaveBeenCalled();
+  });
+
+  test("ticker — the icon is deleted after the row is saved", async () => {
+    const doc = {
+      _id: new mongoose.Types.ObjectId(),
+      icon: UPLOADED,
+      save: jest.fn().mockResolvedValue(undefined),
+    };
+    PromotionalTicker.findOne.mockResolvedValue(doc);
+
+    await deleteTicker(USER, String(doc._id));
+
+    expect(doc.isDeleted).toBe(true);
+    expect(doc.isActive).toBe(false);
+    expect(deleteTickerIcon).toHaveBeenCalledWith(UPLOADED);
+  });
+
+  test("a missing ticker is a 404, and nothing is deleted", async () => {
+    PromotionalTicker.findOne.mockResolvedValue(null);
+
+    await expect(deleteTicker(USER, String(new mongoose.Types.ObjectId())))
+      .rejects.toMatchObject({ statusCode: 404 });
+
+    expect(deleteTickerIcon).not.toHaveBeenCalled();
   });
 });

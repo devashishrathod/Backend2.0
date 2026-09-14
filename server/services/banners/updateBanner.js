@@ -63,7 +63,7 @@ exports.updateBanner = async (userId, id, payload, files) => {
   }
 
   let newMedia = null;
-  if (file) newMedia = await uploadBannerMedia(nextType, file);
+  if (file) newMedia = await uploadBannerMedia(nextType, file, banner._id);
 
   const previousType = banner.type;
   const previousField = BANNER_MEDIA_FIELD[previousType];

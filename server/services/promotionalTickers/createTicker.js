@@ -1,3 +1,5 @@
+const mongoose = require("mongoose");
+
 const PromotionalTicker = require("../../models/PromotionalTicker");
 const {
   uploadTickerIcon,
@@ -14,10 +16,13 @@ exports.createTicker = async (userId, payload, files) => {
     isActive = true,
   } = payload;
 
-  const icon = await uploadTickerIcon(files?.icon);
+  // Minted before the upload, because the object key carries it.
+  const _id = new mongoose.Types.ObjectId();
+  const icon = await uploadTickerIcon(files?.icon, _id);
 
   try {
     return await PromotionalTicker.create({
+      _id,
       title,
       icon,
       redirect,

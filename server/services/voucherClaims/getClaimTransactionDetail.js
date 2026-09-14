@@ -11,6 +11,7 @@ const {
   pickByProjection,
 } = require("../../helpers/transactions");
 const { invoiceUrl } = require("../../helpers/notifications");
+const { resolveBrandPlanName } = require("../../helpers/subscribeds");
 
 /**
  * One payment, told to whoever opened it.
@@ -92,15 +93,28 @@ exports.getClaimTransactionDetail = async (actor, transactionId) => {
     if (claimDoc) claim = pickByProjection(claimDoc, claimRecordProjection(access.role));
   }
 
-  const [brand, outlet] = await Promise.all([
+  /**
+   * The brand, in the same shape the payments listing returns it.
+   *
+   * A detail page that shows fewer fields than the row it was opened from is
+   * the mirror of the leak this file's header warns about, and just as
+   * invisible — so `merchantId` and the live `subscriptionPlan` are resolved
+   * here too. The plan is a third read rather than a join because ownership
+   * had to be checked against the whole transaction first; it runs in the same
+   * `Promise.all`, so it costs no extra round trip.
+   */
+  const [brand, outlet, subscriptionPlan] = await Promise.all([
     transaction.brandId
-      ? Brand.findById(transaction.brandId).select("brandName logo").lean()
+      ? Brand.findById(transaction.brandId)
+          .select("brandName logo merchantId")
+          .lean()
       : null,
     transaction.subBrandId
       ? SubBrand.findById(transaction.subBrandId)
           .select("uniqueId storeId address")
           .lean()
       : null,
+    resolveBrandPlanName(transaction.brandId),
   ]);
 
   /**
@@ -124,7 +138,9 @@ exports.getClaimTransactionDetail = async (actor, transactionId) => {
     // gives a client a second thing to leak.
     payment: { ...payment, invoiceDownloadUrl },
     claim,
-    brand: brand || null,
+    // Spread onto the brand rather than returned beside it, so the key sits
+    // exactly where every other endpoint puts it.
+    brand: brand ? { ...brand, subscriptionPlan } : null,
     outlet: outlet || null,
     /**
      * What the caller may render, stated rather than inferred.

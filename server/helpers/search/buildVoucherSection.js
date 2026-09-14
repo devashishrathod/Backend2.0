@@ -53,6 +53,10 @@ const toItem = (row) => {
     meta: {
       brandId: row.brand?.id || null,
       brandName: row.brand?.brandName || null,
+      // Both come free — the rows are already mapped through
+      // `mapCustomerVoucherListItem`, whose brand block carries them.
+      merchantId: row.brand?.merchantId || null,
+      subscriptionPlan: row.brand?.subscriptionPlan || null,
       categoryId: row.categoryId || null,
       subCategoryId: row.subCategoryId || null,
       bestOffer: row.version?.bestOffer || null,

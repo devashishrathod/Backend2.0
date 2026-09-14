@@ -7,12 +7,18 @@ const {
   VOUCHER_STATUSES,
   VOUCHER_APPROVAL_ACTION,
 } = require("../../constants/voucher");
+const { resolveActorBrand } = require("../../helpers/brands");
 
-exports.publishVoucher = async (userId, versionId) => {
+/**
+ * @param {{ userId: string, role: string, brandId?: string }} actor
+ * @param {string} versionId
+ */
+exports.publishVoucher = async (actor, versionId) => {
   const session = await mongoose.startSession();
   try {
     session.startTransaction();
-    if (!userId) throwError(401, "User authentication is required.");
+    if (!actor?.userId) throwError(401, "User authentication is required.");
+    const userId = actor.userId;
     if (!versionId || !mongoose.Types.ObjectId.isValid(versionId)) {
       throwError(400, "Invalid voucher version ID.");
     }
@@ -67,6 +73,27 @@ exports.publishVoucher = async (userId, versionId) => {
       `);
 
     if (!voucher) throwError(404, "Voucher not found.");
+
+    /**
+     * ⚠️ Whose voucher this is — the last of the writes that only asked for an id.
+     *
+     * `userId` came in and was spent entirely on audit fields: `updatedBy`,
+     * `publishedBy`, `performedBy`, `archivedBy`. `voucher.brandId` was loaded
+     * and written twice, and never once compared. The route gate establishes
+     * that the caller is *a* vendor; nothing established that it is **this**
+     * brand's vendor.
+     *
+     * Publishing is not a status change in isolation. It puts the version in
+     * front of customers and **archives whichever version was live** — so any
+     * vendor knowing a `versionId` could take down another brand's running
+     * voucher and put a different one up, with the approval history recording
+     * their own name on a brand they have nothing to do with.
+     *
+     * Same helper, same rule as `updateVoucher`: an admin may act for any
+     * brand, a vendor only their own, and ownership is read off `Brand.userId`
+     * rather than the token's cached `brandId`.
+     */
+    await resolveActorBrand(actor, voucher.brandId);
 
     if (
       !voucher.currentVersionId ||

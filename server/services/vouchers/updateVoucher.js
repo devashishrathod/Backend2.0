@@ -302,7 +302,7 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
     const voucherFiles = normalizeVoucherImages(images);
     validateVoucherImages(voucherFiles, maxImages);
     if (voucherFiles.length) {
-      uploadedImages = await uploadVoucherImages(voucherFiles);
+      uploadedImages = await uploadVoucherImages(voucherFiles, voucher._id);
     }
 
     const { finalImages, removedImages } = mergeImages(

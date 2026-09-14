@@ -89,6 +89,7 @@ const run = async () => {
 
   let touched = 0;
   let refused = 0;
+  let cleared = 0;
 
   const sweep = async ({ label, from, localField, to, moneyKey }) => {
     const rows = await findOrphans(from, localField, to);
@@ -150,6 +151,98 @@ const run = async () => {
   });
 
   /**
+   * Addresses whose owner is gone.
+   *
+   * `Location` had no check here at all, and it is the collection most likely
+   * to acquire orphans: three of its write paths took no actor, `create` wrote
+   * the row before it had resolved the parent, and the seeder's clear removed
+   * outlets while its filter could not see their addresses. An address with no
+   * owner is not visible anywhere, so nothing reports it — it only shows up as
+   * a collection that keeps growing.
+   *
+   * One sweep per kind, because a row only claims one of them.
+   */
+  await sweep({
+    label: "Location → SubBrand",
+    from: "locations",
+    localField: "subBrandId",
+    to: "subbrands",
+  });
+
+  await sweep({
+    label: "Location → Brand",
+    from: "locations",
+    localField: "brandId",
+    to: "brands",
+  });
+
+  await sweep({
+    label: "Location → Customer",
+    from: "locations",
+    localField: "customerId",
+    to: "customers",
+  });
+
+  /**
+   * And the other direction — a parent pointing at an address that is gone.
+   *
+   * ⚠️ Clearing the pointer is the **kinder** answer, not merely the tidier one.
+   * A dangling `Customer.locationId` makes `resolveCustomerCoordinates` answer
+   * *"Customer location coordinates not found"* — and that customer's voucher
+   * feed does not work at all unless the app sends a position, with a message
+   * that tells them nothing they can act on. Cleared, the same customer gets
+   * *"save an address first"*, which is a thing they can do.
+   *
+   * Nothing is deleted here: the pointer is set to `null`, and the row it
+   * pointed at is already gone. `--apply` is still required, like every other
+   * write in this script.
+   */
+  const danglingPointers = async (from, to, label) => {
+    const rows = await col(from)
+      .aggregate([
+        { $match: { locationId: { $type: "objectId" }, isDeleted: { $ne: true } } },
+        { $lookup: { from: to, localField: "locationId", foreignField: "_id", as: "_t" } },
+        { $match: { _t: { $size: 0 } } },
+        { $project: { _id: 1, locationId: 1 } },
+      ])
+      .toArray();
+
+    log(`── ${label} — ${rows.length} dangling pointer(s)\n`);
+    if (!rows.length) {
+      log("");
+      return;
+    }
+
+    for (const row of rows) {
+      log(`   ${row._id}  →  location ${row.locationId} (gone)`);
+    }
+
+    if (APPLY) {
+      const result = await col(from).updateMany(
+        { _id: { $in: rows.map((r) => r._id) } },
+        {
+          $set: {
+            locationId: null,
+            // Why, on the row itself — a pointer cleared with no trace is
+            // indistinguishable next month from one somebody cleared by hand.
+            orphanCleanedAt: new Date(),
+            orphanReason: "locationId pointed at a location row that no longer exists",
+          },
+        },
+      );
+      cleared += result.modifiedCount;
+      log(`   ✅ cleared ${result.modifiedCount}`);
+    } else {
+      log("   Would be cleared with --apply.");
+    }
+    log("");
+  };
+
+  await danglingPointers("customers", "locations", "Customer → Location");
+  await danglingPointers("subbrands", "locations", "SubBrand → Location");
+  await danglingPointers("brands", "locations", "Brand → Location");
+
+  /**
    * The number that actually mattered: how much of the customer-facing brand
    * directory was these. `getAllCustomerBrands` matches on exactly this pair.
    */
@@ -161,8 +254,10 @@ const run = async () => {
   log("─".repeat(60));
   log(
     APPLY
-      ? `✅ ${touched} row(s) soft-deleted${refused ? `, ${refused} refused` : ""}.`
-      : `${touched} row(s) would be soft-deleted${refused ? `, ${refused} refused` : ""}. Re-run with --apply.`,
+      ? `✅ ${touched} row(s) soft-deleted, ${cleared} pointer(s) cleared` +
+          `${refused ? `, ${refused} refused` : ""}.`
+      : `${touched} row(s) would be soft-deleted, ${cleared} pointer(s) cleared` +
+          `${refused ? `, ${refused} refused` : ""}. Re-run with --apply.`,
   );
   log(`   Customer brand directory now returns ${visible} brand(s).`);
   log("");

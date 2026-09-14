@@ -3,6 +3,11 @@ const { VOUCHER_SORT_BY } = require("../../constants/voucher");
 const { buildAggregateLookup } = require("../../database");
 const { pickVoucherBanner } = require("./pickVoucherBanner");
 const { escapeRegex } = require("../../validator/common");
+// Required by file rather than through the barrel: `helpers/subscribeds` pulls
+// `helpers/transactions`, and going through the barrel drags that whole graph
+// in for two `$lookup` stages. Same reason `buildInvoiceSnapshot` reaches for
+// `../subscribeds/formatDuration` directly.
+const { buildBrandPlanLookup } = require("../subscribeds/brandPlanLookup");
 
 exports.buildCustomerVoucherPipeline = ({
   latitude,
@@ -233,7 +238,6 @@ exports.buildCustomerVoucherPipeline = ({
         isRejected: 1,
         isRevoked: 1,
         joinedDate: 1,
-        subscribedId: 1,
       },
     }),
   );
@@ -263,26 +267,6 @@ exports.buildCustomerVoucherPipeline = ({
       },
     },
   });
-
-  // Brand -> Subscribed (the brand's purchased subscription instance)
-  pipeline.push(
-    ...buildAggregateLookup({
-      from: "subscribeds",
-      localField: "brand.subscribedId",
-      as: "brand.subscription",
-      project: { subscriptionId: 1 },
-    }),
-  );
-
-  // Subscribed -> Subscription (the actual plan, e.g. Basic/Advance/Pro)
-  pipeline.push(
-    ...buildAggregateLookup({
-      from: "subscriptions",
-      localField: "brand.subscription.subscriptionId",
-      as: "brand.subscription.plan",
-      project: { name: 1, type: 1 },
-    }),
-  );
 
   /**
    * ------------------------------------------------
@@ -524,6 +508,34 @@ exports.buildCustomerVoucherPipeline = ({
 
   /**
    * ------------------------------------------------
+   * 8d. Brand's live subscription plan
+   * ------------------------------------------------
+   *
+   * ⚠️ Deliberately **after** the `$group`. The previous version joined
+   * `brand.subscribedId → subscribeds → subscriptions` up beside the brand
+   * lookup, which is one outlet-row at a time — a voucher live at 20 outlets
+   * paid for the same two joins 20 times, then threw 19 of the answers away.
+   * Here there is exactly one row per voucher. `voucher.brandId` survives the
+   * group via `$first`, so nothing else had to move.
+   *
+   * ⚠️ And it no longer reads `subscribedId` at all. That pointer is never
+   * cleared when a plan lapses (`syncBrandSubscriptionState` says so in as many
+   * words), and the old join projected only `{ subscriptionId: 1 }` — no
+   * `status`, no `endDate`. So a brand whose plan expired months ago kept
+   * rendering its old plan name on the customer's home feed, indefinitely, with
+   * nothing in the response to contradict it. `buildBrandPlanLookup` resolves
+   * the live plan and answers `null` otherwise.
+   */
+
+  pipeline.push(
+    ...buildBrandPlanLookup({
+      localField: "voucher.brandId",
+      as: "brand.subscriptionPlan",
+    }),
+  );
+
+  /**
+   * ------------------------------------------------
    * 9. Final response
    * ------------------------------------------------
    */
@@ -743,9 +755,105 @@ exports.buildCustomerVoucherDetailPipeline = ({
 
         version: 1,
 
+        /**
+         * ⚠️ This projection is a **whitelist**, and it is the last stage that
+         * can still see the voucher master's own fields. Anything not named
+         * here is gone for good — which is exactly how the banner went missing.
+         *
+         * `banner` was absent, so it was dropped here while the final
+         * `$project` below still asked for it and the mapper still called
+         * `pickVoucherBanner` on it. Nothing errored: the field was simply
+         * `undefined`, so **every** voucher detail answered
+         * `bannerType: null, bannerUrl: null` — a customer saw the banner on
+         * the feed and watched it vanish the moment they opened the voucher,
+         * which reads as "this one has no banner" rather than as a fault.
+         */
+        banner: 1,
+
+        // Carried through for the brand block below. Without it the joins in
+        // 4b have nothing to key on.
+        brandId: 1,
+
         outletIds: "$outletMappings.subBrandId",
       },
     },
+
+    /**
+     * -----------------------------------------
+     * 4b. Brand (same block the listing returns)
+     * -----------------------------------------
+     *
+     * The detail screen renders the same brand card as the list row, so it
+     * returns the same shape — `merchantId` and `subscriptionPlan` included.
+     * Before this the endpoint returned no brand at all, and a client opening
+     * a voucher from the feed had to keep the list row's brand around or
+     * re-fetch it.
+     *
+     * Placed here on purpose: at this point the pipeline is exactly **one**
+     * row. Below, `$unwind: "$outlets"` fans it out to one row per outlet, and
+     * a join added after that would repeat itself for every outlet and be
+     * collapsed straight back by the `$group`.
+     */
+    ...buildAggregateLookup({
+      from: "brands",
+      localField: "brandId",
+      as: "brand",
+      project: {
+        brandName: 1,
+        description: 1,
+        legalBusinessName: 1,
+        merchantId: 1,
+        uniqueId: 1,
+        isActive: 1,
+        isApproved: 1,
+        // Read by the verification match below, never returned —
+        // `mapCustomerBrandBlock` is a whitelist and names neither.
+        isRejected: 1,
+        isRevoked: 1,
+        joinedDate: 1,
+      },
+    }),
+
+    /**
+     * ⚠️ Only a verified brand's voucher opens. The **same** four conditions
+     * the listing applies.
+     *
+     * The listing grew this gate after unverified brands' vouchers were found
+     * sitting in the customer feed. The detail endpoint was missed, and it had
+     * no brand join at all to hang a gate on — so a voucher the feed correctly
+     * hid stayed openable by direct link for anyone who had one: a shared
+     * WhatsApp message, an old notification, a stale screen.
+     *
+     * Nothing cascades to close that gap on its own: `reviewBrandVerification`
+     * (reject/revoke) and `toggleBrandStatus` (deactivate) do not touch the
+     * brand's vouchers, so those stay `PUBLISHED` and in-window indefinitely.
+     *
+     * The money path was already safe — `buildClaimPreview` blocks the claim
+     * with *"This brand is not accepting claims right now."* — so what this
+     * closes is the page, not a payment: a customer could open a brand the
+     * platform had deliberately hidden and only discover it at the button.
+     *
+     * `isRejected` / `isRevoked` are **absent** on brands written before those
+     * flags existed, and in an aggregation expression absent is not false —
+     * hence `$ifNull` on each, exactly as the listing does it.
+     */
+    {
+      $match: {
+        $expr: {
+          $and: [
+            { $eq: [{ $ifNull: ["$brand.isActive", false] }, true] },
+            { $eq: [{ $ifNull: ["$brand.isApproved", false] }, true] },
+            { $ne: [{ $ifNull: ["$brand.isRejected", false] }, true] },
+            { $ne: [{ $ifNull: ["$brand.isRevoked", false] }, true] },
+          ],
+        },
+      },
+    },
+
+    ...buildBrandPlanLookup({
+      localField: "brandId",
+      as: "brand.subscriptionPlan",
+    }),
 
     /**
      * -----------------------------------------
@@ -1028,6 +1136,24 @@ exports.buildCustomerVoucherDetailPipeline = ({
           $first: "$version",
         },
 
+        /**
+         * ⚠️ The second half of the banner fix, and the easier half to miss.
+         *
+         * `$group` is a whitelist too: naming `banner` in the projection above
+         * only gets it this far. Without this line it is dropped here instead,
+         * the final `$project` still finds nothing, and the symptom is
+         * identical — so fixing only one of the two looks like fixing neither.
+         */
+        banner: {
+          $first: "$banner",
+        },
+
+        // Identical on every row the unwind produced — it was joined before
+        // the fan-out.
+        brand: {
+          $first: "$brand",
+        },
+
         outlets: {
           $push: "$outlets",
         },
@@ -1095,6 +1221,8 @@ exports.buildCustomerVoucherDetailPipeline = ({
         // subCategoryId: 1,
 
         version: 1,
+
+        brand: 1,
 
         selectedOutlet: 1,
 
@@ -1184,6 +1312,34 @@ const pickBestOffer = (offers = []) => {
   };
 };
 
+/**
+ * The brand card a customer sees on a voucher, list row and detail alike.
+ *
+ * Extracted rather than written twice. The detail endpoint grew this block to
+ * match the listing, and two copies of "what does a brand look like to a
+ * customer" is exactly how one of them ends up a field behind — which is
+ * invisible until somebody compares the two screens.
+ *
+ * `subscriptionPlan` is the **live** plan or `null`; see
+ * `helpers/subscribeds/brandPlanLookup.js` for why it is not read off
+ * `Brand.subscribedId`.
+ */
+exports.mapCustomerBrandBlock = (brand) => {
+  if (!brand) return null;
+  return {
+    id: brand._id,
+    brandName: brand.brandName || null,
+    description: brand.description || null,
+    legalBusinessName: brand.legalBusinessName || null,
+    merchantId: brand.merchantId || null,
+    uniqueId: brand.uniqueId || null,
+    isActive: brand.isActive ?? null,
+    isVerified: brand.isApproved ?? false,
+    joinedDate: brand.joinedDate || null,
+    subscriptionPlan: brand.subscriptionPlan || null,
+  };
+};
+
 exports.mapCustomerVoucherListItem = (item) => {
   if (!item) return null;
 
@@ -1198,20 +1354,7 @@ exports.mapCustomerVoucherListItem = (item) => {
     subCategoryId: item.subCategoryId,
     createdAt: item.createdAt,
     ...pickVoucherBanner(item.banner),
-    brand: item.brand
-      ? {
-          id: item.brand._id,
-          brandName: item.brand.brandName || null,
-          description: item.brand.description || null,
-          legalBusinessName: item.brand.legalBusinessName || null,
-          merchantId: item.brand.merchantId || null,
-          uniqueId: item.brand.uniqueId || null,
-          isActive: item.brand.isActive ?? null,
-          isVerified: item.brand.isApproved ?? false,
-          joinedDate: item.brand.joinedDate || null,
-          subscriptionPlan: item.brand.subscription?.plan?.name || null,
-        }
-      : null,
+    brand: exports.mapCustomerBrandBlock(item.brand),
     version: {
       id: version._id,
       versionNumber: version.versionNumber,
@@ -1268,6 +1411,8 @@ exports.mapCustomerVoucherDetail = (data) => {
     categoryId: data.categoryId,
     subCategoryId: data.subCategoryId,
     ...pickVoucherBanner(data.banner),
+    // Same shape as a list row's, so one brand card renders on both screens.
+    brand: exports.mapCustomerBrandBlock(data.brand),
     version: data.version
       ? {
           id: data.version._id,

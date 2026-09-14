@@ -1,6 +1,6 @@
 # Security & Correctness Findings — server2.0
 
-**Last verified:** 2026-08-26 against current code (149 endpoints, 25 route files)
+**Last verified:** 2026-09-13 against current code (223 endpoints — 220 versioned + 3 utility)
 **Scope:** Ye dedicated security audit nahi hai — API documentation scan ka by-product hai.
 
 > Jo findings fix ho chuke hain wo is doc se hata diye gaye hain. Kya-kya fix hua uska record → [security_fix_plan.md](./security_fix_plan.md)
@@ -84,12 +84,23 @@ Kuch delete nahi hota — na soft, na hard. Controller/service exist hi nahi kar
 
 Password sign-in ab admin-only hai. Uske upar ye add kiya ja sakta hai (koi bhi implement nahi hua):
 
-### E1. Rate limiting — **sabse zaruri, abhi bilkul nahi hai**
-`/auth/login`, `/auth/forgot-password`, `/auth/reset-password`, aur saare OTP verify endpoints pe.
+### E1. Rate limiting — **global lag chuka hai; per-identifier bucket nahi hai**
 
-OTP khud verify **attempts** cap karta hai, par **kitne OTP maange ja sakte hain uspe koi limit nahi** — ek number pe hazaar OTP request bheje ja sakte hain. Provider ka paisa jaata hai aur victim ko spam hota hai.
+> ⚠️ Ye finding pehle "abhi bilkul nahi hai" kehti thi. **Wo ab sach nahi.**
+> [index.js:119-124](../index.js#L119) me ek global limiter hai — 15 minute ka
+> window, `RATE_LIMIT_MAX` se limit, aur Razorpay webhooks jaan-boojh kar exempt
+> (429 kha kar wo retry ke baad chup-chaap drop ho jaate, aur akela lakshan hota
+> "paisa ruk gaya").
 
-Suggestion: `express-rate-limit`, IP + identifier dono pe alag-alag buckets.
+Jo **abhi bhi** bacha hai: limiter **IP par** hai, identifier par nahi.
+
+- Ek hi IP se hazaar OTP request ab cap ho jaati hain ✅
+- Par **rotating IP / distributed** se ek hi number par flood abhi bhi possible hai — provider ka paisa jaata hai aur victim ko spam hota hai
+- Aur ulta bhi: ek office ya mobile carrier NAT ke peeche baithe **saare asli users ek hi budget** share karte hain
+
+OTP khud verify **attempts** cap karta hai; kitne OTP *maange* ja sakte hain — wo ab IP par capped hai, phone number par nahi.
+
+Suggestion: `/auth/login`, `/auth/forgot-password`, `/auth/reset-password` aur OTP send endpoints par ek **doosra** limiter, jiska key `whatsappNumber` / `email` ho — global IP wale ke upar, uski jagah nahi.
 
 ### E2. Failed-login lockout
 5 galat password → 15 min lockout. `User` pe `failedLoginAttempts` + `lockedUntil` fields.
@@ -109,8 +120,14 @@ JWT stateless hai — password badalne pe purane tokens chalte rehte hain. `User
 | **CORS lock down** | `index.js` me `cors()` bilkul open hai — koi origin allowlist nahi |
 | **JWT expiry policy** | `JWT_EXPIRY` env se aata hai, par koi refresh-token flow nahi. Lamba expiry = lamba exposure window |
 | **File upload MIME validation** | Showcase/banner uploads extension aur declared MIME pe bharosa karte hain; actual file signature check nahi hota |
-| **`Subscribed.isActive` / `isExpired` redundancy** | `status` authoritative hai, par ye flags saath-saath maintain hote hain. Abhi bug nahi hai (dono ek saath likhe jaate hain), par do jagah truth rakhne se drift ka risk hai. Naya code `status` pe check kare |
-| **`brand.isApproved` / `brand.status` kabhi likhe nahi jaate** | Dono fields model me hain par koi code inko set nahi karta — hamesha `false` / `PENDING`. Approval ka actual status `SystemVerify` doc me hai. Naye customer brand endpoints (`/brands/customer/get/:brandId`, `/brands/customer/get-all`) `SystemVerify.status` se derive karte hain, par **voucher listing ka `brand.isVerified` abhi bhi `isApproved` padhta hai** — to wahan hamesha `false` aata hai. Ya to inhe SystemVerify pe shift karein, ya approval flow me ye fields likhna shuru karein |
+| **`Subscribed.isActive` / `isExpired` redundancy** | `status` authoritative hai, par ye flags saath-saath maintain hote hain ([models/Subscribed.js:24](../models/Subscribed.js#L24) khud "legacy booleans … still written" kehta hai). Abhi bug nahi hai, par do jagah truth rakhne se drift ka risk hai. Naya code `status` pe check kare |
+
+> ✅ **Ek suggestion yahan se hata di gayi:** "`brand.isApproved` / `brand.status`
+> kabhi likhe nahi jaate". Wo ab sach nahi —
+> [reviewBrandVerification.js:220-222](../services/systemVerify/reviewBrandVerification.js#L220)
+> ka `brandSet` dono likhta hai (APPROVED / REJECTED / REVOKED), aur
+> [verifyVendor.js:355](../services/systemVerify/verifyVendor.js#L355) `UNDER_REVIEW`
+> set karta hai. Voucher listing ka `isApproved` padhna ab galat nahi hai.
 
 ---
 
@@ -121,6 +138,7 @@ Record ke liye, taaki naye code me ye patterns follow hote rahein:
 **Auth & access**
 - `resolveActorBrand` cached token trust nahi karta — brand ka apna `userId` verify karta hai, to stale token se cross-brand access nahi hota
 - `resolveSectionForActor` bhi wahi pattern showcase pe follow karta hai
+- `resolveLocationTarget` wahi pattern addresses pe — aur usme **kind** bhi resolve hota hai, to ek customer doosre customer ka ghar ka pata edit nahi kar sakta. Teenon helper milakar **28 services** me chal rahe hain
 - Enumeration-safe forgot-password — account ho ya na ho, same response
 - OTP purpose scoping — `"auth"` aur `"password-reset"` alag, to login OTP password reset ke liye replay nahi ho sakta
 - Password login fail-closed hai — jinhone password set nahi kiya, unpe login path fail hota hai

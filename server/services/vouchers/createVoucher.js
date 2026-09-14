@@ -71,14 +71,11 @@ exports.createVoucher = async (actor, payload, files = {}) => {
       name,
       description,
       tags,
-      // usageType,
-      // discountApplicableOn,
       startAt,
       endAt,
       offers,
       subBrandIds,
       isActive,
-      isSaveAsDraft,
       bannerType,
     } = payload;
     const brand = await Brand.findById(brandId);
@@ -120,7 +117,12 @@ exports.createVoucher = async (actor, payload, files = {}) => {
       throwError(422, "At least one voucher image is required.");
     }
     validateVoucherImages(voucherFiles, maxImages);
-    uploadedImages = await uploadVoucherImages(voucherFiles);
+
+    // The images' object keys carry the voucher id, and they go up before the
+    // row is inserted — so the id is minted here. Mongo generates ids
+    // client-side anyway; this is the value `create` would have produced.
+    const voucherId = new mongoose.Types.ObjectId();
+    uploadedImages = await uploadVoucherImages(voucherFiles, voucherId);
 
     tags = getUniqueTags(tags || []);
 
@@ -129,6 +131,7 @@ exports.createVoucher = async (actor, payload, files = {}) => {
     const [voucher] = await Voucher.create(
       [
         {
+          _id: voucherId,
           createdBy: userId,
           brandId,
           name,
@@ -138,8 +141,6 @@ exports.createVoucher = async (actor, payload, files = {}) => {
           categoryId,
           subCategoryId,
           tags,
-          // usageType,
-          // discountApplicableOn,
           startAt,
           endAt,
           isActive:
@@ -180,7 +181,11 @@ exports.createVoucher = async (actor, payload, files = {}) => {
     if (bannerType) {
       const bannerField = VOUCHER_BANNER_MEDIA_FIELD[bannerType];
       const bannerFile = files?.[VOUCHER_BANNER_FILE_FIELD[bannerType]];
-      uploadedBanner = await uploadVoucherBannerMedia(bannerType, bannerFile);
+      uploadedBanner = await uploadVoucherBannerMedia(
+        bannerType,
+        bannerFile,
+        voucher._id,
+      );
       voucher.banner = { type: bannerType, [bannerField]: uploadedBanner };
     }
 

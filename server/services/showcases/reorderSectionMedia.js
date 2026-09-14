@@ -30,7 +30,7 @@ exports.reorderSectionMedia = async (actor, payload) => {
 
   // One read, reused — ownership and the reorder work on the same document.
   const section = await resolveSectionForActor(actor, sectionId, {
-    projection: { medias: 1, coverImage: 1, coverImageMode: 1 },
+    projection: { medias: 1, coverImage: 1, coverImageMode: 1, coverMediaId: 1 },
   });
 
   const liveMedias = new Map();

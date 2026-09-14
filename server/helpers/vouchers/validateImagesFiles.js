@@ -1,8 +1,7 @@
 const { throwError } = require("../../utils");
-const {
-  uploadImageWithMetadata,
-  deleteImage,
-} = require("../../services/uploads");
+const storage = require("../../services/storage");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
+const { assertImageFile } = require("../media");
 
 exports.normalizeVoucherImages = (files) => {
   if (!files) return [];
@@ -17,11 +16,17 @@ exports.validateVoucherImages = (files, maxImages = 5) => {
   if (images.length > maxImages) {
     throwError(400, `Maximum ${maxImages} voucher images are allowed.`);
   }
+  /**
+   * 🔴 This was `mimeType.startsWith("image/")`, which `image/svg+xml` passes.
+   *
+   * An SVG is an XML document and can carry a `<script>`. It survives today
+   * only because these are served from a Cloudinary domain, where a panel
+   * session is cross-origin and out of reach — and that protection disappears
+   * the moment media moves to our own CDN. An explicit allow-list has no such
+   * dependency on where the file happens to be hosted.
+   */
   for (const file of images) {
-    const mimeType = file.mimetype || file.mimeType;
-    if (!mimeType || !mimeType.startsWith("image/")) {
-      throwError(400, "Only image files are allowed for voucher images.");
-    }
+    assertImageFile(file, "Voucher image");
   }
   // const sortOrders = images.map((item) => item.sortOrder);
   // if (new Set(sortOrders).size !== sortOrders.length) {
@@ -30,15 +35,18 @@ exports.validateVoucherImages = (files, maxImages = 5) => {
   return images;
 };
 
-exports.uploadVoucherImages = async (files) => {
+/** @param voucherId  goes into the object key. */
+exports.uploadVoucherImages = async (files, voucherId) => {
   const uploaded = [];
   try {
     for (let index = 0; index < files.length; index++) {
       const file = files[index];
-      const uploadedImage = await uploadImageWithMetadata(
-        file.tempFilePath,
-        file,
-      );
+      const uploadedImage = await storage.uploadFromPath({
+        filePath: file.tempFilePath,
+        originalFile: file,
+        purpose: UPLOAD_PURPOSE.VOUCHER_IMAGE,
+        entityId: voucherId,
+      });
       uploaded.push({
         ...uploadedImage,
         sortOrder: index + 1,
@@ -46,24 +54,20 @@ exports.uploadVoucherImages = async (files) => {
     }
     return uploaded;
   } catch (error) {
-    for (const image of uploaded) {
-      try {
-        if (image?.url) await deleteImage(image.url);
-      } catch (deleteError) {
-        console.error("Voucher image rollback failed:", deleteError.message);
-      }
-    }
+    // 🔴 Rollback used to delete by URL, which meant `deleteFile` compared the
+    // URL against `CLOUD_BASE_URL` and quietly gave up on anything that did not
+    // match. Every image uploaded before the failure then stayed on storage
+    // forever, paid for and unreferenced. The upload result already carries its
+    // `storage`, so the delete now follows that.
+    await storage.deleteAssets(uploaded);
+    // The original failure was being thrown away, so "Failed to upload voucher
+    // images" was the only trace of a quota, a credential or a network error.
+    console.error("Voucher image upload failed:", error.message);
     throwError(500, "Failed to upload voucher images.");
   }
 };
 
 exports.rollbackVoucherImages = async (uploadedImages) => {
   if (!Array.isArray(uploadedImages)) return;
-  for (const image of uploadedImages) {
-    try {
-      if (image?.url) await deleteImage(image.url);
-    } catch (error) {
-      console.error("Failed to rollback voucher image:", error.message);
-    }
-  }
+  await storage.deleteAssets(uploadedImages);
 };

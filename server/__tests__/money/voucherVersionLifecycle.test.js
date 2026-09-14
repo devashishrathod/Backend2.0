@@ -10,6 +10,10 @@ const Voucher = require("../../models/Voucher");
 const VoucherVersion = require("../../models/VoucherVersion");
 const VoucherApprovalHistory = require("../../models/VoucherApprovalHistory");
 const Brand = require("../../models/Brand");
+const { ROLES } = require("../../constants");
+const {
+  generateBrandMerchantId,
+} = require("../../helpers/brands/generateBrandMerchantId");
 const { publishVoucher } = require("../../services/vouchers/publishVoucher");
 const { expireVouchers } = require("../../services/vouchers/expireVouchers");
 const {
@@ -48,12 +52,36 @@ const nextVoucherCode = () => `VCH-${String(codeSeq++).padStart(8, "0")}`;
  * `endAt` on the live version is deliberately far in the future: that is what
  * makes "it was replaced" and "it expired" distinguishable at all.
  */
+/**
+ * ⚠️ A **real** `Brand`, not a loose ObjectId.
+ *
+ * `publishVoucher` now resolves ownership through `resolveActorBrand`, which
+ * reads `Brand.userId` — so a voucher pointing at a brand that does not exist
+ * cannot be published at all. That is the honest shape anyway: the fixture used
+ * to describe a voucher belonging to nothing.
+ */
+const seedBrand = async (ownerUserId) =>
+  Brand.create({
+    brandName: "lifecycle fixture brand",
+    uniqueId: `TDB${Date.now()}${Math.floor(Math.random() * 100000)}`,
+    userId: ownerUserId,
+    merchantId: await generateBrandMerchantId(),
+  });
+
+/** What the controller builds from `req` for the brand's own vendor. */
+const ownerActor = (userId, brandId) => ({
+  userId,
+  role: ROLES.VENDOR,
+  brandId,
+});
+
 const voucherAwaitingPublish = async ({
   liveEndsInDays = 90,
   nextEndsInDays = 120,
 } = {}) => {
-  const brandId = oid();
   const userId = oid();
+  const brand = await seedBrand(userId);
+  const brandId = brand._id;
   const voucherCode = nextVoucherCode();
 
   const voucher = await Voucher.create({
@@ -112,7 +140,7 @@ const voucherAwaitingPublish = async ({
     { $set: { currentVersionId: next._id, currentVersion: 2 } },
   );
 
-  return { voucher, live, next, userId, brandId };
+  return { voucher, live, next, userId, brandId, brand };
 };
 
 const reload = (id) => VoucherVersion.findById(id).lean();
@@ -134,9 +162,9 @@ beforeEach(async () => {
 
 describe("publishing a new version archives the one it replaces", () => {
   it("marks the superseded version ARCHIVED, not EXPIRED", async () => {
-    const { live, next, userId } = await voucherAwaitingPublish();
+    const { live, next, userId, brandId } = await voucherAwaitingPublish();
 
-    await publishVoucher(userId, next._id);
+    await publishVoucher(ownerActor(userId, brandId), next._id);
 
     const wasLive = await reload(live._id);
     expect(wasLive.status).toBe(VOUCHER_STATUSES.ARCHIVED);
@@ -149,9 +177,9 @@ describe("publishing a new version archives the one it replaces", () => {
   });
 
   it("stamps archivedAt and leaves expiredAt unset", async () => {
-    const { live, next, userId } = await voucherAwaitingPublish();
+    const { live, next, userId, brandId } = await voucherAwaitingPublish();
 
-    await publishVoucher(userId, next._id);
+    await publishVoucher(ownerActor(userId, brandId), next._id);
 
     const wasLive = await reload(live._id);
     expect(wasLive.archivedAt).toBeInstanceOf(Date);
@@ -165,9 +193,9 @@ describe("publishing a new version archives the one it replaces", () => {
   });
 
   it("records the supersede in history as ARCHIVED", async () => {
-    const { live, next, userId } = await voucherAwaitingPublish();
+    const { live, next, userId, brandId } = await voucherAwaitingPublish();
 
-    await publishVoucher(userId, next._id);
+    await publishVoucher(ownerActor(userId, brandId), next._id);
 
     const row = await VoucherApprovalHistory.findOne({
       voucherVersionId: live._id,
@@ -184,9 +212,9 @@ describe("publishing a new version archives the one it replaces", () => {
   });
 
   it("leaves the newly published version untouched by any of it", async () => {
-    const { next, userId } = await voucherAwaitingPublish();
+    const { next, userId, brandId } = await voucherAwaitingPublish();
 
-    await publishVoucher(userId, next._id);
+    await publishVoucher(ownerActor(userId, brandId), next._id);
 
     const published = await reload(next._id);
     expect(published.status).toBe(VOUCHER_STATUSES.PUBLISHED);
@@ -204,10 +232,10 @@ describe("expireVouchers carries an archived version on to EXPIRED", () => {
    * states are indistinguishable again.
    */
   it("leaves an archived version alone while its endAt is in the future", async () => {
-    const { live, next, userId } = await voucherAwaitingPublish({
+    const { live, next, userId, brandId } = await voucherAwaitingPublish({
       liveEndsInDays: 90,
     });
-    await publishVoucher(userId, next._id);
+    await publishVoucher(ownerActor(userId, brandId), next._id);
 
     await expireVouchers();
 
@@ -217,8 +245,8 @@ describe("expireVouchers carries an archived version on to EXPIRED", () => {
   });
 
   it("expires an archived version once its endAt has passed", async () => {
-    const { live, next, userId } = await voucherAwaitingPublish();
-    await publishVoucher(userId, next._id);
+    const { live, next, userId, brandId } = await voucherAwaitingPublish();
+    await publishVoucher(ownerActor(userId, brandId), next._id);
 
     // Wind its validity into the past — the only thing that has changed.
     await VoucherVersion.updateOne(
@@ -252,5 +280,82 @@ describe("expireVouchers carries an archived version on to EXPIRED", () => {
 
     const wasLive = await reload(live._id);
     expect(wasLive.status).toBe(VOUCHER_STATUSES.EXPIRED);
+  });
+});
+
+/**
+ * ⚠️ Publishing is not a status change in isolation — it puts a version in front
+ * of customers and **archives whichever version was live**. So a caller who may
+ * not act for this brand could take down another brand's running voucher and put
+ * a different one up, with the approval history recording their own name on a
+ * brand they have nothing to do with.
+ *
+ * `publishVoucher` took a `userId` and spent it entirely on audit fields —
+ * `updatedBy`, `publishedBy`, `performedBy`, `archivedBy`. `voucher.brandId` was
+ * loaded, written twice, and never compared. The route gate only ever
+ * established that the caller was *a* vendor.
+ */
+describe("who may publish a version", () => {
+  it("refuses a vendor from another brand, and leaves the live version live", async () => {
+    const { live, next, brandId } = await voucherAwaitingPublish();
+    const intruderUserId = oid();
+    const intruderBrand = await seedBrand(intruderUserId);
+
+    await expect(
+      publishVoucher(
+        ownerActor(intruderUserId, intruderBrand._id),
+        next._id,
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+
+    // Nothing moved: the running voucher is still running, the new one still
+    // approved — an archive that happened anyway would be the real damage.
+    expect((await reload(live._id)).status).toBe(VOUCHER_STATUSES.PUBLISHED);
+    expect((await reload(next._id)).status).toBe(VOUCHER_STATUSES.APPROVED);
+    expect(String(brandId)).not.toBe(String(intruderBrand._id));
+  });
+
+  /**
+   * Ownership is read off `Brand.userId`, not the token's cached `brandId`, so
+   * an old token naming a brand it no longer belongs to cannot widen anything.
+   */
+  it("refuses a token that merely claims the brand", async () => {
+    const { live, next, brandId } = await voucherAwaitingPublish();
+
+    await expect(
+      publishVoucher(ownerActor(oid(), brandId), next._id),
+    ).rejects.toMatchObject({ statusCode: 403 });
+
+    expect((await reload(live._id)).status).toBe(VOUCHER_STATUSES.PUBLISHED);
+  });
+
+  it("lets an admin publish for any brand", async () => {
+    const { live, next } = await voucherAwaitingPublish();
+    const admin = { userId: oid(), role: ROLES.ADMIN };
+
+    await publishVoucher(admin, next._id);
+
+    expect((await reload(next._id)).status).toBe(VOUCHER_STATUSES.PUBLISHED);
+    expect((await reload(live._id)).status).toBe(VOUCHER_STATUSES.ARCHIVED);
+  });
+
+  /**
+   * ⚠️ Both shapes, and the second is the one that matters.
+   *
+   * An actor object with no `userId` is what a request carrying no usable token
+   * looks like. Guarding on `!actor` alone lets it through to the ownership
+   * check, which answers **403** — "you may not act for this brand" — when the
+   * truth is 401, "we do not know who you are". The first sends a client to a
+   * permissions screen; only the second sends it to log in again.
+   */
+  it.each([
+    ["no actor at all", undefined],
+    ["an actor carrying no userId", {}],
+  ])("refuses %s with a 401", async (_label, actor) => {
+    const { next } = await voucherAwaitingPublish();
+
+    await expect(publishVoucher(actor, next._id)).rejects.toMatchObject({
+      statusCode: 401,
+    });
   });
 });
