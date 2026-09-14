@@ -5,6 +5,11 @@ const {
   assertReserveRateRule,
   assertStorageLimitRule,
 } = require("../../helpers/settings");
+const {
+  checkS3Ready,
+  PROVIDERS_NEEDING_PREFLIGHT,
+} = require("../storage/preflight");
+const { throwError } = require("../../utils");
 
 /**
  * Sub-blocks under `Setting.customer`, each merged independently.
@@ -97,6 +102,8 @@ exports.updateSetting = async (userId, payload = {}) => {
    * the save were to fail validation.
    */
   const setting = await getSettingDocument();
+  /** Non-fatal notes from a provider switch, returned so the panel can show them. */
+  const preflightWarnings = [];
 
   if (payload.vendor?.voucher) {
     Object.assign(setting.vendor.voucher, payload.vendor.voucher);
@@ -210,7 +217,36 @@ exports.updateSetting = async (userId, payload = {}) => {
    */
   if (payload.storage) {
     if (!setting.storage) setting.storage = {};
+
     if (payload.storage.provider) {
+      /**
+       * 🔴 A provider switch is rehearsed before it is saved.
+       *
+       * This one dropdown redirects **every upload on the platform**. If the
+       * credentials are wrong or the policy was never attached, nothing fails
+       * here — it fails at the next upload, for every user at once, with a
+       * stack trace that says nothing about a settings change made an hour ago.
+       *
+       * An env var at least needed someone with deploy access. A dropdown does
+       * not, so the dropdown gets a rehearsal instead: a real write, read and
+       * delete in both buckets. See `services/storage/preflight.js` for why no
+       * read-only check can answer this.
+       *
+       * ⚠️ Only when the value is actually **changing**. Re-saving the same
+       * provider as part of an unrelated edit should not pay for a round trip
+       * to S3, and should not be able to fail because of one.
+       */
+      const changing = payload.storage.provider !== setting.storage.provider;
+      if (changing && PROVIDERS_NEEDING_PREFLIGHT.includes(payload.storage.provider)) {
+        const { ok, reason, warnings } = await checkS3Ready();
+        if (!ok) {
+          throwError(
+            422,
+            `Cannot switch to ${payload.storage.provider}: ${reason}`,
+          );
+        }
+        preflightWarnings.push(...warnings);
+      }
       setting.storage.provider = payload.storage.provider;
     }
     for (const block of ["limits", "allowed", "upload", "delivery"]) {
@@ -239,7 +275,19 @@ exports.updateSetting = async (userId, payload = {}) => {
    */
   invalidateSettingCache();
 
-  return setting;
+  /**
+   * ⚠️ Always this shape, never sometimes-this-sometimes-that.
+   *
+   * Warnings ride back rather than being logged and lost — "S3 is on but
+   * CloudFront is not" is something the person who just flipped the switch has
+   * to read, and they are not watching server output. But returning them only
+   * when present would give the caller two shapes to handle, so the list is
+   * always here and usually empty.
+   *
+   * The **HTTP** response does not move: the controller still sends the setting
+   * as `data` and folds any warning into the message.
+   */
+  return { setting, warnings: preflightWarnings };
 };
 
 /**

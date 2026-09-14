@@ -21,6 +21,7 @@ const {
 const { SEARCH_LIMITS } = require("../constants/search");
 const { GATEWAY_FEE_BEARER } = require("../constants/transaction");
 const { STORAGE_PROVIDER } = require("../constants/storage");
+const { config } = require("../configs/env");
 const {
   ADMIN_NOTIFICATION_DEFAULTS,
 } = require("../constants/notification");
@@ -872,7 +873,19 @@ const storageSettingSchema = new mongoose.Schema(
     provider: {
       type: String,
       enum: Object.values(STORAGE_PROVIDER),
-      default: STORAGE_PROVIDER.CLOUDINARY,
+      /**
+       * ⚠️ Seeded from `MEDIA_PROVIDER`, and only seeded.
+       *
+       * A Mongoose default runs when the document is **created**, so the env
+       * var decides what a brand-new install starts on and nothing after that.
+       * From then on this field is the single source: an admin flips it in the
+       * panel, and redeploying with a different env var does not quietly
+       * override what they chose.
+       *
+       * Two sources for one answer is only safe when it is written down which
+       * of them wins, and this is where it is written.
+       */
+      default: () => config.MEDIA_PROVIDER || STORAGE_PROVIDER.CLOUDINARY,
       required: true,
     },
 

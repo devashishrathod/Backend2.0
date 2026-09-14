@@ -9,6 +9,7 @@ const {
   kindFromMime,
 } = require("../../constants/storage");
 const { throwError } = require("../../utils");
+const { getStorageConfig } = require("../../helpers/settings");
 
 const cloudinaryProvider = require("./providers/cloudinary");
 const s3Provider = require("./providers/s3");
@@ -31,9 +32,22 @@ const PROVIDERS = Object.freeze({
   [STORAGE_PROVIDER.AWS_S3]: s3Provider,
 });
 
-/** Which provider new uploads go to. */
-const activeProvider = () =>
-  config.MEDIA_PROVIDER || STORAGE_PROVIDER.CLOUDINARY;
+/**
+ * Which provider new uploads go to.
+ *
+ * ⚠️ **From `Setting.storage.provider`, not from the environment** — which is
+ * why this is async where it used to be a plain read.
+ *
+ * `MEDIA_PROVIDER` still exists, but only as the value a brand-new install is
+ * **seeded** with (see the model). After that the admin owns it, and
+ * redeploying with a different env var does not quietly override what they
+ * chose. Two sources for one answer is only safe when it is written down which
+ * of them wins.
+ */
+const activeProvider = async () => {
+  const { provider } = await getStorageConfig();
+  return provider || STORAGE_PROVIDER.CLOUDINARY;
+};
 
 /**
  * Which provider an **existing** asset lives on.
@@ -99,13 +113,11 @@ const resolveKind = (asset) => {
   return EXT_KIND[ext] || MEDIA_KIND.IMAGE;
 };
 
-const activeProviderModule = () => {
-  const provider = PROVIDERS[activeProvider()];
+const activeProviderModule = async () => {
+  const name = await activeProvider();
+  const provider = PROVIDERS[name];
   if (!provider) {
-    throwError(
-      500,
-      `MEDIA_PROVIDER is not a known provider: ${activeProvider()}`,
-    );
+    throwError(500, `Setting.storage.provider is not a known provider: ${name}`);
   }
   return provider;
 };
@@ -131,7 +143,8 @@ exports.uploadFromPath = async ({
   const resolved =
     kind || kindFromMime(originalFile?.mimetype) || MEDIA_KIND.IMAGE;
 
-  return activeProviderModule().upload({
+  const provider = await activeProviderModule();
+  return provider.upload({
     filePath,
     purpose,
     entityId,

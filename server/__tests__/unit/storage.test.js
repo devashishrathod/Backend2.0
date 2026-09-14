@@ -29,6 +29,16 @@ jest.mock("../../helpers/cloudinary", () => ({
   getOptimizedImageUrl: jest.fn((id) => `https://res.cloudinary.test/${id}`),
 }));
 
+/**
+ * ⚠️ The provider now comes from `Setting.storage.provider`, not from the
+ * environment — so this stands in for the settings read rather than for a config
+ * value. `MEDIA_PROVIDER` only seeds a brand-new install.
+ */
+const mockStorageConfig = { provider: "CLOUDINARY" };
+jest.mock("../../helpers/settings", () => ({
+  getStorageConfig: async () => mockStorageConfig,
+}));
+
 const mockS3Send = jest.fn(async () => ({}));
 jest.mock("../../configs/s3", () => ({
   getS3Client: () => ({ send: mockS3Send }),
@@ -52,6 +62,7 @@ const { isCustomThumbnail } = require("../../helpers/showcases/upload");
 beforeEach(() => {
   jest.clearAllMocks();
   mockConfig.MEDIA_PROVIDER = "CLOUDINARY";
+  mockStorageConfig.provider = "CLOUDINARY";
   mockConfig.S3_PREFIX = "dev/";
 });
 
@@ -434,15 +445,25 @@ describe("S3 provider URLs", () => {
 });
 
 describe("provider selection", () => {
-  test("new uploads follow MEDIA_PROVIDER", () => {
-    expect(storage.activeProvider()).toBe(STORAGE_PROVIDER.CLOUDINARY);
+  test("new uploads follow Setting.storage.provider", async () => {
+    // ⚠️ The admin panel decides this, not a redeploy. `MEDIA_PROVIDER` seeds a
+    // brand-new install and is never read again — otherwise a deploy would
+    // quietly override what somebody chose in the panel.
+    expect(await storage.activeProvider()).toBe(STORAGE_PROVIDER.CLOUDINARY);
+    mockStorageConfig.provider = STORAGE_PROVIDER.AWS_S3;
+    expect(await storage.activeProvider()).toBe(STORAGE_PROVIDER.AWS_S3);
+  });
+
+  test("⚠️ the environment does not override the panel", async () => {
     mockConfig.MEDIA_PROVIDER = STORAGE_PROVIDER.AWS_S3;
-    expect(storage.activeProvider()).toBe(STORAGE_PROVIDER.AWS_S3);
+    mockStorageConfig.provider = STORAGE_PROVIDER.CLOUDINARY;
+
+    expect(await storage.activeProvider()).toBe(STORAGE_PROVIDER.CLOUDINARY);
   });
 
   test("🔴 deletes follow the row, not the setting", async () => {
     // Flipping the switch must not strand everything uploaded before it.
-    mockConfig.MEDIA_PROVIDER = STORAGE_PROVIDER.AWS_S3;
+    mockStorageConfig.provider = STORAGE_PROVIDER.AWS_S3;
     await storage.deleteAsset({
       storage: { provider: STORAGE_PROVIDER.CLOUDINARY, publicId: "Images/old" },
     });

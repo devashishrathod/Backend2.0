@@ -212,3 +212,92 @@ describe("🔴 the write path drops the snapshot", () => {
     expect(calls).toEqual(["save", "invalidate"]);
   });
 });
+
+describe("🔴 a provider switch is rehearsed before it is saved", () => {
+  /**
+   * `updateSetting` with the settings barrel and the preflight both mocked, so
+   * this asserts the **gate** rather than the probe (which has its own file).
+   */
+  const runSwitch = async ({ from, to, ok = true, warnings = [] }) => {
+    const calls = [];
+    const setting = {
+      storage: { provider: from },
+      save: jest.fn(() => {
+        calls.push("save");
+        return Promise.resolve();
+      }),
+    };
+
+    let updateSetting;
+    jest.isolateModules(() => {
+      jest.doMock("../../helpers/settings", () => ({
+        ...jest.requireActual("../../helpers/settings"),
+        getSettingDocument: () => Promise.resolve(setting),
+        invalidateSettingCache: () => calls.push("invalidate"),
+      }));
+      jest.doMock("../../services/storage/preflight", () => ({
+        PROVIDERS_NEEDING_PREFLIGHT: ["AWS_S3"],
+        checkS3Ready: () => {
+          calls.push("preflight");
+          return Promise.resolve({ ok, reason: "credentials are wrong", warnings });
+        },
+      }));
+      ({ updateSetting } = require("../../services/settings/updateSetting"));
+    });
+
+    const result = await updateSetting("admin-1", {
+      storage: { provider: to },
+    }).catch((error) => error);
+
+    return { calls, result, setting };
+  };
+
+  afterEach(() => jest.resetModules());
+
+  test("a failing probe refuses the save with a 422", async () => {
+    const { calls, result, setting } = await runSwitch({
+      from: "CLOUDINARY",
+      to: "AWS_S3",
+      ok: false,
+    });
+
+    expect(result.statusCode).toBe(422);
+    expect(result.message).toMatch(/credentials are wrong/);
+    expect(calls).toEqual(["preflight"]);
+    expect(setting.save).not.toHaveBeenCalled();
+  });
+
+  test("a passing probe lets it through, and the probe runs first", async () => {
+    const { calls } = await runSwitch({ from: "CLOUDINARY", to: "AWS_S3" });
+    expect(calls).toEqual(["preflight", "save", "invalidate"]);
+  });
+
+  test("⚠️ re-saving the same provider does not pay for a round trip", async () => {
+    // An unrelated settings edit should not cost an S3 probe, and should not be
+    // able to fail because of one.
+    const { calls } = await runSwitch({ from: "AWS_S3", to: "AWS_S3" });
+    expect(calls).not.toContain("preflight");
+  });
+
+  test("switching back to Cloudinary needs no rehearsal", async () => {
+    const { calls } = await runSwitch({ from: "AWS_S3", to: "CLOUDINARY" });
+    expect(calls).not.toContain("preflight");
+  });
+
+  test("a warning rides back on the response rather than being logged away", async () => {
+    const { result } = await runSwitch({
+      from: "CLOUDINARY",
+      to: "AWS_S3",
+      warnings: ["CloudFront is not configured"],
+    });
+
+    expect(result.warnings).toEqual(["CloudFront is not configured"]);
+  });
+
+  test("the shape is the same whether or not there is a warning", async () => {
+    // Two shapes would give every caller a branch to get wrong.
+    const { result } = await runSwitch({ from: "CLOUDINARY", to: "AWS_S3" });
+    expect(result).toHaveProperty("setting");
+    expect(result.warnings).toEqual([]);
+  });
+});
