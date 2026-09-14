@@ -8,22 +8,57 @@ jhooth nahi bol sakti.
 
 | Collection | Requests | Status |
 |---|---:|---|
-| `trydood-customer.postman_collection.json` | 140 | ✅ 492 assertions · **0 failed** · 206 examples, **140/140 requests par** |
-| `trydood-vendor.postman_collection.json` | 127 | ✅ 294 assertions · **0 failed** · 143 examples, **127/127 requests par** |
-| `trydood-admin.postman_collection.json` | 113 | ✅ 258 assertions · **0 failed** · 124 examples, **113/113 requests par** |
+| `trydood-customer.postman_collection.json` | 144 | ⚠️ 502 assertions · **2 failed** · 210 examples, **144/144 requests par** |
+| `trydood-vendor.postman_collection.json` | 131 | ⚠️ 300 assertions · **1 failed** · 147 examples, **131/131 requests par** |
+| `trydood-admin.postman_collection.json` | 120 | 133 examples, **120/120 requests par** — is cycle me dobara nahi chalayi |
 
-> ### ✅ 219/219 — aur ye ab naapa jaata hai, gina nahi jaata
+> ### ⚠️ 3 assertions fail hain — fixture/state ki, code ki nahi
+>
+> Pehle yahan **0 failed** likha tha. Wo number examples ke aakhri capture ke
+> waqt sach tha aur phir chup-chaap purana ho gaya — assertions tab se chal hi
+> nahi rahi thin, to koi bata bhi nahi sakta tha. Ab jo bacha hai:
+>
+> | Collection | Assertion | Kya hai |
+> |---|---|---|
+> | customer | `Invoice PDF kholo — status: expected 422` | seeded invoice token |
+> | customer | `Email band karo — updatedAt: expected null` | notification-preference fixture |
+> | vendor | `Email band karo — updatedAt: expected null` | wahi |
+>
+> ### ✅ `merchantId` wali takraar band ho gayi
+>
+> Generator do jagah ye likhta tha —
+>
+> ```js
+> pm.expect(o, "merchantId").to.not.have.property("merchantId");
+> ```
+>
+> — jabki `getAllCustomerBrands` aur `getCustomerBrand` dono hamesha se use
+> **project karte the**, aur voucher feed to **guest** ko bhi bhejta tha (uska
+> committed example iska gawah hai). Yaani rule do endpoints par likhi gayi,
+> teesre par contradict hui, aur enforce kahin nahi hui — padhne me guarantee
+> lagti thi, guarantee thi nahi.
+>
+> Assertion **hata di gayi** hai (generator aur collection dono se), kyunki
+> merchantId koi credential nahi hai: koi bhi endpoint use **input** nahi leta,
+> to jaan lene se kuch khulta nahi. Customer ko jo id dikhayi jaati hai wo abhi
+> bhi `uniqueId` hai; merchantId support aur reconciliation ke liye hai.
+>
+> ⚠️ `subscribedId`, `subscription`, PAN, GST aur bank **abhi bhi** assert kiye
+> jaate hain. Customer ko plan ka sirf **naam** milta hai (`subscriptionPlan`),
+> billing record ka aur kuch nahi.
+
+> ### ✅ 223/223 — aur ye ab naapa jaata hai, gina nahi jaata
 >
 > ```bash
 > node scripts/verifyApiCoverage.js
 > ```
 >
 > ```
-> Routes served: 219  (216 in routes/, 3 in index.js)
->   ✅ endpoints_category.md    219/219 categorised
->   ✅ role docs                219/219 documented
->   ✅ collections              219/219 have a request
->   ✅ saved examples           219/219 have an example
+> Routes served: 223  (220 in routes/, 3 in index.js)
+>   ✅ endpoints_category.md    223/223 categorised
+>   ✅ role docs                223/223 documented
+>   ✅ collections              223/223 have a request
+>   ✅ saved examples           223/223 have an example
 > ```
 >
 > Ye routes **built Express routers** se padhta hai (`lib/routeInventory.js`),
