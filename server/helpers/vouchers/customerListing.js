@@ -755,6 +755,21 @@ exports.buildCustomerVoucherDetailPipeline = ({
 
         version: 1,
 
+        /**
+         * ⚠️ This projection is a **whitelist**, and it is the last stage that
+         * can still see the voucher master's own fields. Anything not named
+         * here is gone for good — which is exactly how the banner went missing.
+         *
+         * `banner` was absent, so it was dropped here while the final
+         * `$project` below still asked for it and the mapper still called
+         * `pickVoucherBanner` on it. Nothing errored: the field was simply
+         * `undefined`, so **every** voucher detail answered
+         * `bannerType: null, bannerUrl: null` — a customer saw the banner on
+         * the feed and watched it vanish the moment they opened the voucher,
+         * which reads as "this one has no banner" rather than as a fault.
+         */
+        banner: 1,
+
         // Carried through for the brand block below. Without it the joins in
         // 4b have nothing to key on.
         brandId: 1,
@@ -791,9 +806,49 @@ exports.buildCustomerVoucherDetailPipeline = ({
         uniqueId: 1,
         isActive: 1,
         isApproved: 1,
+        // Read by the verification match below, never returned —
+        // `mapCustomerBrandBlock` is a whitelist and names neither.
+        isRejected: 1,
+        isRevoked: 1,
         joinedDate: 1,
       },
     }),
+
+    /**
+     * ⚠️ Only a verified brand's voucher opens. The **same** four conditions
+     * the listing applies.
+     *
+     * The listing grew this gate after unverified brands' vouchers were found
+     * sitting in the customer feed. The detail endpoint was missed, and it had
+     * no brand join at all to hang a gate on — so a voucher the feed correctly
+     * hid stayed openable by direct link for anyone who had one: a shared
+     * WhatsApp message, an old notification, a stale screen.
+     *
+     * Nothing cascades to close that gap on its own: `reviewBrandVerification`
+     * (reject/revoke) and `toggleBrandStatus` (deactivate) do not touch the
+     * brand's vouchers, so those stay `PUBLISHED` and in-window indefinitely.
+     *
+     * The money path was already safe — `buildClaimPreview` blocks the claim
+     * with *"This brand is not accepting claims right now."* — so what this
+     * closes is the page, not a payment: a customer could open a brand the
+     * platform had deliberately hidden and only discover it at the button.
+     *
+     * `isRejected` / `isRevoked` are **absent** on brands written before those
+     * flags existed, and in an aggregation expression absent is not false —
+     * hence `$ifNull` on each, exactly as the listing does it.
+     */
+    {
+      $match: {
+        $expr: {
+          $and: [
+            { $eq: [{ $ifNull: ["$brand.isActive", false] }, true] },
+            { $eq: [{ $ifNull: ["$brand.isApproved", false] }, true] },
+            { $ne: [{ $ifNull: ["$brand.isRejected", false] }, true] },
+            { $ne: [{ $ifNull: ["$brand.isRevoked", false] }, true] },
+          ],
+        },
+      },
+    },
 
     ...buildBrandPlanLookup({
       localField: "brandId",
@@ -1079,6 +1134,18 @@ exports.buildCustomerVoucherDetailPipeline = ({
 
         version: {
           $first: "$version",
+        },
+
+        /**
+         * ⚠️ The second half of the banner fix, and the easier half to miss.
+         *
+         * `$group` is a whitelist too: naming `banner` in the projection above
+         * only gets it this far. Without this line it is dropped here instead,
+         * the final `$project` still finds nothing, and the symptom is
+         * identical — so fixing only one of the two looks like fixing neither.
+         */
+        banner: {
+          $first: "$banner",
         },
 
         // Identical on every row the unwind produced — it was joined before
