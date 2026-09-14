@@ -898,6 +898,24 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 - [x] `name` / `brandName` / category ka `name` — **sab jaisa type kiya waisa hi** store hote hain. Koi display badla nahi
 - [x] **11 unit test** · **Mutation 7/7**
 
+## M-1a″ · Naam UI me jaisa dikhna chahiye waisa save — ✅ **DONE** (uncommitted)
+`helpers/common/names.js` (renamed) · 19 services · 1 helper
+- [x] `toDisplayName()` — **sirf tab** badalta hai jab input **poora lowercase** ho. Ek bhi capital ho to vendor par bharosa
+- [x] `"john doe"` → `"John Doe"` · `"30% off"` → `"30% Off"` · `"jean-luc"` → `"Jean-Luc"`
+- [x] `"30% OFF"` · `"KFC"` · `"iPhone"` · `"McDonald's"` — **haath nahi lagta**
+- [x] ALL-CAPS jaan-boojh kar chhoda — "JOHN DOE" shouting hai aur "KFC" naam, aur string me koi farak nahi. Length rule KFC/TGI bachata hai phir IKEA/HDFC bigadta hai
+- [x] `cleanName()` — sirf trim + whitespace collapse. **PAN, legalBusinessName, companyName** ke liye: wo document ka record hai, screen ka nahi
+- [x] **13 display fields**, 19 write sites: brand, user, category, subCategory, voucher, offer title, showcase section, banner, ticker, brandFeature, subscription
+- [x] **18 unit test** · **Mutation 6/6**
+
+> 🔴 **Ek leftover mila**: `addOrUpdateBasicDetails.js` me `brandName` par abhi bhi
+> `.toLowerCase()` tha, jabki `updateBrand` me hat chuka tha — **ek hi field, do
+> behaviour**. Ab dono ek hi helper se guzarte hain.
+
+> ⚠️ `Customer.fullName` aur `ShowcaseSection.medias[].title` chhode: pehle ka
+> koi write path hai hi nahi (M-1b me aayega), doosra **filename se machine-derived**
+> hai — `"my_photo_01"` ko `"My_photo_01"` karna behtar nahi.
+
 ## M-1b · Customer profile pic
 `models/Customer.js` · `services/users/updateUserById.js` · customer reads
 - [ ] `Customer.image` → `mediaSchema` (aaj khaali `String`, koi upload path likhta hi nahi)
