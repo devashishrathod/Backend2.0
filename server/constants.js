@@ -28,12 +28,22 @@ const GST_TO_BRAND_ENTITY_MAP = Object.freeze({
   NGO: BUSINESS_ENTITY_TYPE.NGO,
 });
 
+/**
+ * ⚠️ The tier is **not** here. It is `CONFIG_PROFILE`, and its values live in
+ * `configs/env/schema.js` as `PROFILES` — `DEVELOPMENT | STAGING | PRODUCTION`.
+ *
+ * A `NODE_ENV` enum used to sit at the top of this file with `DEVELOPMENT` and
+ * `PRODUCTION` on it, and nothing ever imported it — which was lucky, because it
+ * could not have worked. `process.env.NODE_ENV` is lower case (npm reads
+ * `production` to skip devDependencies; Express compares `app.get("env")`
+ * against `"production"` to decide whether to hide stack traces), so
+ * `process.env.NODE_ENV === NODE_ENV.PRODUCTION` was always `false`. Anybody
+ * guarding a production-only path with it would have written a check that never
+ * fires, in either direction, with nothing to say so.
+ *
+ * It also had no `STAGING`, while the platform runs three tiers.
+ */
 module.exports = {
-  NODE_ENV: Object.freeze({
-    DEVELOPMENT: "DEVELOPMENT",
-    PRODUCTION: "PRODUCTION",
-  }),
-
   ROLES: Object.freeze({
     ADMIN: "ADMIN",
     VENDOR: "VENDOR",

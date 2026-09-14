@@ -3,6 +3,7 @@ const RefundRequest = require("../../models/RefundRequest");
 const Dispute = require("../../models/Dispute");
 const Settlement = require("../../models/Settlement");
 const { throwError } = require("../../utils");
+const storage = require("../storage");
 const { generateAndUploadDocument } = require("../../helpers/documents");
 const { buildTransactionFilter } = require("../../helpers/transactions");
 
@@ -121,30 +122,71 @@ exports.getDocumentByToken = async (token) => {
     );
   }
 
-  const cached = record[source.urlField];
-  if (cached) {
-    return {
-      url: cached,
-      documentNumber: snapshot.documentNumber,
-      kind: snapshot.kind,
-    };
+  const answer = (url) => ({
+    url,
+    documentNumber: snapshot.documentNumber,
+    kind: snapshot.kind,
+  });
+
+  /**
+   * ---------------- the file is already there ----------------
+   *
+   * 🔴 A **fresh** link every time, not a stored one.
+   *
+   * The URL used to be cached on the record and handed back for ever. On a
+   * private bucket there is no lasting URL to cache: one is minted per request
+   * and dies in minutes. That is the whole point — `documentToken` can be
+   * revoked, and now the link behind it goes stale on its own too, so a
+   * forwarded WhatsApp message stops being a permanent key to somebody's name,
+   * address, GSTIN and amount.
+   */
+  if (record.documentStorage) {
+    return answer(
+      await storage.documentUrl({
+        storage: record.documentStorage,
+        url: record[source.urlField],
+      }),
+    );
   }
 
-  // First request for this document: render it, upload it, remember it.
-  const url = await generateAndUploadDocument(
+  /**
+   * ⚠️ Rows written before `documentStorage` existed have only the URL, and
+   * they must keep working. Nothing is migrated: the file is where it is, and
+   * that link is the only way back to it.
+   */
+  const cached = record[source.urlField];
+  if (cached) return answer(cached);
+
+  // First request for this document: render it, upload it, remember where.
+  const uploaded = await generateAndUploadDocument(
     // A mongoose subdocument works, but plain data keeps the renderer honest
     // about reading nothing it was not given.
     typeof snapshot.toObject === "function" ? snapshot.toObject() : snapshot,
   );
-  if (!url) {
+  if (!uploaded?.storage) {
     throwError(503, "Could not prepare the document. Please try again.");
   }
 
+  /**
+   * ⚠️ `url` is stored **as well**, and only because Cloudinary has nothing
+   * else: its delivery URL is the only link there is. On S3 it is null, and
+   * the branch above never reads it.
+   */
   await source.model.updateOne(
     { _id: record._id },
-    { $set: { [source.urlField]: url } },
+    {
+      $set: {
+        documentStorage: uploaded.storage,
+        ...(uploaded.url ? { [source.urlField]: uploaded.url } : {}),
+      },
+    },
   );
 
-  return { url, documentNumber: snapshot.documentNumber, kind: snapshot.kind };
+  return answer(
+    await storage.documentUrl({
+      storage: uploaded.storage,
+      url: uploaded.url,
+    }),
+  );
 };
 

@@ -18,11 +18,6 @@ const SHOWCASE_COVER_IMAGE_MODE = {
   MANUAL: "MANUAL",
 };
 
-const STORAGE_PROVIDER = {
-  CLOUDINARY: "CLOUDINARY",
-  S3: "S3",
-};
-
 const SHOWCASE_MEDIA_CONFIG = {
   maxItems: 15,
   maxImages: 15,
@@ -33,10 +28,13 @@ const SHOWCASE_MEDIA_CONFIG = {
   allowedVideos: ["video/mp4", "video/webm", "video/quicktime"],
 };
 
+// `STORAGE_PROVIDER` used to live here. It was never showcase-specific —
+// banners, vouchers and tickers all store the same field — so it moved to
+// `constants/storage.js` alongside the rest of the storage vocabulary.
+
 module.exports = {
   SHOWCASE_MEDIA_TYPE,
   SHOWCASE_SECTION_TYPE,
   SHOWCASE_COVER_IMAGE_MODE,
-  STORAGE_PROVIDER,
   SHOWCASE_MEDIA_CONFIG,
 };

@@ -2,7 +2,9 @@ const { ROLES } = require("../../constants");
 const Customer = require("../../models/Customer");
 const User = require("../../models/User");
 const { throwError } = require("../../utils");
-const { uploadImage, deleteImage } = require("../uploads");
+const storage = require("../storage");
+const { assertImageFile } = require("../../helpers/media");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const { applyIdentityChange } = require("../../helpers/users");
 // const { isAdult } = require("../../helpers/users");
 
@@ -63,10 +65,24 @@ exports.updateUserById = async (userId, payload, image) => {
      * set them is what left `isEmailVerified` unreachable in the first place.
      */
   }
+  assertImageFile(image, "Profile photo");
+
   if (image) {
-    if (user.image) await deleteImage(user.image);
-    const imageUrl = await uploadImage(image.tempFilePath);
-    user.image = imageUrl;
+    // ⚠️ Upload first, delete second. The old order removed the customer's
+    // existing photo before the new one had landed, so a failed upload left the
+    // profile with a dead URL and no way back.
+    // ⚠️ The whole previous pair, captured before it is overwritten — the
+    // delete needs the OLD storage, not the new one.
+    const previous = { url: user.image, storage: user.imageStorage };
+    const uploaded = await storage.uploadFromPath({
+      filePath: image.tempFilePath,
+      originalFile: image,
+      purpose: UPLOAD_PURPOSE.USER_AVATAR,
+      entityId: user._id,
+    });
+    user.image = uploaded.url;
+    user.imageStorage = uploaded.storage;
+    if (previous.url) await storage.deleteAsset(previous);
   }
   user.isSignUpCompleted = true;
 

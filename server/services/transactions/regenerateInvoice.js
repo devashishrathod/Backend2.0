@@ -15,6 +15,7 @@ const {
   generateDocumentNumber,
 } = require("../../helpers/documents");
 const { invoiceUrl } = require("../../helpers/notifications");
+const { deleteDocument } = require("../uploads");
 
 /**
  * Build a snapshot for a transaction that has none.
@@ -172,10 +173,11 @@ exports.regenerateInvoice = async (actor, payload) => {
   }
 
   const previousUrl = transaction.invoiceUrl || null;
+  const previousStorage = transaction.documentStorage;
 
   // Deliberately not wrapped: a re-issue that cannot produce a PDF should fail
   // loudly, unlike the fire-and-forget generation during checkout.
-  const generatedUrl = await generateAndUploadDocument(
+  const generated = await generateAndUploadDocument(
     // A mongoose subdocument works, but plain data keeps the renderer honest
     // about reading nothing it was not given.
     typeof snapshot.toObject === "function" ? snapshot.toObject() : snapshot,
@@ -183,8 +185,38 @@ exports.regenerateInvoice = async (actor, payload) => {
 
   await Transaction.updateOne(
     { _id: transaction._id },
-    { $set: { invoiceUrl: generatedUrl } },
+    {
+      $set: {
+        documentStorage: generated.storage,
+        ...(generated.url ? { invoiceUrl: generated.url } : {}),
+      },
+    },
   );
+
+  /**
+   * The document this one replaces goes — after the row points at the new one.
+   *
+   * ⚠️ Only when it is genuinely a **different** object. The key is built from
+   * the document number, so re-issuing the same number writes over the same
+   * key: deleting then would remove the file that was just uploaded. Two keys
+   * mean two files, and the old one is now referenced by nothing.
+   *
+   * 🔴 Nothing deleted a generated PDF before this. `deletePDF` was exported and
+   * never called, so every re-issue left its predecessor behind — paid for, and
+   * still readable by anyone holding its permanent public URL.
+   *
+   * Best effort: an orphan is a log line, not a failed re-issue for an admin who
+   * has already been handed the new document.
+   */
+  const replacedSomethingElse =
+    previousStorage?.key && previousStorage.key !== generated.storage?.key;
+  if (replacedSomethingElse || (previousUrl && !previousStorage)) {
+    try {
+      await deleteDocument({ url: previousUrl, storage: previousStorage });
+    } catch (error) {
+      console.error("Failed to delete the replaced document:", error.message);
+    }
+  }
 
   const reissued = await Transaction.findById(transaction._id)
     .select("documentToken invoiceId")
@@ -193,7 +225,7 @@ exports.regenerateInvoice = async (actor, payload) => {
   return {
     transactionId: transaction._id,
     invoiceId: reissued?.invoiceId || snapshot.documentNumber,
-    invoiceUrl: generatedUrl,
+    invoiceUrl: generated.url ?? null,
     // The link to hand the vendor. The raw storage URL above cannot be revoked;
     // this one resolves through the token and can be.
     invoiceDownloadUrl: invoiceUrl(reissued?.documentToken),

@@ -477,6 +477,7 @@ Har list endpoint ka exact 404 message alag hai (entity name ke hisaab se) — h
 | `403` | Forbidden | Invalid token format, deactivated account, wrong role |
 | `404` | Not Found | Resource nahi mila **ya empty list** (upar dekho) |
 | `409` | Conflict | Duplicate resource |
+| `413` | Payload Too Large | Profile photo platform ki max size se badi |
 | `422` | Unprocessable Entity | Joi validation fail, ya invalid ObjectId format |
 | `500` | Server Error | Unexpected failure |
 
@@ -497,7 +498,27 @@ Ye errors kisi bhi protected endpoint pe aa sakte hain — har endpoint pe repea
 | `404` | `Access Denied! User not found` | Token valid hai par us user ka record DB me nahi |
 | `500` | `Authentication failed due to an unexpected error.` | JWT verify me unknown error |
 | `422` | *(field-wise Joi message)* | Request validation fail |
+| `413` | `File is too large. The maximum upload size is 100 MB.` | Profile photo upload — niche dekho |
 | `404` | `Invalid API` | Galat endpoint path |
+
+### File upload — `413`
+
+Customer sirf do jagah file bhejta hai: `POST /auth/register` aur
+`PUT /users/update` (profile photo). Dono par platform ka ceiling lagta hai —
+aaj **100 MB**.
+
+⚠️ **App ke liye zaroori:** `413` par server connection **turant band** kar deta
+hai, poori file bheji nahi jaati. Upload library ise **network error / abort**
+ki tarah report karegi, HTTP error ki tarah nahi. Agar app sirf `catch` me
+*"Network error, please try again"* dikhata hai, to customer wahi photo baar-baar
+try karta rahega aur kabhi nahi chadhegi.
+
+Sahi handling: abort ke baad response status padho — `413` ho to
+*"Yeh photo bahut badi hai"* dikhao, retry nahi.
+
+> Practically ek phone camera ki photo 100 MB ke aas-paas bhi nahi hoti, to ye
+> normal customer ko kabhi nahi dikhega. Ye ek galat/corrupt file ya kisi
+> automated client ko rokne ke liye hai.
 
 ### Validation errors ka format
 
@@ -1414,11 +1435,84 @@ Location ID se detail fetch.
 | `422` | `Location ID is required` | Missing |
 | `422` | `Invalid location ID format` | Valid ObjectId nahi |
 
+### Errors — ownership
+
+| Status | Message |
+|---|---|
+| `403` | `Forbidden` |
+
 ### ⚠️ Notes
 
-**1. Koi ownership check nahi hai.** Kisi bhi valid location ID se koi bhi user data fetch kar sakta hai — dusre customers ke addresses, brand addresses, outlet addresses sab. → [Appendix B](#appendix-b--known-issues)
+**1. ✅ Ownership check hai — aur ye note pehle ulta likha tha.**
+
+Gate sirf "signed in" poochta hai, par service har role ke liye alag se tay karti
+hai ki kaun sa address dikh sakta hai:
+
+| Role | Kya dikhega |
+|---|---|
+| **CUSTOMER** | sirf apna — `location.userId` token se match karna chahiye |
+| **VENDOR** | apne brand ka registered address, ya apne kisi outlet ka |
+| **ADMIN** | sab |
+
+Vendor ka outlet wala check `SubBrand` se hota hai, token ke cached `brandId` se
+nahi — taaki purana token access widen na kar sake.
+
+> Pehle yahan sach me koi check nahi tha: kisi bhi valid id se koi bhi user kisi
+> ka bhi address padh sakta tha, **customer ke ghar ke pate aur GPS coordinates**
+> samet. Wo band ho chuka hai; ye doc us par pichhe reh gaya tha.
 
 **2. Practically ye endpoint optional hai** — customer ki location already `GET /users/get` ke response me nested aa jaati hai (`data.customerId.locationId`). Ye sirf tab chahiye jab specific location ID se refresh karna ho.
+
+---
+
+## 8b. DELETE /locations/delete/:id 🆕
+
+Customer apna saved address hata sakta hai.
+
+**Access:** 🔒 **Koi bhi signed-in role** (`verifyJwtToken`) — ownership service tay karti hai
+
+> Gate par koi role nahi, kyunki sawaal role ka hai hi nahi: *ye address kiska
+> hai*. Customer sirf apna hata sakta hai; doosre customer ka, ya kisi brand /
+> outlet ka address chhune par `403`.
+
+### Path Params
+| Param | Type | Required |
+|---|---|---|
+| `id` | ObjectId | ✅ |
+
+### Success — `200`
+```json
+{ "success": true, "message": "Location deleted successfully" }
+```
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `403` | `Forbidden: You do not have permission to perform this action.` | Address kisi aur ka |
+| `404` | `Location not found` | Id nahi mili ya pehle se deleted |
+| `422` | `Invalid location ID format` | |
+
+### 🔴 App ke liye — ye button dikhne se bada hai
+
+Address hatate hi `Customer.locationId` `null` ho jaata hai. **Voucher feed usi
+address se banta hai**, to uske baad:
+
+```
+GET /vouchers/customer/get-all   →  400  "Location is required. Send latitude
+                                          and longitude, or save an address first."
+```
+
+| App GPS bhejti hai | 🟢 kuch nahi hota — feed chalti rahegi |
+|---|---|
+| App saved address par tikti hai | 🔴 **feed, single voucher, search — sab band** |
+
+To delete se **pehle** user ko batana chahiye ki feed ke liye location chahiye
+hogi, aur delete ke baad seedha address screen kholni chahiye — warna wo ek khali
+feed dekhega aur samajh nahi paayega kyun.
+
+> Soft delete hai — row `isDeleted: true` hoti hai, aur `POST /locations/upsert`
+> (#7) usi row ko wapas zinda kar deta hai. Yaani "hata kar naya daalna" kaam
+> karta hai; dobara `upsert` karne par duplicate nahi banta.
 
 ---
 
@@ -1963,6 +2057,8 @@ GET /search?q=pizza&latitude=22.7533&longitude=75.8937&limit=5
             "image": "https://res.cloudinary.com/…/dominos.jpg",
             "meta": {
               "uniqueId": "#TB69063",
+              "merchantId": "TM-362P-7M7E-ZB2N",
+              "subscriptionPlan": "Pro Plus",
               "isTopBrand": true,
               "isVerified": true,
               "followersCount": 4821,
@@ -1997,6 +2093,8 @@ GET /search?q=pizza&latitude=22.7533&longitude=75.8937&limit=5
             "meta": {
               "brandId": "68f1a2b3c4d5e6f7a8b9c0a1",
               "brandName": "Domino's Pizza",
+              "merchantId": "TM-362P-7M7E-ZB2N",
+              "subscriptionPlan": "Pro Plus",
               "categoryId": "68f0…b3e1",
               "subCategoryId": "68f0…b3e9",
               "bestOffer": { "title": "30%", "discountType": "PERCENTAGE", "discountValue": 30 },
@@ -2088,6 +2186,11 @@ Chahe type koi bhi ho, row me yahi saat fields hoti hain:
 | `image` | AREA me hamesha `null` — jagah ki apni koi tasveer nahi hoti |
 | `meta` | Type ke hisaab se extra fields |
 | `target` | **Tap karne pe kahan jaana hai** |
+
+🆕 `BRAND` aur `VOUCHER` dono ke `meta` me ab `merchantId` (string\|null) aur
+`subscriptionPlan` (string\|null — **live** plan, lapse ho chuka ho to `null`)
+aate hain. `CATEGORY` · `SUB_CATEGORY` · `AREA` me nahi — un rows ka koi ek
+brand hota hi nahi.
 
 App ek hi row component se paanchon render kar sakti hai. Naya type kal jud jaye to app ko
 bas ek label chahiye, naya parser nahi.
@@ -2514,7 +2617,24 @@ Har row pe `isSuggested` boolean aata hai — usse badge/highlight kar sakte hai
 | `bannerUrl` 🆕 | string\|null | Banner ka URL. `bannerType` ke saath hi aata hai — dono `null` ya dono set |
 | `isSuggested` 🆕 | boolean | Admin ne pin kiya hai ya nahi. Badge/highlight ke liye |
 | `brand` | object\|null | Brand summary. `isVerified` = brand approved hai ya nahi |
-| `brand.subscriptionPlan` | string\|null | Brand ke live plan ka **naam**, jaisa admin ne rakha (`"Pro Plus"`, `"Starter"` — koi bhi text). Plan na ho to `null`. ⚠️ **Ye ek fixed enum nahi hai** — iske value par `switch`/`if` mat likhiye; ye sirf dikhane ke liye hai. Source: `Subscription.name` (free-text), via `helpers/vouchers/customerListing.js:1209` |
+| `brand.merchantId` | string\|null | Brand ka merchant identifier (`TM-XXXX-XXXX-XXXX`). Support/reconciliation ke liye — customer ko dikhane ki zaroorat nahi |
+| `brand.subscriptionPlan` | string\|null | Brand ke **live** plan ka naam, jaisa admin ne rakha (`"Pro Plus"`, `"Basic"` — koi bhi text). Plan na ho, ya expire ho gaya ho, to `null`. ⚠️ **Ye ek fixed enum nahi hai** — iske value par `switch`/`if` mat likhiye; ye sirf dikhane ke liye hai. Source: `Subscription.name` (free-text), via `helpers/subscribeds/brandPlanLookup.js` |
+
+> ### ⚠️ `subscriptionPlan` ab sirf live plan deta hai — behaviour change
+>
+> Pehle ye field `Brand.subscribedId` se resolve hoti thi, bina `status` aur
+> `endDate` check kiye. Wo pointer plan expire hone par **clear nahi hota**
+> (dekhein `syncBrandSubscriptionState`), is liye jis brand ka plan mahine pehle
+> khatam ho chuka tha uska purana plan ka naam hamesha ke liye response me aata
+> rehta tha. Customer ke liye ye ek paying brand aur ek chhod chuke brand me
+> koi farak nahi dikhata tha.
+>
+> Ab `status: ACTIVE` **aur** `endDate > now` dono check hote hain. Matlab:
+> **jis brand ka plan lapse ho chuka hai uske liye ab `null` aayega, pehle naam
+> aata tha.** Client ko `null` handle karna chahiye (badge chhupa dein) — key
+> gayab nahi hoti, hamesha present rehti hai.
+>
+> Yahi rule ab **har** endpoint par lagu hai jo `subscriptionPlan` deta hai.
 | `version.bestOffer` | object\|null | **Display heuristic** — sabse zyada `discountValue` wala active offer. Ye actual discount nahi hai (bill amount ke bina calculate nahi ho sakta). Real discount ke liye endpoint #17 |
 | `version.images` | array | `_id`, `url`, `sortOrder`. `sortOrder` se sort karein |
 | `nearestOutlet` | object\|null | Customer ke sabse paas ka outlet |
@@ -2612,6 +2732,18 @@ GET /vouchers/customer/get/68f1a2b3c4d5e6f7a8b9c2a1?latitude=22.7533&longitude=7
     "subCategoryId": "68f1a2b3c4d5e6f7a8b9c0f1",
     "bannerType": "VIDEO",
     "bannerUrl": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/vouchers/banner-mocha.mp4",
+    "brand": {
+      "id": "68f1a2b3c4d5e6f7a8b9c3a1",
+      "brandName": "cafe mocha",
+      "description": "artisanal coffee and continental bites",
+      "legalBusinessName": "mocha hospitality pvt ltd",
+      "merchantId": "TM-362P-7M7E-ZB2N",
+      "uniqueId": "TDB000078",
+      "isActive": true,
+      "isVerified": true,
+      "joinedDate": "2026-03-15T00:00:00.000Z",
+      "subscriptionPlan": "Pro Plus"
+    },
     "version": {
       "id": "68f1a2b3c4d5e6f7a8b9c2b1",
       "versionNumber": 3,
@@ -2694,6 +2826,10 @@ GET /vouchers/customer/get/68f1a2b3c4d5e6f7a8b9c2a1?latitude=22.7533&longitude=7
 
 | Field | Notes |
 |---|---|
+| `bannerType` · `bannerUrl` 🔧 | **Ab sach me aate hain.** Ye doc hamesha se inhe document karta tha, par response me **hamesha `null`** milta tha: pipeline ki ek beech wali projection `banner` ko gira deti thi, aur aakhri stage use maangti reh jaati thi. Yaani feed me banner dikhta tha aur voucher kholte hi gayab. **Agar app ne iske liye koi workaround rakha hai** — jaise list row ka banner yaad rakhna — to ab uski zaroorat nahi |
+| `brand` 🆕 | object\|null — **bilkul wahi shape jo listing (#15) ka `brand` deta hai**: `id`, `brandName`, `description`, `legalBusinessName`, `merchantId`, `uniqueId`, `isActive`, `isVerified`, `joinedDate`, `subscriptionPlan`. Pehle ye endpoint brand bilkul nahi bhejta tha, is liye app ko list row ka brand yaad rakhna padta tha ya alag call karni padti thi. Ab ek hi brand card dono screen par render hota hai |
+| `brand.merchantId` 🆕 | string\|null — brand ka merchant identifier |
+| `brand.subscriptionPlan` 🆕 | string\|null — brand ka **live** plan ka naam; lapse ho chuka ho to `null`. Upar #15 ka warning box padhein |
 | `version.offers` | **Saare** offers (list view me sirf `bestOffer` tha). Har offer ka `minBillAmount` dekh kar user ko dikhayein |
 | `selectedOutlet` | `outletId` query bheji to us outlet ka object, warna `null` |
 | `outlets` | Saare linked outlets, distance ke saath (nearest first) |
@@ -2714,7 +2850,7 @@ GET /vouchers/customer/get/68f1a2b3c4d5e6f7a8b9c2a1?latitude=22.7533&longitude=7
 
 ### ⚠️ Edge cases & notes
 
-**1. `404` ka matlab ambiguous hai.** "Voucher not found or currently unavailable" 4 different cases me aata hai — exist nahi karta / published nahi / expire / radius ke bahar. Frontend distinguish nahi kar sakta. Generic message dikhayein: *"Ye voucher abhi available nahi hai"*.
+**1. `404` ka matlab ambiguous hai.** "Voucher not found or currently unavailable" ab **5** cases me aata hai — exist nahi karta / published nahi / expire / radius ke bahar / **brand ab verified nahi** (revoked, rejected ya deactivate — dekhein §9a). Frontend distinguish nahi kar sakta. Generic message dikhayein: *"Ye voucher abhi available nahi hai"*.
 
 **2. Ye endpoint bhi location-dependent hai.** List se detail pe jaate waqt wahi coordinates bhejein jo list me bheje the — warna radius mismatch se 404 aa sakta hai.
 
@@ -2837,6 +2973,8 @@ Naam lene par baat badal jaati hai: **unka chunaav chalta hai**, chahe doosra of
     "brand": {
       "id": "68f1a2b3c4d5e6f7a8b9c1a1",
       "name": "postman cafe mocha",
+      "merchantId": "TM-362P-7M7E-ZB2N",
+      "subscriptionPlan": "Pro Plus",
       "isApproved": true
     },
     "pricing": {
@@ -2913,6 +3051,22 @@ Naam lene par baat badal jaati hai: **unka chunaav chalta hai**, chahe doosra of
 **Purane teeno naam response me abhi bhi hain** — wahi number, dono naam se — taaki chalu app na toote. Par wo **deprecated** hain aur app ke shift hone ke baad hata diye jayenge. Naye naam par aa jaayein.
 
 > Store sirf naye naam hote hain. Purane sirf response me echo hote hain.
+
+### 🆕 `brand.merchantId` aur `brand.subscriptionPlan`
+
+Checkout screen ko batana hota hai paisa **kise** ja raha hai, is liye `brand`
+block me ab do aur field hain:
+
+| Field | Type | Notes |
+|---|---|---|
+| `brand.merchantId` 🆕 | string\|null | Brand ka merchant identifier |
+| `brand.subscriptionPlan` 🆕 | string\|null | Brand ka **live** plan ka naam; lapse ho chuka ho to `null` |
+
+⚠️ `subscriptionPlan: null` ka matlab **ye nahi** ki claim block hai. Wo alag
+sawaal hai aur uska jawab `canClaim` + `blockedReason` dete hain (neeche) —
+`Setting.customer.claim.allowWhenVendorPlanExpired` ke hisaab se. Plan lapse
+wale brand par `subscriptionPlan: null` aur `canClaim: true` dono ek saath
+bilkul sambhav hain. Button ko `canClaim` se chalayein, is field se nahi.
 
 ### 🆕 `canClaim` / `blockedReason` — do tarah ki "nahi"
 
@@ -3316,6 +3470,33 @@ se alag URL nahi chunna:
 September ki claim March me bhi sahi padhti hai — voucher republish ho chuka ho aur outlet
 ka naam badal chuka ho, tab bhi. Jo dikhaya gaya tha wahi dikhta rahega.
 
+### 🆕 `brand` — snapshot ke **saath**, uski jagah nahi
+
+Har row me ab ek **live** `brand` block bhi aata hai:
+
+```json
+"brandSnapshot": { "name": "cafe mocha" },
+"brand": {
+  "_id": "68f1a2b3c4d5e6f7a8b9c3a1",
+  "brandName": "cafe mocha",
+  "logo": "https://…",
+  "merchantId": "TM-362P-7M7E-ZB2N",
+  "subscriptionPlan": "Pro Plus"
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `brand.merchantId` 🆕 | string\|null | Brand ka merchant identifier |
+| `brand.subscriptionPlan` 🆕 | string\|null | Brand ka **live** plan; lapse ho chuka ho to `null` |
+
+⚠️ **`brandSnapshot` ko koi haath nahi laga.** Wo history hai aur wahi rahega.
+Par `merchantId` aur `subscriptionPlan` history **nahi** hain — ye "aaj ye brand
+kaun hai" ka jawab dete hain. Inhe freeze karna galat hota: snapshot us plan ka
+naam dikhata jo brand ab rakhta hi nahi — theek wahi bug jise hatane ke liye ye
+change hua hai. Purana naam chahiye to `brandSnapshot.name` padhein; aaj ka
+haal chahiye to `brand`.
+
 ### ⚠️ Scope query se chaudi nahi ho sakti
 
 Filter aur scope **intersect** hote hain. Vendor `?brandId=<dusra brand>` bheje to **kuch
@@ -3362,6 +3543,26 @@ claim ki nahi. Baaki query params #17d jaise.
 `purpose` se scope hai, isliye ek galat filter bhi kabhi **subscription** payment nahi
 dikha sakta — ek hi collection dono flows rakhti hai.
 
+### 🆕 `brand` block
+
+Har row ka `brand` ab do aur field leke aata hai — **teeno** role ko, kyunki ye
+na commercial disclosure hain na privacy:
+
+```json
+"brand": {
+  "_id": "68f1a2b3c4d5e6f7a8b9c3a1",
+  "brandName": "cafe mocha",
+  "logo": "https://…",
+  "merchantId": "TM-362P-7M7E-ZB2N",
+  "subscriptionPlan": "Pro Plus"
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `brand.merchantId` 🆕 | string\|null | Brand ka merchant identifier |
+| `brand.subscriptionPlan` 🆕 | string\|null | Brand ka **live** plan; lapse ho chuka ho to `null` |
+
 ---
 
 ## 17f. GET /voucher-claims/payments/:transactionId — ek payment
@@ -3377,11 +3578,17 @@ dikha sakta — ek hi collection dono flows rakhti hai.
     "invoiceDownloadUrl": "https://api.trydood.com/trydood/v1/transactions/invoice/<token>"
   },
   "claim":   { /* judi hui claim, frozen snapshots ke saath */ },
-  "brand":   { "brandName": "cafe mocha", "logo": "https://…" },
+  "brand":   { "brandName": "cafe mocha", "logo": "https://…",
+               "merchantId": "TM-362P-7M7E-ZB2N",   // 🆕
+               "subscriptionPlan": "Pro Plus" },     // 🆕 live plan, warna null
   "outlet":  { "storeId": "T-01", "uniqueId": "…", "address": "…" },
   "viewer":  { "role": "CUSTOMER", "scope": "OWN", "canSeePlatformCosts": false, "canSeeCustomerContact": true }
 }
 ```
+
+> `brand` ka shape **#17e ki listing jaisa hi** hai, jaan-boojh kar. Detail page
+> par listing se kam field dikhna usi tarah chup-chaap galat hai jaise zyada
+> dikhna — bas dusri disha me.
 
 - **`claim` saath aata hai** kyunki akela payment sirf ek raqam aur ek timestamp hai —
   customer ko wo dekhna hai *jo usne khareeda*: voucher ka naam, outlet, claim code
@@ -3414,6 +3621,13 @@ claim ke liye bani hai. **Id ka unique hona iska jawab nahi hai.**
 
 ### Response
 `claim` · `payment` · `brand` · `outlet` · **`timeline`** · `viewer`
+
+`brand` bilkul wahi shape hai jo #17f deta hai — `merchantId` 🆕 aur
+`subscriptionPlan` 🆕 (live plan, warna `null`) samet:
+
+```json
+"brand": { "brandName": "cafe mocha", "logo": "https://…", "merchantId": "TM-362P-7M7E-ZB2N", "subscriptionPlan": "Pro Plus" }
+```
 
 ```jsonc
 "timeline": [
@@ -3895,6 +4109,17 @@ Brand profile screen ka **single call** — brand, features, visible showcase pr
 
 > 🔄 **v1.2.0 me badla.** Pehle yahan `GET /brands/get?brandId=` document tha. Wo endpoint ab **customer ke liye band hai** (`isVendorOrAdmin`) — wo brand ka PAN, GSTIN, bank account aur subscription billing return karta tha. Ye naya endpoint sirf wahi banata hai jo profile screen render karti hai, to usme strip karne layak kuch hai hi nahi.
 
+> 🆕 **`coverImage` ab sach me aa sakta hai.** Ye field hamesha se response me
+> thi, par use likhne ka koi endpoint hi nahi tha — to **har brand par hamesha
+> `null`** rehta tha. Ab vendor `PUT /brands/update` se cover set kar sakta hai.
+>
+> ⚠️ App ko phir bhi `null` sambhaalna hoga: jis brand ne abhi tak cover upload
+> nahi kiya uska field khaali hi rahega. Farq itna hai ki ab wo "kabhi nahi
+> aayega" se "jab vendor daale tab aayega" ho gaya hai.
+>
+> Yahi baat `outlets[].logo` aur `outlets[].coverImage` par bhi lagu hai —
+> `PUT /subBrands/update/:subBrandId` se.
+
 ### Headers
 | Header | Value | Required |
 |---|---|---|
@@ -3917,6 +4142,8 @@ Brand profile screen ka **single call** — brand, features, visible showcase pr
     "logo": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/brands/mocha-logo.jpg",
     "coverImage": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/brands/mocha-cover.jpg",
     "uniqueId": "TDB000078",
+    "merchantId": "TM-362P-7M7E-ZB2N",
+    "subscriptionPlan": "Pro Plus",
     "followersCount": 1240,
     "joinedDate": "2026-03-15T00:00:00.000Z",
     "isVerified": true,
@@ -3987,6 +4214,17 @@ Brand profile screen ka **single call** — brand, features, visible showcase pr
   }
 }
 ```
+
+### Response fields — brand identity
+
+| Field | Type | Notes |
+|---|---|---|
+| `merchantId` 🆕 | string\|null | Brand ka merchant identifier (`TM-XXXX-XXXX-XXXX`) |
+| `subscriptionPlan` 🆕 | string\|null | Brand ka **live** plan ka naam. Plan na ho ya lapse ho chuka ho to `null`. Free-text hai — value par `switch`/`if` mat likhiye. #15 ka warning box padhein |
+
+> ⚠️ Sirf plan ka **naam** aata hai. `GET /brands/get` (vendor) poora `subscribed`
+> document deta hai — price, dates, entitlements — par wo response customer ke
+> liye nahi hai. Plan ka naam ek badge hai; uske peeche ki billing nahi.
 
 ### Errors
 | Status | Message | Kab |
@@ -4091,6 +4329,8 @@ Na bhejein to ye simple directory hai — koi `distanceInMeters` field nahi aaye
         "logo": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/brands/mocha-logo.jpg",
         "coverImage": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/brands/mocha-cover.jpg",
         "uniqueId": "TDB000078",
+        "merchantId": "TM-362P-7M7E-ZB2N",
+        "subscriptionPlan": "Pro Plus",
         "followersCount": 1243,
         "joinedDate": "2026-03-15T00:00:00.000Z",
         "isTopBrand": true,
@@ -4120,6 +4360,8 @@ Na bhejein to ye simple directory hai — koi `distanceInMeters` field nahi aaye
 | `_id` | ObjectId | Detail endpoint ([#18](#18-get-brandscustomergetbrandid)) me isko bhejein |
 | `isTopBrand` | boolean | Admin ne pin kiya hai ya nahi |
 | `isVerified` | boolean | `SystemVerify.status === "APPROVED"` se derive. `brand.isApproved` **nahi** — wo hamesha `false` rehta hai |
+| `merchantId` | string\|null | Brand ka merchant identifier (`TM-XXXX-XXXX-XXXX`) |
+| `subscriptionPlan` 🆕 | string\|null | Brand ka **live** plan ka naam; plan na ho ya lapse ho chuka ho to `null`. Free-text — value par branch mat likhiye. #15 ka warning box padhein |
 | `outletCount` | number | Kitne active outlets hain |
 | `distanceInMeters` | number | **Sirf coordinates bhejne pe.** Sabse paas ke outlet ki doori, metres me, rounded |
 | `category` / `subCategory` | object\|null | Singular object hai, array nahi |
@@ -4606,6 +4848,8 @@ GET /follows/get-all?page=1&limit=20
           "description": "artisanal coffee and continental bites",
           "followersCount": 1241,
           "uniqueId": "TDB000078",
+          "merchantId": "TM-362P-7M7E-ZB2N",
+          "subscriptionPlan": "Pro Plus",
           "isActive": true,
           "isDeleted": false
         }
@@ -4614,6 +4858,11 @@ GET /follows/get-all?page=1&limit=20
   }
 }
 ```
+
+| Field | Type | Notes |
+|---|---|---|
+| `brand.merchantId` 🆕 | string\|null | Brand ka merchant identifier |
+| `brand.subscriptionPlan` 🆕 | string\|null | Brand ka **live** plan; lapse ho chuka ho to `null`. #15 ka warning box padhein |
 
 ### Errors
 | Status | Message | Kab |
@@ -5804,9 +6053,14 @@ Ye endpoints backend me exist karte hain par **customer app inko use na kare**. 
 ### Outlets & Work Hours (4)
 `POST /subBrands/signUp-with-whatsapp` · `GET /subBrands/get-all` · `PUT /subBrands/update/:subBrandId` · `POST /workHours/upsert`
 
-### Locations — write/list operations (4)
-`POST /locations/create` · `GET /locations/getAll` · `PUT /locations/update/:id` · `DELETE /locations/delete/:id`
-> Customer sirf `POST /locations/upsert` (#7) aur `GET /locations/get/:id` (#8) use kare
+### Locations — write/list operations (3)
+`POST /locations/create` · `GET /locations/getAll` · `PUT /locations/update/:id`
+> Customer ke liye `POST /locations/upsert` (#7), `GET /locations/get/:id` (#8)
+> aur 🆕 `DELETE /locations/delete/:id` (#8b) hain. Baaki teen brand-side hain —
+> customer ka token unpar `403` khaayega.
+>
+> ⚠️ `upsert` hi customer ka "save" aur "update" dono hai: wo usi row par likhta
+> hai, isliye `PUT /update/:id` ki zarurat nahi padti.
 
 ### Showcase management (11)
 `POST /showcase/section/add` · `GET /showcase/section/get/:sectionId` · `GET /showcase/section/get-all` · `PUT /showcase/section/update/:sectionId` · `PUT /showcase/section/:brandId/reorder` · `DELETE /showcase/section/delete/:sectionId` · `POST /showcase/section/:sectionId/add-media` · `PATCH /showcase/section/:sectionId/media/update/:mediaId` · `PUT /showcase/section/:sectionId/media/replace/:mediaId` · `PUT /showcase/section/:sectionId/media/reorder` · `DELETE /showcase/section/:sectionId/media/delete/:mediaId`
@@ -6046,6 +6300,31 @@ Nateeja: jo brand kabhi verify hua hi nahi, wo directory me aata tha — jismein
 **Ab:** ek hi shared filter `customerVisibleBrandFilter` paanchon jagah lagta hai — brand directory, brand detail, voucher feed, global search, aur showcase/clips (`assertPublicBrand` ke through).
 
 ⚠️ **App par asar:** ek unverified brand ka **deep link ab `404` deta hai**, `200` nahi. Jo link pehle share ho chuke hain wo tab tak nahi khulenge jab tak brand verify na ho — ye jaan-boojh kar hai, kyunki URL se khulna aur search me na aana wahi leak hai jo showcase endpoints me tha.
+
+> #### 🆕 Ek surface reh gaya tha — **voucher detail**
+>
+> Upar wali list me `vouchers/customer/get-all` (feed) tha, par
+> `vouchers/customer/get/:voucherId` (detail) **nahi**. Uski pipeline me brand
+> ka join hi nahi tha, to gate lagane ke liye kuch tha hi nahi — aur wo dhyan
+> se chhoot gaya.
+>
+> Matlab: revoked ya deactivated brand ka voucher **feed se to gayab ho jaata
+> tha, par seedhe link se khulta rehta tha** — share kiya hua WhatsApp message,
+> purana notification, koi cached screen. Aur kuch cascade bhi nahi karta:
+> `reviewBrandVerification` (reject/revoke) aur `toggleBrandStatus`
+> (deactivate) brand ke vouchers ko haath nahi lagate, to wo `PUBLISHED` aur
+> in-window bane rehte hain.
+>
+> Paisa kabhi khatre me nahi tha — `buildClaimPreview` claim ko *"This brand is
+> not accepting claims right now."* keh kar rokta hai. Nuksaan confusion ka
+> tha: page khulta tha, offer dikhta tha, aur button par jaakar mana ho jaata.
+>
+> **Ab detail par bhi wahi chaar conditions lagti hain** jo feed par lagti hain
+> (`isActive` · `isApproved` · `!isRejected` · `!isRevoked`, har ek `$ifNull`
+> ke saath). Aisa voucher ab `404 "Voucher not found or currently
+> unavailable."` deta hai. Ek unit test dono pipelines ke gate ko **aapas me
+> compare** karta hai, to ab ek badla aur doosra reh gaya — aisa chup-chaap
+> nahi ho sakta.
 
 ### 10. ✅ RESOLVED — voucher claim flow ab poora hai
 

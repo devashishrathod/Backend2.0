@@ -1,3 +1,5 @@
+const mongoose = require("mongoose");
+
 const Banner = require("../../models/Banner");
 const { throwError } = require("../../utils");
 const { BANNER_MEDIA_FIELD } = require("../../constants/banner");
@@ -27,10 +29,13 @@ exports.createBanner = async (userId, payload, files) => {
   // paying Cloudinary for a file that is about to be rejected is the wrong order.
   await assertActiveBannerCapacity({ isActive, startDate, endDate });
 
-  const media = await uploadBannerMedia(type, file);
+  // Minted before the upload, because the object key carries it.
+  const _id = new mongoose.Types.ObjectId();
+  const media = await uploadBannerMedia(type, file, _id);
 
   try {
     return await Banner.create({
+      _id,
       title,
       description,
       type,

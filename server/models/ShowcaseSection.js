@@ -4,8 +4,9 @@ const {
   SHOWCASE_MEDIA_TYPE,
   SHOWCASE_SECTION_TYPE,
   SHOWCASE_COVER_IMAGE_MODE,
-  STORAGE_PROVIDER,
 } = require("../constants/showcase");
+const { STORAGE_PROVIDER } = require("../constants/storage");
+const { storageSchema } = require("./storageSchema");
 
 // ---------------------------------------------------------------------------
 // A brand's photo / video gallery, one document per section (album).
@@ -33,6 +34,17 @@ const mediaSchema = new mongoose.Schema(
     // For a PHOTO this is the optimised delivery URL (same asset as `url`);
     // for a VIDEO it is the poster frame. Covers always prefer this field.
     thumbnail: { type: String },
+    /**
+     * Set **only** when the vendor uploaded the poster themselves.
+     *
+     * A photo's thumbnail is its own delivery URL, and a video's default poster
+     * is derived from the video — deleting either takes the media down with it.
+     * Telling those apart used to mean comparing URL strings against a
+     * Cloudinary transformation, which has no equivalent on S3: `publicId` is
+     * null there, the comparison is skipped, and an auto poster reads as custom.
+     * A field that is either there or not has no such gap.
+     */
+    thumbnailStorage: { type: storageSchema, default: undefined },
     storage: {
       provider: {
         type: String,
@@ -90,6 +102,17 @@ const showcaseSectionSchema = new mongoose.Schema(
       enum: Object.values(SHOWCASE_COVER_IMAGE_MODE),
       default: SHOWCASE_COVER_IMAGE_MODE.AUTO,
     },
+    /**
+     * Which media the vendor pinned, when `coverImageMode` is MANUAL.
+     *
+     * ⚠️ The id, not the URL. A pin means "show *this* media", so replacing that
+     * media's file must keep the pin and follow the new picture — a URL would
+     * silently stop matching and the cover would jump elsewhere. It is also what
+     * lets `syncSectionCoverImage` notice that a pinned media has been deleted
+     * or hidden, which is the only way the cover can fall back instead of
+     * pointing at something the customer can no longer see.
+     */
+    coverMediaId: { type: mongoose.Schema.Types.ObjectId, default: undefined },
     sectionType: {
       type: String,
       enum: Object.values(SHOWCASE_SECTION_TYPE),

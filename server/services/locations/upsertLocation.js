@@ -1,7 +1,9 @@
 const { ROLES } = require("../../constants");
+const { LOCATION_KINDS } = require("../../constants/location");
 const Location = require("../../models/Location");
 const User = require("../../models/User");
 const Customer = require("../../models/Customer");
+const { flagsForKind } = require("../../helpers/locations");
 const { throwError } = require("../../utils");
 
 /**
@@ -27,10 +29,11 @@ exports.upsertLocation = async (tokenUserId, payload) => {
     formattedAddress,
     coordinates,
     addressType,
-    isBrandAddress,
-    isSubBrandAddress,
     isDefault,
   } = payload;
+  // ⚠️ No `isBrandAddress` / `isSubBrandAddress` here. `validateUpsertLocation`
+  // does not accept them, so they were always `undefined` — and reading them
+  // would now overwrite the flags derived from `kind` below.
 
   const userId = tokenUserId;
   const user = await User.findById(userId);
@@ -40,6 +43,15 @@ exports.upsertLocation = async (tokenUserId, payload) => {
   const customer = await Customer.findById(customerId);
   if (!customer || customer.isDeleted) throwError(404, "Customer not found");
   let locationData = {
+    /**
+     * The same three facts every other write records: what this address is,
+     * whose it is, and who touched it. `createdBy` is set only on the insert
+     * below — an upsert that lands on an existing row must not rewrite who
+     * created it.
+     */
+    kind: LOCATION_KINDS.CUSTOMER,
+    ...flagsForKind(LOCATION_KINDS.CUSTOMER),
+    updatedBy: userId,
     userId,
     customerId,
     addressLine1,
@@ -55,18 +67,31 @@ exports.upsertLocation = async (tokenUserId, payload) => {
       `${addressLine1?.toLowerCase()}, ${addressLine2?.toLowerCase()}, ${landmark?.toLowerCase()}, ${city?.toLowerCase()}, ${district?.toLowerCase()}, ${state?.toLowerCase()}, ${zipcode}, ${country?.toLowerCase()}`.trim(),
     geo: { type: "Point", coordinates },
     addressType,
-    isBrandAddress,
-    isSubBrandAddress,
     isDefault,
     isDeleted: false,
   };
-  let location = await Location.findOne({ userId });
+
+  /**
+   * ⚠️ Matched on both ids, not on `userId` alone.
+   *
+   * Brand and outlet addresses now carry a `userId` too — the brand owner's or
+   * the outlet's — so `userId` on its own is no longer a statement about whose
+   * *kind* of address this is. Pairing it with `customerId` names exactly one
+   * row and cannot reach across to another kind.
+   *
+   * Not filtered on `isDeleted`: an address that was removed and is being saved
+   * again should come back on this row rather than leave a deleted one behind
+   * and add a second.
+   */
+  let location = await Location.findOne({ userId, customerId });
   if (location) {
     location = await Location.findByIdAndUpdate(location._id, locationData, {
       returnDocument: "after",
     });
   } else {
-    location = await Location.create(locationData);
+    // Only on the insert — an upsert landing on an existing row must not
+    // rewrite who created it.
+    location = await Location.create({ ...locationData, createdBy: userId });
   }
   customer.locationId = location._id;
   await customer.save();

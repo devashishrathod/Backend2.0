@@ -12,6 +12,7 @@ const {
 } = require("../../helpers/transactions");
 const { buildClaimTimeline } = require("../../helpers/voucherClaims");
 const { invoiceUrl } = require("../../helpers/notifications");
+const { resolveBrandPlanName } = require("../../helpers/subscribeds");
 
 /**
  * One claim, its payment, and its story.
@@ -73,9 +74,14 @@ exports.getClaimDetail = async (actor, { claimId, claimCode }) => {
     }
   }
 
-  const [brand, outlet, timeline] = await Promise.all([
+  // Same brand shape as the payment detail and the two listings — `merchantId`
+  // and the live `subscriptionPlan` included. These four reads are independent,
+  // so the plan costs no extra round trip.
+  const [brand, outlet, timeline, subscriptionPlan] = await Promise.all([
     claimDoc.brandId
-      ? Brand.findById(claimDoc.brandId).select("brandName logo").lean()
+      ? Brand.findById(claimDoc.brandId)
+          .select("brandName logo merchantId")
+          .lean()
       : null,
     claimDoc.subBrandId
       ? SubBrand.findById(claimDoc.subBrandId)
@@ -85,12 +91,13 @@ exports.getClaimDetail = async (actor, { claimId, claimCode }) => {
     // Built per audience, never filtered — see the helper for why the raw audit
     // row can never reach a page.
     buildClaimTimeline({ claimId: claimDoc._id, role: access.role }),
+    resolveBrandPlanName(claimDoc.brandId),
   ]);
 
   return {
     claim,
     payment,
-    brand: brand || null,
+    brand: brand ? { ...brand, subscriptionPlan } : null,
     outlet: outlet || null,
     timeline,
     viewer: {

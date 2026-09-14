@@ -10,6 +10,9 @@ const {
   outletDistanceExpression,
   customerVisibleBrandFilter,
 } = require("../../helpers/brands");
+// The live plan, resolved the same way on every customer surface — never off
+// the stale `Brand.subscribedId` pointer. See the helper for what that cost.
+const { buildBrandPlanLookup } = require("../../helpers/subscribeds");
 
 /**
  * The customer-facing brand directory, and the "Top Brands" tab.
@@ -110,6 +113,9 @@ exports.getAllCustomerBrands = async (query) => {
       as: "verification",
       project: { status: 1 },
     }),
+    // Only the plan's name — never its price, entitlements or limits, which are
+    // the vendor's billing detail.
+    ...buildBrandPlanLookup({ localField: "_id", as: "subscriptionPlan" }),
   );
 
   // Outlets — a count on every row, plus the nearest one's distance when the
@@ -220,6 +226,7 @@ exports.getAllCustomerBrands = async (query) => {
       joinedDate: 1,
       isTopBrand: 1,
       isVerified: 1,
+      subscriptionPlan: 1,
       category: 1,
       subCategory: 1,
       outletCount: 1,

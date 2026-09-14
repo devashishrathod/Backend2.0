@@ -1,4 +1,21 @@
-require("dotenv").config();
+/**
+ * ⚠️ First, before anything else is required — including express.
+ *
+ * Eleven modules read `process.env` at **load time** (`MERCHANT_ID_SECRET` in
+ * `generateBrandMerchantId`, `CLOUD_BASE_URL` in `helpers/cloudinary`,
+ * `TWO_FACTOR_API_KEY` in three OTP helpers, and the rest). A value that
+ * arrives after they have been required is a value they never see, so the
+ * environment has to be loaded, validated and written back before the first
+ * `require` below runs.
+ *
+ * This replaces a bare `dotenv.config()`. The difference is that a missing or
+ * malformed variable now fails the boot instead of surfacing weeks later as
+ * behaviour nobody can explain — `CLOUD_BASE_URL` unset, for instance, makes
+ * every media delete a silent no-op while the server answers 200 to everything.
+ */
+const { config } = require("./configs/env");
+const os = require("os");
+const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
@@ -8,25 +25,30 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 
 const { mongoDb } = require("./database/mongoDb");
-const { errorHandler } = require("./middlewares");
+const { errorHandler, cleanupTempFiles } = require("./middlewares");
 const { logChannelStatus } = require("./helpers/notifications");
 const { logPaymentAccounts, assertMoneyIndexes } = require("./helpers/transactions");
 const { throwError } = require("./utils");
 const allRoutes = require("./routes");
 const { getIP } = require("./configs/render");
+const { logS3Config } = require("./configs/s3");
 const { startJobs } = require("./jobs");
 const { assertReachableAdmins } = require("./helpers/notifications");
 
 const app = express();
-const port = process.env.PORT || 8080;
+const port = config.PORT;
 
 /**
- * ⚠️ Only ever used to choose a log format. `NODE_ENV=production` is set in some
- * shells on the dev machine here (see `CLAUDE.md`), so anything that changes
- * behaviour must not hang off it — the money paths and index handling all read
- * their own named variables instead.
+ * Which tier this is — from `CONFIG_PROFILE`, never from `NODE_ENV`.
+ *
+ * ⚠️ `NODE_ENV=production` is set in some shells on the dev machine here (see
+ * `CLAUDE.md`), on a laptop pointed at a development database with Razorpay test
+ * keys. Anything that changes behaviour must therefore hang off the profile,
+ * which lives in the environment file and says what that file is. `NODE_ENV`
+ * survives for exactly one job below — picking a log format — because it is
+ * npm's and Express's variable, not ours.
  */
-const isProduction = process.env.NODE_ENV === "production";
+const isProduction = config.isProduction;
 
 /**
  * How many proxies sit in front of this process.
@@ -41,7 +63,7 @@ const isProduction = process.env.NODE_ENV === "production";
  * of it. Trusting a hop that does not exist means believing an `X-Forwarded-For`
  * header the caller wrote themselves, which is a free pass around the limiter.
  */
-app.set("trust proxy", Number.parseInt(process.env.TRUST_PROXY ?? "1", 10));
+app.set("trust proxy", config.TRUST_PROXY);
 
 app.use(
   helmet({
@@ -69,7 +91,7 @@ app.use(cors());
 
 // `dev` is colourised and built for a terminal. In production the log is a file
 // or a CloudWatch stream, where `combined` is the format everything else parses.
-app.use(morgan(process.env.LOG_FORMAT || (isProduction ? "combined" : "dev")));
+app.use(morgan(config.LOG_FORMAT || (isProduction ? "combined" : "dev")));
 
 /**
  * A backstop against a runaway client, not a security boundary.
@@ -97,7 +119,7 @@ const WEBHOOK_PATHS = new Set([
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: Number.parseInt(process.env.RATE_LIMIT_MAX ?? "3000", 10),
+    limit: config.RATE_LIMIT_MAX,
     standardHeaders: "draft-7",
     legacyHeaders: false,
     /**
@@ -111,7 +133,72 @@ app.use(
   }),
 );
 
-app.use(fileUpload({ useTempFiles: true, tempFileDir: "/tmp/" }));
+/**
+ * How large a single uploaded file may be.
+ *
+ * A ceiling that protects the process, not a product rule. The limits a vendor
+ * actually meets — 10 MB for a showcase image, 50 MB for a showcase video —
+ * live in `Setting` and are enforced per surface with a message naming the
+ * surface. This one exists so that nothing, from any client, can put an
+ * unbounded file on this disk; it is set well above every real limit and a
+ * normal user should never see it.
+ *
+ * ⚠️ Read once, here, because `express-fileupload` builds its options at
+ * `app.use()` time and not per request (`lib/index.js`). Changing it needs a
+ * restart. Once uploads are presigned the size condition is built per request
+ * from `Setting` and this line goes away with the multipart path.
+ *
+ * Validated by `configs/env/schema.js` along with everything else, so an
+ * unreadable value fails the boot rather than becoming `NaN` — and `NaN` bytes
+ * is not a small limit, it is **no limit**, because every comparison against it
+ * is false. That check briefly lived in its own module; the schema does it
+ * strictly better, rejecting `"100MB"` too rather than reading it as 100.
+ */
+const MAX_UPLOAD_SIZE_MB = config.MAX_UPLOAD_SIZE_MB;
+
+/**
+ * ⚠️ Before `fileUpload()`, deliberately — see `middlewares/cleanupTempFiles.js`.
+ * A request aborted on the size limit never reaches a middleware mounted after
+ * it, and any file that had already finished writing would be left behind.
+ */
+app.use(cleanupTempFiles);
+app.use(
+  fileUpload({
+    useTempFiles: true,
+    /**
+     * ⚠️ Not `"/tmp/"`. That is an absolute POSIX path, and on Windows it
+     * resolves to `C:\tmp` — the root of the drive, nowhere near this project,
+     * which is why 7.70 GB of abandoned uploads accumulated there unnoticed.
+     * `os.tmpdir()` is the right directory on both, and the subdirectory makes
+     * it obvious who owns the files. The library creates it if missing.
+     */
+    tempFileDir: path.join(os.tmpdir(), "trydood-uploads"),
+    limits: { fileSize: MAX_UPLOAD_SIZE_MB * 1024 * 1024 },
+    /**
+     * ⚠️ Load-bearing, and `false` by default.
+     *
+     * Without it busboy **truncates** a file that passes the limit, marks it
+     * `truncated: true`, and lets the request carry on. Nothing in this
+     * codebase reads `truncated`, so half a video would upload cleanly and be
+     * stored as a valid row — a worse outcome than having no limit at all.
+     */
+    abortOnLimit: true,
+    /**
+     * The library's own response is `res.end(<plain text>)`, which never
+     * reaches `errorHandler` and gives a client expecting JSON something it
+     * cannot parse — surfacing as a generic "something went wrong" rather than
+     * the one message that would tell the user what to do about it.
+     */
+    limitHandler: (req, res) => {
+      // Several files in one request each fire this. Only the first can answer.
+      if (res.headersSent) return;
+      res.status(413).json({
+        success: false,
+        message: `File is too large. The maximum upload size is ${MAX_UPLOAD_SIZE_MB} MB.`,
+      });
+    },
+  }),
+);
 // The raw bytes are kept alongside the parsed body because Razorpay signs the
 // untouched payload — re-serialised JSON would not match the HMAC. Only the
 // webhook route reads `req.rawBody`; everything else is unaffected.
@@ -173,6 +260,11 @@ app.use(errorHandler);
     // and whether each one can verify a webhook at all. A missing webhook secret
     // is otherwise invisible until a payment is captured and never settles.
     logPaymentAccounts();
+    // And the same for storage: which buckets, and — the part that bites —
+    // whether the credentials came from the environment or from an instance
+    // role. Environment keys win over a role, so a forgotten key survives the
+    // move to EC2 and fails silently on the day it is revoked.
+    logS3Config();
     // Background sweeps (subscription + voucher expiry). Started after the
     // listener so a slow first run never delays the port binding, and never
     // allowed to take the process down. Disable with ENABLE_JOBS=false.
@@ -229,11 +321,11 @@ app.use(errorHandler);
      * listened. Inside this branch it is only reached when somebody has asked
      * for a tunnel, which can only be true where the package is installed.
      */
-    if (process.env.ENABLE_NGROK === "true") {
+    if (config.ENABLE_NGROK) {
       const ngrok = require("ngrok");
       const url = await ngrok.connect({
         addr: port,
-        authtoken: process.env.NGROK_AUTH_TOKEN,
+        authtoken: config.NGROK_AUTH_TOKEN,
         // subdomain: process.env.NGROK_SUBDOMAIN // must be set for custom subdomain
       });
       console.log(`Public URL: ${url}`);

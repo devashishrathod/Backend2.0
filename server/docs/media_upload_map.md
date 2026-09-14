@@ -578,26 +578,84 @@ kuch nahi bachta. Detail §8.3 me.
 
 Ye sab **verify kiye gaye** hain, guess nahi. Har ek ke saath file:line diya hai.
 
-### 8.1 `express-fileupload` par **koi limit nahi**
+| Status | Findings |
+|---|---|
+| ✅ **Fixed — Phase 0** | §8.1 (no size limit) · §8.9 (`/tmp` galat jagah) · §8.10 (temp files kabhi delete nahi) · §8.11 (🔴 ownership hole, + 2 aur bug) |
+| ✅ **Fixed — Phase 2** | §8.2 (har delete chup-chaap skip) · §8.3 (delete pehle, upload baad me) |
+| ✅ **Fixed — chhote fix** | §8.4 (6 endpoint par koi mime check nahi) · §8.6 (shared default delete ho sakta tha) · §8.8 (banner/ticker delete par asset reh jaata tha) · §8.13 (voucher images me SVG) |
+| 🟡 **Aadha** | §8.5 (`uploadVideo` hata; `uploadAudio` rakha, `deletePDF` ka caller abhi bhi nahi) |
+| ⏳ **Abhi khula** | §8.7 · §8.12 · §8.14 · §8.15 · §8.16 |
+
+**Khule findings, asar ke hisaab se:**
+
+| # | Kya | Kab theek hoga |
+|---|---|---|
+| 🔴 §8.12 | `mimetype` **client ka bheja hua** hai — bytes kabhi padhe nahi jaate. Aaj Cloudinary bacha raha hai, **S3 par wo bachav nahi rahega**. §8.4/§8.13 ne saamne ka darwaaza band kiya hai; ye poora taala hai | Phase 5 — magic bytes |
+| 🟠 §8.14 | PDF ka URL public + permanent + `Math.random()` se guessable | Phase 4 — private bucket |
+| 🟡 §8.7 | `Brand.coverImage`, `SubBrand.logo/coverImage` — padhe jaate hain, likhta koi nahi | faisla chahiye |
+| 🟡 §8.15 | Uploads serial — 15 image = 15 round trip | Phase 5 ke saath |
+| 🟡 §8.16 | Delivery URL me size nahi — 4000×3000 mobile card par bhi waisi hi | Phase 6 — resize Lambda |
+
+🔴 **Ownership ke teen aur hole, is doc ke bahar** — media se seedha rishta nahi,
+par wahi bimari: `PUT /locations/update/:id`, `DELETE /locations/delete/:id`
+(dono me **customer ka apna address** bhi shaamil hai), aur
+`POST /vouchers/publish/:versionId`. Detail:
+[vendor_panel_api_doc.md → Appendix B](./vendor_panel_api_doc.md#appendix-b--known-issues).
+
+Khule findings ka kaunsa phase inhe theek karega —
+[s3_migration_phases.md](./s3_migration_phases.md).
+
+### 8.1 ✅ FIXED — `express-fileupload` par koi limit nahi thi
+
+> **Fixed in Phase 0** — [s3_migration_phases.md](./s3_migration_phases.md)
+
+Pehle:
 
 ```js
 app.use(fileUpload({ useTempFiles: true, tempFileDir: "/tmp/" }));
 ```
-[index.js:114](../index.js#L114)
 
-Na `limits.fileSize`, na `limits.files`, na `abortOnLimit`. Iska matlab:
+Na `limits.fileSize`, na `abortOnLimit`. Har media endpoint par size
+**unlimited** tha. Measured natija: `C:\tmp` me ek **2,615 MB** ki single file,
+aur uske baad chaar 1,095 MB wali.
 
-- Sirf **showcase** endpoints par size check hai (10 MB image / 50 MB video), aur
-  wo bhi upload ke **baad** — file pehle `/tmp/` par poori likhi ja chuki hoti hai.
-- Baaki har media endpoint (user image, brand logo, category image, voucher
-  images, banner, ticker) par size **unlimited** hai.
-- Ek 5 GB file `/tmp/` bhar sakti hai, aur Render/EC2 par disk full hone se poora
-  process girta hai.
+Ab [index.js](../index.js):
 
-**Fix:** `fileUpload({ limits: { fileSize: N }, abortOnLimit: true })`.
-Ye ek jagah ka change hai jo har endpoint ko cover karta hai.
+```js
+limits: { fileSize: MAX_UPLOAD_SIZE_MB * 1024 * 1024 },   // .env, default 100
+abortOnLimit: true,
+limitHandler: (req, res) => { /* JSON 413 */ },
+```
 
-### 8.2 `CLOUD_BASE_URL` galat/khaali ho to **har delete chup-chaap skip**
+⚠️ **`abortOnLimit` load-bearing hai.** Uske bina busboy file ko chup-chaap
+**kaat** deta hai, `truncated: true` set karta hai, aur request chalti rehti hai
+— aur is codebase me `truncated` kahin nahi padha jaata. Aadhi video upload hokar
+valid row ban jaati, jo **bina limit ke haalat se bhi bura** hai.
+
+⚠️ `limitHandler` bhi zaroori hai — library ka default `res.end(<plain text>)`
+hai, jo `errorHandler` tak nahi pahunchta aur JSON parse karne wale client ko
+ek bekaar error deta hai.
+
+Showcase ki per-surface limits (10 MB / 50 MB) waise hi hain — wo `Setting` se
+aati hain aur upload ke **baad** check hoti hain. Ye ceiling us se upar ka
+backstop hai.
+
+Tested: `__tests__/unit/uploadLimits.test.js` (real multipart request over a
+socket). Mutation-verified — `abortOnLimit: false` aur `limitHandler` hataane,
+dono par suite fail hoti hai.
+
+### 8.2 ✅ FIXED — `CLOUD_BASE_URL` galat/khaali ho to har delete chup-chaap skip
+
+> **Fixed in Phase 2** — [s3_migration_phases.md §2.8](./s3_migration_phases.md)
+>
+> Ab har row jiske paas `storage.publicId` hai, **id se** delete hoti hai —
+> `services/storage/providers/cloudinary.js` URL parse karta hi nahi. URL wala
+> raasta sirf un legacy rows ke liye bacha hai jinme `storage` hai hi nahi, aur
+> wahan URL ke alawa kuch hai bhi nahi.
+>
+> Yahi bug **teen aur jagah** mila jo is finding me likha nahi tha: banner,
+> voucher banner aur ticker — teenon ke paas `storage` object tha aur teenon URL
+> se delete kar rahe the. Teenon theek.
 
 ```js
 const CLOUD_BASE = process.env.CLOUD_BASE_URL;
@@ -615,7 +673,14 @@ assets permanently orphan ho jaate hain**, kyunki unka URL naye `CLOUD_BASE_URL`
 se match nahi karega. `.env` me `CLOUD_NAME=dtpy1lbmf #dbrkf1j5w` — commented
 out purana cloud isi migration ka nishaan hai.
 
-### 8.3 Users / categories / subCategories me **delete pehle, upload baad me**
+### 8.3 ✅ FIXED — users / categories / subCategories me delete pehle, upload baad me
+
+> **Fixed in Phase 2** — [s3_migration_phases.md §3.3](./s3_migration_phases.md)
+>
+> Teenon services ab **upload → assign → phir purana delete** karti hain. Ye
+> Phase 3 ke liye planned tha, par wahi teen lines waise bhi chhui ja rahi thin.
+
+Jo tha:
 
 | File | Line |
 |---|---|
@@ -638,7 +703,16 @@ aur ab customer app me us category ki tile blank ho jaati hai.
 
 **Fix:** Pattern A (§7) apply karein — upload → save → purana delete.
 
-### 8.4 6 endpoint groups me **koi mime-type check hi nahi**
+### 8.4 ✅ FIXED — 6 endpoint groups me koi mime-type check hi nahi tha
+
+> **Fixed** — ek shared [`assertImageFile`](../helpers/media/assertImageFile.js)
+> ab in chhe jagah chalta hai, allow-list par (`jpeg/jpg/png/webp/gif`), aur
+> `422` deta hai jisme accepted types aur jo aaya wo dono likhe hote hain.
+>
+> ⚠️ Ye **declared** mime hai, jo client likhta hai — §8.12 abhi khula hai. Ye
+> saamne ka darwaaza band karta hai, poora taala nahi.
+
+Jo tha:
 
 | Endpoint | File | Check |
 |---|---|---|
@@ -663,25 +737,38 @@ kabhi nahi milta.
 Compare karein: banner/ticker/showcase/voucher-banner sab clean `422` dete hain
 expected mime types ki list ke saath.
 
-### 8.5 3 dead functions
+### 8.5 🟡 PARTLY FIXED — 3 dead functions
 
-[services/uploads/index.js](../services/uploads/index.js) me export hain, poore
+> **Phase 2:** `uploadVideo` hata diya gaya. `uploadAudio` aur `deletePDF`
+> jaan-boojh kar rakhe gaye — neeche wajah.
+
+[services/uploads/index.js](../services/uploads/index.js) me export the, poore
 codebase me **0 call sites**:
 
-| Function | Line |
+| Function | Ab |
 |---|---|
-| `uploadVideo` | [:24](../services/uploads/index.js#L24) |
-| `uploadAudio` | [:16](../services/uploads/index.js#L16) |
-| `deletePDF` | [:47](../services/uploads/index.js#L47) |
+| `uploadVideo` | ✅ **hata** — `helpers/showcases` aur `helpers/banners` ab seedha facade se jaate hain |
+| `uploadAudio` | 🟡 **rakha gaya** — faisla liya gaya ki aage audio aa sakta hai. Koi `audio/` prefix S3 par tab tak banega hi nahi jab tak koi ise call na kare |
+| `deletePDF` | 🟠 **rakha gaya, par abhi bhi koi caller nahi** — Phase 4 ka kaam |
 
 Iska practical matlab: **project me kahin bhi audio (mp3, wav) upload nahi
-hota.** `Audio/` folder Cloudinary par kabhi banega hi nahi. Aur `deletePDF`
-na hone ki wajah se **koi bhi generated PDF kabhi delete nahi hoti** — har
-invoice, receipt aur statement Cloudinary par permanent hai. Ye galat nahi hai
-(documents-of-record hone chahiye bhi), par ye jaan-boojh kar liya gaya faisla
-lagta nahi — sirf koi caller likha hi nahi gaya.
+hota.** Aur `deletePDF` ka koi caller na hone se **koi bhi generated PDF kabhi
+delete nahi hoti** — har invoice, receipt aur statement provider par permanent
+hai. Ye galat nahi hai (documents-of-record hone chahiye bhi), par ye jaan-boojh
+kar liya gaya faisla lagta nahi — sirf koi caller likha hi nahi gaya. **Phase 4
+me ye sawaal dobara uthega**, kyunki tab documents private bucket me jaayenge
+aur retention ka faisla lena hi padega.
 
-### 8.6 `DEFAULT_IMAGES` **purane Cloudinary account** par hain
+### 8.6 ✅ FIXED (khatra) — `DEFAULT_IMAGES` purane Cloudinary account par hain
+
+> **Fixed** — `services/storage` ab har shared default URL ko delete se **mana**
+> karta hai, chaahe wo kis cloud par ho. Guard facade me hai, call sites me
+> nahi, isliye koi naya surface ise dobara la nahi sakta.
+>
+> ⚠️ Defaults abhi bhi purane cloud (`drvdnqydw`) par hi hain — wo alag baat hai
+> aur khuli hai (neeche point 3). Ab sirf **delete** ka khatra nahi raha.
+
+Jo tha:
 
 [constants.js:293-303](../constants.js#L293-L303)
 
@@ -713,6 +800,15 @@ Par active cloud `.env` me **`dtpy1lbmf`** hai. Do nateeje:
 defaults ko current cloud par migrate karna. Dono karne padenge — sirf migrate
 karna problem #2 ko live kar dega.
 
+> 🟢 **Phase 3 me ye saaf ho gaya.** `imageStorage` aa chuka hai, aur ek shared
+> default ke paas wo hota hi nahi — to "ye hamara upload hai ya shared
+> placeholder" ka jawab ab ek **field** hai, URL ke host ka andaaza nahi.
+>
+> Do layer ho gayi: facade URL-set se in defaults ko mana karta hai, aur row par
+> storage ka **na hona** dobara wahi baat kehta hai. Point 3 (defaults purane
+> cloud par hain) abhi bhi khula hai — par wo ab **delete ka** khatra nahi, sirf
+> ek dependency hai us account par.
+
 ### 8.7 3 media fields jo **kabhi likhe hi nahi jaate**
 
 | Field | Read hota hai | Write |
@@ -730,9 +826,9 @@ Isi tarah **`ShowcaseSection.coverImageMode`**: `MANUAL` value
 lekin **koi endpoint use `MANUAL` set nahi karta** — validator me bhi nahi. Yaani
 vendor cover pin kar hi nahi sakta; wo hamesha AUTO hi rehta hai.
 
-### 8.8 Delete par media cleanup **inconsistent** hai
+### 8.8 ✅ FIXED — banner aur ticker delete par asset reh jaata tha
 
-| Domain | Record delete | Cloudinary asset |
+| Domain | Record delete | Storage asset |
 |---|---|---|
 | Showcase media | soft | ✅ destroy |
 | Showcase section | soft | ✅ destroy (saare) |
@@ -740,33 +836,70 @@ vendor cover pin kar hi nahi sakta; wo hamesha AUTO hi rehta hai.
 | Category / SubCategory | soft | ✅ destroy |
 | Voucher banner | field clear | ✅ destroy |
 | Voucher images (draft version) | replace | ✅ destroy |
-| **Banner** | soft | ❌ **rah jaata hai** |
-| **Promotional ticker** | soft | ❌ **rah jaata hai** |
+| **Banner** | soft | ✅ **ab destroy** |
+| **Promotional ticker** | soft | ✅ **ab destroy** |
 | Voucher (poora voucher delete) | — | ❌ koi delete endpoint hi nahi |
 | PDF documents | — | ❌ kabhi delete nahi (§8.5) |
 
 Banner aur ticker sabse zyada churn wale content hain (campaign-based, har hafte
-badalte hain) — aur wahi do assets peeche chhod jaate hain.
-[services/banners/deleteBanner.js](../services/banners/deleteBanner.js) aur
-[services/promotionalTickers/deleteTicker.js](../services/promotionalTickers/deleteTicker.js)
-me `deleteBannerMedia` / `deleteTickerIcon` ka koi call hi nahi hai — helpers
-maujood hain, sirf use nahi hue.
+badalte hain) — aur wahi do assets peeche chhod jaate the. Helpers maujood the,
+bas `deleteBanner.js` / `deleteTicker.js` unhe call hi nahi karte the.
 
-### 8.9 `/tmp/` Windows par exist nahi karta
+Ye chhota leak nahi tha: delete soft hai, par row **wapas nahi aa sakti** — koi
+restore endpoint nahi hai aur har read `isDeleted: false` filter karti hai. To
+file har mahine paid rehti thi, ek aisi row ke naam par jisse koi pahunch hi
+nahi sakta.
 
-```js
-app.use(fileUpload({ useTempFiles: true, tempFileDir: "/tmp/" }));
-```
+⚠️ Delete **save ke baad** hota hai, pehle nahi — warna save fail hone par ek
+zinda banner aise asset ko point karta jo ja chuka ho. Aur `type` bhi saath
+jaata hai, taaki ek GIF plain image ki tarah destroy na ho (galat
+`resource_type` par Cloudinary "not found" keh kar file chhod deta hai).
+Dono cheezein test me pinned hain.
 
-Linux (Render, EC2) par theek hai. Windows dev machine par `/tmp/` current drive
-ke root par resolve hota hai (`C:\tmp`) — wo folder hai to chal jaayega, warna
-upload fail hoga. `helpers/documents/renderDocument.js` sahi kaam karta hai —
-`os.tmpdir()` use karta hai, hardcoded path nahi.
+### 8.9 ✅ FIXED — `/tmp/` Windows par galat jagah banta tha
 
-### 8.10 `/tmp/` me har uploaded file ki copy **hamesha ke liye** rah jaati hai
+> **Fixed in Phase 0** — [s3_migration_phases.md](./s3_migration_phases.md)
 
-`CLAUDE.md` me already likha hai: *"make sure the unit has a writable `/tmp` and
-something clears it"* — **kuch clear nahi karta.**
+`"/tmp/"` ek absolute POSIX path hai. Windows par wo `C:\tmp` par resolve hota
+hai — **drive ka root**, project se bilkul alag jagah. Isi wajah se 7.70 GB wahan
+jama hoti rahi aur kabhi kisi ko dikhi nahi: dhoondha project folder me jaata
+tha, files thi `C:\tmp` me.
+
+Ab `path.join(os.tmpdir(), "trydood-uploads")` — Linux aur Windows dono par sahi
+jagah, aur naam se pata chalta hai ki files kiski hain. Library directory khud
+bana leti hai (`checkAndMakeDir({ createParentPath: true })`).
+
+`helpers/documents/renderDocument.js` shuru se hi `os.tmpdir()` use karta tha.
+
+### 8.10 ✅ FIXED — har uploaded file ki copy hamesha ke liye rah jaati thi
+
+> **Fixed in Phase 0** — [s3_migration_phases.md](./s3_migration_phases.md)
+>
+> **Naya:** [middlewares/cleanupTempFiles.js](../middlewares/cleanupTempFiles.js),
+> `index.js` me `fileUpload()` se **pehle** mount kiya gaya.
+>
+> ```js
+> res.on("finish", sweep);   // response chala gaya
+> res.on("close", sweep);    // client beech me bhaag gaya
+> ```
+>
+> ⚠️ **Mount order load-bearing hai.** Size abort par `express-fileupload` khud
+> response band karta hai aur `next()` kabhi nahi bulaata — to uske *baad* mount
+> kiya middleware us request par chalta hi nahi. Library sirf us file ko saaf
+> karti hai jisne limit todi; usi request ki pehle wali chhoti file, jo already
+> disk par likhi ja chuki hai, **chhoot jaati hai**. Pehle mount karne se
+> listeners us se pehle lag jaate hain.
+>
+> Measured tha: **493 files / 7.70 GB**, Oct 2025 → Sep 2026.
+>
+> Tested: `__tests__/unit/cleanupTempFiles.test.js` +
+> `__tests__/unit/uploadLimits.test.js`. Mount order ka claim mutation se verify
+> kiya gaya — baad me mount karne par suite fail hoti hai.
+
+Wajah, record ke liye —
+
+`CLAUDE.md` me already likha tha: *"make sure the unit has a writable `/tmp` and
+something clears it"* — **kuch clear nahi karta tha.**
 
 `express-fileupload` ka `cleanup()` (jo temp file `unlink` karta hai) sirf
 **failure paths** par chalta hai — `lib/processMultipart.js` me line `82` (write
@@ -786,16 +919,30 @@ permanently baithi hai.** Ek 50 MB showcase video upload = 50 MB Cloudinary par
 + 50 MB disk par, hamesha ke liye. Ek instance jo mahino chalti rahe, uski disk
 bharegi aur process gir jaayega — aur wajah kisi log me nahi dikhegi.
 
-**Fix ke 3 options:** (a) service me upload ke baad `fs.unlink(tempFilePath)`,
-(b) ek middleware jo `res.on("finish")` par `req.files` ki saari temp files
-saaf kare, (c) OS-level cron/tmpfiles.d. (b) sabse safe hai kyunki wo har
-endpoint ko cover karta hai, aaj ke aur kal ke dono.
+**Chuna gaya:** middleware wala raasta — 20 call sites me `fs.unlink` bikherne
+se behtar, kyunki agla banne wala upload endpoint bina kuch jaane cover ho jaata
+hai. Per-service unlink me ek jagah bhoolna matlab leak wapas; OS-level cron
+code ke bahar hai aur naye server par set karna bhool sakte hain.
 
 ---
 
-### 8.11 🔴 `brandFeatures` me ownership check hai hi nahi
+### 8.11 ✅ FIXED — `brandFeatures` me ownership check hai hi nahi tha
 
-Ye poore media surface ka sabse serious gap hai.
+> **Fixed** — teenon writes ab `resolveActorBrand` se guzarte hain, wahi helper jo
+> vouchers aur subscriptions use karte hain. Controllers ab `actor`
+> (`{userId, role, brandId}`) bhejte hain, aur ownership `Brand.userId` se padhi
+> jaati hai — token ke cached `brandId` se nahi, taaki purana token access widen
+> na kar sake.
+>
+> Check **upload se pehle** chalta hai, to refuse hui request na kuch upload
+> karti hai na purana asset chhuti hai.
+>
+> Saath me do aur bug mile aur theek hue — niche.
+>
+> Test: `__tests__/money/brandFeatureOwnership.test.js` (13 tests, asli DB).
+> Mutation-verified: har check hatane par suite fail hoti hai.
+
+Ye poore media surface ka sabse serious gap tha.
 
 | Endpoint | Gate | Actor check | Media asar |
 |---|---|---|---|
@@ -845,8 +992,38 @@ Compare karein — baaki har domain me ye check hai:
 | **brandFeatures** | **kuch nahi** |
 
 Dono helpers ownership ko `Brand.userId` se verify karte hain, token ke cached
-`brandId` se nahi — taaki purana token access widen na kar sake. Fix yahi
-pattern hai: controllers `actor` banayein, service `resolveActorBrand` call kare.
+`brandId` se nahi — taaki purana token access widen na kar sake. Fix wahi
+pattern hai: controllers `actor` banate hain, service `resolveActorBrand` call
+karti hai. `middlewares/validateRoles.js` khud yahi kehta hai — *"Ownership
+within the brand is still the service's job"* — ye teen services wahi nahi kar
+rahi thi.
+
+#### Saath me mile do aur bug
+
+**1. `throwError` import hi nahi tha.** `updateBrandFeature.js` ise **teen**
+lines par call karta tha aur import **kahin nahi** — to har ek
+`ReferenceError: throwError is not defined` deta tha:
+
+| Path | Aata tha | Ab |
+|---|---|---|
+| Feature nahi mila | `500` | `404 Brand feature not found!` |
+| Brand nahi mila | `500` | ab ownership check pehle chalta hai |
+| 10 active ki limit | `500` | `400 A brand can have maximum 10 active features!` |
+
+🔴 **Vendor ko kya dikhta tha:** 10 features ke baad gyaarahvaan activate
+karne par *"server error"* — use kabhi pata hi nahi chalta ki **limit 10 hai**.
+
+**2. `isActive: false` chup-chaap ignore hota tha.** Guard `if (isActive)` tha,
+jo boolean `false` ke liye falsy hai:
+
+| Bheja | Pehle | Ab |
+|---|---|---|
+| `false` (JSON boolean) | 🔴 **chup-chaap ignore**, phir bhi `200 "updated successfully"` | band ho jaata hai |
+| `"false"` (multipart string) | band ho jaata tha | band ho jaata hai |
+
+Panel multipart bhejta hai isliye wahan kaam karta dikhta tha; JSON se update
+karne par feature switch off karne ka koi tarika hi nahi tha — aur response
+success bolta tha.
 
 ### 8.12 🔴 `mimetype` client ka bheja hua hai, file ka nahi
 
@@ -872,7 +1049,14 @@ aur usi content-type se serve karega.
 allowlist **sniffed** type par lagayein — bheje gaye header par nahi. Provider ko
 bhi wahi sniffed type diya jaaye.
 
-### 8.13 🟠 Voucher images me SVG allowed hai
+### 8.13 ✅ FIXED — voucher images me SVG allowed tha
+
+> **Fixed** — `validateVoucherImages` ab
+> [`assertImageFile`](../helpers/media/assertImageFile.js) use karta hai, jo ek
+> allow-list hai. GIF jaan-boojh kar allowed rakha gaya (wo aaj bhi chalta hai,
+> use hataana product faisla hota, security fix nahi); SVG aur baaki sab mana.
+
+Jo tha:
 
 ```js
 if (!mimeType || !mimeType.startsWith("image/")) throwError(400, ...);
@@ -923,19 +1107,22 @@ short-TTL presigned GET. Tab token sach me ek credential ban jaata hai.
 ### 8.15 🟡 Uploads serial hain — 15 images = 15 sequential round trips
 
 ```js
-exports.uploadMultipleMedia = async (files = []) => {
+exports.uploadMultipleMedia = async (files = [], sectionId) => {
   const uploaded = [];
   for (const file of files) {
-    const media = await exports.uploadSingleMedia(file);   // ek-ek karke
+    const media = await exports.uploadSingleMedia(file, sectionId);  // ek-ek karke
     uploaded.push(media);
   }
   return uploaded;
 };
 ```
-[helpers/showcases/upload.js:30-37](../helpers/showcases/upload.js#L30-L37)
+[helpers/showcases/upload.js](../helpers/showcases/upload.js)
 
 Wahi shape `uploadVoucherImages` me bhi hai
-([validateImagesFiles.js:36](../helpers/vouchers/validateImagesFiles.js#L36)).
+([validateImagesFiles.js](../helpers/vouchers/validateImagesFiles.js)).
+
+> ⚠️ Phase 2 me in dono ne `entityId` liya aur facade par chale gaye, par
+> **serial hi rahe** — badalna sirf key tha, concurrency nahi. Finding khula hai.
 
 Showcase ek section me **15 items** allow karta hai. Har upload ka apna TLS
 handshake + transfer hai, to 15 images ka matlab 15 sequential round trips — jab
