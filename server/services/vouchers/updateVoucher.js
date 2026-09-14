@@ -11,6 +11,7 @@ const {
   validateVoucherImages,
   uploadVoucherImages,
   rollbackVoucherImages,
+  pickOrphanImages,
   generateVoucherVersionCode,
   getNextVersionNumber,
   createVoucherHistory,
@@ -527,8 +528,21 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
         { session },
       );
 
-      // Draft/rejected images belong only to this version, so removed ones
-      // can be deleted for real (unlike the forked-version case above).
+      /**
+       * Removed from a draft, so these are candidates for a real delete —
+       * **candidates**, not a list.
+       *
+       * 🔴 The old comment here said a draft's images "belong only to this
+       * version", and that is exactly what a fork makes untrue: the draft was
+       * cloned from a published version and carries its `storage` across, so
+       * the two point at one object. Deleting on that assumption destroyed the
+       * file the live voucher was still serving.
+       *
+       * `pickOrphanImages` asks the only question that settles it — is any
+       * surviving version still pointing at this file? — and it runs after the
+       * commit, so it reads the state the delete would actually be leaving
+       * behind.
+       */
       removedImagesToDelete = removedImages;
 
       await createVoucherHistory({
@@ -555,7 +569,13 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
     await session.commitTransaction();
 
     if (removedImagesToDelete.length) {
-      await rollbackVoucherImages(removedImagesToDelete);
+      // ⚠️ After the commit on purpose: the surviving versions are only what
+      // they really are once this transaction has landed.
+      const orphans = await pickOrphanImages(
+        removedImagesToDelete,
+        voucher._id,
+      );
+      if (orphans.length) await rollbackVoucherImages(orphans);
     }
 
     return {

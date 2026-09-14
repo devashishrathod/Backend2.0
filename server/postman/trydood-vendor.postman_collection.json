@@ -9540,7 +9540,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n⚠️ **Update delta-based hai** — `newOffers` / `removedOfferIds` bhejein, poori\noffers list nahi.\n\nHar update ek **naya version** banata hai. Status-wise editability:\n\n| Status | Edit? |\n|---|---|\n| `DRAFT` · `REJECTED` | ✅ |\n| `UNDER_REVIEW` · `EXPIRED` · `ARCHIVED` | ❌ blocked |"
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n⚠️ **Update delta-based hai** — `newOffers` / `removedOfferIds` bhejein, poori\noffers list nahi.\n\nHar update ek **naya version** banata hai. Status-wise editability:\n\n| Status | Edit? |\n|---|---|\n| `DRAFT` · `REJECTED` | ✅ |\n| `UNDER_REVIEW` · `EXPIRED` · `ARCHIVED` | ❌ blocked |\n\n**removeImageIds aur file delete:** published voucher edit karne par naya draft version fork hota hai, aur fork har kept image ko apne `storage` ke saath copy karta hai - do version ek hi file par point karte hain. Isliye draft se image hatane par server pehle dekhta hai ki koi doosra non-deleted version wo file to nahi use kar raha. Kar raha ho to row hat jaati hai par file rehti hai, warna live published voucher ki tasveer mar jaati."
           },
           "response": [
             {

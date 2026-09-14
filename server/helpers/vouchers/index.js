@@ -24,6 +24,7 @@ const {
   uploadVoucherImages,
   rollbackVoucherImages,
 } = require("./validateImagesFiles");
+const { pickOrphanImages } = require("./orphanImages");
 const {
   generateVoucherCode,
   generateVoucherVersionCode,
@@ -49,6 +50,7 @@ const {
 } = require("./voucherBannerMedia");
 
 module.exports = {
+  pickOrphanImages,
   normalizeVoucherName,
   getUniqueTags,
   validateVoucherCategory,

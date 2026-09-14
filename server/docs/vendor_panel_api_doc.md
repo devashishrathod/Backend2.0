@@ -4598,10 +4598,23 @@ Voucher edit — **naya version banata hai**. Multipart.
 | `removedTags` | string[] | – | Hatane wale tags |
 | `newOffers` | array | Offer schema | Naye offers |
 | `removedOfferIds` | ObjectId[] | – | Hatane wale offers |
-| `removeImageIds` | ObjectId[] | – | Hatane wali images |
+| `removeImageIds` | ObjectId[] | – | Hatane wali images — file tabhi delete hoti hai jab koi **doosra version** use na kar raha ho (neeche dekhein) |
 | `newSubBrandIds` | ObjectId[] | – | Naye outlets |
 | `removeSubBrandIds` | ObjectId[] | – | Hatane wale outlets |
 | `newImages` | file[] | – | **Multipart**, field name `newImages` |
+
+> #### ⚠️ `removeImageIds` file kab sach me delete karta hai
+>
+> Ek **published** voucher ko edit karne par naya draft version **fork** hota hai,
+> aur fork har kept image ko apne `storage` ke saath copy karta hai — yaani do
+> version ek hi file par point karte hain.
+>
+> Isliye draft se image hatane par server pehle dekhta hai ki us file ko koi aur
+> non-deleted version to nahi use kar raha. Kar raha ho to **row hat jaati hai,
+> file rehti hai** — warna live published voucher ki tasveer mar jaati.
+>
+> Vendor ko farak nahi padta: image us version se hat hi jaati hai. Ye sirf ye
+> batata hai ki purana version kyun theek chalta rehta hai.
 
 ```json
 {
