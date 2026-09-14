@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { toDisplayName } = require("../../helpers/common");
 
 const PromotionalTicker = require("../../models/PromotionalTicker");
 const {
@@ -23,7 +24,7 @@ exports.createTicker = async (userId, payload, files) => {
   try {
     return await PromotionalTicker.create({
       _id,
-      title,
+      title: toDisplayName(title),
       icon,
       redirect,
       displayOrder,

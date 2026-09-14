@@ -20,7 +20,7 @@ exports.updateCategoryById = async (id, payload = 0, image) => {
         isDeleted: false,
       });
       if (existing) throwError(400, "Another category exists with this name");
-      category.name = name;
+      category.name = toDisplayName(name);
     }
     if (description) category.description = description || "";
   }

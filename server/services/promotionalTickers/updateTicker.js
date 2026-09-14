@@ -1,4 +1,5 @@
 const PromotionalTicker = require("../../models/PromotionalTicker");
+const { toDisplayName } = require("../../helpers/common");
 const { throwError } = require("../../utils");
 const {
   uploadTickerIcon,
@@ -16,7 +17,7 @@ exports.updateTicker = async (userId, id, payload, files) => {
     ? ticker.icon.toObject()
     : ticker.icon;
 
-  if (payload.title !== undefined) ticker.title = payload.title;
+  if (payload.title !== undefined) ticker.title = toDisplayName(payload.title);
   if (payload.redirect !== undefined) ticker.redirect = payload.redirect;
   if (payload.displayOrder !== undefined)
     ticker.displayOrder = payload.displayOrder;

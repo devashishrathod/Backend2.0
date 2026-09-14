@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { toDisplayName } = require("../../helpers/common");
 const Brand = require("../../models/Brand");
 const Voucher = require("../../models/Voucher");
 const VoucherVersion = require("../../models/VoucherVersion");
@@ -81,6 +82,8 @@ exports.createVoucher = async (actor, payload, files = {}) => {
     const brand = await Brand.findById(brandId);
     if (!brand || brand.isDeleted) throwError(400, "Brand not found");
 
+    // Jaisa vendor ne likha, bas saaf kiya — aur poora lowercase ho to theek kiya.
+    name = toDisplayName(name);
     const normalizedName = normalizeVoucherName(name);
     if (!normalizedName) throwError(400, "Voucher name is required.");
 

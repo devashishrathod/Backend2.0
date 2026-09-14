@@ -37,7 +37,7 @@ exports.updateSubCategoryById = async (id, payload, image) => {
           `Another Subcategory exists with this name for same category`,
         );
       }
-      subcategory.name = name;
+      subcategory.name = toDisplayName(name);
     }
     if (name && categoryId) {
       const existingSubCategorywithCategory = await SubCategory.findOne({

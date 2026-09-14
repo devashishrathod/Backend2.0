@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { toDisplayName } = require("../../helpers/common");
 
 const Banner = require("../../models/Banner");
 const { throwError } = require("../../utils");
@@ -36,7 +37,7 @@ exports.createBanner = async (userId, payload, files) => {
   try {
     return await Banner.create({
       _id,
-      title,
+      title: toDisplayName(title),
       description,
       type,
       redirect,

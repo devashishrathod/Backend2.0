@@ -1,7 +1,9 @@
 const {
   sameNameAs,
   normalizedNameKey,
-} = require("../../helpers/common/caseInsensitiveName");
+  toDisplayName,
+  cleanName,
+} = require("../../helpers/common/names");
 const { normalizeVoucherName } = require("../../helpers/vouchers");
 
 /**
@@ -99,5 +101,53 @@ describe("🔴 create and update reduce a name the same way", () => {
     // The voucher's own `name` keeps what the vendor typed. This is a
     // comparison key: never displayed, never returned.
     expect(normalizeVoucherName("Cafe Mocha")).not.toBe("Cafe Mocha");
+  });
+});
+
+describe("🔴 a name as it should be shown", () => {
+  test("all-lowercase input is the one case that is unambiguously unformatted", () => {
+    expect(toDisplayName("john doe")).toBe("John Doe");
+    expect(toDisplayName("cafe mocha")).toBe("Cafe Mocha");
+    expect(toDisplayName("30% off")).toBe("30% Off");
+  });
+
+  test("🔴 one capital anywhere, and the vendor is trusted", () => {
+    // The person who types carefully is the one a naive title-case hurts most.
+    expect(toDisplayName("30% OFF")).toBe("30% OFF");
+    expect(toDisplayName("20% OFF")).toBe("20% OFF");
+    expect(toDisplayName("KFC")).toBe("KFC");
+    expect(toDisplayName("iPhone")).toBe("iPhone");
+    expect(toDisplayName("McDonald's")).toBe("McDonald's");
+    expect(toDisplayName("TGI Friday's")).toBe("TGI Friday's");
+  });
+
+  test("⚠️ ALL-CAPS is left alone, deliberately", () => {
+    // "JOHN DOE" is shouting and "KFC" is a name, and nothing in the string
+    // tells them apart. A length rule rescues KFC and TGI, then ruins IKEA.
+    expect(toDisplayName("JOHN DOE")).toBe("JOHN DOE");
+  });
+
+  test("a hyphen splits words the way a space does", () => {
+    expect(toDisplayName("jean-luc picard")).toBe("Jean-Luc Picard");
+  });
+
+  test("whitespace is tidied whatever the case", () => {
+    expect(toDisplayName("  cafe   mocha ")).toBe("Cafe Mocha");
+    expect(toDisplayName("  KFC   Express ")).toBe("KFC Express");
+  });
+
+  test("nothing is an empty string, not a crash", () => {
+    expect(toDisplayName(null)).toBe("");
+    expect(toDisplayName("   ")).toBe("");
+  });
+});
+
+describe("⚠️ names a document owns, not a screen", () => {
+  test("cleanName tidies and stops there", () => {
+    // PAN.fullName, Brand.legalBusinessName and the invoice companyName are
+    // records of what a document says. Re-casing them makes the record differ
+    // from the paper it was copied from.
+    expect(cleanName("  RAJESH   KUMAR ")).toBe("RAJESH KUMAR");
+    expect(cleanName("rajesh kumar")).toBe("rajesh kumar");
   });
 });

@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { toDisplayName } = require("../../helpers/common");
 const Brand = require("../../models/Brand");
 const User = require("../../models/User");
 const SubCategory = require("../../models/SubCategory");
@@ -97,7 +98,7 @@ exports.updateBrand = async (
         isOnboarding,
       } = payload;
 
-      if (brandName) brand.brandName = brandName.trim();
+      if (brandName) brand.brandName = toDisplayName(brandName);
 
       /**
        * ---------------- the contact keys go through the account ----------------

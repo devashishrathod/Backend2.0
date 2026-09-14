@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { toDisplayName } = require("../../helpers/common");
 const Voucher = require("../../models/Voucher");
 const VoucherVersion = require("../../models/VoucherVersion");
 const VoucherSubBrand = require("../../models/VoucherSubBrand");
@@ -247,7 +248,7 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
 
     const name =
       payload.name !== undefined
-        ? String(payload.name).trim()
+        ? toDisplayName(payload.name)
         : currentVersion.name;
     if (!name) throwError(400, "Voucher name cannot be empty.");
     /**

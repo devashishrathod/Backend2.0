@@ -1,4 +1,5 @@
 const BrandFeatures = require("../../models/BrandFeatures");
+const { toDisplayName } = require("../../helpers/common");
 const { resolveActorBrand } = require("../../helpers/brands");
 const { throwError } = require("../../utils");
 const storage = require("../storage");
@@ -52,7 +53,7 @@ exports.updateBrandFeature = async (actor, payload, icon) => {
     }
   }
 
-  if (title) feature.title = title;
+  if (title) feature.title = toDisplayName(title);
   if (description) feature.description = description;
   /**
    * ⚠️ `if (isActive)` before, which is falsy for the boolean `false` — so

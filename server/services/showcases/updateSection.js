@@ -1,4 +1,5 @@
 const ShowcaseSection = require("../../models/ShowcaseSection");
+const { toDisplayName } = require("../../helpers/common");
 const { throwError } = require("../../utils");
 const { escapeRegex } = require("../../validator/common");
 const { SHOWCASE_COVER_IMAGE_MODE } = require("../../constants/showcase");
@@ -26,7 +27,7 @@ exports.updateSection = async (actor, payload) => {
   const section = await resolveSectionForActor(actor, payload.sectionId);
 
   if (payload.title !== undefined) {
-    const title = payload.title.trim();
+    const title = toDisplayName(payload.title);
 
     const exists = await ShowcaseSection.exists({
       _id: { $ne: section._id },

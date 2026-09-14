@@ -1,4 +1,5 @@
 const Banner = require("../../models/Banner");
+const { toDisplayName } = require("../../helpers/common");
 const { throwError } = require("../../utils");
 const { BANNER_MEDIA_FIELD } = require("../../constants/banner");
 const {
@@ -71,7 +72,7 @@ exports.updateBanner = async (userId, id, payload, files) => {
     ? banner[previousField].toObject()
     : banner[previousField];
 
-  if (payload.title !== undefined) banner.title = payload.title;
+  if (payload.title !== undefined) banner.title = toDisplayName(payload.title);
   if (payload.description !== undefined)
     banner.description = payload.description;
   if (payload.redirect !== undefined) banner.redirect = payload.redirect;

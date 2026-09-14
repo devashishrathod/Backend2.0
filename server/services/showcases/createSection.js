@@ -1,4 +1,5 @@
 const ShowcaseSection = require("../../models/ShowcaseSection");
+const { toDisplayName } = require("../../helpers/common");
 const { escapeRegex } = require("../../validator/common");
 const { throwError } = require("../../utils");
 const { SHOWCASE_SECTION_TYPE } = require("../../constants/showcase");
@@ -34,7 +35,7 @@ exports.createSection = async (actor, payload) => {
   // renders. It used to be lowercased on the way in, which is why every album
   // on the brand profile read "ambience" instead of "Ambience". Uniqueness is
   // still case-insensitive, so "Ambience" and "ambience" cannot coexist.
-  const title = payload.title.trim();
+  const title = toDisplayName(payload.title);
 
   const exists = await ShowcaseSection.exists({
     brandId: brand._id,

@@ -11,11 +11,15 @@ const { generateUniqueDisplayId } = require("./generateUniqueDisplayId");
 const {
   sameNameAs,
   normalizedNameKey,
-} = require("./caseInsensitiveName");
+  toDisplayName,
+  cleanName,
+} = require("./names");
 
 module.exports = {
   sameNameAs,
   normalizedNameKey,
+  toDisplayName,
+  cleanName,
   IST_OFFSET_MINUTES,
   asIstParts,
   istDayStart,

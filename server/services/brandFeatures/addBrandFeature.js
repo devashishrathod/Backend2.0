@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { toDisplayName } = require("../../helpers/common");
 
 const BrandFeatures = require("../../models/BrandFeatures");
 const { resolveActorBrand } = require("../../helpers/brands");
@@ -59,7 +60,7 @@ exports.addBrandFeature = async (actor, payload, icon) => {
   return await BrandFeatures.create({
     _id,
     brandId: brand._id,
-    title,
+    title: toDisplayName(title),
     description,
     icon: uploaded.url,
     iconMedia: toMediaDocument(uploaded),

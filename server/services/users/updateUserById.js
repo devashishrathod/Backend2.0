@@ -1,4 +1,5 @@
 const { ROLES } = require("../../constants");
+const { toDisplayName } = require("../../helpers/common");
 const Customer = require("../../models/Customer");
 const User = require("../../models/User");
 const { throwError } = require("../../utils");
@@ -26,7 +27,7 @@ exports.updateUserById = async (userId, payload, image) => {
 
   if (payload) {
     let { fullName, email, dob, appliedReferralCode } = payload;
-    if (fullName) user.name = fullName?.trim();
+    if (fullName) user.name = toDisplayName(fullName);
     if (dob) {
       // if (!isAdult(dob)) throwError(400, "User must be at least 18 years old");
       user.dob = dob;

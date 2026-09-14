@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { toDisplayName } = require("../../helpers/common");
 
 const User = require("../../models/User");
 const { throwError } = require("../../utils");
@@ -15,6 +16,7 @@ const {
 
 exports.registerUser = async (body, image) => {
   let { name, email, password, mobile, whatsappNumber, username, role } = body;
+  name = toDisplayName(name);
   email = email?.toLowerCase();
   username = username?.toLowerCase();
   role = role?.toUpperCase() || ROLES.ADMIN;

@@ -9,6 +9,7 @@ const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
 exports.createCategory = async (payload, image) => {
   let { name, description, isActive } = payload;
+  name = toDisplayName(name);
   // ⚠️ Case-insensitive on purpose — the row stores what was typed, so an
   // exact match would let "Pizza" and "pizza" both exist.
   const existingCategory = await Category.findOne({
