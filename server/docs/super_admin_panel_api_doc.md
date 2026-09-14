@@ -6723,7 +6723,7 @@ ka banner, generated invoice, sab.
 
 | Field | Default | Kya |
 |---|---|---|
-| `storage.provider` | `CLOUDINARY` | **Naye** uploads kahan jayein. Purani file delete hamesha us row ke apne `storage.provider` se hoti hai, isse nahi — to switch karne se purani files strand nahi hotin |
+| `storage.provider` | `CLOUDINARY` | `CLOUDINARY` ❘ `AWS_S3`. **Naye** uploads kahan jayein. Purani file delete hamesha us row ke apne `storage.provider` se hoti hai, isse nahi — to switch karne se purani files strand nahi hotin |
 | `storage.limits.maxImageSizeMB` | `10` | Platform ki **ceiling** |
 | `storage.limits.maxGifSizeMB` | `15` | GIF ki apni, image se zyada — animated GIF me har frame ek saath hota hai |
 | `storage.limits.maxVideoSizeMB` | `50` | |

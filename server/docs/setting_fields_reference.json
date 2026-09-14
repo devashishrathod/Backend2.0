@@ -41,6 +41,10 @@
     ],
     "vendor.subscription.currency": [
       "INR"
+    ],
+    "STORAGE_PROVIDER": [
+      "CLOUDINARY",
+      "AWS_S3"
     ]
   },
   "sharedLimits": {
@@ -1179,7 +1183,7 @@
       "default": "CLOUDINARY",
       "enum": [
         "CLOUDINARY",
-        "S3"
+        "AWS_S3"
       ],
       "writableViaApi": true,
       "description": "Which provider NEW uploads go to. Deleting an existing asset follows that row's own storage.provider, never this - so flipping the switch cannot strand files uploaded before it."

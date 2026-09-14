@@ -812,15 +812,33 @@ naya `helpers/vouchers/orphanImages.js` · `services/vouchers/updateVoucher.js` 
 > (wo bhi uncommitted). Use abhi chhedne ka matlab doosre phase ka aadha kaam is
 > commit me ghaseetna hota. `getStorageConfig()` taiyaar hai; U-1 usi se padhega.
 
-## F-3 · `mediaSchema` + `toMediaResponse`
-naya `models/mediaSchema.js` · naya `helpers/media/toMediaResponse.js` · `services/storage/index.js` · dono provider
-- [ ] `storageRefSchema` · `posterSchema` · `mediaSchema`
-- [ ] **VIDEO par `poster` required** — model validator
-- [ ] `toMediaResponse(media, { withMeta })` — default URL string, `storage` kabhi nahi
-- [ ] Facade `uploadFromPath` ab media shape lautaye
-- [ ] 🔴 **Cloudinary se `thumbnail` derivation hatao** (M-7); `getOptimizedImageUrl` sirf image ke liye
-- [ ] Provider enum `S3` → **`AWS_S3`** (M-2)
-- [ ] **Proof:** VIDEO bina poster reject · `toMediaResponse` se storage kabhi nahi · mutation: poster-required hatao → test mare
+## F-3 · `mediaSchema` + `toMediaResponse` — ✅ **DONE** (uncommitted)
+naye `models/mediaSchema.js` · `helpers/media/toMediaResponse.js` · `constants/storage.js` · 4 models · `configs/env/schema.js` · 5 test files
+- [x] `storageRefSchema` · `posterSchema` · `mediaSchema`
+- [x] **VIDEO par `poster` required**
+- [x] `toMediaResponse(media, { withMeta })` — default URL string, `storage` **kabhi nahi**; poster bhi URL par flatten
+- [x] Provider enum `S3` → **`AWS_S3`** (M-2)
+- [x] 🔴 **Chaar model ka hardcoded `["CLOUDINARY","S3"]` ab `Object.values(STORAGE_PROVIDER)`** — Banner ×3, Ticker, Voucher, VoucherVersion. Warna enum rename unhe ek aise value par chhod deta jise aur koi use hi nahi karta
+- [x] `configs/env/schema.js` · `.env.example` · reference JSON · admin doc · `s3_migration_phases.md`
+- [x] **17 unit test** · **Mutation 11/11**
+
+> 🔴 **Mera pehla validator chal hi nahi raha tha.** `mediaSchema.pre("validate")`
+> me `this.invalidate("poster", …)` — single nested sub-document par wo parent ki
+> error list tak **pahunchta hi nahi**: VIDEO bina poster ke bilkul clean validate
+> ho gaya. Maap kar pakda, phir conditional `required` par le gaya, jo chaaron case
+> sahi karta hai aur sahi path (`…poster`) bhi deta hai.
+
+> ⚠️ **Do money-suite test tootne wale the** — `brandImages.test.js` aur
+> `documentDelivery.test.js` `provider: "S3"` likhte hain, jo ab enum me hai hi
+> nahi. Enum rename ke saath hi 8 jagah theek kiye. 60 minute ki suite chalane se
+> pehle pakda.
+
+> ⚠️ **Cloudinary ka toota `thumbnail` derivation yahan nahi hataya — M-4 me
+> jaayega.** Use aaj `helpers/showcases/upload.js` padhta hai, aur showcase abhi
+> `thumbnail` field par hai, `poster` par nahi. Abhi hataane se ek window banti
+> jisme video ke paas **na** toota poster hota **na** naya — aur cover `.mp4` ban
+> jaata. M-4 me showcase `poster` par jaayega aur derivation usi commit me hategi,
+> to kabhi dono ke beech ka haal nahi aayega.
 
 ## F-4 · Provider Setting se + preflight
 `services/storage/index.js` · `services/settings/updateSetting.js` · `configs/env/schema.js` · naya `services/storage/preflight.js`

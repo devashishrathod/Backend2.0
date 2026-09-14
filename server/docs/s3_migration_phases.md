@@ -392,7 +392,7 @@ same frozen object, kabhi re-parse nahi.
 | **Goal** | Ek jagah provider decide ho. **L-1…L-4 landmines yahin marte hain.** |
 | **Depends on** | Phase 1 |
 | **Client change** | ❌ |
-| **Infra** | ❌ — dono step bina AWS ke ship hue. S3 provider likha hua hai, `MEDIA_PROVIDER=S3` par jaga hoga |
+| **Infra** | ❌ — dono step bina AWS ke ship hue. S3 provider likha hua hai, `MEDIA_PROVIDER=AWS_S3` par jaga hoga |
 | **Status** | ✅ Step A + Step B. Natija §2.8 me |
 
 ## 2.1 Files
