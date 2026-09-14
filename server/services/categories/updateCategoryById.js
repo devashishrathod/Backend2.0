@@ -29,7 +29,7 @@ exports.updateCategoryById = async (id, payload = 0, image) => {
     // failed upload left the category with its old image already destroyed and
     // nothing to replace it — a broken tile in the customer's category list,
     // from a request that answered 500 and looked recoverable.
-    const previous = { url: category.image, storage: category.imageStorage };
+    const previous = toDeletable(category.imageMedia, category.image);
     const uploaded = await storage.uploadFromPath({
       filePath: image.tempFilePath,
       originalFile: image,
@@ -37,14 +37,14 @@ exports.updateCategoryById = async (id, payload = 0, image) => {
       entityId: category._id,
     });
     category.image = uploaded.url;
-    category.imageStorage = uploaded.storage;
+    category.imageMedia = toMediaDocument(uploaded);
     /**
      * ⚠️ A category that never had its own picture still carries a URL — the
      * schema **defaults** `image` to a shared placeholder. `deleteAsset`
      * refuses those by URL, and now there is a second, plainer signal: a
-     * default has no `imageStorage` at all.
+     * default has no `imageMedia` at all.
      */
-    if (previous.url) await storage.deleteAsset(previous);
+    if (previous?.url) await storage.deleteAsset(previous);
   }
   category.updatedAt = new Date();
   await category.save();

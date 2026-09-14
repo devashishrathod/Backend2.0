@@ -245,9 +245,9 @@ describe("the storage sibling", () => {
     );
 
     const saved = await Brand.findById(BRAND._id);
-    expect(saved.logoStorage.provider).toBe("AWS_S3");
-    expect(saved.logoStorage.key).toBeTruthy();
-    expect(saved.coverImageStorage.key).not.toBe(saved.logoStorage.key);
+    expect(saved.logoMedia.storage.provider).toBe("AWS_S3");
+    expect(saved.logoMedia.storage.key).toBeTruthy();
+    expect(saved.coverImageMedia.storage.key).not.toBe(saved.logoMedia.storage.key);
   });
 
   test("🔴 a replace deletes by the OLD storage, not the new one", async () => {
@@ -262,7 +262,7 @@ describe("the storage sibling", () => {
     expect(deleteAsset).toHaveBeenCalledTimes(1);
     const [asset] = deleteAsset.mock.calls[0];
     expect(asset.url).toBe(first.logo);
-    expect(asset.storage.key).toBe(first.logoStorage.key);
+    expect(asset.storage.key).toBe(first.logoMedia.storage.key);
   });
 
   test("⚠️ absent, not `{}`, on a row that never had a picture", async () => {
@@ -271,8 +271,8 @@ describe("the storage sibling", () => {
     // facade refuses with "Unknown storage provider". Absent means "written
     // before this existed, fall back to the URL".
     const saved = await Brand.findById(BRAND._id);
-    expect(saved.logoStorage).toBeUndefined();
-    expect(saved.coverImageStorage).toBeUndefined();
+    expect(saved.logoMedia).toBeUndefined();
+    expect(saved.coverImageMedia).toBeUndefined();
   });
 
   test("a legacy row with a URL and no storage still deletes", async () => {
@@ -322,9 +322,9 @@ describe("outlet logo and cover", () => {
     expect(purposes).toEqual(["SUB_BRAND_LOGO", "SUB_BRAND_COVER"]);
 
     // Each picture's provider and key land beside it, on their own field.
-    expect(saved.logoStorage.key).toBeTruthy();
-    expect(saved.coverImageStorage.key).toBeTruthy();
-    expect(saved.coverImageStorage.key).not.toBe(saved.logoStorage.key);
+    expect(saved.logoMedia.storage.key).toBeTruthy();
+    expect(saved.coverImageMedia.storage.key).toBeTruthy();
+    expect(saved.coverImageMedia.storage.key).not.toBe(saved.logoMedia.storage.key);
   });
 
   test("replacing one deletes what it replaced", async () => {
@@ -345,7 +345,7 @@ describe("outlet logo and cover", () => {
 
     const [asset] = deleteAsset.mock.calls[0];
     expect(asset.url).toBe(first.logo);
-    expect(asset.storage.key).toBe(first.logoStorage.key);
+    expect(asset.storage.key).toBe(first.logoMedia.storage.key);
   });
 
   test("🔴 a vendor cannot put a picture on another brand's outlet", async () => {
@@ -410,7 +410,7 @@ describe("category image", () => {
 
     const saved = await Category.findById(category._id);
     expect(typeof saved.image).toBe("string");
-    expect(saved.imageStorage.key).toBeTruthy();
+    expect(saved.imageMedia.storage.key).toBeTruthy();
   });
 
   test("🔴 replacing deletes by the stored sibling, not the URL alone", async () => {
@@ -423,7 +423,7 @@ describe("category image", () => {
 
     const [asset] = deleteAsset.mock.calls[0];
     expect(asset.url).toBe(first.image);
-    expect(asset.storage.key).toBe(first.imageStorage.key);
+    expect(asset.storage.key).toBe(first.imageMedia.storage.key);
   });
 
   test("🔴 deleting a category passes the sibling too", async () => {
@@ -435,7 +435,7 @@ describe("category image", () => {
     await deleteCategoryById(category._id);
 
     const [asset] = deleteAsset.mock.calls[0];
-    expect(asset.storage.key).toBe(saved.imageStorage.key);
+    expect(asset.storage.key).toBe(saved.imageMedia.storage.key);
   });
 
   test("⚠️ a category that never had a picture carries the shared default and no storage", async () => {
@@ -445,7 +445,7 @@ describe("category image", () => {
     // The URL is real — it is the placeholder every such category shares — but
     // there is no storage, because we did not put it there.
     expect(saved.image).toBeTruthy();
-    expect(saved.imageStorage).toBeUndefined();
+    expect(saved.imageMedia).toBeUndefined();
   });
 });
 

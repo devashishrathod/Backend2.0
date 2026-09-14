@@ -72,7 +72,7 @@ exports.updateUserById = async (userId, payload, image) => {
     // profile with a dead URL and no way back.
     // ⚠️ The whole previous pair, captured before it is overwritten — the
     // delete needs the OLD storage, not the new one.
-    const previous = { url: user.image, storage: user.imageStorage };
+    const previous = toDeletable(user.imageMedia, user.image);
     const uploaded = await storage.uploadFromPath({
       filePath: image.tempFilePath,
       originalFile: image,
@@ -80,8 +80,8 @@ exports.updateUserById = async (userId, payload, image) => {
       entityId: user._id,
     });
     user.image = uploaded.url;
-    user.imageStorage = uploaded.storage;
-    if (previous.url) await storage.deleteAsset(previous);
+    user.imageMedia = toMediaDocument(uploaded);
+    if (previous?.url) await storage.deleteAsset(previous);
   }
   user.isSignUpCompleted = true;
 

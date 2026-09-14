@@ -13,7 +13,7 @@ exports.deleteCategoryById = async (id) => {
   await assertCategoryDeletable(category._id);
   await storage.deleteAsset({
     url: category?.image,
-    storage: category?.imageStorage,
+    storage: category?.imageMedia?.storage,
   });
   category.isDeleted = true;
   category.isActive = false;

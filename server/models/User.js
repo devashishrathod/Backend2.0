@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { storageSchema } = require("./storageSchema");
+const { mediaSchema } = require("./mediaSchema");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { ROLES, LOGIN_TYPES, SCREENS } = require("../constants");
@@ -159,7 +159,7 @@ const userSchema = new mongoose.Schema(
     // Sibling of the field above — provider + key, so a delete does not have
     // to infer where the bytes are from the URL. Absent on rows written
     // before this existed; `deleteAsset` falls back to the URL for those.
-    imageStorage: { type: storageSchema, default: undefined },
+    imageMedia: { type: mediaSchema, default: undefined },
     currentScreen: { type: String, enum: Object.values(SCREENS) },
     isWhatsappVerified: { type: Boolean, default: false },
     isEmailVerified: { type: Boolean, default: false },

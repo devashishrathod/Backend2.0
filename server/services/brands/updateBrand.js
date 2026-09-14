@@ -32,14 +32,14 @@ const IMAGE_SLOTS = Object.freeze([
   {
     file: "logo",
     field: "logo",
-    storageField: "logoStorage",
+    mediaField: "logoMedia",
     label: "Logo",
     purpose: UPLOAD_PURPOSE.BRAND_LOGO,
   },
   {
     file: "coverImage",
     field: "coverImage",
-    storageField: "coverImageStorage",
+    mediaField: "coverImageMedia",
     label: "Cover image",
     purpose: UPLOAD_PURPOSE.BRAND_COVER,
   },
@@ -214,14 +214,11 @@ exports.updateBrand = async (
         });
         // The previous pair, captured before it is overwritten.
         replaced.set(slot.field, {
-          previous: {
-            url: brand[slot.field] || null,
-            storage: brand[slot.storageField],
-          },
+          previous: toDeletable(brand[slot.mediaField], brand[slot.field]),
           uploaded,
         });
         brand[slot.field] = uploaded.url;
-        brand[slot.storageField] = uploaded.storage;
+        brand[slot.mediaField] = toMediaDocument(uploaded);
       }
       brand.updatedAt = new Date();
       await brand.save({ session });
@@ -232,7 +229,7 @@ exports.updateBrand = async (
     // an orphan is worth a log line, not a failed request for a change that has
     // already been saved.
     for (const [field, { previous }] of replaced) {
-      if (!previous.url) continue;
+      if (!previous?.url) continue;
       try {
         await storage.deleteAsset(previous);
       } catch (deleteError) {

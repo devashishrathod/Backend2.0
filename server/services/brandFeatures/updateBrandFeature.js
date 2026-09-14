@@ -66,7 +66,7 @@ exports.updateBrandFeature = async (actor, payload, icon) => {
   assertImageFile(icon, "Feature icon");
 
   if (icon) {
-    const oldIcon = { url: feature.icon, storage: feature.iconStorage };
+    const oldIcon = toDeletable(feature.iconMedia, feature.icon);
     const uploaded = await storage.uploadFromPath({
       filePath: icon.tempFilePath,
       originalFile: icon,
@@ -74,9 +74,9 @@ exports.updateBrandFeature = async (actor, payload, icon) => {
       entityId: feature._id,
     });
     feature.icon = uploaded.url;
-    feature.iconStorage = uploaded.storage;
+    feature.iconMedia = toMediaDocument(uploaded);
     await feature.save();
-    if (oldIcon.url) {
+    if (oldIcon?.url) {
       try {
         await storage.deleteAsset(oldIcon);
       } catch (error) {

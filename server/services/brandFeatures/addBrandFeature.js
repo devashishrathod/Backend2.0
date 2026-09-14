@@ -62,7 +62,7 @@ exports.addBrandFeature = async (actor, payload, icon) => {
     title,
     description,
     icon: uploaded.url,
-    iconStorage: uploaded.storage,
+    iconMedia: toMediaDocument(uploaded),
     isActive: typeof isActive === "string" ? isActive === "true" : isActive,
   });
 };

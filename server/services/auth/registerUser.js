@@ -61,7 +61,7 @@ exports.registerUser = async (body, image) => {
     whatsappNumber,
     role,
     image: uploaded?.url,
-    imageStorage: uploaded?.storage,
+    imageMedia: toMediaDocument(uploaded),
     loginType: LOGIN_TYPES.PASSWORD,
     uniqueId: await generateUniqueUserId(),
     referralCode: await generateReferralCode(),

@@ -45,7 +45,7 @@ exports.createSubCategory = async (categoryId, payload, image) => {
     description,
     categoryId,
     image: uploaded?.url,
-    imageStorage: uploaded?.storage,
+    imageMedia: toMediaDocument(uploaded),
     isActive,
   });
   return newSubCategory;

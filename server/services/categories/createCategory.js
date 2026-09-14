@@ -36,7 +36,7 @@ exports.createCategory = async (payload, image) => {
     name,
     description,
     image: uploaded?.url,
-    imageStorage: uploaded?.storage,
+    imageMedia: toMediaDocument(uploaded),
     isActive,
   });
 };

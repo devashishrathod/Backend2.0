@@ -61,10 +61,7 @@ exports.updateSubCategoryById = async (id, payload, image) => {
   if (image) {
     // ⚠️ Upload first, delete second — see `updateCategoryById`. The old order
     // destroyed the existing image before the replacement had arrived.
-    const previous = {
-      url: subcategory.image,
-      storage: subcategory.imageStorage,
-    };
+    const previous = toDeletable(subcategory.imageMedia, subcategory.image);
     const uploaded = await storage.uploadFromPath({
       filePath: image.tempFilePath,
       originalFile: image,
@@ -72,8 +69,8 @@ exports.updateSubCategoryById = async (id, payload, image) => {
       entityId: subcategory._id,
     });
     subcategory.image = uploaded.url;
-    subcategory.imageStorage = uploaded.storage;
-    if (previous.url) await storage.deleteAsset(previous);
+    subcategory.imageMedia = toMediaDocument(uploaded);
+    if (previous?.url) await storage.deleteAsset(previous);
   }
   subcategory.updatedAt = new Date();
   await subcategory.save();

@@ -37,14 +37,14 @@ const IMAGE_SLOTS = Object.freeze([
   {
     file: "logo",
     field: "logo",
-    storageField: "logoStorage",
+    mediaField: "logoMedia",
     label: "Logo",
     purpose: UPLOAD_PURPOSE.SUB_BRAND_LOGO,
   },
   {
     file: "coverImage",
     field: "coverImage",
-    storageField: "coverImageStorage",
+    mediaField: "coverImageMedia",
     label: "Cover image",
     purpose: UPLOAD_PURPOSE.SUB_BRAND_COVER,
   },
@@ -172,14 +172,11 @@ exports.updateSubBrand = async (actor, payload, files = null) => {
       entityId: subBrand._id,
     });
     replaced.set(slot.field, {
-      previous: {
-        url: subBrand[slot.field] || null,
-        storage: subBrand[slot.storageField],
-      },
+      previous: toDeletable(subBrand[slot.mediaField], subBrand[slot.field]),
       uploaded,
     });
     subBrand[slot.field] = uploaded.url;
-    subBrand[slot.storageField] = uploaded.storage;
+    subBrand[slot.mediaField] = toMediaDocument(uploaded);
   }
 
   try {
@@ -200,7 +197,7 @@ exports.updateSubBrand = async (actor, payload, files = null) => {
 
   // Saved. The ones they replaced can go — best effort, an orphan is a log line.
   for (const [field, { previous }] of replaced) {
-    if (!previous.url) continue;
+    if (!previous?.url) continue;
     try {
       await storage.deleteAsset(previous);
     } catch (deleteError) {
