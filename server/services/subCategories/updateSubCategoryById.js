@@ -23,7 +23,6 @@ exports.updateSubCategoryById = async (id, payload, image) => {
       subcategory.categoryId = categoryId;
     }
     if (name) {
-      name = name.toLowerCase();
       const existingSubCategorywithCategory = await SubCategory.findOne({
         _id: { $ne: id },
         name,
@@ -55,7 +54,7 @@ exports.updateSubCategoryById = async (id, payload, image) => {
     if (typeof isActive !== "undefined") {
       subcategory.isActive = !subcategory.isActive;
     }
-    if (description) subcategory.description = description?.toLowerCase() || "";
+    if (description) subcategory.description = description?.trim() || "";
   }
   assertImageFile(image, "Subcategory image");
 

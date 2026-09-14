@@ -45,7 +45,6 @@ exports.signUpSubBrandWithWhatsapp = async (actor, payload) => {
   const brand = await resolveActorBrand(actor, brandId);
   brandId = brand._id;
 
-  whatsappNumber = whatsappNumber?.toLowerCase();
   const existing = await User.findOne({
     whatsappNumber,
     role: ROLES.SUB_VENDOR,
@@ -116,7 +115,10 @@ exports.signUpSubBrandWithWhatsapp = async (actor, payload) => {
      * sentence for.
      */
     if (error?.code === DUPLICATE_KEY) {
-      throwError(403, "Outlet/Sub-Brand is already registered with this number");
+      throwError(
+        403,
+        "Outlet/Sub-Brand is already registered with this number",
+      );
     }
     throw error;
   }

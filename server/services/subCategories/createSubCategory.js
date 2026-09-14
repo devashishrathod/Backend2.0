@@ -11,8 +11,8 @@ exports.createSubCategory = async (categoryId, payload, image) => {
   const category = await Category.findById(categoryId);
   if (!category || category.isDeleted) throwError(404, "Category not found!");
   let { name, description, isActive } = payload;
-  name = name?.toLowerCase();
-  description = description?.toLowerCase();
+  name = name.trim();
+  description = description.trim();
   const existingSubCategory = await SubCategory.findOne({
     name: name,
     categoryId: categoryId,

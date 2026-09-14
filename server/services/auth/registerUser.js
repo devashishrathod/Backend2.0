@@ -16,7 +16,6 @@ const {
 exports.registerUser = async (body, image) => {
   let { name, email, password, mobile, whatsappNumber, username, role } = body;
   email = email?.toLowerCase();
-  name = name?.toLowerCase();
   username = username?.toLowerCase();
   role = role?.toUpperCase() || ROLES.ADMIN;
   let user;

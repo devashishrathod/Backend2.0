@@ -30,12 +30,10 @@ const { resolveActorBrand } = require("../../helpers/brands");
 
 const mergeTags = (existingTags = [], newTags = [], removedTags = []) => {
   const removeSet = new Set(
-    (removedTags || [])
-      .map((tag) => String(tag).trim().toLowerCase())
-      .filter(Boolean),
+    (removedTags || []).map((tag) => String(tag).trim()).filter(Boolean),
   );
   const kept = getUniqueTags(existingTags || []).filter(
-    (tag) => !removeSet.has(tag.toLowerCase()),
+    (tag) => !removeSet.has(tag),
   );
   return getUniqueTags([...kept, ...(newTags || [])]);
 };
@@ -251,7 +249,7 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
         ? String(payload.name).trim()
         : currentVersion.name;
     if (!name) throwError(400, "Voucher name cannot be empty.");
-    const normalizedName = name.trim().toLowerCase();
+    const normalizedName = name.trim();
 
     if (payload.name !== undefined) {
       const duplicateVoucher = await Voucher.findOne({

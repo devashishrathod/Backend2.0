@@ -12,7 +12,6 @@ exports.updateCategoryById = async (id, payload = 0, image) => {
     let { name, description, isActive } = payload;
     if (typeof isActive !== "undefined") category.isActive = !category.isActive;
     if (name) {
-      name = name.toLowerCase();
       const existing = await Category.findOne({
         _id: { $ne: id },
         name,
@@ -21,7 +20,7 @@ exports.updateCategoryById = async (id, payload = 0, image) => {
       if (existing) throwError(400, "Another category exists with this name");
       category.name = name;
     }
-    if (description) category.description = description?.toLowerCase() || "";
+    if (description) category.description = description || "";
   }
   assertImageFile(image, "Category image");
 

@@ -26,14 +26,13 @@ exports.updateUserById = async (userId, payload, image) => {
 
   if (payload) {
     let { fullName, email, dob, appliedReferralCode } = payload;
-    if (fullName) user.name = fullName?.toLowerCase();
-    //  if (address) user.address = address?.toLowerCase();
+    if (fullName) user.name = fullName?.trim();
     if (dob) {
       // if (!isAdult(dob)) throwError(400, "User must be at least 18 years old");
       user.dob = dob;
     }
-    if (email && email.toLowerCase() !== user.email) {
-      email = email.toLowerCase();
+    if (email && email.trim().toLowerCase() !== user.email) {
+      email = email.trim().toLowerCase();
       const emailExists = await User.findOne({
         email,
         role: user.role,

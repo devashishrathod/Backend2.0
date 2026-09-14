@@ -22,7 +22,7 @@ const AS_GIVEN = [
  * Stored lowercase, because every filter and search compares against the
  * lowercased value. A row that kept its capitals is simply never matched.
  */
-const LOWERCASED = ["city", "district", "state", "country"];
+const UPDATED_FIELDS = ["city", "district", "state", "country"];
 
 /**
  * Only what was sent. A `PUT` here is a partial update — the panel sends the
@@ -34,8 +34,8 @@ const buildUpdate = (payload, actorUserId) => {
   for (const field of AS_GIVEN) {
     if (payload[field]) update[field] = payload[field];
   }
-  for (const field of LOWERCASED) {
-    if (payload[field]) update[field] = String(payload[field]).toLowerCase();
+  for (const field of UPDATED_FIELDS) {
+    if (payload[field]) update[field] = String(payload[field]);
   }
   // `false` is a real value here, so presence is the test rather than truth.
   if (payload.isDefault !== undefined) update.isDefault = payload.isDefault;

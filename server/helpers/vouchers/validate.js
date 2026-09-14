@@ -19,8 +19,7 @@ exports.removeDuplicateObjectIds = (ids = []) => {
 exports.normalizeVoucherName = (name) => {
   return String(name || "")
     .trim()
-    .replace(/\s+/g, " ")
-    .toLowerCase();
+    .replace(/\s+/g, " ");
 };
 
 exports.getUniqueTags = (tags = []) => {
@@ -30,7 +29,7 @@ exports.getUniqueTags = (tags = []) => {
     if (typeof tag !== "string") return;
     const trimmedTag = tag.trim();
     if (!trimmedTag) return;
-    const key = trimmedTag.toLowerCase();
+    const key = trimmedTag;
     if (!uniqueTags.has(key)) {
       uniqueTags.set(key, trimmedTag);
     }

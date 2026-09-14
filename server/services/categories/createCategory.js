@@ -8,8 +8,6 @@ const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
 exports.createCategory = async (payload, image) => {
   let { name, description, isActive } = payload;
-  name = name?.toLowerCase();
-  description = description?.toLowerCase();
   const existingCategory = await Category.findOne({ name, isDeleted: false });
   if (existingCategory) {
     throwError(400, "Category already exist with this name");

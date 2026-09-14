@@ -45,7 +45,12 @@ const IMAGE_SLOTS = Object.freeze([
   },
 ]);
 
-exports.updateBrand = async (brandId, payload = {}, files = null, actor = null) => {
+exports.updateBrand = async (
+  brandId,
+  payload = {},
+  files = null,
+  actor = null,
+) => {
   /**
    * ⚠️ `files` used to be the logo itself. It is an object of files now, because
    * the brand has two pictures — a single positional file could never grow a
@@ -92,7 +97,7 @@ exports.updateBrand = async (brandId, payload = {}, files = null, actor = null) 
         isOnboarding,
       } = payload;
 
-      if (brandName) brand.brandName = brandName.trim().toLowerCase();
+      if (brandName) brand.brandName = brandName.trim();
 
       /**
        * ---------------- the contact keys go through the account ----------------
@@ -242,7 +247,10 @@ exports.updateBrand = async (brandId, payload = {}, files = null, actor = null) 
       try {
         await storage.deleteAsset(uploaded);
       } catch (deleteError) {
-        console.error(`Failed to cleanup uploaded brand ${field}:`, deleteError);
+        console.error(
+          `Failed to cleanup uploaded brand ${field}:`,
+          deleteError,
+        );
       }
     }
     throw error;
