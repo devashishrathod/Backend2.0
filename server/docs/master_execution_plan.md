@@ -788,14 +788,29 @@ naya `helpers/vouchers/orphanImages.js` · `services/vouchers/updateVoucher.js` 
 > 30 second purane number se reconcile nahi hota. Jis value ko sach me exact hona
 > ho, wo is function se **padhi hi nahi jaani chahiye**.
 
-## F-2 · `Setting.storage` block
-`models/Setting.js` · `validator/setting.js` · naya `helpers/settings/getStorageConfig.js` · `constants/storage.js` · 3 docs · postman
-- [ ] `storage.provider` · `limits` (5 size cap) · `allowed` (5 mime list) · `upload` (3) · `delivery` (1)
-- [ ] `getStorageConfig()`
-- [ ] `MAX_BYTES` ab config se (aaj `constants/storage.js` me hardcoded)
-- [ ] `min(global, surface)` helper + surface > global par **422**
-- [ ] admin doc · `setting_fields_reference.json` · `setting_default_response.json` · postman
-- [ ] **Proof:** surface > global reject · legacy Setting doc default par gire · effective = min
+## F-2 · `Setting.storage` block — ✅ **DONE** (uncommitted)
+`models/Setting.js` · `validator/settings.js` · naye `helpers/settings/{getStorageConfig,assertStorageLimitRule}.js` · `services/settings/updateSetting.js` · 3 docs · postman
+- [x] Naya **top-level** `storage` block — `provider` · `limits` (5) · `allowed` (5) · `upload` (3) · `delivery` (1) = **15 field**
+- [x] `getStorageConfig()` — `MEDIA_KIND` ke hisaab se `maxBytes` / `maxSizeMB` / `allowedTypes`, aur TTL har caller ki unit me
+- [x] `effectiveLimitMB(global, surface)` = **min**
+- [x] `assertStorageLimitRule` — surface > global par **422**, **merged document** par (dono alag request me aa sakte hain)
+- [x] `updateSetting` block-by-block merge karta hai + guard chalata hai
+- [x] Provider enum `Object.values(STORAGE_PROVIDER)` se — F-3 me `AWS_S3` hote hi apne aap follow karega
+- [x] **16 unit test** · **Mutation 9/10**
+- [x] admin doc · `setting_fields_reference.json` (15 field + cross-field rule) · `setting_default_response.json` · admin postman (GET example + PUT description)
+- [x] Money-suite ka `settingsSurface` guard pre-verify kiya — model **15** leaves, validator **15**, dono taraf exact match
+
+> 🔴 **Bacha hua mutant ne meri ek galat comment pakdi.** `presignEnabled ?? false`
+> par maine likha tha ki `||` stored `false` ko "unset" padhega — **is field ke liye
+> sach nahi**, kyunki default bhi `false` hai, to teenon input par dono ek hi
+> jawab dete hain. Comment aur test dono me sach likh diya: `??` yahan **habit**
+> hai, kisi maujooda behaviour ki wajah nahi — aur wo habit us din kaam aayegi jab
+> koi default `true` kar dega.
+
+> ⚠️ **`MAX_BYTES` ko config se jodna U-1 me hai, yahan nahi.** `constants/storage.js`
+> ka `MAX_BYTES` uncommitted Phase 5 kaam hai aur use sirf `presign.js` padhta hai
+> (wo bhi uncommitted). Use abhi chhedne ka matlab doosre phase ka aadha kaam is
+> commit me ghaseetna hota. `getStorageConfig()` taiyaar hai; U-1 usi se padhega.
 
 ## F-3 · `mediaSchema` + `toMediaResponse`
 naya `models/mediaSchema.js` · naya `helpers/media/toMediaResponse.js` · `services/storage/index.js` · dono provider

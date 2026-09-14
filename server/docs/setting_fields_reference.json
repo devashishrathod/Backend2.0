@@ -99,6 +99,13 @@
       "rule": "app.features.* = false only tells the mobile app not to show the screen",
       "enforcedBy": "each endpoint enforces independently",
       "why": "Turning promoCodes off here still leaves create-order returning its hard 422. The flag is a UI hint, never a security control."
+    },
+    {
+      "name": "storage limit ceiling rule",
+      "rule": "vendor.showcase.maxImageSizeMB <= storage.limits.maxImageSizeMB  AND  vendor.showcase.maxVideoSizeMB <= storage.limits.maxVideoSizeMB",
+      "enforcedBy": "helpers/settings/assertStorageLimitRule.js, on the MERGED document in services/settings/updateSetting.js",
+      "failsWith": "422, naming both numbers",
+      "why": "The read path already takes min(global, surface), so the platform is safe either way. This keeps the panel honest: without it an admin types 80 against a 50 ceiling, gets a 200, sees 80 rendered back, and every upload over 50 is still refused with nothing saying why. Checked on the merged document because the two limits can arrive in separate requests."
     }
   ],
   "notWritableViaApi": {
@@ -1166,6 +1173,135 @@
       "writableViaApi": false,
       "readOnlyReason": "System field — never accepted from the request body.",
       "description": "Set by mongoose `timestamps` on every save. Read-only."
+    },
+    "storage.provider": {
+      "type": "string",
+      "default": "CLOUDINARY",
+      "enum": [
+        "CLOUDINARY",
+        "S3"
+      ],
+      "writableViaApi": true,
+      "description": "Which provider NEW uploads go to. Deleting an existing asset follows that row's own storage.provider, never this - so flipping the switch cannot strand files uploaded before it."
+    },
+    "storage.limits.maxImageSizeMB": {
+      "type": "number",
+      "default": 10,
+      "integer": true,
+      "min": 1,
+      "writableViaApi": true,
+      "description": "Platform ceiling for an image, in MB. A surface may ask for less; it cannot ask for more."
+    },
+    "storage.limits.maxGifSizeMB": {
+      "type": "number",
+      "default": 15,
+      "integer": true,
+      "min": 1,
+      "writableViaApi": true,
+      "description": "Platform ceiling for a GIF. Higher than an image on purpose - an animated GIF is every frame at once."
+    },
+    "storage.limits.maxVideoSizeMB": {
+      "type": "number",
+      "default": 50,
+      "integer": true,
+      "min": 1,
+      "writableViaApi": true,
+      "description": "Platform ceiling for a video."
+    },
+    "storage.limits.maxDocumentSizeMB": {
+      "type": "number",
+      "default": 20,
+      "integer": true,
+      "min": 1,
+      "writableViaApi": true,
+      "description": "Platform ceiling for a generated document (invoices)."
+    },
+    "storage.limits.maxAudioSizeMB": {
+      "type": "number",
+      "default": 20,
+      "integer": true,
+      "min": 1,
+      "writableViaApi": true,
+      "description": "Platform ceiling for an audio file."
+    },
+    "storage.allowed.imageTypes": {
+      "type": "string[]",
+      "default": [
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/webp"
+      ],
+      "writableViaApi": true,
+      "description": "Mime types an IMAGE may be. GIF is deliberately NOT here - see gifTypes."
+    },
+    "storage.allowed.gifTypes": {
+      "type": "string[]",
+      "default": [
+        "image/gif"
+      ],
+      "writableViaApi": true,
+      "description": "Mime types a GIF may be. Separate from imageTypes so a surface can accept images but not animation without re-deciding what a GIF is."
+    },
+    "storage.allowed.videoTypes": {
+      "type": "string[]",
+      "default": [
+        "video/mp4",
+        "video/webm",
+        "video/quicktime"
+      ],
+      "writableViaApi": true,
+      "description": "Mime types a VIDEO may be."
+    },
+    "storage.allowed.documentTypes": {
+      "type": "string[]",
+      "default": [
+        "application/pdf"
+      ],
+      "writableViaApi": true,
+      "description": "Mime types a DOCUMENT may be."
+    },
+    "storage.allowed.audioTypes": {
+      "type": "string[]",
+      "default": [
+        "audio/mpeg",
+        "audio/mp4"
+      ],
+      "writableViaApi": true,
+      "description": "Mime types an AUDIO file may be."
+    },
+    "storage.upload.presignEnabled": {
+      "type": "boolean",
+      "default": false,
+      "writableViaApi": true,
+      "description": "The direct-to-S3 upload route. Switchable without a deploy."
+    },
+    "storage.upload.presignTtlMinutes": {
+      "type": "number",
+      "default": 15,
+      "integer": true,
+      "min": 1,
+      "max": 60,
+      "writableViaApi": true,
+      "description": "How long the client has to start a presigned upload."
+    },
+    "storage.upload.intentTtlMinutes": {
+      "type": "number",
+      "default": 60,
+      "integer": true,
+      "min": 1,
+      "max": 1440,
+      "writableViaApi": true,
+      "description": "How long an unconfirmed upload intent survives. Longer than the signature on purpose: a slow upload finishing at minute fourteen must still be confirmable."
+    },
+    "storage.delivery.signedUrlTtlMinutes": {
+      "type": "number",
+      "default": 5,
+      "integer": true,
+      "min": 1,
+      "max": 1440,
+      "writableViaApi": true,
+      "description": "How long a presigned GET for a private document stays valid."
     }
   }
 }

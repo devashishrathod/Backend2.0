@@ -6715,6 +6715,45 @@ Sirf [common auth errors](#common-errors) + `403` role check.
 > Ye commercial knobs ke liye theek hai (fee slab, upload ceiling, limits). Koi
 > paisa 30 second purane number se reconcile nahi hota.
 
+### `storage` — platform-wide (naya)
+
+Ye `vendor` / `customer` ke andar nahi, **top-level** hai — kyunki isme kuch bhi
+vendor-specific nahi. Provider har upload ke liye hai: customer ka avatar, admin
+ka banner, generated invoice, sab.
+
+| Field | Default | Kya |
+|---|---|---|
+| `storage.provider` | `CLOUDINARY` | **Naye** uploads kahan jayein. Purani file delete hamesha us row ke apne `storage.provider` se hoti hai, isse nahi — to switch karne se purani files strand nahi hotin |
+| `storage.limits.maxImageSizeMB` | `10` | Platform ki **ceiling** |
+| `storage.limits.maxGifSizeMB` | `15` | GIF ki apni, image se zyada — animated GIF me har frame ek saath hota hai |
+| `storage.limits.maxVideoSizeMB` | `50` | |
+| `storage.limits.maxDocumentSizeMB` | `20` | Invoices |
+| `storage.limits.maxAudioSizeMB` | `20` | |
+| `storage.allowed.imageTypes` | jpeg/jpg/png/webp | ⚠️ GIF yahan **nahi** hai |
+| `storage.allowed.gifTypes` | `image/gif` | Alag, taaki koi surface "images haan, GIF nahi" keh sake |
+| `storage.allowed.videoTypes` | mp4/webm/quicktime | |
+| `storage.allowed.documentTypes` | `application/pdf` | |
+| `storage.allowed.audioTypes` | mpeg/mp4 | |
+| `storage.upload.presignEnabled` | `false` | Direct-to-S3 raasta, bina deploy ke on/off |
+| `storage.upload.presignTtlMinutes` | `15` | Client ke paas upload shuru karne ka waqt |
+| `storage.upload.intentTtlMinutes` | `60` | Unconfirmed intent kitna jeeta hai. Signature se **lamba** — minute 14 par khatam hone wala slow upload phir bhi confirm hona chahiye |
+| `storage.delivery.signedUrlTtlMinutes` | `5` | Private document ke presigned GET ki umar |
+
+> #### ⚠️ Global ek **ceiling** hai — surface sirf ghata sakta hai
+>
+> `vendor.showcase.maxImageSizeMB` pehle se hai aur rahega. Dono ladte nahi:
+> global wo hai jo platform **zyada se zyada** lega, aur surface usse kam maang
+> sakta hai. Asli limit **chhoti wali** hoti hai.
+>
+> Surface ko global se **bada** set karne par **422** aata hai, dono number ke
+> saath. Chup-chaap ignore nahi hota — warna aap 80 likhte, 200 milta, 80 wapas
+> render hota, aur 50 se badi har file phir bhi reject hoti, bina kisi wajah ke.
+>
+> Check **merged document** par chalta hai, payload par nahi: global aur surface
+> alag-alag request me aa sakte hain, to global ko 50 se 20 karna bhi pakda jaata
+> hai jab showcase abhi 50 par hai.
+
+
 
 **Access:** Intended: ADMIN · Enforced: **ADMIN** ✅
 
