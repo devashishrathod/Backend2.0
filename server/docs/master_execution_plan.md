@@ -889,6 +889,15 @@ naya `services/storage/preflight.js` · `services/storage/index.js` · `services
 > dono barabar hain. Par ek asli farak hai: `{ ...current, poster: undefined }`
 > maujood poster ko **mita** deta hai. Wahi pin karne wala test joda — ab 9/9.
 
+## M-1a′ · Naam: check case-insensitive, save jaisa type kiya — ✅ **DONE** (uncommitted)
+naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` · 5 services
+- [x] Ye `refactor(naming)` commit ka **anjaana side-effect** theek karta hai. Naam ab jaisa type kiya waisa save hota hai — wo sahi hai — par usi ne duplicate check tod diya tha, kyunki check pehle *lowercase storage* par nirbhar tha
+- [x] **Category / SubCategory**: `findOne({ name })` exact match tha → ab `sameNameAs(name)`, anchored + escaped + case-insensitive. "Pizza" aur "pizza" dono nahi ban sakte
+- [x] **Voucher**: `normalizedName` wapas lowercase key — uska kaam hi yahi hai. `{ brandId, normalizedName }` ek **unique index** hai, aur wo bytes compare karta hai, matlab nahi
+- [x] 🔴 **Ek aur bug jo isi ke saath nikla**: `createVoucher` inner whitespace collapse karta tha, `updateVoucher` sirf trim. To "Pizza  Hut" create par ek row banata aur update par doosra — unique index ke saamne se, kyunki wo do alag string dekhta tha. Ab dono ek hi helper
+- [x] `name` / `brandName` / category ka `name` — **sab jaisa type kiya waisa hi** store hote hain. Koi display badla nahi
+- [x] **11 unit test** · **Mutation 7/7**
+
 ## M-1b · Customer profile pic
 `models/Customer.js` · `services/users/updateUserById.js` · customer reads
 - [ ] `Customer.image` → `mediaSchema` (aaj khaali `String`, koi upload path likhta hi nahi)
