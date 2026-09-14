@@ -1933,38 +1933,39 @@ Koi nahi.
     {
       "_id": "68f1a2b3c4d5e6f7a8b9c1b1",
       "title": "flat 30% off on cafes today",
-      "icon": {
-        "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/tickers/coffee.png",
-        "storage": { "provider": "CLOUDINARY", "publicId": "tickers/coffee" }
-      },
+      "icon": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/tickers/coffee.png",
       "redirect": {
         "type": "CATEGORY",
         "targetId": "68f1a2b3c4d5e6f7a8b9c0e1",
         "url": null
       },
-      "displayOrder": 1,
-      "startDate": "2026-08-01T00:00:00.000Z",
-      "endDate": "2026-08-31T23:59:59.000Z",
-      "isActive": true,
-      "isDeleted": false,
-      "createdBy": "68f1a2b3c4d5e6f7a8b9c000",
-      "createdAt": "2026-07-28T10:00:00.000Z",
-      "updatedAt": "2026-07-28T10:00:00.000Z"
+      "displayOrder": 1
     },
     {
       "_id": "68f1a2b3c4d5e6f7a8b9c1b2",
       "title": "refer & earn 100 tcoins",
-      "icon": { "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/tickers/gift.png" },
+      "icon": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/tickers/gift.png",
       "redirect": { "type": "NONE", "targetId": null, "url": null },
-      "displayOrder": 2,
-      "startDate": null,
-      "endDate": null,
-      "isActive": true,
-      "createdAt": "2026-07-20T10:00:00.000Z"
+      "displayOrder": 2
     }
   ]
 }
 ```
+
+> #### ⚠️ **Contract change** — response ab sirf paanch field deta hai
+>
+> **`icon` ab string hai**, object nahi. Pehle `icon: { url, storage }` aata tha
+> aur uske saath **`storage.publicId` / `bucket` / `key`** bhi — yaani file ka
+> naam aur jagah, ek aise route par jispar koi auth hai hi nahi. Ab sirf URL.
+>
+> Ye bhi hat gaye: `startDate` · `endDate` · `isActive` · `isDeleted` ·
+> `createdBy` · `updatedBy` · `createdAt` · `updatedAt`. Sab admin ke fields the.
+>
+> Schedule server hi decide karta hai — jo ticker aaya hai wo abhi live hai.
+> App ko dates dekh kar dobara faisla karne ki zarurat nahi.
+>
+> Banner endpoint (`/banners/customer/active`) shuru se aise hi kaam karta hai;
+> ab dono ek jaise hain.
 
 ### Success — `200` (koi ticker nahi)
 ```json
@@ -2700,7 +2701,17 @@ Aisa isliye hai ki jis sheher me curated brands abhi pahunche hi nahi, wahan tab
 
 ## 16. GET /vouchers/customer/get/:voucherId
 
-Voucher detail screen. Saare offers + saare outlets ke saath.
+Voucher detail screen. Claim ho sakne wale saare offers + saare outlets ke saath.
+
+> **`offers` me wahi aate hain jo customer sach me claim kar sakta hai.** Vendor ne
+> jo offer delete ya band kar diya, wo list me hai hi nahi — pehle poora array
+> bheja jaata tha, to band offer screen par dikhta tha aur tap karne par payment
+> ke waqt refuse hota tha.
+>
+> **`images` aur `offers` dono whitelist hain.** File kahan rakhi hai (Cloudinary
+> `publicId`, ya S3 `bucket`/`key`) wo kabhi nahi jaata — ye route guest ke liye
+> khula hai. `_id` dono me rehta hai: offer ka `_id` wahi hai jo claim banate
+> waqt `offerId` me bhejna hota hai.
 
 **Access:** 🌐 **Guest bhi** (`optionalAuth`) — token bhejo to personalised, na bhejo to anonymous. Galat token phir bhi reject hota hai
 
@@ -2769,8 +2780,7 @@ GET /vouchers/customer/get/68f1a2b3c4d5e6f7a8b9c2a1?latitude=22.7533&longitude=7
           "discountValue": 30,
           "maxDiscountAmount": 300,
           "usageType": "ONCE_PER_USER",
-          "discountApplicableOn": "SUBTOTAL",
-          "isActive": true
+          "discountApplicableOn": "SUBTOTAL"
         },
         {
           "_id": "68f1a2b3c4d5e6f7a8b9c2d2",
@@ -2780,8 +2790,7 @@ GET /vouchers/customer/get/68f1a2b3c4d5e6f7a8b9c2a1?latitude=22.7533&longitude=7
           "discountValue": 150,
           "maxDiscountAmount": null,
           "usageType": "MULTIPLE",
-          "discountApplicableOn": "FINAL_BILL",
-          "isActive": true
+          "discountApplicableOn": "FINAL_BILL"
         }
       ],
       "startAt": "2026-08-10T00:00:00.000Z",
