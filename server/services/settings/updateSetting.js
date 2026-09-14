@@ -1,5 +1,6 @@
 const {
-  getSetting,
+  getSettingDocument,
+  invalidateSettingCache,
   assertSettlementTimingRule,
   assertReserveRateRule,
 } = require("../../helpers/settings");
@@ -88,7 +89,13 @@ const mergeBlock = (parent, key, incoming, nestedKeys = []) => {
 };
 
 exports.updateSetting = async (userId, payload = {}) => {
-  const setting = await getSetting();
+  /**
+   * ⚠️ The live document, not the cached snapshot. Everything below
+   * `Object.assign`s onto it and then saves — mutating the shared snapshot
+   * instead would show readers a half-built update, and keep showing it even if
+   * the save were to fail validation.
+   */
+  const setting = await getSettingDocument();
 
   if (payload.vendor?.voucher) {
     Object.assign(setting.vendor.voucher, payload.vendor.voucher);
@@ -199,6 +206,14 @@ exports.updateSetting = async (userId, payload = {}) => {
   setting.updatedBy = userId;
 
   await setting.save();
+
+  /**
+   * After the save, never before. Dropping it first would let a reader arriving
+   * in between cache the **old** values for another full TTL — the one window
+   * where a stale read is surprising rather than merely late.
+   */
+  invalidateSettingCache();
+
   return setting;
 };
 

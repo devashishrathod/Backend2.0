@@ -1,4 +1,8 @@
-const { getSetting } = require("./getSetting");
+const {
+  getSetting,
+  getSettingDocument,
+  invalidateSettingCache,
+} = require("./getSetting");
 const { getVoucherConfig } = require("./getVoucherConfig");
 const { getShowcaseConfig } = require("./getShowcaseConfig");
 const { getSubscriptionConfig } = require("./getSubscriptionConfig");
@@ -11,6 +15,8 @@ const { assertReserveRateRule } = require("./assertReserveRateRule");
 
 module.exports = {
   getSetting,
+  getSettingDocument,
+  invalidateSettingCache,
   getVoucherConfig,
   getShowcaseConfig,
   getSubscriptionConfig,

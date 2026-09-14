@@ -50,12 +50,15 @@ const {
  * opposite of its own default — and email is the one channel the guard existed
  * to protect. The guard turned off the thing it was written to keep on.
  *
- * ⚠️ Worse, it is not necessarily transient. `getSetting()` is a `findOneAndUpdate`
- * with `upsert: true` — a **write**. A `Setting` document that fails to cast or
- * validate makes it throw on *every* call, for ever: all email and all WhatsApp
- * silently off, push still working, in-app rows still appearing. Half-working is
- * harder to notice than broken, and the symptom ("emails stopped") points at
- * SMTP, not at a settings document.
+ * ⚠️ Worse, it is not necessarily transient. A `Setting` document that fails to
+ * cast or validate makes the read throw on *every* call, for ever: all email and
+ * all WhatsApp silently off, push still working, in-app rows still appearing.
+ * Half-working is harder to notice than broken, and the symptom ("emails
+ * stopped") points at SMTP, not at a settings document.
+ *
+ * `getSetting()` no longer writes on every call — it is a cached read now — but
+ * that changes nothing here: a document that cannot be hydrated fails the same
+ * way, and the cache never fills, so every call pays the same throw.
  *
  * ### Where the per-channel intent lives now
  *
