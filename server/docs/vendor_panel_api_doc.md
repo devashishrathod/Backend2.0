@@ -6447,6 +6447,27 @@ Khaali list `200` + `data: []` hai, `404` nahi.
 
 Settlement ke fields bhi yahin: `settlementId`, `settlementHold`, `paidToVendorAt`.
 
+### 🆕 `brand` block
+
+Har row ka `brand` ab `merchantId` aur `subscriptionPlan` bhi leke aata hai:
+
+```json
+"brand": { "_id": "…", "brandName": "cafe mocha", "logo": "https://…", "merchantId": "TM-362P-7M7E-ZB2N", "subscriptionPlan": "Pro Plus" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `brand.merchantId` 🆕 | string\|null | Merchant identifier |
+| `brand.subscriptionPlan` 🆕 | string\|null | **Live** plan ka naam. Plan lapse ho chuka ho to `null` |
+
+⚠️ Ye **vendor ki apni billing nahi** hai — sirf plan ka naam hai, kyunki yahi
+field customer-facing surfaces par bhi jaati hai. Apne plan ki dates, price aur
+entitlements ke liye `GET /subscribeds/...` use karein.
+
+⚠️ `subscriptionPlan` **live** hai, frozen nahi. Purane payment ki row par bhi
+aaj ka plan dikhega, us waqt ka nahi — kyunki ye sawaal "ye brand aaj kaun hai"
+ka jawab hai, history ka nahi.
+
 ---
 
 ## 84. GET /voucher-claims/payments/:transactionId — ek payment
@@ -6463,6 +6484,8 @@ Settlement ke fields bhi yahin: `settlementId`, `settlementHold`, `paidToVendorA
 aur customer voucher claims dono rakhti hai; `purpose` scope hi use rokta hai. Apni
 subscription ke liye `/transactions/...` use karein.
 
+`brand` ka shape #83 jaisa hi — `merchantId` 🆕 aur `subscriptionPlan` 🆕 samet.
+
 ---
 
 ## 85. GET /voucher-claims/:claimId — ek claim, timeline ke saath
@@ -6470,6 +6493,10 @@ subscription ke liye `/transactions/...` use karein.
 **Access:** 🔒 `verifyJwtToken`
 
 `claim` · `payment` · `brand` · `outlet` · **`timeline`** · `viewer`
+
+`brand` me `merchantId` 🆕 aur `subscriptionPlan` 🆕 bhi aate hain (#83 dekhein).
+`brandSnapshot` par koi asar nahi — wo claim ke waqt ka frozen naam hai aur
+waisa hi rahega.
 
 Timeline har audience ke liye **banayi** jaati hai, chhaani nahi. Aapko har row se
 `label` · `at` · `fromStatus` → `toStatus` · `by` milta hai. Kaccha audit row `snapshot`
