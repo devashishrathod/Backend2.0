@@ -23,7 +23,7 @@ const stored = (over = {}) => ({
   icon: {
     url: "https://cdn.example.com/tickers/coffee.png",
     storage: {
-      provider: "S3",
+      provider: "AWS_S3",
       publicId: null,
       bucket: "trydood-nonprod-public",
       key: "dev/images/tickers/t1/coffee.png",

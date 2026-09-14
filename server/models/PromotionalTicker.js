@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { STORAGE_PROVIDER } = require("../constants/storage");
 
 const promotionalTickerSchema = new mongoose.Schema(
   {
@@ -17,7 +18,7 @@ const promotionalTickerSchema = new mongoose.Schema(
       storage: {
         provider: {
           type: String,
-          enum: ["CLOUDINARY", "S3"],
+          enum: Object.values(STORAGE_PROVIDER),
           default: "CLOUDINARY",
         },
         publicId: { type: String },

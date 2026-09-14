@@ -83,7 +83,7 @@ exports.upload = async ({
   );
 
   const storage = {
-    provider: STORAGE_PROVIDER.S3,
+    provider: STORAGE_PROVIDER.AWS_S3,
     publicId: null,
     bucket: bucketName(bucket),
     key,

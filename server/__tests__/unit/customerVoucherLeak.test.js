@@ -26,7 +26,7 @@ const storedImage = (sortOrder) => ({
   url: `https://cdn.example.com/${sortOrder}.webp`,
   sortOrder,
   storage: {
-    provider: "S3",
+    provider: "AWS_S3",
     publicId: null,
     bucket: "trydood-nonprod-public",
     key: `dev/images/vouchers/v1/${sortOrder}.webp`,

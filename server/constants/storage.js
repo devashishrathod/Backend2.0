@@ -25,9 +25,24 @@
  * table is complete, not because the folder is expected.
  */
 
+/**
+ * Who is holding the bytes.
+ *
+ * ⚠️ `AWS_S3`, not `S3`. The stored value says **whose** S3 this is, which is
+ * the question that matters the day anything else speaks the same protocol —
+ * and every other enum in this codebase is underscored and spelled out
+ * (`UNDER_REVIEW`, `BRAND_LOGO`, `SHOWCASE_MEDIA`), so a bare `S3` was the odd
+ * one out in more ways than one.
+ *
+ * 🔴 Four models used to write this list out by hand as `["CLOUDINARY", "S3"]`
+ * — Banner, PromotionalTicker, Voucher and VoucherVersion — so this constant
+ * was not the single source it looks like, and renaming a provider would have
+ * left four documents validating against a value nothing else used. They read
+ * it from here now.
+ */
 const STORAGE_PROVIDER = Object.freeze({
   CLOUDINARY: "CLOUDINARY",
-  S3: "S3",
+  AWS_S3: "AWS_S3",
 });
 
 /**

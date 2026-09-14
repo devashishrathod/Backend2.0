@@ -28,7 +28,7 @@ const s3Provider = require("./providers/s3");
 
 const PROVIDERS = Object.freeze({
   [STORAGE_PROVIDER.CLOUDINARY]: cloudinaryProvider,
-  [STORAGE_PROVIDER.S3]: s3Provider,
+  [STORAGE_PROVIDER.AWS_S3]: s3Provider,
 });
 
 /** Which provider new uploads go to. */

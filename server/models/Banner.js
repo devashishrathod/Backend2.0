@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { STORAGE_PROVIDER } = require("../constants/storage");
 const {
   BANNER_TYPE,
   BANNER_MEDIA_FIELD,
@@ -62,7 +63,7 @@ const bannerSchema = new mongoose.Schema(
       storage: {
         provider: {
           type: String,
-          enum: ["CLOUDINARY", "S3"],
+          enum: Object.values(STORAGE_PROVIDER),
         },
         publicId: { type: String },
         bucket: { type: String },
@@ -77,7 +78,7 @@ const bannerSchema = new mongoose.Schema(
       storage: {
         provider: {
           type: String,
-          enum: ["CLOUDINARY", "S3"],
+          enum: Object.values(STORAGE_PROVIDER),
         },
         publicId: { type: String },
         bucket: { type: String },
@@ -92,7 +93,7 @@ const bannerSchema = new mongoose.Schema(
       storage: {
         provider: {
           type: String,
-          enum: ["CLOUDINARY", "S3"],
+          enum: Object.values(STORAGE_PROVIDER),
         },
         publicId: { type: String },
         bucket: { type: String },

@@ -198,7 +198,7 @@ describe("deleteAsset — L-1, the provider switch that did nothing", () => {
     await storage.deleteAsset({
       url: "https://cdn.test/dev/images/brands/b1/x.webp",
       storage: {
-        provider: STORAGE_PROVIDER.S3,
+        provider: STORAGE_PROVIDER.AWS_S3,
         bucket: "trydood-nonprod-public",
         key: "dev/images/brands/b1/x.webp",
       },
@@ -335,7 +335,7 @@ describe("isCustomThumbnail — L-4, the poster that got deleted", () => {
         url: "https://cdn.test/dev/videos/showcase/s1/v.mp4",
         thumbnail: "https://cdn.test/dev/images/showcase/s1/auto.webp",
         storage: {
-          provider: STORAGE_PROVIDER.S3,
+          provider: STORAGE_PROVIDER.AWS_S3,
           publicId: null,
           key: "dev/videos/showcase/s1/v.mp4",
         },
@@ -344,7 +344,7 @@ describe("isCustomThumbnail — L-4, the poster that got deleted", () => {
   });
 
   test("a poster the vendor uploaded IS custom, on either provider", () => {
-    for (const provider of [STORAGE_PROVIDER.S3, STORAGE_PROVIDER.CLOUDINARY]) {
+    for (const provider of [STORAGE_PROVIDER.AWS_S3, STORAGE_PROVIDER.CLOUDINARY]) {
       expect(
         isCustomThumbnail({
           type: "VIDEO",
@@ -436,13 +436,13 @@ describe("S3 provider URLs", () => {
 describe("provider selection", () => {
   test("new uploads follow MEDIA_PROVIDER", () => {
     expect(storage.activeProvider()).toBe(STORAGE_PROVIDER.CLOUDINARY);
-    mockConfig.MEDIA_PROVIDER = STORAGE_PROVIDER.S3;
-    expect(storage.activeProvider()).toBe(STORAGE_PROVIDER.S3);
+    mockConfig.MEDIA_PROVIDER = STORAGE_PROVIDER.AWS_S3;
+    expect(storage.activeProvider()).toBe(STORAGE_PROVIDER.AWS_S3);
   });
 
   test("🔴 deletes follow the row, not the setting", async () => {
     // Flipping the switch must not strand everything uploaded before it.
-    mockConfig.MEDIA_PROVIDER = STORAGE_PROVIDER.S3;
+    mockConfig.MEDIA_PROVIDER = STORAGE_PROVIDER.AWS_S3;
     await storage.deleteAsset({
       storage: { provider: STORAGE_PROVIDER.CLOUDINARY, publicId: "Images/old" },
     });

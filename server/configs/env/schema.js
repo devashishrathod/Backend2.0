@@ -130,7 +130,7 @@ const schema = Joi.object({
    */
   MEDIA_PROVIDER: Joi.string()
     .uppercase()
-    .valid("CLOUDINARY", "S3")
+    .valid("CLOUDINARY", "AWS_S3")
     .default("CLOUDINARY"),
 
   // ── AWS S3 ───────────────────────────────────────────────────────────────

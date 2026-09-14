@@ -22,7 +22,7 @@ const VoucherVersion = require("../../models/VoucherVersion");
  */
 const s3 = (key) => ({
   storage: {
-    provider: "S3",
+    provider: "AWS_S3",
     publicId: null,
     bucket: "trydood-nonprod-public",
     key,

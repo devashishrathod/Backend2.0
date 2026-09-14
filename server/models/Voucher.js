@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { STORAGE_PROVIDER } = require("../constants/storage");
 const { userField, brandField } = require("./validObjectId");
 const { VOUCHER_STATUSES } = require("../constants/voucher");
 const {
@@ -13,7 +14,7 @@ const voucherBannerMediaSchema = new mongoose.Schema(
     storage: {
       provider: {
         type: String,
-        enum: ["CLOUDINARY", "S3"],
+        enum: Object.values(STORAGE_PROVIDER),
         default: "CLOUDINARY",
       },
       publicId: { type: String },

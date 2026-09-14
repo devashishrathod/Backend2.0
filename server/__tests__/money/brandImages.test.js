@@ -26,7 +26,7 @@ jest.mock("../../services/storage", () => {
       n += 1;
       return {
         url: `https://cdn.test/uploaded-${n}.webp`,
-        storage: { provider: "S3", bucket: "b", key: `k-${n}` },
+        storage: { provider: "AWS_S3", bucket: "b", key: `k-${n}` },
       };
     }),
     deleteAsset: jest.fn(async () => true),
@@ -245,7 +245,7 @@ describe("the storage sibling", () => {
     );
 
     const saved = await Brand.findById(BRAND._id);
-    expect(saved.logoStorage.provider).toBe("S3");
+    expect(saved.logoStorage.provider).toBe("AWS_S3");
     expect(saved.logoStorage.key).toBeTruthy();
     expect(saved.coverImageStorage.key).not.toBe(saved.logoStorage.key);
   });

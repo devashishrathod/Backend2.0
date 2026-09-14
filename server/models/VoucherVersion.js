@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { STORAGE_PROVIDER } = require("../constants/storage");
 const { isValidateVoucherVersionCode } = require("../validator/common");
 const { userField, brandField } = require("./validObjectId");
 const {
@@ -71,7 +72,7 @@ const voucherImageSchema = new mongoose.Schema(
     storage: {
       provider: {
         type: String,
-        enum: ["CLOUDINARY", "S3"],
+        enum: Object.values(STORAGE_PROVIDER),
         default: "CLOUDINARY",
       },
       publicId: { type: String },

@@ -34,7 +34,7 @@ jest.mock("../../helpers/documents", () => {
     generateAndUploadDocument: jest.fn(async () => ({
       url: null,
       storage: {
-        provider: "S3",
+        provider: "AWS_S3",
         publicId: null,
         bucket: "trydood-nonprod-private",
         key: UPLOADED_KEY,
@@ -132,7 +132,7 @@ describe("a document that already has a file", () => {
   const withStorage = () =>
     seedTransaction({
       documentStorage: {
-        provider: "S3",
+        provider: "AWS_S3",
         bucket: "trydood-nonprod-private",
         key: UPLOADED_KEY,
       },
@@ -198,7 +198,7 @@ describe("rows written before any of this", () => {
     const txn = await seedTransaction({
       invoiceUrl: "https://res.cloudinary.com/x/image/upload/v1/Documents/old.pdf",
       documentStorage: {
-        provider: "S3",
+        provider: "AWS_S3",
         bucket: "trydood-nonprod-private",
         key: UPLOADED_KEY,
       },
