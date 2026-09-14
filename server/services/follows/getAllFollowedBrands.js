@@ -2,6 +2,7 @@ const Follow = require("../../models/Follow");
 const { pagination } = require("../../utils");
 const { buildAggregateLookup } = require("../../database");
 const { resolveCustomerByUserId } = require("../../helpers/customers");
+const { buildBrandPlanLookup } = require("../../helpers/subscribeds");
 const { FOLLOW_SORT_BY } = require("../../constants/follow");
 
 exports.getAllFollowedBrands = async (userId, query) => {
@@ -30,6 +31,7 @@ exports.getAllFollowedBrands = async (userId, query) => {
         coverImage: 1,
         description: 1,
         followersCount: 1,
+        merchantId: 1,
         uniqueId: 1,
         isActive: 1,
         isDeleted: 1,
@@ -48,6 +50,21 @@ exports.getAllFollowedBrands = async (userId, query) => {
       },
     });
   }
+
+  /**
+   * Beside `brand.merchantId`, the same key every other customer surface uses.
+   *
+   * Pushed last, after the search filter, so the join runs only on rows that
+   * survive it — the two `$lookup`s cost nothing on a brand the caller filtered
+   * out. Keyed off `brand._id` rather than `followeeId` because by this point
+   * the brand is the thing that matched.
+   */
+  pipeline.push(
+    ...buildBrandPlanLookup({
+      localField: "brand._id",
+      as: "brand.subscriptionPlan",
+    }),
+  );
 
   pipeline.push({ $project: { __v: 0 } });
 

@@ -5,6 +5,11 @@ const { buildTransactionFilter } = require("./buildTransactionFilter");
 const { buildAccessScopeFilter } = require("./assertTransactionAccess");
 const { TRANSACTION_PURPOSE } = require("../../constants/transaction");
 const { VOUCHER_CLAIM_STATUS } = require("../../constants/voucherClaim");
+// By file, not through the barrel: `helpers/subscribeds` requires
+// `helpers/transactions` (settleSubscriptionPayment), so the barrel would close
+// a require cycle back onto this very module. `buildInvoiceSnapshot` reaches
+// for `../subscribeds/formatDuration` the same way and for the same reason.
+const { buildBrandPlanLookup } = require("../subscribeds/brandPlanLookup");
 
 const asId = (value) =>
   value ? new mongoose.Types.ObjectId(String(value)) : undefined;
@@ -187,7 +192,10 @@ exports.buildClaimTransactionPipeline = (actor, query = {}) => {
       from: "brands",
       localField: "brandId",
       as: "brand",
-      project: { brandName: 1, logo: 1 },
+      // `merchantId` rides along so every surface that shows a brand shows the
+      // same identifiers — it is already public on the customer brand
+      // endpoints, so this is not new exposure.
+      project: { brandName: 1, logo: 1, merchantId: 1 },
     }),
     ...buildAggregateLookup({
       from: "subbrands",
@@ -195,8 +203,16 @@ exports.buildClaimTransactionPipeline = (actor, query = {}) => {
       as: "outlet",
       project: { uniqueId: 1, storeId: 1 },
     }),
+    // Beside `brand.merchantId`, matching the voucher listing's brand block.
+    ...buildBrandPlanLookup({
+      localField: "brandId",
+      as: "brand.subscriptionPlan",
+    }),
   );
 
+  // ⚠️ Must stay below the lookups above. The next two lines mutate
+  // `pipeline[pipeline.length - 1]`, so anything pushed after this point would
+  // have its own stage rewritten instead.
   pipeline.push({ $project: exports.claimProjection(actor.role) });
   // Added after the projection so the joins survive it — a `$project` drops
   // anything it does not name, joined fields included.
@@ -226,6 +242,30 @@ exports.buildClaimPipeline = (actor, query = {}) => {
     { $match: match },
     { $sort: { createdAt: -1 } },
     { $project: exports.claimRecordProjection(actor.role) },
+    /**
+     * The brand, live — deliberately **alongside** `brandSnapshot`, not
+     * instead of it.
+     *
+     * The snapshot is the whole reason a September claim still reads correctly
+     * after the brand was renamed, and nothing here touches it. But
+     * `merchantId` and `subscriptionPlan` are not history: they answer "who is
+     * this brand today", and freezing them would be actively wrong — a
+     * snapshot would show a plan the brand no longer holds, which is the exact
+     * bug this change exists to remove.
+     *
+     * Joined after the projection because `brandId` survives it, so the whole
+     * `$lookup` runs on already-narrowed rows.
+     */
+    ...buildAggregateLookup({
+      from: "brands",
+      localField: "brandId",
+      as: "brand",
+      project: { brandName: 1, logo: 1, merchantId: 1 },
+    }),
+    ...buildBrandPlanLookup({
+      localField: "brandId",
+      as: "brand.subscriptionPlan",
+    }),
   ];
 };
 

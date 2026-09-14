@@ -21,6 +21,8 @@ const {
   validateCustomerPromoCode,
   splitPromoCost,
 } = require("../promoCodes");
+// By file, not the barrel — see the note in `customerListing.js`.
+const { resolveBrandPlanName } = require("../subscribeds/brandPlanLookup");
 const { resolveClaimOffer } = require("./resolveClaimOffer");
 const { calculateVoucherPricing } = require("./calculateVoucherPricing");
 const { buildVoucherOrderSummary } = require("./buildVoucherOrderSummary");
@@ -145,9 +147,11 @@ exports.buildClaimPreview = async (
     }
   }
 
-  const [brand, usedOfferRows] = await Promise.all([
+  const [brand, usedOfferRows, brandSubscriptionPlan] = await Promise.all([
     Brand.findById(brandId)
-      .select("_id brandName isActive isApproved isDeleted isSubscribed subscribedId")
+      .select(
+        "_id brandName merchantId isActive isApproved isDeleted isSubscribed subscribedId",
+      )
       .lean(),
     // Only a signed-in customer can have used anything. A guest is shown every
     // offer, and the once-per-user rule is re-checked once they sign in.
@@ -161,6 +165,9 @@ exports.buildClaimPreview = async (
         })
           .select("offerId")
           .lean(),
+    // The live plan name, for the brand block below. Runs alongside the other
+    // two reads rather than after them.
+    resolveBrandPlanName(brandId),
   ]);
 
   const usedOfferIds = usedOfferRows.map((row) => row.offerId).filter(Boolean);
@@ -359,7 +366,13 @@ exports.buildClaimPreview = async (
     outlet: { id: outlet._id, uniqueId: outlet.uniqueId, storeId: outlet.storeId },
     // New in this phase. The checkout has to name who is being paid.
     brand: brand
-      ? { id: brand._id, name: brand.brandName, isApproved: Boolean(brand.isApproved) }
+      ? {
+          id: brand._id,
+          name: brand.brandName,
+          merchantId: brand.merchantId || null,
+          subscriptionPlan: brandSubscriptionPlan,
+          isApproved: Boolean(brand.isApproved),
+        }
       : null,
 
     billAmount: pricing.billAmount,
