@@ -3,6 +3,7 @@ const {
   invalidateSettingCache,
   assertSettlementTimingRule,
   assertReserveRateRule,
+  assertStorageLimitRule,
 } = require("../../helpers/settings");
 
 /**
@@ -203,6 +204,30 @@ exports.updateSetting = async (userId, payload = {}) => {
   if (typeof payload.isActive === "boolean") {
     setting.isActive = payload.isActive;
   }
+  /**
+   * Platform-wide storage rules. Merged block by block, same as everything
+   * else, so an admin can change the provider without resetting the limits.
+   */
+  if (payload.storage) {
+    if (!setting.storage) setting.storage = {};
+    if (payload.storage.provider) {
+      setting.storage.provider = payload.storage.provider;
+    }
+    for (const block of ["limits", "allowed", "upload", "delivery"]) {
+      if (payload.storage[block]) {
+        mergeBlock(setting.storage, block, payload.storage[block]);
+      }
+    }
+  }
+
+  /**
+   * ⚠️ After every merge, on the **merged** document. The global ceiling and a
+   * surface limit can arrive in separate requests, so checking the payload
+   * alone would miss an admin lowering the global below a surface that is
+   * already stored.
+   */
+  assertStorageLimitRule(setting);
+
   setting.updatedBy = userId;
 
   await setting.save();

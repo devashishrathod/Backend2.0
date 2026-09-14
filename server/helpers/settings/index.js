@@ -4,6 +4,10 @@ const {
   invalidateSettingCache,
 } = require("./getSetting");
 const { getVoucherConfig } = require("./getVoucherConfig");
+const {
+  getStorageConfig,
+  effectiveLimitMB,
+} = require("./getStorageConfig");
 const { getShowcaseConfig } = require("./getShowcaseConfig");
 const { getSubscriptionConfig } = require("./getSubscriptionConfig");
 const { getCustomerConfig } = require("./getCustomerConfig");
@@ -12,12 +16,18 @@ const { getSecurityConfig } = require("./getSecurityConfig");
 const { getAppConfig } = require("./getAppConfig");
 const { assertSettlementTimingRule } = require("./assertSettlementTimingRule");
 const { assertReserveRateRule } = require("./assertReserveRateRule");
+const {
+  assertStorageLimitRule,
+  STORAGE_LIMIT_RULES,
+} = require("./assertStorageLimitRule");
 
 module.exports = {
   getSetting,
   getSettingDocument,
   invalidateSettingCache,
   getVoucherConfig,
+  getStorageConfig,
+  effectiveLimitMB,
   getShowcaseConfig,
   getSubscriptionConfig,
   getCustomerConfig,
@@ -33,4 +43,6 @@ module.exports = {
   // each comparison.
   assertSettlementTimingRule,
   assertReserveRateRule,
+  assertStorageLimitRule,
+  STORAGE_LIMIT_RULES,
 };

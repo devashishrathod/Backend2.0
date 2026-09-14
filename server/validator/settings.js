@@ -1,4 +1,5 @@
 const Joi = require("joi");
+const { STORAGE_PROVIDER } = require("../constants/storage");
 const {
   SETTLEMENT_CYCLE_TYPES,
   PAYOUT_PROVIDERS,
@@ -494,6 +495,47 @@ const appSettingSchema = Joi.object({
   }).optional(),
 });
 
+
+/**
+ * Platform-wide storage rules.
+ *
+ * ⚠️ The size numbers here are **ceilings**. A surface (showcase today, voucher
+ * next) may ask for less, and `assertSurfaceLimitsWithinGlobal` refuses one that
+ * asks for more — see the note there for why a silent `min()` alone is not
+ * enough at the write boundary.
+ */
+const storageSettingSchema = Joi.object({
+  provider: Joi.string()
+    .uppercase()
+    .valid(...Object.values(STORAGE_PROVIDER))
+    .optional()
+    .messages({
+      "any.only": `provider must be one of: ${Object.values(STORAGE_PROVIDER).join(", ")}`,
+    }),
+  limits: Joi.object({
+    maxImageSizeMB: Joi.number().integer().min(1).optional(),
+    maxGifSizeMB: Joi.number().integer().min(1).optional(),
+    maxVideoSizeMB: Joi.number().integer().min(1).optional(),
+    maxDocumentSizeMB: Joi.number().integer().min(1).optional(),
+    maxAudioSizeMB: Joi.number().integer().min(1).optional(),
+  }).optional(),
+  allowed: Joi.object({
+    imageTypes: Joi.array().items(Joi.string().trim()).min(1).optional(),
+    gifTypes: Joi.array().items(Joi.string().trim()).min(1).optional(),
+    videoTypes: Joi.array().items(Joi.string().trim()).min(1).optional(),
+    documentTypes: Joi.array().items(Joi.string().trim()).min(1).optional(),
+    audioTypes: Joi.array().items(Joi.string().trim()).min(1).optional(),
+  }).optional(),
+  upload: Joi.object({
+    presignEnabled: Joi.boolean().optional(),
+    presignTtlMinutes: Joi.number().integer().min(1).max(60).optional(),
+    intentTtlMinutes: Joi.number().integer().min(1).max(1440).optional(),
+  }).optional(),
+  delivery: Joi.object({
+    signedUrlTtlMinutes: Joi.number().integer().min(1).max(1440).optional(),
+  }).optional(),
+});
+
 exports.validateUpdateSetting = {
   body: Joi.object({
     vendor: Joi.object({
@@ -501,6 +543,7 @@ exports.validateUpdateSetting = {
       showcase: showcaseSettingSchema.optional(),
       subscription: subscriptionSettingSchema.optional(),
     }).optional(),
+    storage: storageSettingSchema.optional(),
     customer: customerSettingSchema.optional(),
     security: securitySettingSchema.optional(),
     /**

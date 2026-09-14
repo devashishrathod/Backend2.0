@@ -20,6 +20,7 @@ const {
 } = require("../constants/customer");
 const { SEARCH_LIMITS } = require("../constants/search");
 const { GATEWAY_FEE_BEARER } = require("../constants/transaction");
+const { STORAGE_PROVIDER } = require("../constants/storage");
 const {
   ADMIN_NOTIFICATION_DEFAULTS,
 } = require("../constants/notification");
@@ -831,10 +832,121 @@ const appSettingSchema = new mongoose.Schema(
   { _id: false },
 );
 
+/**
+ * Where files go, how big they may be, and what they may be.
+ *
+ * ### Why this is a top-level block and not a corner of `vendor`
+ *
+ * None of it is vendor-specific. The provider decides where **every** upload on
+ * the platform lands — a customer's avatar, an admin's banner, a generated
+ * invoice. Putting it under `vendor` would say something about ownership that
+ * is not true.
+ *
+ * ### ⚠️ Global is a ceiling; a surface may only narrow it
+ *
+ * `vendor.showcase.maxImageSizeMB` already exists and will keep existing. The
+ * two are not rivals: the global number is the most this platform will ever
+ * accept, and a surface may ask for less. The effective limit is the **smaller**
+ * of the two, and a surface limit above the global is refused on save rather
+ * than silently losing — because two numbers answering one question is only safe
+ * when it is written down which of them wins.
+ *
+ * ### Every field here has a reader
+ *
+ * Deliberately. `maxSections` used to sit in this file with nothing consulting
+ * it, so the admin panel offered a limit that changed nothing — which is its own
+ * kind of bug. Nothing goes in this block until something reads it.
+ */
+const storageSettingSchema = new mongoose.Schema(
+  {
+    /**
+     * Which provider **new** uploads go to.
+     *
+     * ⚠️ Only new ones. Deleting an existing asset follows that row's own
+     * `storage.provider`, never this — otherwise flipping the switch would
+     * strand every file uploaded before it.
+     *
+     * The enum comes from `STORAGE_PROVIDER` rather than a literal list, so the
+     * day a provider is renamed there is one place to change.
+     */
+    provider: {
+      type: String,
+      enum: Object.values(STORAGE_PROVIDER),
+      default: STORAGE_PROVIDER.CLOUDINARY,
+      required: true,
+    },
+
+    /** Per-kind ceilings, in MB. Bytes are computed once in `getStorageConfig`. */
+    limits: {
+      maxImageSizeMB: { type: Number, default: 10, min: 1 },
+      /**
+       * ⚠️ GIFs get their own ceiling, and a higher one. An animated GIF is
+       * every frame at once — a 3-second loop is routinely larger than a photo
+       * of the same picture, and holding it to the image limit rejects files
+       * that are perfectly ordinary for their type.
+       */
+      maxGifSizeMB: { type: Number, default: 15, min: 1 },
+      maxVideoSizeMB: { type: Number, default: 50, min: 1 },
+      maxDocumentSizeMB: { type: Number, default: 20, min: 1 },
+      maxAudioSizeMB: { type: Number, default: 20, min: 1 },
+    },
+
+    /**
+     * What each kind may actually be, by mime type.
+     *
+     * ⚠️ `gifTypes` is separate from `imageTypes` even though a GIF is an
+     * `image/*` file. That is what lets a surface say "images yes, GIFs no"
+     * without re-deciding here what a GIF is.
+     */
+    allowed: {
+      imageTypes: {
+        type: [String],
+        default: ["image/jpeg", "image/jpg", "image/png", "image/webp"],
+      },
+      gifTypes: { type: [String], default: ["image/gif"] },
+      videoTypes: {
+        type: [String],
+        default: ["video/mp4", "video/webm", "video/quicktime"],
+      },
+      documentTypes: { type: [String], default: ["application/pdf"] },
+      audioTypes: { type: [String], default: ["audio/mpeg", "audio/mp4"] },
+    },
+
+    upload: {
+      /** The direct-to-S3 route, switchable without a deploy. */
+      presignEnabled: { type: Boolean, default: false },
+      /** How long the client has to start the upload. */
+      presignTtlMinutes: { type: Number, default: 15, min: 1 },
+      /**
+       * How long an unconfirmed upload intent survives.
+       *
+       * ⚠️ Longer than the signature, because a slow upload that finishes at
+       * minute fourteen still has to be confirmable — the row must outlive the
+       * window, not match it.
+       */
+      intentTtlMinutes: { type: Number, default: 60, min: 1 },
+    },
+
+    delivery: {
+      /** How long a presigned GET for a private document stays valid. */
+      signedUrlTtlMinutes: { type: Number, default: 5, min: 1 },
+    },
+  },
+  { _id: false },
+);
+
 const settingSchema = new mongoose.Schema(
   {
     vendor: {
       type: vendorSettingSchema,
+      default: () => ({}),
+    },
+    /**
+     * ⚠️ Platform-wide, beside `vendor` and `customer` rather than inside one —
+     * see the note on the schema above.
+     */
+    storage: {
+      type: storageSettingSchema,
       default: () => ({}),
     },
     customer: {
