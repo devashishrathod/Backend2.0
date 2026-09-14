@@ -840,15 +840,27 @@ naye `models/mediaSchema.js` · `helpers/media/toMediaResponse.js` · `constants
 > jaata. M-4 me showcase `poster` par jaayega aur derivation usi commit me hategi,
 > to kabhi dono ke beech ka haal nahi aayega.
 
-## F-4 · Provider Setting se + preflight
-`services/storage/index.js` · `services/settings/updateSetting.js` · `configs/env/schema.js` · naya `services/storage/preflight.js`
-- [ ] `activeProvider()` ab `Setting.storage.provider` se
-- [ ] `MEDIA_PROVIDER` env sirf **seed default**
-- [ ] Preflight probe — PUT→GET→DELETE, dono bucket, `staging/` prefix
-- [ ] Fail → **422**, switch save hi na ho
-- [ ] CloudFront na hone par **warning** (block nahi)
-- [ ] `providerFor(asset)` jaisa hai waisa — row apna provider follow kare
-- [ ] **Proof:** galat creds par switch refuse · switch ke baad naye upload naye provider par, purane delete purane se
+## F-4 · Provider Setting se + preflight — ✅ **DONE** (uncommitted)
+naya `services/storage/preflight.js` · `services/storage/index.js` · `services/settings/updateSetting.js` · `controllers/settings/update.js` · `models/Setting.js`
+- [x] `activeProvider()` ab **async**, `Setting.storage.provider` se
+- [x] `MEDIA_PROVIDER` sirf **seed default** — model ke `default: () => config.MEDIA_PROVIDER` se, jo sirf document banne par chalta hai. Redeploy panel ki choice ko override nahi karta
+- [x] Preflight probe — PUT→GET→DELETE, **dono bucket**, `staging/` prefix, `finally` me cleanup
+- [x] Fail → **422**, switch save hi nahi hota; message me bucket + teenon permission
+- [x] **Sirf badalne par** probe — wahi provider dobara save karna free hai
+- [x] CloudFront na hone par **warning**, block nahi
+- [x] `providerFor(asset)` jaisa tha waisa — delete row ka apna provider follow karta hai
+- [x] **24 test** (12 preflight + 6 gate + 6 pehle wale) · **Mutation 10/10**
+
+> 🔴 **Mere naye test ne ek asli bug pakda:** `updateSetting` me `throwError`
+> **import hi nahi tha**, aur wo naye 422 path me use ho raha tha. `verifyImports`
+> ise pakad nahi sakta — wo `require` check karta hai, function body ke andar
+> undefined global nahi. Preflight fail hone par `ReferenceError` girta, 422 nahi.
+
+> ⚠️ **Response shape jaan-boojh kar nahi hilaya.** Service ab hamesha
+> `{ setting, warnings }` deti hai (kabhi ek shape kabhi doosra — wo har caller
+> ko ek branch deta hai). Par **HTTP `data` wahi settings document hai**, jaisa
+> tha. Warning **message** me jaati hai, kyunki wahi ek string admin panel hamesha
+> dikhata hai.
 
 ---
 

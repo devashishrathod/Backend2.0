@@ -6753,6 +6753,38 @@ ka banner, generated invoice, sab.
 > alag-alag request me aa sakte hain, to global ko 50 se 20 karna bhi pakda jaata
 > hai jab showcase abhi 50 par hai.
 
+> #### 🔴 `AWS_S3` par switch karne se pehle server **rehearsal** karta hai
+>
+> Ye ek dropdown poore platform ke **har upload** ka rukh badal deta hai — avatar,
+> banner, voucher images, generated invoice. Agar key galat ho ya policy attach hi
+> na ho, to yahan kuch fail nahi hota — fail **agle upload par** hota hai, ek saath
+> har user ke liye, aur stack trace me ek ghante purane settings change ka koi
+> zikr nahi hota.
+>
+> Env var ke liye kam se kam deploy access chahiye tha. Dropdown ke liye nahi. To
+> dropdown ko rehearsal se guzarna padta hai: **dono bucket** me ek asli
+> write → read → delete (`staging/` me, jahan lifecycle rule waise bhi saaf karta
+> hai). Fail hua to **422**, aur switch save hi nahi hota — message me bucket ka
+> naam aur kaunsi permission check karni hai, dono.
+>
+> **Sirf badalne par.** Wahi provider dobara save karna (kisi aur edit ke saath)
+> na probe chalata hai, na uski wajah se fail ho sakta hai. Cloudinary par wapas
+> jaane par bhi koi rehearsal nahi.
+>
+> ⚠️ **Koi halka check kaam nahi karta**, aur wajah likhne layak hai:
+> `HeadBucket` ko `s3:ListBucket` chahiye jo ye policy jaan-boojh kar nahi deti —
+> to wo **sahi** setup par fail hota hai. `HeadObject` ka jawab body-less hota hai,
+> to SDK error code padh hi nahi pata. Aur missing key par `GetObject`
+> `s3:ListBucket` ke bina `NoSuchKey` ki jagah **`AccessDenied`** deta hai — wahi
+> jo ek tooti policy deti hai, yaani dono me farak hi nahi kiya ja sakta.
+>
+> **CloudFront na ho to block nahi hota**, warning aati hai. S3 uske bina bhi
+> chalta hai — upload, delete, delivery sab — bas images original size me jaati
+> hain. Block karne se wahi testing ruk jaati jo CloudFront lagane se pehle honi
+> hai. Warning response ke **message** me aati hai; `data` wahi settings document
+> rehta hai.
+
+
 
 
 **Access:** Intended: ADMIN · Enforced: **ADMIN** ✅
