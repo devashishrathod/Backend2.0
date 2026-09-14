@@ -771,12 +771,22 @@ naya `helpers/vouchers/orphanImages.js` · `services/vouchers/updateVoucher.js` 
 
 ---
 
-## F-1 · `getSetting()` TTL cache
-`helpers/settings/getSetting.js` · `services/settings/updateSetting.js`
-- [ ] 30s TTL cache; `updateSetting` par invalidate
-- [ ] **Read path se `upsert` hatao** — aaj har read ek write hai
-- [ ] Multi-instance staleness ki seema doc me
-- [ ] **Proof:** cache hit DB nahi chhoota · update ke baad naya value · TTL ke baad refresh
+## F-1 · `getSetting()` TTL cache — ✅ **DONE** (uncommitted)
+`helpers/settings/getSetting.js` · `helpers/settings/index.js` · `services/settings/updateSetting.js` · `helpers/notifications/audienceChannels.js`
+- [x] 30s TTL snapshot; `updateSetting` **save ke baad** invalidate karta hai
+- [x] **Read path se `upsert` hata** — ab wo sirf tab chalta hai jab document hai hi nahi
+- [x] **In-flight dedupe** — cold cache par burst ek query karta hai, N nahi
+- [x] 🔴 **Writer ko alag document** — `getSettingDocument()`, uncached. `updateSetting` jo mila usi par `Object.assign` karke `save()` karta hai; shared snapshot dena readers ko aadha-bana update dikha deta, aur validation fail hone par bhi wahi dikhta rehta
+- [x] ⚠️ **`toObject()`, `.lean()` nahi** — lean hydration skip karta hai, aur hydration hi schema defaults lagati hai. Maap kar dekha: `hydrate(raw).toObject()` → `maxImages: 5`, raw → `undefined`. Lean lene par har config helper jiske paas `??` fallback nahi hai, `undefined` padhta
+- [x] Snapshot **deep-frozen** — reader galti se bhi shared state nahi badal sakta
+- [x] Stale comment theek kiya — `audienceChannels.js` kehta tha "`getSetting()` is a `findOneAndUpdate` ... a **write**"
+- [x] **12 unit test** · **Mutation 8/8**
+
+> ⚠️ **Multi-instance ki seema:** cache **per process** hai. Render par do instance
+> settings badalne ke baad **30 second tak** alag jawab de sakte hain. Ye theek hai
+> kyunki ye commercial knobs hain (fee slab, upload ceiling, limits) — koi paisa
+> 30 second purane number se reconcile nahi hota. Jis value ko sach me exact hona
+> ho, wo is function se **padhi hi nahi jaani chahiye**.
 
 ## F-2 · `Setting.storage` block
 `models/Setting.js` · `validator/setting.js` · naya `helpers/settings/getStorageConfig.js` · `constants/storage.js` · 3 docs · postman

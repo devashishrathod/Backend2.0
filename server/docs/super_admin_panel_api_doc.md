@@ -346,7 +346,8 @@ Admin ke liye `brandId` ek query filter hai — omit karein to data **platform-w
 `express-fileupload` apne options `app.use()` ke waqt build karta hai, har
 request par nahi. Isliye ise badalne ke liye **restart chahiye**, aur wo admin
 panel se badla **nahi** ja sakta. Showcase ki per-surface limits `Setting` me
-hain aur `PUT /settings/update` se turant badal jaati hain.
+hain aur `PUT /settings/update` se badalti hain — **restart ke bina**, par har
+instance par **30 second tak** lag sakta hai (neeche #100 ka cache note).
 
 ⚠️ `413` par connection **turant band** ho jaata hai — poori file bheji nahi
 jaati. Admin panel ko `fetch`/`XHR` ke abort ko error ki tarah handle karna
@@ -6697,6 +6698,23 @@ Sirf [common auth errors](#common-errors) + `403` role check.
 ---
 
 ## 100. PUT /settings/update
+
+> #### ⚠️ Badlaav turant nahi, **30 second** ke andar pahunchta hai
+>
+> `Setting` ab har read par DB se nahi aati — wo ek **30 second ka in-process
+> snapshot** hai. (Pehle har read ek `findOneAndUpdate` + `upsert` thi, yaani ek
+> **write** — aur 15 config helper usi par chalte hain, checkout samet.)
+>
+> Save hote hi **us instance** ka snapshot gir jaata hai, to wahan asar turant
+> dikhta hai. Render par doosre instance apne TTL ke khatam hone par nayi value
+> uthate hain — **zyada se zyada 30 second**.
+>
+> Testing karte waqt isi wajah se kabhi purani value dikhti hai. Wo bug nahi hai;
+> 30 second ruk kar dobara dekhein.
+>
+> Ye commercial knobs ke liye theek hai (fee slab, upload ceiling, limits). Koi
+> paisa 30 second purane number se reconcile nahi hota.
+
 
 **Access:** Intended: ADMIN · Enforced: **ADMIN** ✅
 
