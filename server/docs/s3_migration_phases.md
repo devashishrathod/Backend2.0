@@ -1,7 +1,13 @@
 # S3 Migration — Phase-by-Phase Execution Plan
 
-> **Status:** Phase 0 ✅ · Phase 1 ✅ · Phase 2 ✅ (step A **aur** B).
-> Phase 3-9 abhi shuru nahi hue.
+> 📌 **Ye doc ab historical hai.** Phase 0–4 ship ho chuke; Phase 5–9 ka kaam
+> **[master_execution_plan.md](./master_execution_plan.md)** me chala gaya hai,
+> jahan wo showcase, voucher aur media-unification ke saath ek hi order me hai
+> (`U-*` aur `X-*` blocks). **Naya kaam wahan se lein, yahan se nahi.**
+>
+> **Status:** Phase 0 ✅ · 1 ✅ · 2 ✅ (step A **aur** B) · 3 ✅ · 4 ✅.
+> Phase 5 ka code likha ja chuka hai par **wire nahi hua** (`models/Upload.js`,
+> `services/storage/{presign,confirm,inspect}.js` — uncommitted) — wo ab **U-1** hai.
 >
 > Design + edge cases: [s3_media_migration_plan.md](./s3_media_migration_plan.md)
 > **AWS setup runbook: [aws_s3_setup.md](./aws_s3_setup.md)**
@@ -45,15 +51,15 @@
 | **0** ✅ | Temp leak + upload limits — **DONE** | ❌ | ❌ | ✅ | — |
 | **1** ✅ | `configs/env/` + Joi + 3 guards — **DONE** | ❌ | ❌ | ✅ | — |
 | **2** ✅ | `services/storage` facade + S3 provider · **L-1…L-4 fix — DONE** | ❌ | ❌ | ✅ | 1 |
-| **3** | 6 surfaces ko `storage` sibling field | ❌ | ❌ | ✅ | 2 |
-| **4** | PDF → private bucket + presigned GET | ❌ | 🟡 private bucket | ✅ | 2 |
-| **5** | `POST /uploads/presign` + confirm (**dual mode**) | ✅ naya raasta | ❌ | ✅ | 2, 3 |
-| **6** | CloudFront + resize Lambda (T1) | 🟡 URL shape | ✅ | ✅ | 2 |
-| **7** | Metadata Lambda + retry sweep (M-1) | ❌ | ✅ | ✅ | 5 |
-| **8** | Panel + app migrate | ✅ | ❌ | — | 5, 6 |
-| **9** | Multipart + `express-fileupload` delete | ❌ | ❌ | ✅ | 8 |
+| **3** ✅ | 6 surfaces ko `storage` sibling field | ❌ | ❌ | ✅ | 2 |
+| **4** ✅ | PDF → private bucket + presigned GET | ❌ | 🟡 private bucket | ✅ | 2 |
+| **5** → **U-1** | `POST /uploads/presign` + confirm (**dual mode**) | ✅ naya raasta | ❌ | ✅ | 2, 3 |
+| **6** → **X-1** | CloudFront + resize Lambda (T1) | 🟡 URL shape | ✅ | ✅ | 2 |
+| **7** → **X-2** | Metadata Lambda + retry sweep (M-1) | ❌ | ✅ | ✅ | 5 |
+| **8** → **X-3** | Panel + app migrate | ✅ | ❌ | — | 5, 6 |
+| **9** → **X-4** | Multipart + `express-fileupload` delete | ❌ | ❌ | ✅ | 8 |
 
-**Phase 0-4 me doosri team ko kuch nahi karna.** Unka contract Phase 5 par milta hai.
+**Phase 0-4 me doosri team ko kuch nahi karna.** Unka contract **U-1** par milta hai.
 
 **Infra ka lead time:** Q-7 me tay hua tha ki main Terraform likhunga. Baad me ye
 **console + CLI runbook** ban gaya — [aws_s3_setup.md](./aws_s3_setup.md) — kyunki
