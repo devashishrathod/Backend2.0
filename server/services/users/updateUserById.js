@@ -4,7 +4,7 @@ const Customer = require("../../models/Customer");
 const User = require("../../models/User");
 const { throwError } = require("../../utils");
 const storage = require("../storage");
-const { assertImageFile } = require("../../helpers/media");
+const { assertImageFile, toMediaDocument, toDeletable } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const { applyIdentityChange } = require("../../helpers/users");
 // const { isAdult } = require("../../helpers/users");
@@ -68,20 +68,34 @@ exports.updateUserById = async (userId, payload, image) => {
   assertImageFile(image, "Profile photo");
 
   if (image) {
-    // ⚠️ Upload first, delete second. The old order removed the customer's
-    // existing photo before the new one had landed, so a failed upload left the
-    // profile with a dead URL and no way back.
+    /**
+     * ⚠️ A customer's photo lives on their **`Customer`** row; every other
+     * role's lives on `User`.
+     *
+     * Both used to hold it: the upload wrote `User.image` and the block below
+     * copied it onto `Customer`. Two writers for one field is how the email
+     * address came to disagree between the two — see the note further down —
+     * and there was no reason for the picture to repeat the mistake.
+     *
+     * A vendor has no `Customer` row, so for them `User` is the only home.
+     */
+    const target = isCustomer ? customer : user;
+
+    // ⚠️ Upload first, delete second. The old order removed the existing photo
+    // before the new one had landed, so a failed upload left the profile with a
+    // dead URL and no way back.
+    //
     // ⚠️ The whole previous pair, captured before it is overwritten — the
     // delete needs the OLD storage, not the new one.
-    const previous = toDeletable(user.imageMedia, user.image);
+    const previous = toDeletable(target.imageMedia, target.image);
     const uploaded = await storage.uploadFromPath({
       filePath: image.tempFilePath,
       originalFile: image,
       purpose: UPLOAD_PURPOSE.USER_AVATAR,
       entityId: user._id,
     });
-    user.image = uploaded.url;
-    user.imageMedia = toMediaDocument(uploaded);
+    target.image = uploaded.url;
+    target.imageMedia = toMediaDocument(uploaded);
     if (previous?.url) await storage.deleteAsset(previous);
   }
   user.isSignUpCompleted = true;
@@ -98,7 +112,14 @@ exports.updateUserById = async (userId, payload, image) => {
   if (isCustomer && customer) {
     customer.fullName = user.name;
     customer.dob = user.dob;
-    customer.image = user.image;
+    /**
+     * ⚠️ `customer.image` is **not** copied from `user.image` any more.
+     *
+     * The upload above writes it directly, for the same reason `customer.email`
+     * stopped being copied here: one field, one writer. `User.image` now stays
+     * empty for a customer, which is what makes "where is their photo" a
+     * question with one answer.
+     */
     customer.isSignUpCompleted = true;
     /**
      * ⚠️ `customer.email` is **not** set here any more.
