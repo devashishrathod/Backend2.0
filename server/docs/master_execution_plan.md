@@ -1198,6 +1198,40 @@ generic media shape, customer profile pic zinda, aur admin se provider switch.
 
 ---
 
+# Part 5B — `verifyNoUndef` — ✅ **DONE** (uncommitted)
+
+naya `scripts/verifyNoUndef.js` · `.githooks/pre-commit` · `package.json` · `CLAUDE.md`
+
+Ek bug class **teen baar** aa chuki thi, aur do baar ship ho gayi thi:
+
+| Kab | Kya |
+|---|---|
+| F-4 | `updateSetting` naye 422 path par `throwError` call karta tha, import nahi tha |
+| M-1 | **das** services har image upload par `toMediaDocument` / `toDeletable` |
+| M-1a″ | **paanch** aur `toDisplayName` par — category, subCategory, offer title |
+
+Teenon ki ek hi wajah: patch ka "is file me `helpers/x` ka import hai kya?" guard
+ne usi module ka **koi aur** import dekh liya aur naya naam jodna chhod diya.
+
+🔴 **`verifyImports` ise pakad hi nahi sakta.** Wo module load karta hai aur
+destructured naam check karta hai; JavaScript free variable tab tak resolve hi
+nahi karta jab tak line chale. To module load hota hai, export hota hai, check
+pass karta hai — aur user ke us branch par pahunchte hi `ReferenceError`.
+
+- [x] Babel ki scope analysis (`@babel/parser` + `@babel/traverse` — **jest ke saath pehle se installed**, koi nayi dependency nahi)
+- [x] Har referenced identifier par poochta hai: iska binding hai? Na ho aur global na ho → report
+- [x] Ek naam par ek report per file, har use par nahi
+- [x] Jo file parse na ho, wo **report** hoti hai, skip nahi — chup-chaap pass karna wahi failure hai jise ye scripts rokti hain
+- [x] **Pre-commit hook** har `server/**/*.js` change par chalata hai
+- [x] `npm run verify` teenon ek saath
+- [x] **9 unit test** — dono shipped bugs ka shape reproduce karke, aur 6 tarah ki cheezein jinhe flag *nahi* karna chahiye (catch binding, hoisting, object key, property access, destructured params)
+
+> 🔴 **Banate hi 5 naye bug mile** — M-1a″ wale `toDisplayName` ke, jo already
+> commit ho chuke the (`77dc38f`). Har category, subCategory aur offer title
+> create/update `ReferenceError` deta. Guard ne pehli hi run me pakde.
+
+---
+
 # Part 6 — Har phase ka acceptance (kuch na chhoote)
 
 Har phase ye **sab** poora karega, warna wo phase done nahi hai:
@@ -1205,7 +1239,7 @@ Har phase ye **sab** poora karega, warna wo phase done nahi hai:
 - [ ] Code + inline `⚠️` / `🔴` notes wahan jahan wajah non-obvious ho
 - [ ] Unit tests — nayi shakha par ek, har guard par ek
 - [ ] **Mutation test** — fix hatao, test marna chahiye. Na mare to test jhootha hai
-- [ ] `verifyImports` · `verifyApiCoverage` · `verifyEnvCoverage` teeno pass
+- [ ] `verifyImports` · **`verifyNoUndef`** · `verifyEnvCoverage` · `verifyApiCoverage` chaaron pass (`npm run verify` pehle teen)
 - [ ] **Teen docs ka rule** (naye/badle endpoint par): map row + role-doc section + postman request + captured example
 - [ ] Money suite — sirf M-5, S-2, S-4, V-4 par
 - [ ] Report → **phir aap bolenge, tab commit**

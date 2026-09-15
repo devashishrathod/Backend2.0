@@ -371,6 +371,32 @@ Strictly one direction. A controller never imports a model; a service never sees
 node scripts/verifyApiCoverage.js     # exits 1 if anything is uncovered
 ```
 
+## The four verify scripts, and what each one cannot see
+
+```bash
+npm run verify                        # imports + no-undef + env, in one go
+```
+
+| Script | Answers |
+|---|---|
+| `verifyImports.js` | does every module **load**, and is every destructured name really exported? |
+| `verifyNoUndef.js` | is every name a file **uses** actually in scope? |
+| `verifyEnvCoverage.js` | do the code, `.env.example` and `configs/env/schema.js` agree? |
+| `verifyApiCoverage.js` | is every route categorised, documented, requested and exemplified? |
+
+⚠️ **The first two sound alike and are not.** `verifyImports` loads a module and
+checks its imports resolve; it says nothing about whether a name *used inside a
+function* exists, because JavaScript does not resolve a free variable until the
+line runs. A service that calls a helper nobody imported loads cleanly, exports
+cleanly, passes `verifyImports` — and throws `ReferenceError` the first time a
+user reaches that branch.
+
+That shipped three times during the media migration. Each time a patch added a
+call and its "does this file already import from there?" guard saw an unrelated
+import from the same module and skipped. Each was caught by a test that happened
+to exercise the branch, which is luck. `verifyNoUndef.js` is the check that does
+not need luck; the pre-commit hook runs it on every JavaScript change.
+
 Order in a route: auth middleware → `validateSchema(...)` → controller.
 
 ```js
