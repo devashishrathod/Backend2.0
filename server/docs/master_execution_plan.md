@@ -916,13 +916,29 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 > koi write path hai hi nahi (M-1b me aayega), doosra **filename se machine-derived**
 > hai — `"my_photo_01"` ko `"My_photo_01"` karna behtar nahi.
 
-## M-1b · Customer profile pic
-`models/Customer.js` · `services/users/updateUserById.js` · customer reads
-- [ ] `Customer.image` → `mediaSchema` (aaj khaali `String`, koi upload path likhta hi nahi)
-- [ ] **CUSTOMER role** ka profile update `Customer.image` likhe, `User.image` **chhue hi nahi**
-- [ ] VENDOR / SUB_VENDOR / ADMIN pehle jaisa `User.image` par
-- [ ] Customer reads `Customer.image` se
-- [ ] **Proof:** customer update ke baad `User.image` unset · vendor update se Customer row na bane
+## M-1b · Customer profile pic — ✅ **DONE** (uncommitted)
+`models/Customer.js` · `services/users/updateUserById.js` · `services/customers/{getAdminCustomerDetail,getAllAdminCustomers}.js` · doc · postman
+- [x] `Customer.imageMedia` → `mediaSchema` (M-1a ke sidecar pattern par)
+- [x] **CUSTOMER** ka photo `Customer` row par, **`User.image` unset**
+- [x] VENDOR / SUB_VENDOR / ADMIN pehle jaisa `User` par
+- [x] 🔴 Purana mirror (`customer.image = user.image`) **hata** — ek field ke do writer, wahi jisne email ko dono jagah alag kar diya tha
+- [x] Delete us row ka purana photo hataata hai jise replace kiya ja raha hai, doosre ka nahi
+- [x] **Referral cards** ab `Customer` se photo lete hain — `User.select("image")` un logon ke liye khali aata jinke baare me wo fraud screen hai. Poore page ke liye ek query
+- [x] Admin listing se `account.image` **hata** — wo customer ke liye hamesha null hota
+- [x] **16 unit test** · **Mutation 8/8**
+
+> 🔴 **Is phase ke test ne M-1 ka ek shipped bug pakda.** Das services me
+> `toMediaDocument` / `toDeletable` **use ho rahe the par import hi nahi hue the** —
+> mere patch script ka import-guard chal nahi paaya kyunki file me pehle se
+> `helpers/media` ka ek aur import tha. Har image upload runtime par
+> `ReferenceError` deta. `verifyImports` ise pakad nahi sakta: wo `require` check
+> karta hai, function body ke andar undefined global nahi. **Doosri baar** hua hai
+> (pehle F-4 me `throwError`).
+
+> 🔴 **Doc pehle se jhootha tha**: `PUT /users/update` ka response flat
+> `{_id, name, image}` dikhaya gaya tha, jabki service hamesha
+> `{ userData, customerData }` lautati hai. Ab sach likha hai. Postman ka captured
+> example sahi tha (asli API se capture hua tha).
 
 ## M-2 · Documents → `mediaSchema`
 Dispute · RefundRequest · Settlement · Transaction

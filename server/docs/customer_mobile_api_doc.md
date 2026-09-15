@@ -1187,16 +1187,45 @@ image: <file>
   "success": true,
   "message": "User profile updated successfully",
   "data": {
-    "_id": "68f1a2b3c4d5e6f7a8b9c0d1",
-    "name": "rahul sharma",
-    "email": "rahul.new@example.com",
-    "dob": "1998-04-12T00:00:00.000Z",
-    "image": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/profile/xyz.jpg",
-    "isEmailVerified": false,
-    "updatedAt": "2026-08-22T11:30:00.000Z"
+    "userData": {
+      "_id": "68f1a2b3c4d5e6f7a8b9c0d1",
+      "name": "Rahul Sharma",
+      "email": "rahul.new@example.com",
+      "dob": "1998-04-12T00:00:00.000Z",
+      "role": "CUSTOMER",
+      "isEmailVerified": false,
+      "updatedAt": "2026-08-22T11:30:00.000Z"
+    },
+    "customerData": {
+      "_id": "68f1a2b3c4d5e6f7a8b9c0e2",
+      "userId": "68f1a2b3c4d5e6f7a8b9c0d1",
+      "fullName": "Rahul Sharma",
+      "image": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/profile/xyz.jpg",
+      "dob": "1998-04-12T00:00:00.000Z",
+      "isSignUpCompleted": true
+    }
   }
 }
 ```
+
+> #### ⚠️ `data` do hisson me hai — aur photo customer wale me hai
+>
+> Pehle ye doc ek flat object dikhata tha; service hamesha `{ userData,
+> customerData }` lautati thi. Ab sach likha hai.
+>
+> **`customerData` sirf CUSTOMER ke liye hota hai**, baaki har role ke liye
+> `null` — vendor ya admin ka koi `Customer` row hota hi nahi.
+>
+> 🔴 **Customer ki profile photo `customerData.image` me hai**, `userData.image`
+> me nahi — wo customer ke liye khali rehta hai. Pehle dono me thi: upload
+> `User.image` par likhta tha aur phir `Customer` par copy karta tha. Ek field ke
+> do writer wahi cheez hai jisne email address ko dono jagah alag kar diya tha.
+>
+> Vendor, sub-vendor aur admin ke liye photo `userData.image` me hi rehti hai.
+>
+> ⚠️ **`name` ab jaisa dikhna chahiye waisa save hota hai** — "rahul sharma"
+> bhej kar "Rahul Sharma" wapas aata hai. Poora rule aur uske apvaad
+> (KFC, iPhone, 30% OFF chhue nahi jaate) master plan ke M-1a″ me.
 
 ### Errors
 | Status | Message | Kab |
