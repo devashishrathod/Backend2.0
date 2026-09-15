@@ -46,14 +46,20 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const day = (offset) => new Date(Date.now() + offset * DAY_MS);
 
 /**
- * `Banner.create` refuses a document with no media (a `pre("validate")` hook),
- * so every fixture carries an image whether or not the test looks at it.
+ * `Banner.create` refuses a document with no media (`media` is `required`), so
+ * every fixture carries one whether or not the test looks at it.
+ *
+ * ⚠️ One `media` now, not `type` + one of three subdocuments. The kind lives on
+ * the media itself, which is why these fixtures can no longer describe a banner
+ * whose `type` disagrees with the file it points at.
  */
 const makeBanner = (overrides = {}) =>
   Banner.create({
     title: "Fixture banner",
-    type: "IMAGE",
-    image: { url: "https://res.cloudinary.com/x/image/upload/a.jpg" },
+    media: {
+      url: "https://res.cloudinary.com/x/image/upload/a.jpg",
+      kind: "IMAGE",
+    },
     createdBy: ADMIN,
     ...overrides,
   });
@@ -290,8 +296,10 @@ describe("getActiveBannersForCustomer — scheduled first, evergreen filling", (
   test("a half-open legacy banner is in neither pool", async () => {
     await Banner.collection.insertOne({
       title: "half open",
-      type: "IMAGE",
-      image: { url: "https://res.cloudinary.com/x/image/upload/a.jpg" },
+      media: {
+        url: "https://res.cloudinary.com/x/image/upload/a.jpg",
+        kind: "IMAGE",
+      },
       createdBy: ADMIN,
       startDate: day(-1),
       endDate: null,
@@ -309,12 +317,17 @@ describe("getActiveBannersForCustomer — the payload the app renders", () => {
   test("exactly four keys, and the media url is flattened", async () => {
     await evergreen({
       title: "Secret internal title",
-      type: "VIDEO",
-      video: {
+      media: {
         url: "https://res.cloudinary.com/x/video/upload/a.mp4",
+        kind: "VIDEO",
         storage: { provider: "CLOUDINARY", publicId: "banners/a" },
+        // Mandatory on a VIDEO now, and deliberately carrying its own storage:
+        // the assertion below proves neither one reaches the customer.
+        poster: {
+          url: "https://res.cloudinary.com/x/image/upload/a-poster.jpg",
+          storage: { provider: "CLOUDINARY", publicId: "banners/a-poster" },
+        },
       },
-      image: undefined,
     });
 
     const [banner] = await getActiveBannersForCustomer();
@@ -352,13 +365,20 @@ describe("getActiveBannersForCustomer — the payload the app renders", () => {
   });
 
   /**
-   * ⚠️ Mongoose does not run setters when hydrating from the database, so the
-   * model's uppercase normalization does nothing on the way **out**. A document
-   * written before BANNER_TYPE became uppercase reads back as `image`, and the
-   * media field would then be looked up under a key that does not exist —
-   * `url: null`, and a blank slot on the home screen.
+   * ⚠️ A row from before `media` existed answers with nulls, and that is the
+   * accepted outcome — not a silent success and not a crash.
+   *
+   * The old shape was `type` plus one of `image`/`video`/`gif`, and there is no
+   * migration script by design (pre-launch data). What matters is that such a
+   * row cannot take a carousel slot **and** render blank: it comes back with
+   * `type: null` and `url: null`, which is visibly wrong rather than quietly so.
+   *
+   * This replaces a test that asserted the opposite for a problem that no longer
+   * exists — a legacy lowercase `"image"` missing the `BANNER_MEDIA_FIELD`
+   * lookup, because mongoose does not run setters when hydrating. There is no
+   * lookup table and no second spelling of the kind any more.
    */
-  test("a legacy lowercase type still resolves its media", async () => {
+  test("a pre-migration row answers null rather than a wrong url", async () => {
     await Banner.collection.insertOne({
       title: "legacy",
       type: "image",
@@ -374,9 +394,14 @@ describe("getActiveBannersForCustomer — the payload the app renders", () => {
 
     const [banner] = await getActiveBannersForCustomer();
 
-    expect(banner.type).toBe("IMAGE");
-    expect(banner.url).toBe(
-      "https://res.cloudinary.com/x/image/upload/legacy.jpg",
-    );
+    expect(banner.type).toBeNull();
+    expect(banner.url).toBeNull();
+    // Still the same four keys — a legacy row does not change the contract.
+    expect(Object.keys(banner).sort()).toEqual([
+      "_id",
+      "redirect",
+      "type",
+      "url",
+    ]);
   });
 });

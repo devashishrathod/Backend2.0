@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
-const { STORAGE_PROVIDER } = require("../constants/storage");
+const { mediaSchema } = require("./mediaSchema");
+const { MEDIA_KIND } = require("../constants/storage");
 
 const promotionalTickerSchema = new mongoose.Schema(
   {
@@ -9,21 +10,27 @@ const promotionalTickerSchema = new mongoose.Schema(
       trim: true,
       maxlength: 100,
     },
+    /**
+     * The little image beside the strip's text.
+     *
+     * 🔴 This used to be an inline `{ url, storage }` pair with the provider
+     * enum written out by hand — `default: "CLOUDINARY"` as a bare string, one
+     * of **five** such copies that made `STORAGE_PROVIDER` look like a single
+     * source without being one. Renaming `S3` to `AWS_S3` would have left this
+     * document validating against a value nothing else used.
+     *
+     * ⚠️ Still images only. A ticker icon sits inline in a scrolling strip;
+     * there is no player there and nothing that would paint a poster frame, so
+     * a video or an animated GIF has nowhere to render. Enforced here as well as
+     * in `uploadTickerIcon`, because the seeders write this field directly.
+     */
     icon: {
-      url: {
-        type: String,
-        required: true,
-        trim: true,
-      },
-      storage: {
-        provider: {
-          type: String,
-          enum: Object.values(STORAGE_PROVIDER),
-          default: "CLOUDINARY",
-        },
-        publicId: { type: String },
-        bucket: { type: String },
-        key: { type: String },
+      type: mediaSchema,
+      required: [true, "A ticker needs an icon."],
+      validate: {
+        validator: (value) => !value?.kind || value.kind === MEDIA_KIND.IMAGE,
+        message: ({ value }) =>
+          `A ticker icon has to be a still image, not a ${value?.kind}.`,
       },
     },
     redirect: {

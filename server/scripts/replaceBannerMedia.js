@@ -10,8 +10,8 @@
  * redirects here are all still correct, and throwing away the documents to
  * change a picture would invalidate any id anybody has already written down.
  *
- * So this walks the existing rows and swaps `image`/`gif` in place. A GIF is
- * re-cut as a GIF and a still as a still: the `type` field is what the app
+ * So this walks the existing rows and swaps the file behind `media` in place.
+ * A GIF is re-cut as a GIF and a still as a still: `media.kind` is what the app
  * switches its renderer on, so changing the file's kind under a row would put
  * an animated image behind a still renderer.
  *
@@ -36,7 +36,7 @@ const dns = require("dns");
 const mongoose = require("mongoose");
 
 const cloudinary = require("../configs/cloudinary");
-const { BANNER_TYPE } = require("../constants/banner");
+const { MEDIA_KIND } = require("../constants/storage");
 const {
   SCHEDULED,
   EVERGREEN,
@@ -62,8 +62,9 @@ const BY_SLUG = new Map([
   ]),
 ]);
 
-const mediaField = (type) =>
-  String(type || "").toUpperCase() === BANNER_TYPE.GIF ? "gif" : "image";
+/** What this row holds, on either shape. Pre-migration rows kept it in `type`. */
+const kindOf = (row) =>
+  row.media?.kind || String(row.type || "").toUpperCase() || null;
 
 /**
  * The row's slug, taken from its Cloudinary public id (`Banners/evergreen_04`).
@@ -111,32 +112,42 @@ const line = (char = "─") => console.log(char.repeat(74));
 
   for (const row of rows) {
     const slug = slugFor(row);
-    const field = mediaField(row.type);
-    const oldPublicId = row[field]?.storage?.publicId || null;
+    // Either shape: `media` on a current row, one of the three type-named
+    // fields on one written before the migration.
+    const previous = row.media || row.image || row.video || row.gif;
+    const oldPublicId = previous?.storage?.publicId || null;
 
     if (!slug) {
       unmatched.push(row);
-      console.log(`   ⚠️  ${String(row.type).padEnd(5)} ${row.title}`);
+      console.log(`   ⚠️  ${String(kindOf(row) || "?").padEnd(5)} ${row.title}`);
       console.log("       no matching source photograph — left untouched");
       continue;
     }
 
     const spec = BY_SLUG.get(slug);
-    console.log(`   ${String(row.type).padEnd(5)} ${slug.padEnd(13)} ${row.title}`);
+    console.log(`   ${String(kindOf(row) || "?").padEnd(5)} ${slug.padEnd(13)} ${row.title}`);
 
     if (!APPLY) {
       console.log(`       old: ${oldPublicId || "(none)"} → would re-cut and replace`);
       continue;
     }
 
+    const kind = kindOf(row);
     const media =
-      String(row.type).toUpperCase() === BANNER_TYPE.GIF
+      kind === MEDIA_KIND.GIF
         ? await uploadAnimated(spec, slug)
         : await uploadStill(spec, slug);
 
     // Point the row at the new file **before** destroying the old one. The
     // reverse order leaves a live banner with a dead URL if the upload fails.
-    row[field] = { url: media.url, storage: media.storage };
+    // ⚠️ The kind is carried over from the row, not re-derived. This script
+    // replaces a file, never what the file *is* — see the note at the top.
+    row.media = {
+      url: media.url,
+      storage: media.storage,
+      kind,
+      sizeBytes: media.bytes ?? 0,
+    };
     await row.save();
     replaced += 1;
 
@@ -181,12 +192,12 @@ const line = (char = "─") => console.log(char.repeat(74));
   const after = await Banner.find({}).lean();
   const sizes = new Set();
   for (const row of after) {
-    const publicId = (row.image || row.gif)?.storage?.publicId;
+    const publicId = (row.media || row.image || row.gif)?.storage?.publicId;
     if (!publicId) continue;
     const asset = await cloudinary.api.resource(publicId, { pages: true });
     sizes.add(`${asset.width}x${asset.height}`);
 
-    if (String(row.type).toUpperCase() !== BANNER_TYPE.GIF) continue;
+    if (kindOf(row) !== MEDIA_KIND.GIF) continue;
     if (typeof asset.pages !== "number") {
       console.log(`  ?   ${row.title}: Cloudinary did not report a frame count`);
     } else if (asset.pages < 2) {

@@ -27,13 +27,30 @@ const { MEDIA_KIND } = require("../../constants/storage");
  */
 
 /**
+ * ### The third shape: what a panel sees
+ *
+ * An operator managing banners has questions a customer never asks — how big is
+ * this file, what did the vendor actually name it, and **which provider is
+ * holding it** while a migration is half done. So the admin shape carries those.
+ *
+ * 🔴 What it still refuses is `bucket`, `key` and `publicId`. Those are not
+ * "more detail", they are the address of the object — the thing that turns a
+ * leaked response into a readable file. `provider` answers "where does this
+ * live" without answering "how do I fetch it behind your back", and that is the
+ * line: **useful, not risky.**
+ */
+
+/**
  * @param {object|string|null} media  a `mediaSchema` value, or a legacy URL
  * @param {object}  [options]
  * @param {boolean} [options.withMeta]  return the descriptive shape, not a URL
+ * @param {boolean} [options.forAdmin]  the panel shape (implies `withMeta`)
  * @returns {string|object|null}
  */
-exports.toMediaResponse = (media, { withMeta = false } = {}) => {
+exports.toMediaResponse = (media, { withMeta = false, forAdmin = false } = {}) => {
   if (!media) return null;
+
+  const detailed = withMeta || forAdmin;
 
   /**
    * A row written before the migration is still a bare URL string. It answers
@@ -41,11 +58,11 @@ exports.toMediaResponse = (media, { withMeta = false } = {}) => {
    * every caller has to remember.
    */
   if (typeof media === "string") {
-    return withMeta ? { url: media, kind: null } : media;
+    return detailed ? { url: media, kind: null } : media;
   }
 
   const url = media.url ?? null;
-  if (!withMeta) return url;
+  if (!detailed) return url;
 
   const shape = {
     url,
@@ -53,6 +70,18 @@ exports.toMediaResponse = (media, { withMeta = false } = {}) => {
     width: media.width ?? null,
     height: media.height ?? null,
   };
+
+  if (forAdmin) {
+    shape.mimeType = media.mimeType ?? null;
+    shape.sizeBytes = media.sizeBytes ?? 0;
+    shape.originalName = media.originalName ?? null;
+    /**
+     * ⚠️ The provider only — never the locator beside it. During the migration
+     * an operator has to be able to see which files have moved and which have
+     * not, and that question is exactly this one field.
+     */
+    shape.provider = media.storage?.provider ?? null;
+  }
 
   /**
    * Only where they mean something. A photo has no duration, and reporting `0`

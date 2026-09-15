@@ -5,6 +5,7 @@ const PromotionalTicker = require("../../models/PromotionalTicker");
 const {
   uploadTickerIcon,
   deleteTickerIcon,
+  toAdminTickerShape,
 } = require("../../helpers/promotionalTickers");
 
 exports.createTicker = async (userId, payload, files) => {
@@ -22,7 +23,10 @@ exports.createTicker = async (userId, payload, files) => {
   const icon = await uploadTickerIcon(files?.icon, _id);
 
   try {
-    return await PromotionalTicker.create({
+    // ⚠️ Through the same whitelist the reads use. `create` hands back the
+    // mongoose document, and returning that directly is how `icon.storage` got
+    // out of the customer feed in the first place.
+    const ticker = await PromotionalTicker.create({
       _id,
       title: toDisplayName(title),
       icon,
@@ -33,6 +37,7 @@ exports.createTicker = async (userId, payload, files) => {
       isActive,
       createdBy: userId,
     });
+    return toAdminTickerShape(ticker);
   } catch (error) {
     await deleteTickerIcon(icon);
     throw error;

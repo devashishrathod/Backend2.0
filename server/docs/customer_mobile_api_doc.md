@@ -549,9 +549,14 @@ Saare enum values **UPPERCASE** hain (payment ke alawa).
 ### GENDERS
 `MALE` · `FEMALE` · `OTHER`
 
-### BANNER_TYPE
+### MEDIA_KIND (banner ka `type`)
 `IMAGE` · `VIDEO` · `GIF`
-> `GET /banners/customer/active` (#13) pe `url` **flat** aata hai — `type` sirf ye batata hai ki use image view, video player ya animated view me render karna hai. Voucher banner (`bannerType`/`bannerUrl`) bhi yahi enum use karta hai.
+> `GET /banners/customer/active` (#13) pe `url` **flat** aata hai — `type` sirf ye batata hai ki use image view, video player ya animated view me render karna hai. Voucher banner (`bannerType`/`bannerUrl`) bhi yahi values use karta hai.
+>
+> ⚠️ Pehle ye `BANNER_TYPE` naam ka apna enum tha. Ab ye platform-wide
+> `MEDIA_KIND` hai (jisme `AUDIO` aur `DOCUMENT` bhi hain, par banner un do me se
+> kabhi nahi ho sakta). **App ke liye values bilkul wahi teen hain** — kuch
+> badalna nahi.
 
 ### BANNER_REDIRECT_TYPE / TICKER_REDIRECT_TYPE
 `NONE` · `CATEGORY` · `DEAL` · `BRAND` · `OFFER` · `EXTERNAL_URL`
@@ -1906,9 +1911,8 @@ total 10 pe cut. Yaani:
 ⚠️ Array ki length **10 se kam bhi ho sakti hai** — 2 banners hain to 2 hi
 aayenge. App ko fixed 10 slots assume nahi karne hain.
 
-**2. `url` flat hai — `type` sirf render ke liye hai.** Backend `type` dekh kar
-sahi media field (`image`/`video`/`gif`) khud resolve karta hai aur uska `url`
-bhejta hai. App ko ab field choose nahi karni:
+**2. `url` flat hai — `type` sirf render ke liye hai.** App ko koi field choose
+nahi karni, backend seedha URL bhejta hai:
 
 | `type` | Kaise render karein |
 |---|---|
@@ -1916,8 +1920,20 @@ bhejta hai. App ko ab field choose nahi karni:
 | `VIDEO` | video player (autoplay/muted) |
 | `GIF` | animated image view |
 
-⚠️ `url` theoretically `null` ho sakta hai agar banner ka media missing ho —
-render se pehle null-check kar lein, blank slot dikhane se behtar hai skip karna.
+⚠️ **`url` aur `type` dono `null` ho sakte hain** agar banner ka media missing
+ho — render se pehle null-check kar lein, blank slot dikhane se behtar hai skip
+karna.
+
+> ⚠️ **Is response me kuch nahi badla, par andar sab badla.**
+>
+> Pehle banner document me `type` field alag hoti thi aur bytes teen field me se
+> ek (`image`/`video`/`gif`) me. Ab ek hi `media` object hai: `type` uske
+> `media.kind` se aata hai aur `url` `media.url` se. **Keys, values aur order —
+> teeno wahi hain**, isliye app me kuch change nahi karna.
+>
+> Ek hi naya case: migration se pehle likhi hui koi row abhi bhi database me ho
+> to uske `type` aur `url` dono `null` aayenge (upar wala null-check usi ke liye
+> hai). Ye pre-launch data hai, launch pe database khali se shuru hoga.
 
 **3. `redirect` handling:**
 | `redirect.type` | Kya karna |

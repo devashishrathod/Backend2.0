@@ -1,36 +1,40 @@
 const Banner = require("../../models/Banner");
 const {
   BANNER_ACTIVE_LIMIT,
-  BANNER_MEDIA_FIELD,
   BANNER_REDIRECT_TYPE,
 } = require("../../constants/banner");
+const { toMediaResponse } = require("../../helpers/media");
 
 /**
  * The home screen renders the media and the tap target, and nothing else.
  *
  * Titles, schedules, storage metadata and audit fields are admin concerns, so
  * none of them are sent: this is fetched on every cold start, and `storage`
- * would additionally hand a stranger the Cloudinary public id of every asset.
- * The admin endpoints still return the whole document.
+ * would additionally hand a stranger the object key of every asset.
  *
- * ⚠️ `type` is upper-cased on the way out. The model normalizes on write, but
- * mongoose does not run setters when hydrating, so a document saved before
- * BANNER_TYPE became uppercase still reads back as `image` — and the media
- * field would then be looked up under a key that does not exist.
+ * ### ⚠️ The keys here did not move, and that was the point
+ *
+ * `type` and `url` read exactly as they did when the document carried a `type`
+ * field and three media subdocuments. `type` is now `media.kind` and `url` is
+ * `toMediaResponse(media)` — same values, same names, so the app was never part
+ * of this migration.
+ *
+ * The upper-casing that used to sit here is gone with the field it defended: the
+ * enum's case changed after rows existed, mongoose does not run setters when
+ * hydrating, and a legacy `"image"` would then miss the lookup table entirely.
+ * `media.kind` is written once from the verified mime type and has never had a
+ * lowercase spelling.
  */
-const toCustomerShape = (banner) => {
-  const type = String(banner.type || "").toUpperCase();
-  return {
-    redirect: {
-      type: banner.redirect?.type || BANNER_REDIRECT_TYPE.NONE,
-      targetId: banner.redirect?.targetId ?? null,
-      url: banner.redirect?.url ?? null,
-    },
-    _id: banner._id,
-    type,
-    url: banner[BANNER_MEDIA_FIELD[type]]?.url ?? null,
-  };
-};
+const toCustomerShape = (banner) => ({
+  redirect: {
+    type: banner.redirect?.type || BANNER_REDIRECT_TYPE.NONE,
+    targetId: banner.redirect?.targetId ?? null,
+    url: banner.redirect?.url ?? null,
+  },
+  _id: banner._id,
+  type: banner.media?.kind ?? null,
+  url: toMediaResponse(banner.media),
+});
 
 /**
  * Up to `BANNER_ACTIVE_LIMIT` banners for the customer home screen.
@@ -69,3 +73,14 @@ exports.getActiveBannersForCustomer = async () => {
 
   return [...scheduled, ...fallback].map(toCustomerShape);
 };
+
+/**
+ * Exported for the tests only.
+ *
+ * ⚠️ This is the one piece of the migration the app can see, and the assertion
+ * that matters — four keys, same names, same values — needs no database to make.
+ * Leaving it reachable only through a live query would have put the customer
+ * contract's proof in the money suite, which runs against real Atlas and takes
+ * an hour, so in practice it would be checked rarely.
+ */
+exports.toCustomerShape = toCustomerShape;

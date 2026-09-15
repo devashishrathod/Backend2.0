@@ -312,12 +312,14 @@ rahenge.
 **Ye sab khatam ho jaayega:**
 
 ```
-BANNER_TYPE · BANNER_MEDIA_FIELD · BANNER_ALLOWED_MIME_TYPES
-VOUCHER_BANNER_TYPE · VOUCHER_BANNER_MEDIA_FIELD
-VOUCHER_BANNER_FILE_FIELD · VOUCHER_BANNER_ALLOWED_MIME_TYPES
+✅ BANNER_TYPE · BANNER_MEDIA_FIELD · BANNER_ALLOWED_MIME_TYPES   ← M-3 me hate
+⬜ VOUCHER_BANNER_TYPE · VOUCHER_BANNER_MEDIA_FIELD
+⬜ VOUCHER_BANNER_FILE_FIELD · VOUCHER_BANNER_ALLOWED_MIME_TYPES  ← M-5
 ```
 
-Mime allow-lists `Setting.storage.allowed.*` se aayengi, kind bytes se.
+Banner ki jagah ab ek `BANNER_MEDIA_KINDS` hai — teen mime lists ki jagah ek
+kind list, aur kind `kindFromMime` se aata hai. Mime allow-lists
+`Setting.storage.allowed.*` se aayengi.
 
 ## 1B.3 Upload kaise hoga
 
@@ -352,13 +354,13 @@ Sabse zaruri sawaal: **kahan-kahan client ka response badlega.**
 |---|---|---|---|---|
 | 1 | `GET /vouchers/customer/get/:voucherId` | `images[]` **raw** — `storage.bucket`/`key`/`publicId` | `{_id, url, sortOrder}` | **Leak fix (P2)** |
 | 2 | `GET /promotional-tickers/customer/active` | **Poora document** — `icon.storage.publicId`/`bucket`/`key` | `{_id, title, icon: url, redirect, …}` | **Naya leak mila** (A-3) |
-| 3 | `GET /banners/get-all`, `/get/:id` (admin) | `image`\|`video`\|`gif` object + `storage` | `media` object | M-8 |
-| 4 | `POST /banners/create`, `PUT /banners/update/:id` | `type` + `bannerImage`\|`bannerVideo`\|`bannerGif` | `media` (+ `poster`) | M-8 |
+| 3 | `GET /banners/get-all`, `/get/:id` (admin) | `image`\|`video`\|`gif` object + `storage` + top-level `type` + `isDeleted` | `media` object (`provider` ke saath, locator ke bina); `type`/`isDeleted` **hate** | M-8 |
+| 4 | `POST /banners/create`, `PUT /banners/update/:id` | body me `type` + file field `image`\|`video`\|`gif` | file field **`media`** (+ `poster` video par); `type` **hata** | M-8 |
 | 5 | `POST /vouchers/:voucherId/banner` | `bannerType` + teen file field | `media` (+ `poster`) | M-8 |
 | 6 | `DELETE /vouchers/:voucherId/banner` | maujood | **hata** | V-3 |
 | 7 | Voucher customer reads | `{bannerType, bannerUrl}` | wahi **+** `bannerStatus`, `bannerIsFallback` | V-4a (additive) |
 | 8 | Showcase vendor reads (`formatManagedMedia`) | `thumbnail` + `storage` + `metadata` alag-alag | ek `media` object | M-4 |
-| 9 | Ticker admin reads | `icon.storage` | `icon` (media) | M-3 |
+| 9 | Ticker admin reads (`get-all`, `get/:id`, create, update) | `icon.storage` + `isDeleted` | `icon` (media, `provider` ke saath); `isDeleted` **hata** | M-3 |
 | 10 | Customer profile pic | `User.image` | `Customer.image` | M-1b |
 
 **Customer app par asar sirf 3 jagah** (#1, #2, #7) — aur teenon me se do **fix**
@@ -973,15 +975,45 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 > nahi: `getMediaCoverImage` `thumbnail || url` hai, to cover khud `.mp4` ban jaata
 > tha. M-4 derivation poori hataata hai.
 
-## M-3 · Banner + Ticker → `mediaSchema`
-`models/Banner.js` · `models/PromotionalTicker.js` · `constants/banner.js` · banner/ticker services · docs · postman
-- [ ] `Banner.image|video|gif` → ek **`media: mediaSchema`**; `Banner.type` field **hatao** (`media.kind` se aayega)
-- [ ] `PromotionalTicker.icon` → `mediaSchema`
-- [ ] `BANNER_TYPE` · `BANNER_MEDIA_FIELD` · `BANNER_ALLOWED_MIME_TYPES` **hatao**
-- [ ] `toCustomerShape` ab `media.kind`/`media.url` se — **same keys**
-- [ ] create/update: file field `media` (+ `poster` video par); body se `type` hatao
-- [ ] admin reads: `media` object
-- [ ] **Proof:** customer banner response **byte-for-byte same** · video bina poster reject
+## M-3 · Banner + Ticker → `mediaSchema` — ✅ **DONE** (uncommitted)
+`models/{Banner,PromotionalTicker}.js` · `constants/{banner,storage}.js` · `helpers/banners/{media,shape,index}.js` · `helpers/promotionalTickers/{media,shape,index}.js` · `helpers/media/toMediaResponse.js` · banner ×5 + ticker ×5 services · `validator/banners.js` · 3 scripts · docs · postman
+- [x] `Banner.image|video|gif` → ek **`media: mediaSchema`**; `Banner.type` field **hata** (`media.kind` se aata hai)
+- [x] `PromotionalTicker.icon` → `mediaSchema`, **IMAGE-only** (strip me player hai hi nahi)
+- [x] `BANNER_TYPE` · `BANNER_MEDIA_FIELD` · `BANNER_ALLOWED_MIME_TYPES` **hate** → ek `BANNER_MEDIA_KINDS`
+- [x] `toCustomerShape` ab `media.kind`/`media.url` se — **same 4 keys, same order**
+- [x] create/update: file field **`media`** (+ `poster` video par); body se `type` hata
+- [x] admin reads: `media` object — `provider` ke saath, `bucket`/`key`/`publicId` ke bina
+- [x] `pre("validate")` hook **hata** — `required` + ek kind validator, aur wo raw `Error` bhi gaya jo 422 ki jagah 500 deta tha
+- [x] **30 naye unit test** (`bannerMedia.test.js`) · poori suite **343 pass** · `verifyNoUndef` 0 · `verifyImports` 0
+
+> 🔴 **`.min(1)` validator se hatana pada.** Banner ki tasveer badalna sabse
+> common edit hai aur usme koi body field jaata hi nahi — sirf file. `validateSchema`
+> ko `req.files` milta hi nahi (wo body/query/params/headers validate karta hai),
+> to "at least one field to update" theek wahi request reject karta. Pehle bach
+> gaya tha kyunki media badalne ka matlab `type` bhejna bhi tha; ab `type` hai hi
+> nahi, to khali body normal case ban gaya. Check ab `updateBanner` me hai jahan
+> dono dikhte hain.
+
+> ⚠️ **`?type=` query param jaan-boojh kar bacha hai.** Panel ka filter waisa hi
+> chalta hai; andar `media.kind` par match hota hai. Naam badalne se panel tootta
+> aur milta kuch nahi.
+
+> 🔴 **Ticker ke admin reads bhi `icon.storage` de rahe the.** A-3 me customer
+> feed wala leak band hua tha kyunki wo route bina auth ke tha — ye chaar
+> (`get-all`, `get/:id`, create, update) admin gate ke peeche the, isliye kam
+> urgent the, utne hi galat. `isDeleted` bhi hataya: har admin read pehle se
+> `isDeleted: false` filter karti hai, to wo column hamesha ek hi jawab deta tha.
+
+> ⚠️ **Delete ab `validateBeforeSave: false` se save karta hai** (banner aur
+> ticker dono). Pre-migration row me `media`/`icon.kind` hai hi nahi, aur bina
+> iske admin theek wahi purani rows delete nahi kar paata jinhe wo saaf karna
+> chahta hai.
+
+> ⚠️ **`toCustomerShape` test ke liye export kiya.** Ye migration ka ekmatra
+> hissa hai jo app dekhti hai, aur uska proof (4 keys, same naam, same value)
+> bina database ke ban jaata hai. Sirf live query se reachable rakhne ka matlab
+> tha customer contract ka proof money suite me daalna — jo real Atlas par ghante
+> bhar chalti hai, yaani practically kabhi-kabhi.
 
 ## M-4 · Showcase media → `mediaSchema`
 `models/ShowcaseSection.js` · `helpers/showcases/{upload,validateMedia,projections}.js` · showcase services

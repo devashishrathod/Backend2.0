@@ -94,10 +94,13 @@ const kindFromMime = (mime) => {
  * GIF) still ends up under exactly one type prefix, chosen per file from the
  * verified mime type.
  *
- * ⚠️ `kinds` is routing and a sanity check, **not** the security boundary. The
- * mime allow-lists — `BANNER_ALLOWED_MIME_TYPES`, `SHOWCASE_MEDIA_CONFIG`,
- * `TICKER_ICON_ALLOWED_MIME_TYPES` and the per-surface validators — decide what
- * a caller may send. That is why every image surface lists `GIF` as well: a GIF
+ * ⚠️ `kinds` is routing and a sanity check, **not** the security boundary. What
+ * a caller may send is decided per surface — `BANNER_MEDIA_KINDS`,
+ * `SHOWCASE_MEDIA_CONFIG`, `TICKER_ICON_ALLOWED_MIME_TYPES` and the per-surface
+ * validators. (Banners used to carry their own hand-written mime allow-list;
+ * they now name the **kinds** they accept and let `kindFromMime` resolve the
+ * file, which is one list fewer to disagree with this one.) That is why every
+ * image surface lists `GIF` as well: a GIF
  * *is* an `image/*` file, several surfaces accept one today (voucher images
  * check only `startsWith("image/")`, and the logo and avatar paths check
  * nothing at all — see `media_upload_map.md` §8.4), and refusing to route one

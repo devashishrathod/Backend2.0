@@ -499,8 +499,20 @@ Max recipients per dispatch: **5000** · Max tokens per push batch: **500**
 ### NOTIFICATION_CHANNELS
 `IN_APP` (hamesha) · `EMAIL` · `PUSH` · `WHATSAPP` *(reserved)*
 
-### BANNER_TYPE / VOUCHER_BANNER_TYPE
+### MEDIA_KIND
+`IMAGE` · `VIDEO` · `GIF` · `AUDIO` · `DOCUMENT`
+> Har stored file yahi batati hai ki wo kya hai. Banner ke liye pehle teen hi
+> valid hain (`BANNER_MEDIA_KINDS`), ticker ke liye sirf `IMAGE`.
+>
+> ⚠️ Banner ka apna `BANNER_TYPE` enum **hata** — wo `MEDIA_KIND` ki hi ek
+> chhoti copy thi. Banner response me ab `media.kind` aata hai, aur
+> `GET /banners/get-all` ka `?type=` filter isi par match karta hai (param ka
+> naam jaan-boojh kar nahi badla).
+
+### VOUCHER_BANNER_TYPE
 `IMAGE` · `VIDEO` · `GIF`
+> Voucher banner abhi apna enum rakhta hai — wo **M-5** me `mediaSchema` par
+> aayega.
 
 ### BANNER_REDIRECT_TYPE / TICKER_REDIRECT_TYPE
 `NONE` · `CATEGORY` · `DEAL` · `BRAND` · `OFFER` · `EXTERNAL_URL`
@@ -3161,28 +3173,46 @@ ya delete karne ke liye kaafi tha — [Appendix B](#appendix-b--known-issues).)
 
 ## 46. POST /banners/create
 
-**Multipart** — type ke hisaab se file field.
+**Multipart** — ek hi file field: `media`.
 
 **Access:** Intended: ADMIN · Enforced: **ADMIN**
+
+> ### 🔴 Breaking change — `type` hata, file field ab ek hai
+>
+> Pehle body me `type` (`IMAGE`/`VIDEO`/`GIF`) bhejna padta tha **aur** file ko
+> usi naam wale field (`image`/`video`/`gif`) me — ek hi baat do jagah, aur dono
+> aapas me na milein to `422`. Isse ek document aisa bhi ban sakta tha jiska
+> `type: "VIDEO"` ho aur bytes `image` me padi hon.
+>
+> Ab file hamesha **`media`** field me jaati hai, aur server uske **verified mime
+> type** se khud tay karta hai ki ye IMAGE hai, VIDEO hai ya GIF. `type` body me
+> bhejne ki zarurat nahi — bhej diya to chup-chaap ignore ho jayega.
+>
+> ⚠️ **VIDEO ke saath `poster` file bhi mandatory hai.**
 
 ### Body (multipart)
 | Field | Type | Required | Default | Validation |
 |---|---|---|---|---|
 | `title` | string | ✅ | – | 2–150 chars |
-| `type` | string | ✅ | – | `IMAGE` \| `VIDEO` \| `GIF` |
-| *(file)* | file | ✅ | – | **`type` ke hisaab se field name** — niche table |
+| `media` | file | ✅ | – | image / video / gif — niche table |
+| `poster` | file | ⚠️ | – | **VIDEO pe required**, aur khud still image hona chahiye |
 | `description` | string | ❌ | – | Max 1000, `""` allowed |
 | `redirect` | object | ❌ | – | JSON string bhi chalta hai |
 | `startDate` | ISO date | ⚠️ | `null` | **`endDate` ke saath hi** — akela bhejna `422` |
 | `endDate` | ISO date | ⚠️ | `null` | **`startDate` ke saath hi**, aur usse baad ka |
 | `isActive` | boolean | ❌ | `true` | |
 
-**File field naam:**
-| `type` | File field | Allowed MIME |
+**`media` me kya ja sakta hai:**
+| Ban'ne wala kind | Mime | `poster` chahiye? |
 |---|---|---|
-| `IMAGE` | `image` | jpeg, jpg, png, webp |
-| `VIDEO` | `video` | mp4, webm, quicktime |
-| `GIF` | `gif` | gif |
+| `IMAGE` | koi bhi `image/*` (gif ke alawa) — jpeg, png, webp… | ❌ |
+| `GIF` | `image/gif` | ❌ |
+| `VIDEO` | koi bhi `video/*` — mp4, webm, quicktime… | ✅ |
+
+> ⚠️ Mime ki hand-written list ab nahi hai. Pehle `BANNER_ALLOWED_MIME_TYPES` me
+> chaar-paanch mime hardcode the (aur codebase me aisi **chaar** alag-alag lists
+> thin jo aapas me match nahi karti thin). Ab `kindFromMime` file padhkar kind
+> nikaalta hai, aur banner sirf ye kehta hai ki uske teen kinds kaunse hain.
 
 **`redirect` object:**
 | Field | Type | Required | Validation |
@@ -3194,12 +3224,19 @@ ya delete karne ke liye kaafi tha — [Appendix B](#appendix-b--known-issues).)
 ```
 title:       Monsoon Mega Sale
 description: Up to 50% off at partner outlets
-type:        IMAGE
-image:       <file>
+media:       <file>
 redirect:    {"type":"CATEGORY","targetId":"68f1a2b3c4d5e6f7a8b9c0e1"}
 startDate:   2026-09-01T00:00:00.000Z
 endDate:     2026-09-30T23:59:59.000Z
 isActive:    true
+```
+
+Video ke liye:
+
+```
+title:       Diwali Teaser
+media:       <teaser.mp4>
+poster:      <teaser-cover.jpg>
 ```
 
 ### Success — `200`
@@ -3209,23 +3246,54 @@ isActive:    true
   "message": "Banner created successfully.",
   "data": {
     "_id": "68f1a2b3c4d5e6f7a8b9c1a1",
-    "title": "monsoon mega sale",
+    "title": "Monsoon Mega Sale",
     "description": "Up to 50% off at partner outlets",
-    "type": "IMAGE",
+    "media": {
+      "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/monsoon.jpg",
+      "kind": "IMAGE",
+      "width": null,
+      "height": null,
+      "mimeType": "image/jpeg",
+      "sizeBytes": 184320,
+      "originalName": "monsoon.jpg",
+      "provider": "CLOUDINARY"
+    },
     "redirect": { "type": "CATEGORY", "targetId": "68f1a2b3c4d5e6f7a8b9c0e1", "url": null },
     "startDate": "2026-09-01T00:00:00.000Z",
     "endDate": "2026-09-30T23:59:59.000Z",
-    "image": {
-      "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/monsoon.jpg",
-      "storage": { "provider": "CLOUDINARY", "publicId": "banners/monsoon" }
-    },
     "isActive": true,
-    "isDeleted": false,
     "createdBy": "68f1a2b3c4d5e6f7a8b9c000",
-    "createdAt": "2026-08-22T21:00:00.000Z"
+    "updatedBy": null,
+    "createdAt": "2026-08-22T21:00:00.000Z",
+    "updatedAt": "2026-08-22T21:00:00.000Z"
   }
 }
 ```
+
+VIDEO par `media` me do field aur aate hain:
+
+```json
+"media": {
+  "url": "https://res.cloudinary.com/.../teaser.mp4",
+  "kind": "VIDEO",
+  "duration": 12,
+  "poster": "https://res.cloudinary.com/.../teaser-cover.jpg"
+}
+```
+
+> ### 🔴 Response me kya badla
+>
+> | Pehle | Ab |
+> |---|---|
+> | `type: "IMAGE"` top-level | **gaya** — `media.kind` padhiye |
+> | `image` \| `video` \| `gif` object | ek **`media`** object |
+> | `image.storage.publicId` / `bucket` / `key` | **nahi aata** — sirf `provider` |
+> | `isDeleted: false` | **gaya** — har admin read pehle se `isDeleted: false` filter karti hai, to ye column hamesha ek hi jawab deta tha |
+> | `title` lowercase (`"monsoon mega sale"`) | `toDisplayName` ke baad jaisa dikhna chahiye waisa |
+>
+> ⚠️ `bucket` / `key` / `publicId` jaan-boojh kar nikale gaye hain — wo file ka
+> **pata** hain, extra detail nahi. `provider` ye batata hai ki file kahan rehti
+> hai, bina ye bataye ki use seedha kaise kheencha ja sakta hai.
 
 ### Errors
 | Status | Message | Kab |
@@ -3233,9 +3301,11 @@ isActive:    true
 | `409` | `Only 10 active banners without a date range are allowed. Deactivate one first.` | Evergreen pool bhar chuka |
 | `409` | `Only 10 banners can be active at once, and 10 already are on <ISO timestamp>. Shift this banner's dates or deactivate one of those.` | Scheduled pool us instant pe bhara hua |
 | `422` | `Please provide both startDate and endDate, or neither — a banner with only one of them is never shown.` | Sirf ek date bheji |
-| `422` | `Please upload a image file for this banner type.` | File field naam galat/missing |
+| `422` | `Please attach the banner file as "media".` | File nahi bheji, ya galat field naam me bheji |
+| `422` | `A banner has to be an image, a video or a GIF — "application/pdf" is none of those.` | PDF/audio/koi aur file |
+| `422` | `A video banner needs a poster image. Attach one as "poster".` | Video bheja, poster nahi |
+| `422` | `The poster has to be a still image — "video/mp4" is not one.` | Poster ki jagah video/gif |
 | `422` | `Title is required.` | |
-| `422` | `Banner type is required.` / `Type must be one of: IMAGE, VIDEO, GIF.` | |
 | `422` | `Target ID is required for this redirect type.` | |
 | `422` | `URL is required for EXTERNAL_URL redirect type.` | |
 | `422` | `End date must be after start date.` | |
@@ -3259,15 +3329,24 @@ nahi. Ek din ka gap chhod dijiye agar dono ko alag rakhna hai.
 **4. `isActive: false` ke saath create karne pe koi capacity check nahi hota** —
 draft banaya ja sakta hai. Check tab lagega jab #47 se use activate karenge.
 
-**5. File field ka naam `type` se match karna chahiye** — `type: "VIDEO"` ke saath `image` field bhejoge to `422`.
+**5. File field ka naam hamesha `media` hai** — kisi bhi kind ke liye. `type` se
+match karane ka sawaal hi nahi bachta, kyunki `type` ab hai hi nahi.
 
-**6. Create fail hone pe uploaded media delete ho jaata hai** (rollback).
+**6. Create fail hone pe uploaded media delete ho jaata hai** (rollback). Video
+ka poster bhi — dono saath jaate hain.
 
 **7. `redirect` JSON string ho sakta hai** — multipart me object bhejna mushkil
 hai, validator parse kar leta hai. Na bhejein to `redirect.type` **`NONE`** set
 hota hai (pehle `null` set hota tha, jo enum ki koi value hi nahi thi).
 
-**8. Legacy lowercase types handle hote hain** — model me setter hai jo `"image"` ko `"IMAGE"` bana deta hai.
+**8. Poster upload fail hua to video bhi hata diya jaata hai.** Row tabhi banti
+hai jab dono halves maujood hon, isliye adhoora video bucket me chhodne ka koi
+matlab nahi — use koi reference karne wala hi nahi hoga. `502` aata hai.
+
+**9. Poster kabhi derive nahi hota.** Cloudinary ka purana derivation galat URL
+banata tha (`getOptimizedImageUrl(publicId)` `/image/upload/` path banata hai ek
+aise asset ke liye jo `/video/upload/` me rehta hai — wo URL 404 deta hai), aur
+S3 poster banata hi nahi. Isliye poster hamesha alag se upload hota hai.
 
 ---
 
@@ -3280,27 +3359,56 @@ hota hai (pehle `null` set hota tha, jo enum ki koi value hi nahi thi).
 |---|---|---|
 | `id` | ObjectId | ✅ |
 
-### Body — sab optional, **kam se kam ek field**
+### Body — sab optional, **kam se kam ek field _ya_ ek nayi file**
 | Field | Type | Validation |
 |---|---|---|
 | `title` | string | 2–150 chars |
 | `description` | string | Max 1000, `""` allowed |
-| `type` | string | `IMAGE` \| `VIDEO` \| `GIF` — ⚠️ badalne pe nayi file chahiye |
 | `redirect` | object | Create jaisa |
 | `startDate` · `endDate` | ISO date | ⚠️ **jodi me** — dono bhejein ya dono `null`, akela `422` |
 | `isActive` | boolean | |
-| *(file)* | file | `type` ke hisaab se field name |
+| `media` | file | Nayi file — kind apne aap iske mime se |
+| `poster` | file | ⚠️ Nayi file agar VIDEO hai to **required** |
+
+> ### 🔴 `type` gaya — aur iska ek accha side effect hai
+>
+> Pehle kind badalne ke liye `type` bhejna padta tha **aur** nayi file bhi,
+> kyunki bytes ko doosre field me jaana hota tha. Ab sirf nayi file bhejiye —
+> image ki jagah video aaya to `media.kind` apne aap `VIDEO` ho jaata hai.
+>
+> ⚠️ **Sirf file bhejna ab valid request hai.** Pehle body me `.min(1)` laga tha,
+> to khali body wali request "Please provide at least one field to update" se
+> reject ho jaati thi — aur banner ki tasveer badalna sabse common edit hai
+> jisme koi body field jaata hi nahi. Wo check ab service me hai, jahan body aur
+> file dono dikhte hain.
 
 ```json
 { "isActive": false }
 ```
 
+Ya sirf nayi tasveer (koi body field nahi):
+
+```
+media: <file>
+```
+
 ### Success — `200`
+
+`data` poora banner hai, **#46 ke response jaisa hi shape** — `media` object,
+koi `type`, koi `storage`, koi `isDeleted` nahi.
+
 ```json
 {
   "success": true,
   "message": "Banner updated successfully.",
-  "data": { "_id": "68f1a2b3c4d5e6f7a8b9c1a1", "title": "monsoon mega sale", "isActive": false }
+  "data": {
+    "_id": "68f1a2b3c4d5e6f7a8b9c1a1",
+    "title": "Monsoon Mega Sale",
+    "media": { "url": "…/monsoon.jpg", "kind": "IMAGE", "provider": "CLOUDINARY", "…": "…" },
+    "isActive": false,
+    "updatedBy": "68f1a2b3c4d5e6f7a8b9c000",
+    "updatedAt": "2026-09-15T10:00:00.000Z"
+  }
 }
 ```
 
@@ -3312,9 +3420,10 @@ hota hai (pehle `null` set hota tha, jo enum ki koi value hi nahi thi).
 | `409` | `Only 10 banners can be active at once, and 10 already are on <ISO timestamp>.` | Activate/re-schedule karne pe scheduled pool bhara |
 | `422` | `Please provide both startDate and endDate, or clear both — a banner with only one of them is never shown.` | Merge ke baad sirf ek date bachi |
 | `422` | `Please provide both startDate and endDate, or neither — …` | Body me hi sirf ek date bheji |
-| `422` | `Please upload a <field> file for this banner type.` | Type badla par file nahi |
+| `422` | `A video banner needs a poster image. Attach one as "poster".` | Nayi file video hai, poster nahi bheja |
+| `422` | `A banner has to be an image, a video or a GIF — "<mime>" is none of those.` | Nayi file koi aur kind ki |
 | `422` | `End date must be after start date.` | |
-| `422` | *(min-1 message)* | Body khali |
+| `422` | `Please provide at least one field to update, or attach a new media file.` | Body bhi khali aur file bhi nahi |
 
 ### ⚠️ Notes
 
@@ -3337,9 +3446,12 @@ nahi dikhta. Isliye service **merge ke baad** dubara check karti hai. Purane
 half-open documents bhi isi tarah pakde jaate hain — unhe theek karne ke liye
 dono dates bhejein, ya dono `null`.
 
-**5. `type` badalne pe nayi file mandatory hai** — purana media field khali ho jaayega.
+**5. Kind badalne ke liye bas nayi file bhejiye.** Image ki jagah video bhej
+diya to `media.kind` `VIDEO` ho jaayega (poster ke saath). Koi `type` field
+bhejne ki zarurat nahi — wo hai hi nahi.
 
-**6. Media replace hone pe purana Cloudinary se delete hota hai.**
+**6. Media replace hone pe purana storage se delete hota hai** — video ka poster
+bhi saath jaata hai. Naya pehle likha jaata hai, purana uske baad hatta hai.
 
 ---
 
@@ -3353,7 +3465,7 @@ dono dates bhejein, ya dono `null`.
 | `page` | number | ❌ | `1` | Integer ≥ 1 |
 | `limit` | number | ❌ | `10` | Integer 1–100 |
 | `search` | string | ❌ | – | `title` + `description`, `""` allowed |
-| `type` | string | ❌ | – | `IMAGE` \| `VIDEO` \| `GIF` |
+| `type` | string | ❌ | – | `IMAGE` \| `VIDEO` \| `GIF` — ⚠️ naam wahi, andar ab `media.kind` pe match |
 | `isActive` | boolean | ❌ | – | |
 | `fromDate` · `toDate` | ISO date | ❌ | – | `createdAt` filter |
 | `sortBy` | string | ❌ | `createdAt` | `createdAt` \| `startDate` \| `endDate` \| `title` |
@@ -3376,15 +3488,26 @@ GET /banners/get-all?isActive=true&sortBy=startDate&sortOrder=desc
     "data": [
       {
         "_id": "68f1a2b3c4d5e6f7a8b9c1a1",
-        "title": "monsoon mega sale",
-        "type": "IMAGE",
+        "title": "Monsoon Mega Sale",
+        "description": "Up to 50% off at partner outlets",
+        "media": {
+          "url": "https://res.cloudinary.com/…/monsoon.jpg",
+          "kind": "IMAGE",
+          "width": null,
+          "height": null,
+          "mimeType": "image/jpeg",
+          "sizeBytes": 184320,
+          "originalName": "monsoon.jpg",
+          "provider": "CLOUDINARY"
+        },
         "redirect": { "type": "CATEGORY", "targetId": "…", "url": null },
         "startDate": "2026-09-01T00:00:00.000Z",
         "endDate": "2026-09-30T23:59:59.000Z",
-        "image": { "url": "https://res.cloudinary.com/…/monsoon.jpg" },
         "isActive": true,
         "createdBy": "68f1a2b3c4d5e6f7a8b9c000",
-        "createdAt": "2026-08-22T21:00:00.000Z"
+        "updatedBy": null,
+        "createdAt": "2026-08-22T21:00:00.000Z",
+        "updatedAt": "2026-08-22T21:00:00.000Z"
       }
     ]
   }
@@ -3418,24 +3541,45 @@ GET /banners/get-all?isActive=true&sortBy=startDate&sortOrder=desc
   "message": "Banner fetched successfully.",
   "data": {
     "_id": "68f1a2b3c4d5e6f7a8b9c1a1",
-    "title": "monsoon mega sale",
+    "title": "Monsoon Mega Sale",
     "description": "Up to 50% off at partner outlets",
-    "type": "IMAGE",
+    "media": {
+      "url": "https://res.cloudinary.com/…/monsoon.jpg",
+      "kind": "IMAGE",
+      "width": null,
+      "height": null,
+      "mimeType": "image/jpeg",
+      "sizeBytes": 184320,
+      "originalName": "monsoon.jpg",
+      "provider": "CLOUDINARY"
+    },
     "redirect": { "type": "CATEGORY", "targetId": "…", "url": null },
-    "image": { "url": "…", "storage": { "provider": "CLOUDINARY", "publicId": "banners/monsoon" } },
+    "startDate": null,
+    "endDate": null,
     "isActive": true,
-    "isDeleted": false,
     "createdBy": "68f1a2b3c4d5e6f7a8b9c000",
-    "updatedBy": null
+    "updatedBy": null,
+    "createdAt": "2026-08-22T21:00:00.000Z",
+    "updatedAt": "2026-08-22T21:00:00.000Z"
   }
 }
 ```
+
+VIDEO par `media` me `duration` aur `poster` (URL string) bhi aate hain.
 
 ### Errors
 | Status | Message |
 |---|---|
 | `404` | `Banner not found.` |
 | `422` | `Banner ID is required.` / `Invalid banner ID.` |
+
+### ⚠️ Note — `isDeleted` ab response me nahi hai
+
+Ye endpoint pehle se `isDeleted: false` filter karta hai, to wo field hamesha
+`false` hi hoti thi — ek aisa column jispe panel filter bana le aur wo kabhi kuch
+na kare. Wahi `image.storage` ke saath: `publicId`/`bucket`/`key` file ka **pata**
+hain, aur wo ab kisi admin response me nahi jaate. `media.provider` ye bata deta
+hai ki file kahan rehti hai.
 
 ---
 
@@ -3510,10 +3654,16 @@ endDate:      2026-09-30T23:59:59.000Z
   "message": "Promotional ticker created successfully.",
   "data": {
     "_id": "68f1a2b3c4d5e6f7a8b9c1b1",
-    "title": "flat 30% off on cafes today",
+    "title": "Flat 30% Off On Cafes Today",
     "icon": {
       "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/tickers/coffee.png",
-      "storage": { "provider": "CLOUDINARY", "publicId": "tickers/coffee" }
+      "kind": "IMAGE",
+      "width": null,
+      "height": null,
+      "mimeType": "image/png",
+      "sizeBytes": 9214,
+      "originalName": "coffee.png",
+      "provider": "CLOUDINARY"
     },
     "redirect": { "type": "CATEGORY", "targetId": "…", "url": null },
     "displayOrder": 1,
@@ -3521,10 +3671,28 @@ endDate:      2026-09-30T23:59:59.000Z
     "endDate": "2026-09-30T23:59:59.000Z",
     "isActive": true,
     "createdBy": "68f1a2b3c4d5e6f7a8b9c000",
-    "createdAt": "2026-08-22T21:15:00.000Z"
+    "updatedBy": null,
+    "createdAt": "2026-08-22T21:15:00.000Z",
+    "updatedAt": "2026-08-22T21:15:00.000Z"
   }
 }
 ```
+
+> ### 🔴 `icon` ka shape badla
+>
+> | Pehle | Ab |
+> |---|---|
+> | `icon.storage.publicId` / `bucket` / `key` | **nahi aata** — sirf `icon.provider` |
+> | `icon` = `{url, storage}` | poora media shape — `kind`, `mimeType`, `sizeBytes`, `originalName` bhi |
+> | `isDeleted: false` | **gaya** — har admin read pehle se filter karti hai |
+>
+> Ye wahi leak hai jo A-3 me public ticker feed par pakda gaya tha. Wahan urgent
+> tha kyunki route par koi auth hi nahi thi; yahan admin gate ke peeche hai —
+> kam urgent, utna hi galat.
+>
+> ⚠️ Ticker icon **sirf still image** ho sakta hai. Strip me inline scroll hota
+> hai, wahan na player hai na poster frame — to video ya animated GIF ke liye
+> jagah hi nahi. `icon.kind` hamesha `IMAGE` hoga.
 
 ### Errors
 | Status | Message | Kab |
@@ -3579,9 +3747,20 @@ endDate:      2026-09-30T23:59:59.000Z
 {
   "success": true,
   "message": "Promotional ticker updated successfully.",
-  "data": { "_id": "…", "title": "flat 30% off on cafes today", "displayOrder": 3, "isActive": true }
+  "data": {
+    "_id": "…",
+    "title": "Flat 30% Off On Cafes Today",
+    "icon": { "url": "…/coffee.png", "kind": "IMAGE", "provider": "CLOUDINARY", "…": "…" },
+    "displayOrder": 3,
+    "isActive": true,
+    "updatedBy": "68f1a2b3c4d5e6f7a8b9c000",
+    "updatedAt": "2026-09-15T10:00:00.000Z"
+  }
 }
 ```
+
+`data` poora ticker hai, **#51 ke response jaisa hi shape** — `icon.storage` aur
+`isDeleted` kisi me nahi.
 
 ### Errors
 | Status | Message |
@@ -3627,14 +3806,26 @@ GET /promotionalTickers/get-all?isActive=true&sortBy=displayOrder&sortOrder=asc
     "data": [
       {
         "_id": "68f1a2b3c4d5e6f7a8b9c1b1",
-        "title": "flat 30% off on cafes today",
-        "icon": { "url": "https://res.cloudinary.com/…/coffee.png" },
+        "title": "Flat 30% Off On Cafes Today",
+        "icon": {
+          "url": "https://res.cloudinary.com/…/coffee.png",
+          "kind": "IMAGE",
+          "width": null,
+          "height": null,
+          "mimeType": "image/png",
+          "sizeBytes": 9214,
+          "originalName": "coffee.png",
+          "provider": "CLOUDINARY"
+        },
         "redirect": { "type": "CATEGORY", "targetId": "…", "url": null },
         "displayOrder": 1,
         "startDate": "2026-09-01T00:00:00.000Z",
         "endDate": "2026-09-30T23:59:59.000Z",
         "isActive": true,
-        "createdAt": "2026-08-22T21:15:00.000Z"
+        "createdBy": "68f1a2b3c4d5e6f7a8b9c000",
+        "updatedBy": null,
+        "createdAt": "2026-08-22T21:15:00.000Z",
+        "updatedAt": "2026-08-22T21:15:00.000Z"
       }
     ]
   }
@@ -3668,15 +3859,31 @@ GET /promotionalTickers/get-all?isActive=true&sortBy=displayOrder&sortOrder=asc
   "message": "Promotional ticker fetched successfully.",
   "data": {
     "_id": "68f1a2b3c4d5e6f7a8b9c1b1",
-    "title": "flat 30% off on cafes today",
-    "icon": { "url": "…", "storage": { "provider": "CLOUDINARY", "publicId": "tickers/coffee" } },
+    "title": "Flat 30% Off On Cafes Today",
+    "icon": {
+      "url": "https://res.cloudinary.com/…/coffee.png",
+      "kind": "IMAGE",
+      "width": null,
+      "height": null,
+      "mimeType": "image/png",
+      "sizeBytes": 9214,
+      "originalName": "coffee.png",
+      "provider": "CLOUDINARY"
+    },
+    "redirect": { "type": "NONE", "targetId": null, "url": null },
     "displayOrder": 1,
+    "startDate": null,
+    "endDate": null,
     "isActive": true,
-    "isDeleted": false,
-    "createdBy": "68f1a2b3c4d5e6f7a8b9c000"
+    "createdBy": "68f1a2b3c4d5e6f7a8b9c000",
+    "updatedBy": null,
+    "createdAt": "2026-08-22T21:15:00.000Z",
+    "updatedAt": "2026-08-22T21:15:00.000Z"
   }
 }
 ```
+
+⚠️ `icon.storage` aur `isDeleted` ab nahi aate — #51 ka note dekhiye.
 
 ### Errors
 | Status | Message |

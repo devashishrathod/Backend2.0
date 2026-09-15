@@ -1,7 +1,7 @@
 const Joi = require("joi");
 const objectId = require("./validJoiObjectId");
 const {
-  BANNER_TYPE,
+  BANNER_MEDIA_KINDS,
   BANNER_REDIRECT_TYPE,
   BANNER_SORT_BY,
 } = require("../constants/banner");
@@ -103,13 +103,12 @@ exports.validateCreateBanner = {
         "string.empty": "Title is required.",
       }),
       description: Joi.string().trim().max(1000).allow("").optional(),
-      type: Joi.string()
-        .valid(...Object.values(BANNER_TYPE))
-        .required()
-        .messages({
-          "any.required": "Banner type is required.",
-          "any.only": `Type must be one of: ${Object.values(BANNER_TYPE).join(", ")}.`,
-        }),
+      /**
+       * ⚠️ No `type`. It was the caller telling the server what it had just
+       * uploaded, and the server believing it — a `type: "VIDEO"` beside an
+       * image file was a valid request that produced a broken banner. The kind
+       * is read from the file's verified mime type in `uploadBannerMedia`.
+       */
       redirect: jsonTolerantObject(redirectObjectSchema, {
         label: "Redirect",
       }).optional(),
@@ -131,20 +130,27 @@ exports.validateUpdateBanner = {
     Joi.object({
       title: Joi.string().trim().min(2).max(150).optional(),
       description: Joi.string().trim().max(1000).allow("").optional(),
-      type: Joi.string()
-        .valid(...Object.values(BANNER_TYPE))
-        .optional(),
       redirect: jsonTolerantObject(redirectObjectSchema, {
         label: "Redirect",
       }).optional(),
       startDate: Joi.date().iso().optional().allow(null),
       endDate: Joi.date().iso().optional().allow(null),
       isActive: Joi.boolean().optional(),
-    })
-      .min(1)
-      .messages({
-        "object.min": "Please provide at least one field to update.",
-      }),
+    }),
+    /**
+     * 🔴 `.min(1)` used to sit here and had to go.
+     *
+     * Replacing the picture is the commonest edit a banner gets, and it sends no
+     * body fields at all — just the file. This layer cannot see `req.files`
+     * (`validateSchema` validates body, query, params and headers), so "at least
+     * one field" refused exactly that request with "Please provide at least one
+     * field to update."
+     *
+     * It was survivable before only because a media change also meant sending
+     * `type`. There is no `type` any more, so the empty-body case is now the
+     * normal one. `updateBanner` makes the same check where both the payload and
+     * the files are visible.
+     */
   ),
 };
 
@@ -162,9 +168,17 @@ exports.validateGetAllBanners = {
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
     search: Joi.string().trim().allow("").optional(),
+    /**
+     * ⚠️ Still spelled `type` on the wire, so the panel's filter did not have to
+     * change — but there is no `type` field behind it any more. `getAllBanners`
+     * matches it against `media.kind`, and the values are the same three.
+     */
     type: Joi.string()
-      .valid(...Object.values(BANNER_TYPE))
-      .optional(),
+      .valid(...BANNER_MEDIA_KINDS)
+      .optional()
+      .messages({
+        "any.only": `Type must be one of: ${BANNER_MEDIA_KINDS.join(", ")}.`,
+      }),
     isActive: Joi.boolean().optional(),
     fromDate: Joi.date().iso().optional(),
     toDate: Joi.date().iso().optional(),

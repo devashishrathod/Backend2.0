@@ -1,19 +1,32 @@
 const Banner = require("../../models/Banner");
 const { toDisplayName } = require("../../helpers/common");
 const { throwError } = require("../../utils");
-const { BANNER_MEDIA_FIELD } = require("../../constants/banner");
 const {
   uploadBannerMedia,
   deleteBannerMedia,
   assertActiveBannerCapacity,
+  toAdminBannerShape,
+  BANNER_MEDIA_FILE_FIELD,
+  BANNER_POSTER_FILE_FIELD,
 } = require("../../helpers/banners");
 
 exports.updateBanner = async (userId, id, payload, files) => {
   const banner = await Banner.findOne({ _id: id, isDeleted: false });
   if (!banner) throwError(404, "Banner not found.");
 
-  const nextType = payload.type || banner.type;
-  const nextField = BANNER_MEDIA_FIELD[nextType];
+  /**
+   * ⚠️ Checked here, not in the validator, because this is the only layer that
+   * can see both halves. `validateSchema` never receives `req.files`, so a
+   * body-only rule would refuse the commonest edit there is — replacing the
+   * picture and changing nothing else.
+   */
+  if (Object.keys(payload || {}).length === 0 && !files?.[BANNER_MEDIA_FILE_FIELD]) {
+    throwError(
+      422,
+      "Please provide at least one field to update, or attach a new media file.",
+    );
+  }
+
   const hasStartDate = Object.prototype.hasOwnProperty.call(
     payload,
     "startDate",
@@ -55,22 +68,23 @@ exports.updateBanner = async (userId, id, payload, files) => {
     });
   }
 
-  const file = files?.[nextField];
-  if (payload.type && payload.type !== banner.type && !file) {
-    throwError(
-      422,
-      `Please upload a ${nextField} file when changing banner type.`,
-    );
-  }
+  /**
+   * ⚠️ Replacing the media is now the **only** reason to send a file, and a
+   * banner keeps the one it has otherwise.
+   *
+   * The old endpoint had a second reason — changing `type` forced a re-upload,
+   * because the bytes had to move to a different field. There is no type to
+   * change any more: a new file that happens to be a video where the old one was
+   * an image simply arrives as one, and `media.kind` follows it.
+   */
+  const file = files?.[BANNER_MEDIA_FILE_FIELD];
+  const newMedia = file
+    ? await uploadBannerMedia(file, banner._id, files?.[BANNER_POSTER_FILE_FIELD])
+    : null;
 
-  let newMedia = null;
-  if (file) newMedia = await uploadBannerMedia(nextType, file, banner._id);
-
-  const previousType = banner.type;
-  const previousField = BANNER_MEDIA_FIELD[previousType];
-  const previousMedia = banner[previousField]?.toObject
-    ? banner[previousField].toObject()
-    : banner[previousField];
+  const previousMedia = banner.media?.toObject
+    ? banner.media.toObject()
+    : banner.media;
 
   if (payload.title !== undefined) banner.title = toDisplayName(payload.title);
   if (payload.description !== undefined)
@@ -79,18 +93,17 @@ exports.updateBanner = async (userId, id, payload, files) => {
   if (hasStartDate) banner.startDate = payload.startDate || null;
   if (hasEndDate) banner.endDate = payload.endDate || null;
   if (typeof payload.isActive === "boolean") banner.isActive = payload.isActive;
-  if (payload.type) banner.type = payload.type;
-  if (newMedia) banner[nextField] = newMedia;
+  if (newMedia) banner.media = newMedia;
   banner.updatedBy = userId;
 
   try {
     await banner.save();
   } catch (error) {
-    if (newMedia) await deleteBannerMedia(nextType, newMedia);
+    if (newMedia) await deleteBannerMedia(newMedia);
     throw error;
   }
 
-  if (newMedia) await deleteBannerMedia(previousType, previousMedia);
+  if (newMedia) await deleteBannerMedia(previousMedia);
 
-  return banner;
+  return toAdminBannerShape(banner);
 };

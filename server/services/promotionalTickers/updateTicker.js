@@ -4,6 +4,7 @@ const { throwError } = require("../../utils");
 const {
   uploadTickerIcon,
   deleteTickerIcon,
+  toAdminTickerShape,
 } = require("../../helpers/promotionalTickers");
 
 exports.updateTicker = async (userId, id, payload, files) => {
@@ -40,5 +41,5 @@ exports.updateTicker = async (userId, id, payload, files) => {
 
   if (newIcon) await deleteTickerIcon(previousIcon);
 
-  return ticker;
+  return toAdminTickerShape(ticker);
 };
