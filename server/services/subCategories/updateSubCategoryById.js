@@ -3,7 +3,7 @@ const { sameNameAs } = require("../../helpers/common");
 const Category = require("../../models/Category");
 const { throwError, validateObjectId } = require("../../utils");
 const storage = require("../storage");
-const { assertImageFile } = require("../../helpers/media");
+const { assertImageFile, toMediaDocument, toDeletable } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
 exports.updateSubCategoryById = async (id, payload, image) => {

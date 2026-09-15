@@ -5,7 +5,7 @@ const BrandFeatures = require("../../models/BrandFeatures");
 const { resolveActorBrand } = require("../../helpers/brands");
 const { throwError } = require("../../utils");
 const storage = require("../storage");
-const { assertImageFile } = require("../../helpers/media");
+const { assertImageFile, toMediaDocument } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
 /**

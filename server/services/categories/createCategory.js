@@ -4,7 +4,7 @@ const { sameNameAs } = require("../../helpers/common");
 const Category = require("../../models/Category");
 const { throwError } = require("../../utils");
 const storage = require("../storage");
-const { assertImageFile } = require("../../helpers/media");
+const { assertImageFile, toMediaDocument } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
 exports.createCategory = async (payload, image) => {

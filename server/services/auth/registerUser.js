@@ -6,7 +6,7 @@ const { throwError } = require("../../utils");
 const { ROLES, LOGIN_TYPES } = require("../../constants");
 const { DUPLICATE_KEY } = require("../../constants/mongo");
 const storage = require("../../services/storage");
-const { assertImageFile } = require("../../helpers/media");
+const { assertImageFile, toMediaDocument } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const {
   generateUniqueUserId,
