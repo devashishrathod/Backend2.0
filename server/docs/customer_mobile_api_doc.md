@@ -1851,7 +1851,8 @@ Koi nahi.
       },
       "_id": "68f1a2b3c4d5e6f7a8b9c1a1",
       "type": "IMAGE",
-      "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/monsoon.jpg"
+      "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/monsoon.jpg",
+      "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/monsoon.jpg"
     },
     {
       "redirect": {
@@ -1861,7 +1862,8 @@ Koi nahi.
       },
       "_id": "68f1a2b3c4d5e6f7a8b9c1a2",
       "type": "VIDEO",
-      "url": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/banners/teaser.mp4"
+      "url": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/banners/teaser.mp4",
+      "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/teaser-cover.jpg"
     },
     {
       "redirect": {
@@ -1871,7 +1873,8 @@ Koi nahi.
       },
       "_id": "68f1a2b3c4d5e6f7a8b9c1a3",
       "type": "GIF",
-      "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/flash.gif"
+      "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/flash.gif",
+      "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/flash.gif"
     }
   ]
 }
@@ -1914,26 +1917,40 @@ aayenge. App ko fixed 10 slots assume nahi karne hain.
 **2. `url` flat hai — `type` sirf render ke liye hai.** App ko koi field choose
 nahi karni, backend seedha URL bhejta hai:
 
-| `type` | Kaise render karein |
-|---|---|
-| `IMAGE` | image view |
-| `VIDEO` | video player (autoplay/muted) |
-| `GIF` | animated image view |
+| `type` | `url` | `thumbnail` | Kaise render karein |
+|---|---|---|---|
+| `IMAGE` | tasveer | wahi tasveer | image view |
+| `VIDEO` | `.mp4` | **poster frame** | video player (autoplay/muted), poster peeche |
+| `GIF` | gif | wahi gif | animated image view |
 
-⚠️ **`url` aur `type` dono `null` ho sakte hain** agar banner ka media missing
-ho — render se pehle null-check kar lein, blank slot dikhane se behtar hai skip
-karna.
+> ### 🆕 `thumbnail` key — naya, aur additive
+>
+> **Video par ye poster frame hai** — wo tasveer jo player kholne se pehle
+> dikhni chahiye. Poster upload par **mandatory** hai, par pehle sirf store hota
+> tha aur bheja nahi jaata tha, jiska matlab tha ki app ko `.mp4` buffer hone
+> tak khali rectangle dikhana padta tha.
+>
+> **Still aur GIF par ye media ka apna URL hai**, `null` nahi — taaki app
+> `<img src={thumbnail}>` ek hi baar likhe, `type` par branch kiye bina. Yahi
+> contract showcase media ka pehle se hai.
+>
+> ⚠️ Purane app builds par koi asar nahi — naya key unhe dikhega hi nahi.
 
-> ⚠️ **Is response me kuch nahi badla, par andar sab badla.**
+⚠️ **`url`, `type` aur `thumbnail` teenon `null` ho sakte hain** agar banner ka
+media missing ho — render se pehle null-check kar lein, blank slot dikhane se
+behtar hai skip karna.
+
+> ⚠️ **Baaki response me kuch nahi badla, par andar sab badla.**
 >
 > Pehle banner document me `type` field alag hoti thi aur bytes teen field me se
 > ek (`image`/`video`/`gif`) me. Ab ek hi `media` object hai: `type` uske
-> `media.kind` se aata hai aur `url` `media.url` se. **Keys, values aur order —
-> teeno wahi hain**, isliye app me kuch change nahi karna.
+> `media.kind` se aata hai, `url` `media.url` se aur `thumbnail` `media.poster.url`
+> se. **`_id`, `type`, `url`, `redirect` — chaaron waise ke waise**, sirf
+> `thumbnail` juda hai.
 >
-> Ek hi naya case: migration se pehle likhi hui koi row abhi bhi database me ho
-> to uske `type` aur `url` dono `null` aayenge (upar wala null-check usi ke liye
-> hai). Ye pre-launch data hai, launch pe database khali se shuru hoga.
+> Ek naya case: migration se pehle likhi hui koi row abhi bhi database me ho to
+> uske teeno `null` aayenge. Ye pre-launch data hai, launch pe database khali se
+> shuru hoga.
 
 **3. `redirect` handling:**
 | `redirect.type` | Kya karna |

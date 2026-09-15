@@ -975,7 +975,7 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 > nahi: `getMediaCoverImage` `thumbnail || url` hai, to cover khud `.mp4` ban jaata
 > tha. M-4 derivation poori hataata hai.
 
-## M-3 · Banner + Ticker → `mediaSchema` — ✅ **DONE** (uncommitted)
+## M-3 · Banner + Ticker → `mediaSchema` — ✅ **DONE** (`5c6a60e` + poster follow-up)
 `models/{Banner,PromotionalTicker}.js` · `constants/{banner,storage}.js` · `helpers/banners/{media,shape,index}.js` · `helpers/promotionalTickers/{media,shape,index}.js` · `helpers/media/toMediaResponse.js` · banner ×5 + ticker ×5 services · `validator/banners.js` · 3 scripts · docs · postman
 - [x] `Banner.image|video|gif` → ek **`media: mediaSchema`**; `Banner.type` field **hata** (`media.kind` se aata hai)
 - [x] `PromotionalTicker.icon` → `mediaSchema`, **IMAGE-only** (strip me player hai hi nahi)
@@ -1010,10 +1010,43 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 > chahta hai.
 
 > ⚠️ **`toCustomerShape` test ke liye export kiya.** Ye migration ka ekmatra
-> hissa hai jo app dekhti hai, aur uska proof (4 keys, same naam, same value)
-> bina database ke ban jaata hai. Sirf live query se reachable rakhne ka matlab
-> tha customer contract ka proof money suite me daalna — jo real Atlas par ghante
-> bhar chalti hai, yaani practically kabhi-kabhi.
+> hissa hai jo app dekhti hai, aur uska proof (keys, naam, values) bina database
+> ke ban jaata hai. Sirf live query se reachable rakhne ka matlab tha customer
+> contract ka proof money suite me daalna — jo real Atlas par ghante bhar chalti
+> hai, yaani practically kabhi-kabhi.
+
+### M-3a · Poster client tak pahunchana — **locked rule**
+
+> 🔴 **Poster store karke na bhejna mandatory rakhne ka matlab hi khatam kar deta
+> hai.** M-3 me VIDEO banner par poster mandatory ho gaya tha par customer
+> response me jaata hi nahi tha — app phir bhi `.mp4` buffer hone tak khali
+> rectangle dikhati.
+>
+> **Niyam:** jahan bhi VIDEO client tak jaata hai, uska poster `thumbnail` key me
+> saath jaata hai. DB me field `poster` rahega, wire par naam `thumbnail` — kyunki
+> showcase/vendor/clips sab pehle se `thumbnail` bolte hain.
+
+- [x] `toMediaResponse` ab `poster` ki jagah **`thumbnail`** key nikaalta hai (withMeta + forAdmin dono)
+- [x] Banner customer response me **`thumbnail`** — VIDEO par poster, IMAGE/GIF par media ka apna URL (kabhi `null` nahi, taaki client `type` par branch na kare)
+- [x] Purane app builds par asar nahi — naya key **additive** hai
+
+**Har VIDEO surface ka audit:**
+
+| Surface | Poster stored | Client tak | Kahan |
+|---|---|---|---|
+| `GET /banners/customer/active` | ✅ | ✅ `thumbnail` | **M-3a** |
+| Banner admin reads | ✅ | ✅ `media.thumbnail` | **M-3a** |
+| Showcase customer (`customerMediaMap`) | M-4 | ✅ `thumbnail` (key pehle se) | M-4 |
+| Showcase vendor (`formatManagedMedia`) | M-4 | ✅ `thumbnail` | M-4 |
+| `getAllVideoClips` | M-4 | ✅ `thumbnail` | M-4 |
+| Brand customer profile media strip | M-4 | ✅ `thumbnail` | M-4 |
+| **Voucher banner customer** | ❌ **abhi poster hai hi nahi** | ❌ | 🔴 **M-5** |
+| Ticker | IMAGE-only | — | — |
+
+> 🔴 **M-5 ke liye locked:** `Voucher.banner.video` aaj `{url, storage}` hai —
+> poster ka koi concept hi nahi. M-5 me `mediaSchema` par aate hi poster VIDEO par
+> mandatory ho jayega, aur tab `pickVoucherBanner` ko `bannerType` + `bannerUrl`
+> ke saath **`bannerThumbnail`** bhi dena hoga. Ye chhootna nahi chahiye.
 
 ## M-4 · Showcase media → `mediaSchema`
 `models/ShowcaseSection.js` · `helpers/showcases/{upload,validateMedia,projections}.js` · showcase services
@@ -1028,6 +1061,7 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 `models/VoucherVersion.js` · `models/Voucher.js` · voucher services
 - [ ] `VoucherVersion.images[]` → `mediaSchema`
 - [ ] `Voucher.banner` → naya shape (`current` / `pending` / `status`)
+- [ ] 🔴 **`pickVoucherBanner` me `bannerThumbnail`** — VIDEO banner ka poster customer tak jaaye (M-3a ka locked rule)
 - [ ] `sortOrder max: 5` **hatao** (P4)
 - [ ] Dead `require("joi")` hatao (P10) · hardcoded provider enum hatao (P11)
 - [ ] **Proof:** money suite

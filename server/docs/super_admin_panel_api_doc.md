@@ -3277,9 +3277,16 @@ VIDEO par `media` me do field aur aate hain:
   "url": "https://res.cloudinary.com/.../teaser.mp4",
   "kind": "VIDEO",
   "duration": 12,
-  "poster": "https://res.cloudinary.com/.../teaser-cover.jpg"
+  "thumbnail": "https://res.cloudinary.com/.../teaser-cover.jpg"
 }
 ```
+
+> ⚠️ **Request me field ka naam `poster` hai, response me key `thumbnail` hai** —
+> aur ye jaan-boojh kar hai. Database me field `poster` hai (wo hai bhi wahi:
+> player ka pehla frame), par har client-facing surface — showcase media,
+> customer banner, vendor ka managed view — `thumbnail` naam pehle se use karta
+> hai. Wire par do naam rakhne ka matlab hota har client ka ye sochna ki wo kis
+> endpoint se baat kar raha hai.
 
 > ### 🔴 Response me kya badla
 >
@@ -3565,7 +3572,7 @@ GET /banners/get-all?isActive=true&sortBy=startDate&sortOrder=desc
 }
 ```
 
-VIDEO par `media` me `duration` aur `poster` (URL string) bhi aate hain.
+VIDEO par `media` me `duration` aur `thumbnail` (poster ka URL) bhi aate hain.
 
 ### Errors
 | Status | Message |

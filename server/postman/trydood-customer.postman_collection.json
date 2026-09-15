@@ -3989,7 +3989,7 @@
                 }
               ]
             },
-            "description": "**Access:** 🌐 **Public — token ki zarurat nahi** (guest browsing)\n\n**Array** aata hai — zyada se zyada **10** banners.\n\nDo pool, aur order matter karta hai:\n\n1. **Scheduled** — jinki `startDate`–`endDate` window abhi chal rahi hai,\n   `startDate` descending. Ye pehle slots lete hain.\n2. **Evergreen** — jinki dono dates `null` hain, `createdAt` descending.\n   Ye sirf bache hue slots bharte hain.\n\nYaani 3 scheduled live hon to array = 3 scheduled + 7 evergreen. 12\nscheduled live hon to sirf 10 scheduled, evergreen bilkul nahi.\n\n⚠️ **Breaking change.** Pehle `data` ek poora banner document tha; ab har\nitem me sirf `_id`, `type`, `url` aur `redirect` hain — `url` **flat** hai,\n`image`/`video`/`gif` object nahi. `title`, dates aur `storage` public\nresponse se hata diye gaye hain.\n\n⚠️ **Kuch na ho to `data` abhi bhi `null` hai**, `[]` nahi, aur message\n`\"No active banner found.\"` ho jaata hai. Dono handle karne hain."
+            "description": "**Access:** 🌐 **Public — token ki zarurat nahi** (guest browsing)\n\n**Array** aata hai — zyada se zyada **10** banners.\n\nDo pool, aur order matter karta hai:\n\n1. **Scheduled** — jinki `startDate`–`endDate` window abhi chal rahi hai,\n   `startDate` descending. Ye pehle slots lete hain.\n2. **Evergreen** — jinki dono dates `null` hain, `createdAt` descending.\n   Ye sirf bache hue slots bharte hain.\n\nYaani 3 scheduled live hon to array = 3 scheduled + 7 evergreen. 12\nscheduled live hon to sirf 10 scheduled, evergreen bilkul nahi.\n\n⚠️ **Breaking change.** Pehle `data` ek poora banner document tha; ab har\nitem me sirf `_id`, `type`, `url`, `thumbnail` aur `redirect` hain — `url` **flat** hai,\n`image`/`video`/`gif` object nahi. `title`, dates aur `storage` public\nresponse se hata diye gaye hain.\n\n⚠️ **Kuch na ho to `data` abhi bhi `null` hai**, `[]` nahi, aur message\n`\"No active banner found.\"` ho jaata hai. Dono handle karne hain."
           },
           "response": [
             {
@@ -4050,7 +4050,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"message\": \"Active banners fetched successfully.\",\n  \"data\": [\n    {\n      \"redirect\": {\n        \"type\": \"CATEGORY\",\n        \"targetId\": \"{{category_id}}\",\n        \"url\": null\n      },\n      \"_id\": \"6aa72732e5aea5c1184998be\",\n      \"type\": \"IMAGE\",\n      \"url\": \"https://res.cloudinary.com/demo/image/upload/sale.jpg\"\n    },\n    {\n      \"redirect\": {\n        \"type\": \"NONE\",\n        \"targetId\": null,\n        \"url\": null\n      },\n      \"_id\": \"6aa72732e5aea5c1184998bd\",\n      \"type\": \"IMAGE\",\n      \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\"\n    }\n  ]\n}"
+              "body": "{\n  \"success\": true,\n  \"message\": \"Active banners fetched successfully.\",\n  \"data\": [\n    {\n      \"redirect\": {\n        \"type\": \"CATEGORY\",\n        \"targetId\": \"{{category_id}}\",\n        \"url\": null\n      },\n      \"_id\": \"6aa72732e5aea5c1184998be\",\n      \"type\": \"IMAGE\",\n      \"url\": \"https://res.cloudinary.com/demo/image/upload/sale.jpg\",\n      \"thumbnail\": \"https://res.cloudinary.com/demo/image/upload/sale.jpg\"\n    },\n    {\n      \"redirect\": {\n        \"type\": \"NONE\",\n        \"targetId\": null,\n        \"url\": null\n      },\n      \"_id\": \"6aa72732e5aea5c1184998bd\",\n      \"type\": \"IMAGE\",\n      \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n      \"thumbnail\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\"\n    }\n  ]\n}"
             },
             {
               "name": "200 · Guest — Home banners",
@@ -4110,7 +4110,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"message\": \"Active banners fetched successfully.\",\n  \"data\": [\n    {\n      \"redirect\": {\n        \"type\": \"CATEGORY\",\n        \"targetId\": \"{{category_id}}\",\n        \"url\": null\n      },\n      \"_id\": \"6aa72732e5aea5c1184998be\",\n      \"type\": \"IMAGE\",\n      \"url\": \"https://res.cloudinary.com/demo/image/upload/sale.jpg\"\n    },\n    {\n      \"redirect\": {\n        \"type\": \"NONE\",\n        \"targetId\": null,\n        \"url\": null\n      },\n      \"_id\": \"6aa72732e5aea5c1184998bd\",\n      \"type\": \"IMAGE\",\n      \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\"\n    }\n  ]\n}"
+              "body": "{\n  \"success\": true,\n  \"message\": \"Active banners fetched successfully.\",\n  \"data\": [\n    {\n      \"redirect\": {\n        \"type\": \"CATEGORY\",\n        \"targetId\": \"{{category_id}}\",\n        \"url\": null\n      },\n      \"_id\": \"6aa72732e5aea5c1184998be\",\n      \"type\": \"IMAGE\",\n      \"url\": \"https://res.cloudinary.com/demo/image/upload/sale.jpg\",\n      \"thumbnail\": \"https://res.cloudinary.com/demo/image/upload/sale.jpg\"\n    },\n    {\n      \"redirect\": {\n        \"type\": \"NONE\",\n        \"targetId\": null,\n        \"url\": null\n      },\n      \"_id\": \"6aa72732e5aea5c1184998bd\",\n      \"type\": \"IMAGE\",\n      \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n      \"thumbnail\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\"\n    }\n  ]\n}"
             }
           ],
           "event": [
@@ -4140,17 +4140,24 @@
                   "  }",
                   "});",
                   "",
-                  "pm.test(\"har item me sirf _id, type, url, redirect\", function () {",
+                  "pm.test(\"har item me sirf _id, type, url, thumbnail, redirect\", function () {",
                   "  const d = pm.response.json().data;",
                   "  if (d !== null) d.forEach(function (banner) {",
-                  "    pm.expect(Object.keys(banner).sort()).to.eql([\"_id\", \"redirect\", \"type\", \"url\"]);",
+                  "    pm.expect(Object.keys(banner).sort()).to.eql([\"_id\", \"redirect\", \"thumbnail\", \"type\", \"url\"]);",
                   "    pm.expect(banner._id, \"_id\").to.be.a(\"string\");",
                   "    pm.expect([\"IMAGE\", \"VIDEO\", \"GIF\"], \"type\").to.include(banner.type);",
                   "  });",
                   "});",
                   "",
                   "pm.test(\"redirect.type kabhi null nahi — set na ho to NONE\", function () {",
-                  "  const allowed = [\n  \"NONE\",\n  \"CATEGORY\",\n  \"DEAL\",\n  \"BRAND\",\n  \"OFFER\",\n  \"EXTERNAL_URL\"\n];",
+                  "  const allowed = [",
+                  "  \"NONE\",",
+                  "  \"CATEGORY\",",
+                  "  \"DEAL\",",
+                  "  \"BRAND\",",
+                  "  \"OFFER\",",
+                  "  \"EXTERNAL_URL\"",
+                  "];",
                   "  const d = pm.response.json().data;",
                   "  if (d !== null) d.forEach(function (banner) {",
                   "    pm.expect(allowed, \"redirect.type\").to.include(banner.redirect.type);",
@@ -4165,7 +4172,19 @@
                   "    pm.expect(raw, field + \" leaked\").to.not.include('\"' + field + '\"');",
                   "  });",
                   "});",
-                  ""
+                  "",
+                  "",
+                  "pm.test(\"thumbnail hamesha hai — video par poster, warna khud\", function () {",
+                  "  const d = pm.response.json().data;",
+                  "  if (d !== null) d.forEach(function (banner) {",
+                  "    pm.expect(banner.thumbnail, \"thumbnail\").to.be.a(\"string\");",
+                  "    if (banner.type === \"VIDEO\") {",
+                  "      pm.expect(banner.thumbnail, \"video ka poster .mp4 nahi ho sakta\").to.not.eql(banner.url);",
+                  "    } else {",
+                  "      pm.expect(banner.thumbnail, \"still apna hi thumbnail hai\").to.eql(banner.url);",
+                  "    }",
+                  "  });",
+                  "});"
                 ]
               }
             }

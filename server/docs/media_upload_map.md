@@ -577,6 +577,17 @@ storage: {
 > karta hai: default sirf URL string, `withMeta` par kind/size/dimensions, aur
 > `forAdmin` par uske saath `provider` — par `bucket`/`key`/`publicId` kisi bhi
 > mode me nahi.
+>
+> ⚠️ **DB me `poster`, wire par `thumbnail`.** Field ka naam `poster` hai kyunki
+> wo hai wahi — player ka pehla frame. Par har client-facing surface (showcase
+> customer map, vendor managed view, clips feed, customer banner) `thumbnail`
+> naam pehle se use karti hai, isliye helper wahi naam nikaalta hai. Ek idea, ek
+> naam — warna har client ko sochna padta ki wo kis endpoint se baat kar raha hai.
+>
+> 🔴 **Jahan bhi VIDEO client tak jaata hai, poster uske saath jaata hai.** Poster
+> `mediaSchema` me VIDEO par mandatory hai, aur usko store karke na bhejna
+> mandatory rakhne ka matlab hi khatam kar deta hai — app phir bhi `.mp4` buffer
+> hone tak khali rectangle dikhati hai.
 
 `deleteMedia()` isi `provider` par switch karta hai; `S3` case abhi **khaali
 `return`** hai ([helpers/showcases/upload.js:53](../helpers/showcases/upload.js#L53)).

@@ -171,13 +171,21 @@ describe("🔴 what reaches a client", () => {
     }
   });
 
-  test("⚠️ a video's poster is flattened to its URL", () => {
+  /**
+   * ⚠️ `thumbnail` on the wire, `poster` in the database.
+   *
+   * Showcase media has answered with a `thumbnail` key since long before this
+   * migration, so emitting `poster` here would have been a second name for one
+   * idea — and every client branching on which surface it was talking to.
+   */
+  test("⚠️ a video's poster goes out as `thumbnail`, flattened to its URL", () => {
     // Passing the object through would carry `poster.storage` out with it —
     // the exact leak the helper exists to make impossible.
     const shape = toMediaResponse(video(), { withMeta: true });
 
-    expect(shape.poster).toBe("https://cdn.example.com/v.jpg");
-    expect(typeof shape.poster).toBe("string");
+    expect(shape.thumbnail).toBe("https://cdn.example.com/v.jpg");
+    expect(typeof shape.thumbnail).toBe("string");
+    expect(shape).not.toHaveProperty("poster");
   });
 
   test("withMeta names its fields, so a new column cannot leak by default", () => {
@@ -198,9 +206,12 @@ describe("🔴 what reaches a client", () => {
     expect(toMediaResponse(video(), { withMeta: true }).duration).toBe(12);
   });
 
-  test("a poster key appears only on a video", () => {
+  test("a thumbnail key appears only on a video", () => {
+    // A still is its own thumbnail; repeating the URL under a second name here
+    // would say nothing. The surfaces that want one key for every kind decide
+    // that themselves — see the banner's customer shape.
     expect(toMediaResponse(image(), { withMeta: true })).not.toHaveProperty(
-      "poster",
+      "thumbnail",
     );
   });
 });

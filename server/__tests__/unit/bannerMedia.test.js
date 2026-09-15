@@ -182,10 +182,10 @@ describe("toMediaResponse — the admin shape", () => {
     expect(JSON.stringify(shape)).not.toMatch(/trydood-nonprod-public|dev\/images/);
   });
 
-  test("a video's poster is flattened to a URL, storage and all", () => {
+  test("a video's poster goes out as `thumbnail`, storage and all stripped", () => {
     const shape = toMediaResponse(videoMedia(), { forAdmin: true });
 
-    expect(shape.poster).toBe("https://cdn.example.com/v.jpg");
+    expect(shape.thumbnail).toBe("https://cdn.example.com/v.jpg");
     expect(shape.duration).toBe(12);
     expect(JSON.stringify(shape)).not.toMatch(/bucket|key|publicId/);
   });
@@ -253,7 +253,7 @@ describe("toAdminBannerShape — a whitelist, not a document", () => {
 describe("the customer shape — the half that must NOT move", () => {
   const { toCustomerShape } = require("../../services/banners/getActiveBannersForCustomer");
 
-  test("four keys, exactly the ones the app already reads", () => {
+  test("the keys the app already reads, plus thumbnail", () => {
     const shape = toCustomerShape({
       _id: ADMIN,
       title: "Secret internal title",
@@ -263,7 +263,13 @@ describe("the customer shape — the half that must NOT move", () => {
       createdBy: ADMIN,
     });
 
-    expect(Object.keys(shape).sort()).toEqual(["_id", "redirect", "type", "url"]);
+    expect(Object.keys(shape).sort()).toEqual([
+      "_id",
+      "redirect",
+      "thumbnail",
+      "type",
+      "url",
+    ]);
     expect(shape.type).toBe(MEDIA_KIND.IMAGE);
     expect(shape.url).toBe("https://cdn.example.com/a.webp");
     expect(shape.redirect).toEqual({
@@ -278,6 +284,47 @@ describe("the customer shape — the half that must NOT move", () => {
 
     expect(shape.type).toBe(MEDIA_KIND.VIDEO);
     expect(shape.url).toBe("https://cdn.example.com/v.mp4");
+  });
+
+  /**
+   * 🔴 The whole reason a poster is mandatory.
+   *
+   * It was stored and then never sent for a while, which made the requirement
+   * pointless: the app still showed a blank rectangle until the `.mp4` had
+   * buffered a frame.
+   */
+  test("a video's thumbnail is its poster", () => {
+    const shape = toCustomerShape({ _id: ADMIN, media: videoMedia() });
+
+    expect(shape.thumbnail).toBe("https://cdn.example.com/v.jpg");
+    expect(shape.thumbnail).not.toBe(shape.url);
+  });
+
+  /**
+   * ⚠️ Never null for a banner that renders. A still is its own thumbnail, so
+   * the client writes `<img src={thumbnail}>` once rather than branching on
+   * `type` to find out which field holds a paintable image.
+   */
+  test("a still and a GIF are their own thumbnail", () => {
+    for (const kind of [MEDIA_KIND.IMAGE, MEDIA_KIND.GIF]) {
+      const shape = toCustomerShape({
+        _id: ADMIN,
+        media: imageMedia({ kind }),
+      });
+      expect(shape.thumbnail).toBe("https://cdn.example.com/a.webp");
+      expect(shape.thumbnail).toBe(shape.url);
+    }
+  });
+
+  test("a video with no poster answers null, not the .mp4", () => {
+    // The upload path refuses this, but a row written another way must not
+    // hand the app a video file to render as a still.
+    const shape = toCustomerShape({
+      _id: ADMIN,
+      media: videoMedia({ poster: undefined }),
+    });
+
+    expect(shape.thumbnail).toBeNull();
   });
 
   test("no redirect answers NONE, never null", () => {
@@ -306,7 +353,7 @@ describe("the customer shape — the half that must NOT move", () => {
    * answer is nulls: visibly wrong rather than quietly wrong, and never a URL
    * pulled out of a field the schema no longer knows about.
    */
-  test("a pre-migration row answers null, and still has four keys", () => {
+  test("a pre-migration row answers null, and still has every key", () => {
     const shape = toCustomerShape({
       _id: ADMIN,
       type: "image",
@@ -315,7 +362,14 @@ describe("the customer shape — the half that must NOT move", () => {
 
     expect(shape.type).toBeNull();
     expect(shape.url).toBeNull();
-    expect(Object.keys(shape).sort()).toEqual(["_id", "redirect", "type", "url"]);
+    expect(shape.thumbnail).toBeNull();
+    expect(Object.keys(shape).sort()).toEqual([
+      "_id",
+      "redirect",
+      "thumbnail",
+      "type",
+      "url",
+    ]);
   });
 });
 

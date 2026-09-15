@@ -314,7 +314,7 @@ describe("getActiveBannersForCustomer — scheduled first, evergreen filling", (
 });
 
 describe("getActiveBannersForCustomer — the payload the app renders", () => {
-  test("exactly four keys, and the media url is flattened", async () => {
+  test("exactly five keys, and the media url is flattened", async () => {
     await evergreen({
       title: "Secret internal title",
       media: {
@@ -335,13 +335,25 @@ describe("getActiveBannersForCustomer — the payload the app renders", () => {
     expect(Object.keys(banner).sort()).toEqual([
       "_id",
       "redirect",
+      "thumbnail",
       "type",
       "url",
     ]);
     expect(banner.type).toBe("VIDEO");
     expect(banner.url).toBe("https://res.cloudinary.com/x/video/upload/a.mp4");
+    /**
+     * 🔴 The poster reaches the app, flattened to a URL.
+     *
+     * It is mandatory at upload and was stored-but-never-sent for a while,
+     * which made the requirement pointless — the player still opened on a
+     * blank rectangle until the `.mp4` had buffered a frame.
+     */
+    expect(banner.thumbnail).toBe(
+      "https://res.cloudinary.com/x/image/upload/a-poster.jpg",
+    );
     // ⚠️ `storage` holds the Cloudinary public id of every asset — an admin
-    // detail that has no business on a public endpoint.
+    // detail that has no business on a public endpoint. The poster carries one
+    // of its own, and it must not ride out on the thumbnail either.
     expect(JSON.stringify(banner)).not.toMatch(/publicId|Secret internal/);
   });
 
@@ -396,10 +408,12 @@ describe("getActiveBannersForCustomer — the payload the app renders", () => {
 
     expect(banner.type).toBeNull();
     expect(banner.url).toBeNull();
-    // Still the same four keys — a legacy row does not change the contract.
+    expect(banner.thumbnail).toBeNull();
+    // Still the same keys — a legacy row does not change the contract.
     expect(Object.keys(banner).sort()).toEqual([
       "_id",
       "redirect",
+      "thumbnail",
       "type",
       "url",
     ]);

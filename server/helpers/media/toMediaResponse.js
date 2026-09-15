@@ -92,13 +92,26 @@ exports.toMediaResponse = (media, { withMeta = false, forAdmin = false } = {}) =
   }
 
   /**
-   * ⚠️ The poster is flattened to its URL. It is an image the client renders,
-   * not a file it manages — and passing the object through would carry
-   * `poster.storage` out with it, which is the exact leak this file exists to
-   * make impossible.
+   * A video's poster, flattened to a URL, under the name every client already
+   * uses for it.
+   *
+   * ### ⚠️ `thumbnail` on the wire, `poster` in the database
+   *
+   * The two names are deliberate, not an oversight. Showcase media has answered
+   * with a `thumbnail` key since long before this migration — the customer
+   * media map, the vendor's managed view and the clips feed all read it — so
+   * emitting `poster` here would have meant **two names for one idea**, and
+   * every client branching on which surface it happened to be talking to.
+   *
+   * The storage field stays `poster` because that is what it is: the frame a
+   * player shows before playback. `thumbnail` is what a renderer asks for.
+   *
+   * 🔴 Flattened to a URL, never passed through as an object — the poster
+   * carries its own `storage`, and handing that out is the exact leak this file
+   * exists to make impossible.
    */
   if (media.kind === MEDIA_KIND.VIDEO) {
-    shape.poster = media.poster?.url ?? null;
+    shape.thumbnail = media.poster?.url ?? null;
   }
 
   return shape;
