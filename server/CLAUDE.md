@@ -1028,6 +1028,24 @@ ready, list them and let the user choose which to commit and how to group them.
 ⚠️ The `.githooks/pre-commit` coverage gate is **not** permission. It checks a
 commit that is already happening; it does not decide that one should.
 
+### 🔴 Every report ends with what comes next
+
+A finished piece of work is reported with **three** things, not two:
+
+1. what changed and what the tests said,
+2. the file list waiting for a commit decision, and
+3. **the next phase — its id, its name, and what it will actually touch.**
+
+Named from [`docs/master_execution_plan.md`](./docs/master_execution_plan.md)'s
+phase order (Part 5), not invented. If the next phase is blocked, or the order
+has to change, say which one and why rather than silently picking a different
+one.
+
+**Why:** the user is reviewing each phase and deciding when it lands. Reporting
+only what is done leaves them to go re-read the plan to find out what they are
+approving next, and it hides the case where the plan and the work have drifted
+apart. Asked for on 2026-09-15.
+
 ### Databases here are disposable
 
 `Trydood2` (dev), `Trydood2_postman` (collection fixtures) and `Trydood2_test`
