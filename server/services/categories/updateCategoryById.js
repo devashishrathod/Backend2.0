@@ -1,5 +1,5 @@
 const Category = require("../../models/Category");
-const { sameNameAs } = require("../../helpers/common");
+const { sameNameAs, toDisplayName } = require("../../helpers/common");
 const { throwError, validateObjectId } = require("../../utils");
 const storage = require("../storage");
 const { assertImageFile, toMediaDocument, toDeletable } = require("../../helpers/media");

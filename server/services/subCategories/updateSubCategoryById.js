@@ -1,5 +1,5 @@
 const SubCategory = require("../../models/SubCategory");
-const { sameNameAs } = require("../../helpers/common");
+const { sameNameAs, toDisplayName } = require("../../helpers/common");
 const Category = require("../../models/Category");
 const { throwError, validateObjectId } = require("../../utils");
 const storage = require("../storage");

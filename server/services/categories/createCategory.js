@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { sameNameAs } = require("../../helpers/common");
+const { sameNameAs, toDisplayName } = require("../../helpers/common");
 
 const Category = require("../../models/Category");
 const { throwError } = require("../../utils");
