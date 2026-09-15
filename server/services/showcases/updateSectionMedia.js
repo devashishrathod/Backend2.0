@@ -1,12 +1,10 @@
 const { throwError } = require("../../utils");
-const { SHOWCASE_MEDIA_TYPE } = require("../../constants/showcase");
 const storage = require("../storage");
-const { UPLOAD_PURPOSE } = require("../../constants/storage");
+const { UPLOAD_PURPOSE, MEDIA_KIND } = require("../../constants/storage");
 const { getShowcaseConfig } = require("../../helpers/settings");
 const {
   resolveSectionForActor,
   validateThumbnailFile,
-  deleteCustomThumbnail,
   syncSectionCoverImage,
   formatManagedMedia,
   rollbackUploads,
@@ -48,10 +46,10 @@ exports.updateSectionMedia = async (actor, payload, thumbnailFile) => {
     projection: { medias: 1, coverImage: 1, coverImageMode: 1, coverMediaId: 1 },
   });
 
-  const media = section.medias.id(mediaId);
-  if (!media || media.isDeleted) throwError(404, "Media not found.");
+  const item = section.medias.id(mediaId);
+  if (!item || item.isDeleted) throwError(404, "Media not found.");
 
-  const isVideo = media.type === SHOWCASE_MEDIA_TYPE.VIDEO;
+  const isVideo = item.media?.kind === MEDIA_KIND.VIDEO;
 
   if (isShowInVideoClips !== undefined && !isVideo) {
     throwError(
@@ -67,15 +65,14 @@ exports.updateSectionMedia = async (actor, payload, thumbnailFile) => {
   }
 
   // `!== undefined`, so a vendor can clear a title or alt text with `""`.
-  if (title !== undefined) media.title = title.trim();
-  if (altText !== undefined) media.altText = altText.trim();
-  if (isActive !== undefined) media.isActive = isActive;
+  if (title !== undefined) item.title = title.trim();
+  if (altText !== undefined) item.altText = altText.trim();
+  if (isActive !== undefined) item.isActive = isActive;
   if (isShowInVideoClips !== undefined) {
-    media.isShowInVideoClips = isShowInVideoClips;
+    item.isShowInVideoClips = isShowInVideoClips;
   }
 
-  const previousThumbnail = media.thumbnail;
-  const previousMedia = media.toObject();
+  const previousPoster = item.media?.poster?.toObject?.() ?? item.media?.poster;
   let uploadedThumbnail = null;
 
   if (thumbnailFile) {
@@ -84,19 +81,28 @@ exports.updateSectionMedia = async (actor, payload, thumbnailFile) => {
     // Not swallowed any more. The upload failure used to be logged and the
     // request answered `200`, so the vendor was told their new poster had been
     // saved while the old one was still live.
-    //
-    // ⚠️ The whole upload result is kept, not just its URL. `thumbnailStorage`
-    // is what marks this poster as one the vendor uploaded — without it,
-    // `isCustomThumbnail` has to guess from the URL, which is exactly the check
-    // that cannot work on S3.
     uploadedThumbnail = await storage.uploadFromPath({
       filePath: thumbnailFile.tempFilePath,
       originalFile: thumbnailFile,
       purpose: UPLOAD_PURPOSE.SHOWCASE_THUMBNAIL,
       entityId: section._id,
+      kind: MEDIA_KIND.IMAGE,
     });
-    media.thumbnail = uploadedThumbnail.url;
-    media.thumbnailStorage = uploadedThumbnail.storage;
+    /**
+     * ⚠️ The poster replaces the one on the media, wholesale.
+     *
+     * There is no `thumbnailStorage` marker any more, and no question for it to
+     * answer. It existed to record "the vendor uploaded this one" so that a
+     * *derived* poster would never be deleted — but nothing derives a poster
+     * now, so every poster here is one somebody uploaded and every one of them
+     * is safe to replace.
+     */
+    item.media.poster = {
+      url: uploadedThumbnail.url,
+      storage: uploadedThumbnail.storage,
+      width: uploadedThumbnail.metadata?.width ?? null,
+      height: uploadedThumbnail.metadata?.height ?? null,
+    };
   }
 
   // The cover follows the first visible media, so switching one off or changing
@@ -112,12 +118,26 @@ exports.updateSectionMedia = async (actor, payload, thumbnailFile) => {
     throw error;
   }
 
-  if (uploadedThumbnail && previousThumbnail) {
-    // Only if the vendor had uploaded that poster themselves — a video's
-    // default poster is derived from the video's own public id, and destroying
-    // it would take the video with it.
-    await deleteCustomThumbnail(previousMedia);
+  /**
+   * The poster this one replaced goes — after the save, never before.
+   *
+   * ⚠️ No "is this one safe to delete?" check any more. That question existed
+   * because a poster could be *derived* from the video, and destroying a derived
+   * poster took the video's own asset down with it. Nothing derives a poster, so
+   * every stored poster is a separate file that only this media references.
+   */
+  if (uploadedThumbnail && previousPoster?.url) {
+    try {
+      await storage.deleteAsset({
+        url: previousPoster.url,
+        storage: previousPoster.storage,
+        kind: MEDIA_KIND.IMAGE,
+      });
+    } catch (error) {
+      // Best effort: an orphaned poster is not worth failing the request over.
+      console.error("Old poster delete failed:", error.message);
+    }
   }
 
-  return formatManagedMedia(media);
+  return formatManagedMedia(item);
 };

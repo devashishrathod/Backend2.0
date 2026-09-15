@@ -27,7 +27,7 @@
 | **S-4** | Customer payload me position | **`sortOrder` key hi overwrite** hogi (display position 1..n). App me zero change |
 | **S-5** | Deleted media ka `sortOrder` | **Chhod denge** — 0 karna model ke default se collide karta |
 | **S-6** | Clips API khaali par | **Empty list**, 404 nahi. Gallery endpoint se consistent |
-| **S-7** | GIF ka type | **`PHOTO`** rahega. `metadata.mimeType` me `image/gif` sach likha rehta hai; S3 par verified-kind se file phir bhi `gifs/` prefix me jaati hai |
+| **S-7** | GIF ka type | **`PHOTO`** rahega — par ab wo derive hota hai, stored nahi (M-4: `showcaseTypeOf`). `media.kind` me `GIF` sach likha rehta hai, aur usi se file `gifs/` prefix me jaati hai, resize step se door |
 | **S-8** | Managed reads | Naya derived read-only field **`customerVisibility { isLive, reasons[] }`** |
 | **S-9** | Optimistic locking | `ShowcaseSection` par **`__v` wapas on**; `VersionError` → **409** |
 | **S-10** | Legacy (1–2 media) sections | Customer view se **turant gayab**. Grandfather flag nahi. Delete phir bhi allowed |

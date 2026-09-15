@@ -23,8 +23,7 @@ const {
   rollbackUploads,
   deleteMedia,
   deleteAllMedia,
-  isCustomThumbnail,
-  deleteCustomThumbnail,
+  POSTER_FILE_FIELD,
 } = require("./upload");
 const { resolveSectionForActor } = require("./resolveSectionForActor");
 const {
@@ -67,8 +66,7 @@ module.exports = {
   rollbackUploads,
   deleteMedia,
   deleteAllMedia,
-  isCustomThumbnail,
-  deleteCustomThumbnail,
+  POSTER_FILE_FIELD,
   // Shared read shapes — see projections.js
   customerSectionMatch,
   visibleMediaCondition,

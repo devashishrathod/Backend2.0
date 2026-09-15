@@ -4261,7 +4261,7 @@ Brand profile screen ka **single call** — brand, features, visible showcase pr
               "_id": "…",
               "type": "PHOTO",
               "url": "https://…/amb1.jpg",
-              "thumbnail": null,
+              "thumbnail": "https://…/amb1.jpg",
               "title": "seating area",
               "altText": "cafe seating with wooden tables",
               "sortOrder": 1
@@ -4585,7 +4585,12 @@ Poora filter: section pe `isVisible && isActive && !isDeleted`, media pe `isActi
 
 **6. `duration` aur `resolution` sirf `VIDEO` rows pe aate hain** (naya) — photo pe ye keys hoti hi nahi. Player ke aspect ratio aur progress bar ke liye use karein; `duration` seconds me.
 
-**7. `thumbnail` hamesha image URL hota hai** — PHOTO ke liye apni hi optimized URL, VIDEO ke liye poster frame.
+**7. `thumbnail` hamesha image URL hota hai** — PHOTO ke liye apni hi URL, VIDEO ke liye **poster frame**.
+
+> ⚠️ VIDEO par poster ab upload ke waqt **mandatory** hai, isliye ye field video
+> par kabhi khali nahi milega. Pehle iska daawa tha ki provider poster bana deta
+> hai; Cloudinary ka bana hua URL 404 deta tha aur S3 banata hi nahi tha.
+> **Response ki keys nahi badli** — sirf value ab sach me kaam karti hai.
 
 **8. Counts pre-calculated hain** (`mediaCount`, `photoCount`, `videoCount`) — tabs/badges me directly use karein.
 
@@ -4672,7 +4677,18 @@ Matlab showcase (#19) me video dikhe par clips feed me na aaye — ye normal hai
 
 **3. `resolution` aur `duration` aate hain.** Player aspect ratio aur progress bar ke liye useful. `duration` seconds me, missing ho to `0`.
 
-**4. `thumbnail` ka fallback section ka `coverImage` hai** — video ka apna thumbnail na ho to section cover use hota hai. Isliye ye field practically kabhi `null` nahi hota.
+**4. 🔴 `thumbnail` ab video ka apna poster hai — section `coverImage` ka fallback hata diya gaya.**
+
+Pehle `$ifNull: ["$clips.thumbnail", "$coverImage"]` tha, is bharose par ki
+"Cloudinary har video ka poster bana deta hai". Banata nahi tha:
+`getOptimizedImageUrl(publicId)` `/image/upload/` ka path banata hai ek aise asset
+ke liye jo `/video/upload/` me rehta hai — wo URL **404** deta tha; S3 poster
+banata hi nahi tha. Fallback phir chup-chaap **kisi aur clip ki tasveer** is clip
+ke frame ki jagah dikha deta tha, aur kyunki section cover khud pehli media se
+banta hai, video-first section me wo `.mp4` link hota tha.
+
+Poster ab upload ke waqt **mandatory** hai, to fallback ki zarurat hi nahi bachi.
+Field phir bhi practically kabhi `null` nahi hoga — is baar sach me.
 
 **5. Sorting:** section `sortOrder` → media `sortOrder` → `createdAt` descending.
 

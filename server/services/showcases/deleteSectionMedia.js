@@ -2,7 +2,6 @@ const { throwError } = require("../../utils");
 const {
   resolveSectionForActor,
   deleteMedia,
-  deleteCustomThumbnail,
   syncSectionCoverImage,
 } = require("../../helpers/showcases");
 
@@ -27,23 +26,23 @@ exports.deleteSectionMedia = async (actor, payload) => {
     projection: { medias: 1, coverImage: 1, coverImageMode: 1, coverMediaId: 1 },
   });
 
-  const media = section.medias.id(payload.mediaId);
-  if (!media || media.isDeleted || !media.isActive) {
+  const item = section.medias.id(payload.mediaId);
+  if (!item || item.isDeleted || !item.isActive) {
     throwError(404, "Media not found.");
   }
 
   const liveCount = section.medias.filter(
-    (item) => item.isActive && !item.isDeleted,
+    (entry) => entry.isActive && !entry.isDeleted,
   ).length;
   if (liveCount <= 1) {
     throwError(400, "At least one media is required in this section.");
   }
 
-  const removed = media.toObject();
+  const removed = item.toObject();
 
-  media.isActive = false;
-  media.isDeleted = true;
-  media.deletedAt = new Date();
+  item.isActive = false;
+  item.isDeleted = true;
+  item.deletedAt = new Date();
 
   // Recomputed from what is left, rather than compared field by field. The old
   // code tested `coverImage === media.url`, while the cover had been written
@@ -54,10 +53,11 @@ exports.deleteSectionMedia = async (actor, payload) => {
   await section.save();
 
   try {
-    await deleteCustomThumbnail(removed);
-    await deleteMedia(removed);
+    // Takes the poster with it. This used to need a separate
+    // `deleteCustomThumbnail` call guarded by a check that could not work on S3.
+    await deleteMedia(removed.media);
   } catch (err) {
-    console.error("Cloudinary delete failed:", err.message);
+    console.error("Storage delete failed:", err.message);
   }
 
   return {

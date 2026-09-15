@@ -1048,14 +1048,58 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 > mandatory ho jayega, aur tab `pickVoucherBanner` ko `bannerType` + `bannerUrl`
 > ke saath **`bannerThumbnail`** bhi dena hoga. Ye chhootna nahi chahiye.
 
-## M-4 · Showcase media → `mediaSchema`
-`models/ShowcaseSection.js` · `helpers/showcases/{upload,validateMedia,projections}.js` · showcase services
-- [ ] `medias[]` → `mediaSchema`; `thumbnail` + `thumbnailStorage` → **`poster`**
-- [ ] `isCustomThumbnail` ka legacy Cloudinary branch **hatao** — auto-poster ab hai hi nahi, to wo sawaal hi nahi bachta
-- [ ] `getMediaCoverImage` ab poster/image se → **`.mp4` cover khatam**
-- [ ] `getAllVideoClips` ka `$ifNull` blank-frame fallback hatao
-- [ ] Customer response me `thumbnail` key **bani rahe** (`poster.url` se)
-- [ ] **Proof:** video-first section ka cover kabhi `.mp4` nahi · clips me poster hamesha
+## M-4 · Showcase media → `mediaSchema` — ✅ **DONE** (uncommitted)
+`models/ShowcaseSection.js` · `constants/showcase.js` · `helpers/showcases/{upload,validateMedia,projections,index}.js` · showcase services ×7 · `controllers/showcases/replaceMedia.js` · docs · postman
+- [x] `medias[]` ka item ab **`{ media: mediaSchema, title, altText, sortOrder, … }`** — file aur gallery-entry alag
+- [x] `thumbnail` + `thumbnailStorage` → **`media.poster`** (VIDEO par mandatory)
+- [x] `isCustomThumbnail` / `deleteCustomThumbnail` **poore hate** — auto-poster hai hi nahi, to wo sawaal hi nahi bachta
+- [x] `getMediaCoverImage` ab VIDEO par **sirf poster** deta hai → **`.mp4` cover khatam**
+- [x] `getAllVideoClips` ka `$ifNull` blank-frame fallback **hata**
+- [x] Customer response me `type` / `url` / `thumbnail` **bilkul same** — ab `media.kind` / `media.url` / `media.poster.url` se
+- [x] Vendor `formatManagedMedia` → ek `media` object; `storage`/`metadata` **hate**
+- [x] Dono provider se dead `thumbnail` field **hata** — Cloudinary ka video par 404 deta tha, photo par url ki copy tha; S3 ka video par `null`
+- [x] **32 naye unit test** (`showcaseMedia.test.js`) + `sectionCover` naye shape par · poori suite **376 pass** · **Mutation 14/14** · `verifyNoUndef` 0 · `verifyImports` 0 · coverage 223/223
+
+> ⚠️ **`type` ab stored field nahi hai** — `media.kind` se derive hota hai
+> (`showcaseTypeOf`). Wire par `PHOTO`/`VIDEO` waisa hi rehta hai aur GIF `PHOTO`
+> padha jaata hai (S-7), par DB me `kind: "GIF"` likha rehta hai — jo use `gifs/`
+> prefix me rakhta hai, resize step se door. Banner me yahi do-source-of-truth
+> `type: "VIDEO"` + image bytes ban jaati thi.
+
+> 🔴 **`isCustomThumbnail` ka apna bug bhi khatam.** Wo poochhta tha "ye poster
+> vendor ne upload kiya ya derive hua?" — S3 par `publicId` null hone se URL
+> comparison skip ho jaata aur **har** derived poster custom padha jaata, yaani
+> video ka poster badalne par wahi poster delete ho jaata jo vendor dekh raha
+> tha. Ab kuch derive hi nahi hota.
+
+> ⚠️ **Poster ab request me aata hai** — `add-media` par `thumbnails[]`
+> (index se files[] ke saath jodta hai), `media/replace` par `thumbnail`.
+> Dono jagah video bina poster ke **upload se pehle** `422` se rukta hai.
+
+> 🔴 **`validateSync()` `pre("validate")` middleware nahi chalata.** Clips-flag
+> wala test pehle fail hua kyunki wo sync path par tha; `await doc.validate()`
+> par hook sach me chalta hai. Ye usi trap-family ka hai jismein
+> `this.invalidate()` nested sub-document me kuch karta hi nahi (F-3, M-2).
+
+> 🔴 **Do money-test mock M-1 ke din se toote pade the.** `brandImages` aur
+> `brandFeatureOwnership` dono `uploadFromPath` ko `{ url, storage }` lautate the,
+> **`metadata` ke bina**. `toMediaDocument` `kind` ko `metadata.mimeType` se derive
+> karta hai aur guess karne ki jagah **throw** karta hai — to har wo service jo
+> media sibling likhti hai wahan "Cannot store media: no kind" se girti thi.
+> **16 test fail.** Asli facade hamesha `metadata` bharta hai, to ye mock apni hi
+> cheez ka galat chitra tha. M-1 ke commit me likha tha ki ye test theek kar diya —
+> naam theek kiye the, par **suite chalayi nahi gayi**, isliye ye bacha reh gaya.
+>
+> ⚠️ Yahi wajah hai ki M-4 par targeted money run kiya. Poori suite M-5 par
+> chalegi.
+
+> ⚠️ **Ek flaky test pakda gaya — M-4 ka code nahi, par M-4 ne ubhaara.**
+> `uploadLimits.test.js` cleanup ke liye flat `setTimeout(250)` par bharosa karta
+> tha. Akele chalane par pass, poori suite me kabhi-kabhi fail — naye test files
+> se load badha to disk par cleanup 250ms ke galat side par aa gaya. Ab wo
+> condition par poll karta hai (ceiling 5s), to wait utna hi lagta hai jitna
+> sach me lagta hai aur asli regression phir bhi fail karega. Teen baar poori
+> suite clean chali.
 
 ## M-5 · Voucher media → `mediaSchema`
 `models/VoucherVersion.js` · `models/Voucher.js` · voucher services

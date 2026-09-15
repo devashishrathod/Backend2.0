@@ -4,6 +4,7 @@ const {
   pickCoverMedia,
 } = require("../../helpers/showcases/validateMedia");
 const { SHOWCASE_COVER_IMAGE_MODE } = require("../../constants/showcase");
+const { MEDIA_KIND } = require("../../constants/storage");
 
 const { AUTO, MANUAL } = SHOWCASE_COVER_IMAGE_MODE;
 
@@ -17,13 +18,27 @@ const { AUTO, MANUAL } = SHOWCASE_COVER_IMAGE_MODE;
  * reported success.
  */
 
-/** A media array with Mongoose's `.id()` lookup, which the helper relies on. */
+/**
+ * A media array with Mongoose's `.id()` lookup, which the helper relies on.
+ *
+ * ⚠️ Each entry is a **gallery item**, and the file sits inside it as `media` —
+ * the shape M-4 introduced. `photo()` and `video()` below build that file, so a
+ * test says what it means rather than restating the schema each time.
+ */
+const photo = (url) => ({ url, kind: MEDIA_KIND.IMAGE });
+
+const video = (url, posterUrl) => ({
+  url,
+  kind: MEDIA_KIND.VIDEO,
+  poster: posterUrl ? { url: posterUrl } : undefined,
+});
+
 const mediaList = (items) => {
-  const list = items.map((m) => ({
+  const list = items.map(({ url, media, ...rest }) => ({
     isDeleted: false,
     isActive: true,
-    thumbnail: null,
-    ...m,
+    media: media ?? (url ? photo(url) : undefined),
+    ...rest,
   }));
   list.id = (id) => list.find((m) => String(m._id) === String(id)) || null;
   return list;
@@ -43,18 +58,55 @@ describe("AUTO — the cover follows the media", () => {
     expect(section.coverImage).toBe("first.jpg");
   });
 
-  test("prefers the thumbnail, so a video does not become an .mp4 link", () => {
+  test("a video answers its poster, so the cover is never an .mp4 link", () => {
     // Reading `url` first meant a video sorting to the top turned `coverImage`
     // into an .mp4 and every card rendering it showed a broken image.
     const section = {
       coverImageMode: AUTO,
       medias: mediaList([
-        { _id: "a", sortOrder: 1, url: "clip.mp4", thumbnail: "poster.jpg" },
+        { _id: "a", sortOrder: 1, media: video("clip.mp4", "poster.jpg") },
       ]),
     };
 
     syncSectionCoverImage(section);
     expect(section.coverImage).toBe("poster.jpg");
+  });
+
+  /**
+   * 🔴 The `||` that made the bug.
+   *
+   * This used to be `thumbnail || url`, so a video with no poster fell through
+   * to its own `.mp4` — and on S3 **no poster was ever produced**, which meant
+   * every video-first section had a video file as its cover image. `null` is
+   * the honest answer; the poster is mandatory at upload, so a row reaching
+   * this state was written some other way and should look broken, not fine.
+   */
+  test("a video with no poster answers null, never the .mp4", () => {
+    const section = {
+      coverImageMode: AUTO,
+      medias: mediaList([
+        { _id: "a", sortOrder: 1, media: video("clip.mp4") },
+      ]),
+    };
+
+    syncSectionCoverImage(section);
+    expect(section.coverImage).toBeNull();
+  });
+
+  test("a GIF is its own cover, like any other picture", () => {
+    const section = {
+      coverImageMode: AUTO,
+      medias: mediaList([
+        {
+          _id: "a",
+          sortOrder: 1,
+          media: { url: "loop.gif", kind: MEDIA_KIND.GIF },
+        },
+      ]),
+    };
+
+    syncSectionCoverImage(section);
+    expect(section.coverImage).toBe("loop.gif");
   });
 
   test("skips deleted and hidden media", () => {
@@ -105,7 +157,7 @@ describe("MANUAL — a pin the vendor set", () => {
     // This is what pinning an **id** buys over pinning a URL: the vendor said
     // "show this media", and after a replace it is still that media.
     const section = pinned();
-    section.medias.find((m) => m._id === "b").url = "replacement.jpg";
+    section.medias.find((m) => m._id === "b").media = photo("replacement.jpg");
 
     syncSectionCoverImage(section);
 
@@ -172,9 +224,12 @@ describe("MANUAL — a pin the vendor set", () => {
 });
 
 describe("the pieces underneath", () => {
-  test("getMediaCoverImage: thumbnail, then url, then nothing", () => {
-    expect(getMediaCoverImage({ thumbnail: "t.jpg", url: "u.mp4" })).toBe("t.jpg");
-    expect(getMediaCoverImage({ url: "u.jpg" })).toBe("u.jpg");
+  test("getMediaCoverImage: a video's poster, a picture's own url, else null", () => {
+    expect(getMediaCoverImage({ media: video("u.mp4", "t.jpg") })).toBe("t.jpg");
+    expect(getMediaCoverImage({ media: photo("u.jpg") })).toBe("u.jpg");
+    // 🔴 No `|| url` fallback — that is what put `.mp4` links on brand profiles.
+    expect(getMediaCoverImage({ media: video("u.mp4") })).toBeNull();
+    expect(getMediaCoverImage({})).toBeNull();
     expect(getMediaCoverImage(null)).toBeNull();
   });
 

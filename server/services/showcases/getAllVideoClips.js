@@ -62,15 +62,24 @@ exports.getAllVideoClips = async (query) => {
               sectionId: "$_id",
               sectionTitle: "$title",
               sectionCoverImage: "$coverImage",
-              // A video always has a poster frame from Cloudinary, but if one
-              // is ever missing the section cover keeps the player from opening
-              // on a blank frame.
-              video: {
-                $mergeObjects: [
-                  "$clips",
-                  { thumbnail: { $ifNull: ["$clips.thumbnail", "$coverImage"] } },
-                ],
-              },
+              /**
+               * 🔴 The section cover fallback is gone, and that is the fix.
+               *
+               * This used to be `$ifNull: ["$clips.thumbnail", "$coverImage"]`,
+               * written on the belief that "a video always has a poster frame
+               * from Cloudinary". It did not: `getOptimizedImageUrl(publicId)`
+               * builds an `/image/upload/` path for an asset under
+               * `/video/upload/`, so every stored poster was a 404 — and S3
+               * produced none at all. The fallback then quietly served somebody
+               * else's picture as this clip's frame, and because the section
+               * cover is itself computed from the first media, a video-first
+               * section showed the `.mp4` link there too.
+               *
+               * A poster is mandatory on a VIDEO now, and `customerMediaFields`
+               * (already applied above) reads `thumbnail` straight from it — so
+               * there is nothing left to merge or fall back to.
+               */
+              video: "$clips",
             },
           },
         ],

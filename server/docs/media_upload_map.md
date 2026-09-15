@@ -263,14 +263,34 @@ Yahi ek jagah hai jahan **multi-file upload**, **replace**, **thumbnail
 
 | # | Method + Path | Gate | Form field | Operation |
 |---|---|---|---|---|
-| 19 | `POST /showcase/section/:sectionId/add-media` | `isVendorOrAdmin` | `files` (multiple) | **bulk upload** |
-| 20 | `PATCH /showcase/section/:sectionId/media/update/:mediaId` | `isVendorOrAdmin` | `thumbnail` | **poster upload / replace** |
-| 21 | `PUT /showcase/section/:sectionId/media/replace/:mediaId` | `isVendorOrAdmin` | `file` (exactly 1) | **replace** |
+| 19 | `POST /showcase/section/:sectionId/add-media` | `isVendorOrAdmin` | `files` (multiple) + `thumbnails` (video ke poster) | **bulk upload** |
+| 20 | `PATCH /showcase/section/:sectionId/media/update/:mediaId` | `isVendorOrAdmin` | `thumbnail` | **poster replace** |
+| 21 | `PUT /showcase/section/:sectionId/media/replace/:mediaId` | `isVendorOrAdmin` | `file` (exactly 1) + `thumbnail` (video par) | **replace** |
 | 22 | `DELETE /showcase/section/:sectionId/media/delete/:mediaId` | `isVendorOrAdmin` | — | **delete** |
 | 23 | `DELETE /showcase/section/delete/:sectionId` | `isVendorOrAdmin` | — | **bulk delete (poora album)** |
 
 Helper: [helpers/showcases/upload.js](../helpers/showcases/upload.js) +
 [helpers/showcases/validateMedia.js](../helpers/showcases/validateMedia.js).
+
+> ### 🔴 M-4: item ke andar ab ek `media` hai, aur poster mandatory hai
+>
+> Gallery item pehle ek hi flat shape me do cheezein rakhta tha: **file**
+> (`type`/`url`/`thumbnail`/`thumbnailStorage`/`storage`/`metadata`) aur
+> **album me uski jagah** (`title`/`altText`/`sortOrder`/`isShowInVideoClips`).
+> Isi mixing ki wajah se file-metadata ki platform par ekmatra per-surface copy
+> yahan bani — `metadata.size`, `metadata.width` sirf yahan the, baaki har jagah
+> sirf URL store hota tha.
+>
+> Ab file `media` me hai — wahi `mediaSchema` — aur gallery ke apne field uske
+> bagal me.
+>
+> **`thumbnails[]` index se `files[]` ke saath jodta hai.** `thumbnails[2]`
+> `files[2]` ka poster hai. Video bina poster ke **upload se pehle** `422`.
+>
+> `isCustomThumbnail` / `deleteCustomThumbnail` dono **hate** — wo poochhte the
+> "poster vendor ne diya ya derive hua?", aur S3 par wo sawaal galat jawab deta
+> tha (`publicId` null → comparison skip → har auto poster custom, yaani poster
+> badalne par wahi delete jo vendor dekh raha tha). Ab derive kuch hota hi nahi.
 
 #### Limits — ye **admin-configurable** hain
 
@@ -310,17 +330,26 @@ par baaki nahi rukte.
 Mime type se hi decide hota hai ki PHOTO hai ya VIDEO — `file.mimetype.startsWith("image")`
 / `("video")`. Kuch aur ho to `400 "Unsupported media type."`.
 
-#### 20 — media update (custom video poster)
+#### 20 — media update (video poster replace)
 
 [services/showcases/updateSectionMedia.js](../services/showcases/updateSectionMedia.js)
 
 - `thumbnail` sirf **VIDEO** par allowed — photo par `422`.
 - `validateThumbnailFile()` — image hona chahiye, `allowedImages` me hona chahiye, `maxImageSizeMB` se chhota.
-- Upload → `save()` → tab purana poster delete. Save fail ho to naya poster rollback.
-- Purana poster tabhi delete hota hai jab wo **vendor ne khud upload kiya tha** — `isCustomThumbnail()` check karta hai:
-  - PHOTO ka thumbnail uska apna `url` hota hai → delete karne se media hi mar jaayega
-  - VIDEO ka default poster video ke apne `publicId` ka transformation hota hai → wahi baat
-  - Sirf alag se upload kiya gaya poster delete hota hai
+- Upload → `media.poster` set → `save()` → tab purana poster delete. Save fail ho to naya poster rollback.
+- **Purana poster hamesha delete hota hai**, bina koi "ye custom hai ya auto?" sawaal poochhe.
+
+> 🔴 **`isCustomThumbnail()` ka check yahan se gaya, aur wo apne aap me ek bug tha.**
+>
+> Wo poochhta tha ki poster vendor ne upload kiya ya derive hua, kyunki derived
+> poster delete karne se media ka apna asset chala jaata. Jawab bharosemand tha
+> hi nahi: S3 par `publicId` null hone se URL comparison **skip** ho jaata aur
+> har derived poster "custom" padha jaata — yaani poster badalne par wahi poster
+> delete ho jaata jo vendor abhi dekh raha tha, aur section me kaala tile bach
+> jaata.
+>
+> Ab koi poster derive hota hi nahi (M-7), to har stored poster ek alag file hai
+> jise sirf wahi media reference karta hai — aur sawaal khatam.
 
 #### 21 — media replace
 
@@ -531,7 +560,7 @@ WhatsApp (`configs/whatsapp.js`, `helpers/whatsapp/`) aur email
 | `SubCategory` | `image` + `imageMedia` | sidecar (default set) | `POST/PUT /subCategories/*` |
 | `Banner` | **`media`** | **`mediaSchema`** — M-3 | `POST/PUT /banners/*` |
 | `PromotionalTicker` | **`icon`** | **`mediaSchema`** — M-3 | `POST/PUT /promotionalTickers/*` |
-| `ShowcaseSection` | `medias[]` | `{type, url, thumbnail, storage, metadata, title, altText, sortOrder, ...}` — **M-4 me `mediaSchema` banega** | `/showcase/section/:id/*` |
+| `ShowcaseSection` | `medias[]` | `{ media: mediaSchema, title, altText, sortOrder, isShowInVideoClips, ... }` — M-4 | `/showcase/section/:id/*` |
 | `ShowcaseSection` | `coverImage` | `String` | auto — `syncSectionCoverImage()` |
 | `VoucherVersion` | `images[]` | `{url, storage, sortOrder}` — **M-5** | `POST /vouchers/create`, `PUT /vouchers/update/:id` |
 | `Voucher` | `banner.{image,video,gif}` | `{url, storage}` subdoc — **M-5** | `POST/DELETE /vouchers/:id/banner` |
@@ -1242,8 +1271,8 @@ services/uploads/
 helpers/banners/media.js           ← uploadBannerMedia, deleteBannerMedia
 helpers/promotionalTickers/media.js← uploadTickerIcon, deleteTickerIcon
 helpers/showcases/upload.js        ← uploadSingleMedia, uploadMultipleMedia,
-                                     deleteMedia, deleteAllMedia, rollbackUploads,
-                                     isCustomThumbnail, deleteCustomThumbnail
+                                     deleteMedia, deleteAllMedia, rollbackUploads
+helpers/showcases/projections.js   ← customerMediaFields, formatManagedMedia
 helpers/showcases/validateMedia.js ← normalizeFiles, validateMediaFiles,
                                      validateThumbnailFile, syncSectionCoverImage
 helpers/vouchers/validateImagesFiles.js  ← uploadVoucherImages, rollbackVoucherImages

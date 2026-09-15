@@ -38,11 +38,29 @@
  */
 
 jest.mock("../../services/storage", () => ({
-  uploadFromPath: jest.fn(async () => ({
+  /**
+   * ⚠️ `metadata` is part of the contract, not decoration.
+   *
+   * 🔴 This returned `{ url, storage }` only, and went stale the day
+   * `toMediaDocument` landed (M-1): it derives `kind` from `metadata.mimeType`
+   * and **throws** rather than guessing, so every brand-feature write failed
+   * here with "Cannot store media: no kind". The real facade always fills
+   * `metadata` — both providers build it from `originalFile`.
+   */
+  uploadFromPath: jest.fn(async ({ originalFile } = {}) => ({
     url: "https://example.test/icons/uploaded.png",
     storage: { provider: "CLOUDINARY", publicId: "Images/uploaded" },
+    metadata: {
+      originalName: originalFile?.name ?? null,
+      mimeType: originalFile?.mimetype ?? "image/png",
+      size: 1024,
+      width: null,
+      height: null,
+      duration: 0,
+    },
   })),
   deleteAsset: jest.fn(async () => true),
+  deleteAssets: jest.fn(async () => ({ deleted: 0, failed: 0 })),
 }));
 
 const mongoose = require("mongoose");

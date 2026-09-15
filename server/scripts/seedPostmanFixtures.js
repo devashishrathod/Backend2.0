@@ -787,21 +787,36 @@ const run = async () => {
   });
 
   step("showcase section with a clips-eligible video", async () => {
-    const media = (i, type) => ({
-      type,
-      url:
-        type === "VIDEO"
-          ? "https://res.cloudinary.com/demo/video/upload/dog.mp4"
-          : `https://res.cloudinary.com/demo/image/upload/sample.jpg#${i}`,
-      thumbnail: "https://res.cloudinary.com/demo/image/upload/sample.jpg",
-      title: `${type.toLowerCase()} ${i}`,
-      altText: `seeded ${type.toLowerCase()} ${i}`,
-      sortOrder: i,
-      isShowInVideoClips: type === "VIDEO",
-      metadata: { width: 1080, height: 1920, duration: type === "VIDEO" ? 24 : 0 },
-      isActive: true,
-      isDeleted: false,
-    });
+    // ⚠️ The file lives inside `media` now, and a VIDEO carries its poster
+    // there — `mediaSchema` makes it mandatory, so a fixture without one would
+    // simply fail to save.
+    const media = (i, type) => {
+      const isVideo = type === "VIDEO";
+      return {
+        media: {
+          url: isVideo
+            ? "https://res.cloudinary.com/demo/video/upload/dog.mp4"
+            : `https://res.cloudinary.com/demo/image/upload/sample.jpg#${i}`,
+          kind: isVideo ? MEDIA_KIND.VIDEO : MEDIA_KIND.IMAGE,
+          width: 1080,
+          height: 1920,
+          duration: isVideo ? 24 : 0,
+          ...(isVideo
+            ? {
+                poster: {
+                  url: "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+                },
+              }
+            : {}),
+        },
+        title: `${type.toLowerCase()} ${i}`,
+        altText: `seeded ${type.toLowerCase()} ${i}`,
+        sortOrder: i,
+        isShowInVideoClips: isVideo,
+        isActive: true,
+        isDeleted: false,
+      };
+    };
 
     // Eight media so the brand-profile preview cap (6) is actually exceeded and
     // `hasMoreMedia` comes back true.

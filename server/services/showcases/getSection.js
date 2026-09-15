@@ -1,4 +1,7 @@
-const { SHOWCASE_MEDIA_TYPE } = require("../../constants/showcase");
+const {
+  SHOWCASE_MEDIA_TYPE,
+  showcaseTypeOf,
+} = require("../../constants/showcase");
 const {
   resolveSectionForActor,
   formatManagedMedia,
@@ -44,13 +47,14 @@ exports.getSection = async (actor, query) => {
     .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
   const keyword = search?.trim().toLowerCase();
-  const filtered = managed.filter((media) => {
-    if (type && media.type !== type) return false;
-    if (isActive !== undefined && media.isActive !== isActive) return false;
+  const filtered = managed.filter((item) => {
+    // Derived from the file's own kind — there is no stored `type` to read.
+    if (type && showcaseTypeOf(item.media?.kind) !== type) return false;
+    if (isActive !== undefined && item.isActive !== isActive) return false;
     if (
       keyword &&
-      !matchesKeyword(media.title, keyword) &&
-      !matchesKeyword(media.altText, keyword)
+      !matchesKeyword(item.title, keyword) &&
+      !matchesKeyword(item.altText, keyword)
     ) {
       return false;
     }
@@ -77,10 +81,12 @@ exports.getSection = async (actor, query) => {
     // Whole-album counts, as the vendor docs describe — unaffected by the
     // `type` / `search` / `isActive` filters, which only narrow the page below.
     mediaCount: managed.length,
-    photoCount: managed.filter((m) => m.type === SHOWCASE_MEDIA_TYPE.PHOTO)
-      .length,
-    videoCount: managed.filter((m) => m.type === SHOWCASE_MEDIA_TYPE.VIDEO)
-      .length,
+    photoCount: managed.filter(
+      (m) => showcaseTypeOf(m.media?.kind) === SHOWCASE_MEDIA_TYPE.PHOTO,
+    ).length,
+    videoCount: managed.filter(
+      (m) => showcaseTypeOf(m.media?.kind) === SHOWCASE_MEDIA_TYPE.VIDEO,
+    ).length,
     inactiveMediaCount: managed.filter((m) => !m.isActive).length,
     media: {
       page,

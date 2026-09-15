@@ -1,8 +1,6 @@
 const path = require("path");
-const {
-  SHOWCASE_MEDIA_TYPE,
-  SHOWCASE_COVER_IMAGE_MODE,
-} = require("../../constants/showcase");
+const { SHOWCASE_COVER_IMAGE_MODE } = require("../../constants/showcase");
+const { MEDIA_KIND } = require("../../constants/storage");
 const { throwError } = require("../../utils");
 
 exports.normalizeFiles = (files) => {
@@ -125,16 +123,16 @@ exports.prepareMediaDocuments = (
   isShowInVideoClips = true,
 ) => {
   return medias.map((media, index) => ({
-    type: media.type,
-    url: media.url,
-    thumbnail: media.thumbnail,
-    storage: media.storage,
-    metadata: media.metadata,
-    title: exports.getFileNameWithoutExtension(media.metadata?.originalName),
-    altText: exports.getFileNameWithoutExtension(media.metadata?.originalName),
+    // ⚠️ The whole `mediaSchema` value goes in as one field. It used to be
+    // unpacked into `type` / `url` / `thumbnail` / `storage` / `metadata`, which
+    // is how a gallery item ended up carrying the platform's only per-surface
+    // copy of file metadata.
+    media,
+    title: exports.getFileNameWithoutExtension(media.originalName),
+    altText: exports.getFileNameWithoutExtension(media.originalName),
     sortOrder: startSort + index,
     isShowInVideoClips:
-      media.type === SHOWCASE_MEDIA_TYPE.VIDEO ? isShowInVideoClips : false,
+      media.kind === MEDIA_KIND.VIDEO ? isShowInVideoClips : false,
     isActive: true,
     isDeleted: false,
     deletedAt: null,
@@ -143,15 +141,16 @@ exports.prepareMediaDocuments = (
 
 exports.getExistingMediaCounts = (medias = []) => {
   return medias.reduce(
-    (result, media) => {
-      if (media.isDeleted) {
+    (result, item) => {
+      if (item.isDeleted) {
         return result;
       }
-      if (media.type === SHOWCASE_MEDIA_TYPE.PHOTO) {
-        result.images++;
-      }
-      if (media.type === SHOWCASE_MEDIA_TYPE.VIDEO) {
+      // Counted by what the file **is**, not by a stored label beside it. A GIF
+      // counts against the image ceiling, which is what a vendor expects.
+      if (item.media?.kind === MEDIA_KIND.VIDEO) {
         result.videos++;
+      } else if (item.media?.kind) {
+        result.images++;
       }
       return result;
     },
@@ -201,14 +200,26 @@ exports.validateUniqueSortOrders = (items = [], key = "sortOrder") => {
 };
 
 /**
- * The displayable image for one media.
+ * The displayable image for one gallery item.
  *
- * `thumbnail` first, always. Reading `url` first meant that as soon as a video
- * sorted to the top of a section, `coverImage` became an `.mp4` link and every
- * card that rendered it showed a broken image.
+ * 🔴 A video answers its **poster**, and nothing else — never the `.mp4`.
+ *
+ * This used to be `thumbnail || url`, and the fallback was the bug: on S3 no
+ * poster was ever produced, so the moment a video sorted to the top of a section
+ * its `coverImage` became a video file, and every card rendering it showed a
+ * broken image. The old comment in the S3 provider claimed a missing thumbnail
+ * made the cover "fall through to the next visible media" — it did not.
+ *
+ * A poster is mandatory on a VIDEO now, so the `||` has nothing left to do; if
+ * one is somehow missing, `null` is the honest answer and the caller can fall
+ * back deliberately rather than by accident.
  */
-exports.getMediaCoverImage = (media) =>
-  media?.thumbnail || media?.url || null;
+exports.getMediaCoverImage = (item) => {
+  const media = item?.media;
+  if (!media) return null;
+  if (media.kind === MEDIA_KIND.VIDEO) return media.poster?.url ?? null;
+  return media.url ?? null;
+};
 
 /** The first visible media of a section, in display order. */
 exports.pickCoverMedia = (medias = []) => {

@@ -6,6 +6,8 @@ exports.replaceMedia = asyncWrapper(async (req, res) => {
     { userId: req.userId, role: req.role, brandId: req.brandId },
     req.validatedData,
     req.files?.file,
+    // ⚠️ Required when the replacement is a video — nothing derives a poster.
+    req.files?.thumbnail,
   );
   return sendSuccess(res, 200, "Media replaced successfully.", result);
 });

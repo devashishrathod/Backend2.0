@@ -22,9 +22,11 @@ exports.deleteFullSection = async (actor, payload) => {
   });
 
   try {
-    await deleteAllMedia(section.medias);
+    // The files, not the gallery entries — and `deleteAllMedia` takes each
+    // video's poster along with it.
+    await deleteAllMedia(section.medias.map((item) => item.media));
   } catch (err) {
-    console.error("Cloudinary delete failed:", err.message);
+    console.error("Storage delete failed:", err.message);
   }
 
   const deletedAt = new Date();

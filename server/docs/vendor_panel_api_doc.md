@@ -3684,29 +3684,43 @@ GET /showcase/section/get/68f1a2b3c4d5e6f7a8b9c5a1?type=VIDEO
         {
           "_id": "68f1a2b3c4d5e6f7a8b9c5b1",
           "type": "PHOTO",
-          "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1.jpg",
-          "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1-thumb.jpg",
+          "media": {
+            "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1.jpg",
+            "kind": "IMAGE",
+            "width": 1920,
+            "height": 1080,
+            "mimeType": "image/jpeg",
+            "sizeBytes": 2516582,
+            "originalName": "seating area.jpg",
+            "provider": "CLOUDINARY"
+          },
           "title": "seating area",
           "altText": "cafe seating with wooden tables",
           "sortOrder": 1,
           "isActive": true,
-          "storage": { "provider": "CLOUDINARY", "publicId": "showcase/amb1" },
-          "metadata": { "width": 1920, "height": 1080, "sizeMB": 2.4 },
           "createdAt": "2026-08-22T16:05:00.000Z",
           "updatedAt": "2026-08-22T16:05:00.000Z"
         },
         {
           "_id": "68f1a2b3c4d5e6f7a8b9c5b2",
           "type": "VIDEO",
-          "url": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/showcase/amb-tour.mp4",
-          "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb-tour-thumb.jpg",
+          "media": {
+            "url": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/showcase/amb-tour.mp4",
+            "kind": "VIDEO",
+            "width": 1080,
+            "height": 1920,
+            "mimeType": "video/mp4",
+            "sizeBytes": 19084083,
+            "originalName": "cafe walkthrough.mp4",
+            "provider": "CLOUDINARY",
+            "duration": 24,
+            "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb-tour-thumb.jpg"
+          },
           "title": "cafe walkthrough",
           "altText": "video tour",
           "sortOrder": 2,
           "isActive": true,
           "isShowInVideoClips": true,
-          "storage": { "provider": "CLOUDINARY", "publicId": "showcase/amb-tour" },
-          "metadata": { "width": 1080, "height": 1920, "duration": 24, "sizeMB": 18.2 },
           "createdAt": "2026-08-22T16:06:00.000Z",
           "updatedAt": "2026-08-22T16:06:00.000Z"
         }
@@ -3726,7 +3740,26 @@ GET /showcase/section/get/68f1a2b3c4d5e6f7a8b9c5a1?type=VIDEO
 
 ### ⚠️ Notes
 
-**1. Vendor ko `storage` aur `metadata` dikhte hain** — customer ke response se ye strip ho jaate hain. Vendor panel me file size / dimensions dikhane ke liye useful.
+**1. 🔴 `url` / `thumbnail` / `storage` / `metadata` ek `media` object ban gaye.**
+
+| Pehle | Ab |
+|---|---|
+| `url` | `media.url` |
+| `thumbnail` | `media.thumbnail` — **sirf VIDEO par**, aur wo uska poster hai |
+| `metadata.width` / `.height` / `.duration` | `media.width` / `media.height` / `media.duration` |
+| `metadata.sizeMB` | `media.sizeBytes` (bytes, MB nahi) |
+| `metadata.mimeType` | `media.mimeType` |
+| `storage.provider` | `media.provider` |
+| `storage.publicId` / `bucket` / `key` | **nahi aate** |
+
+File size aur dimensions ab bhi dikhte hain — wo panel ke kaam ke hain. Jo nahi
+dikhta wo hai object ka **pata**: `publicId`, `bucket`, `key`. `media.provider`
+bata deta hai file kahan rehti hai, bina ye bataye ki use seedha kaise kheencha
+jaaye.
+
+> ⚠️ `type` (`PHOTO`/`VIDEO`) waisa hi rehta hai, par ab wo **stored field nahi**
+> — `media.kind` se derive hota hai. Ek GIF `type: "PHOTO"` deta hai aur
+> `media.kind: "GIF"` — dono sach hain, alag-alag sawaal ke jawab.
 
 **2. 🔴 `isActive: false` media ab bhi aati hai** (naya). Pehle wo list se gayab ho jaati thi — matlab off karne ke baad usko wapas on karne ka koi rasta hi nahi bachta tha. Ab sirf soft-deleted media chhupti hai. Ek side chahiye to `?isActive=true|false`.
 
@@ -4009,8 +4042,21 @@ Photos/videos upload karta hai. **Multipart request.**
 ### Body (multipart)
 | Field | Type | Required | Default | Notes |
 |---|---|---|---|---|
-| *(files)* | file[] | ✅ | – | Ek ya multiple images/videos |
+| `files` | file[] | ✅ | – | Ek ya multiple images/videos |
+| `thumbnails` | file[] | ⚠️ | – | **Har video ke liye ek poster** — index se match hota hai |
 | `isShowInVideoClips` | boolean | ❌ | `true` | **Sirf batch ki videos pe lagta hai.** Photos pe hamesha `false` store hota hai |
+
+> ### 🔴 Video ke saath poster ab mandatory hai
+>
+> `thumbnails[2]` `files[2]` ka poster hai — **index se jodte hain**. Jis index
+> par video hai aur poster nahi, wo request `422` se rukti hai, **upload se
+> pehle**.
+>
+> Pehle poster provider khud bana deta tha — kam se kam theory me. Sach ye tha:
+> Cloudinary ka `getOptimizedImageUrl(publicId)` `/image/upload/` ka path banata
+> hai ek aise asset ke liye jo `/video/upload/` me rehta hai, yaani **har stored
+> video poster 404 tha**; aur S3 poster banata hi nahi tha. Uska nateeja ye ki
+> video-first section ka `coverImage` khud `.mp4` ban jaata tha.
 
 ### Success — `201`
 ```json
@@ -4018,32 +4064,53 @@ Photos/videos upload karta hai. **Multipart request.**
   "success": true,
   "message": "Media uploaded successfully.",
   "data": {
-    "uploaded": 3,
+    "uploaded": 2,
     "medias": [
       {
-        "_id": "68f1a2b3c4d5e6f7a8b9c5b1",
         "type": "PHOTO",
-        "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1.jpg",
-        "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1-thumb.jpg",
+        "media": {
+          "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1.jpg",
+          "kind": "IMAGE",
+          "width": 1920,
+          "height": 1080,
+          "mimeType": "image/jpeg",
+          "sizeBytes": 2516582,
+          "originalName": "amb1.jpg",
+          "provider": "CLOUDINARY"
+        },
+        "title": "amb1",
+        "altText": "amb1",
         "sortOrder": 1,
-        "isShowInVideoClips": false,
-        "isActive": true,
-        "storage": { "provider": "CLOUDINARY", "publicId": "showcase/amb1" },
-        "metadata": { "width": 1920, "height": 1080, "sizeMB": 2.4 }
+        "isActive": true
       },
       {
-        "_id": "68f1a2b3c4d5e6f7a8b9c5b2",
         "type": "VIDEO",
-        "url": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/showcase/amb-tour.mp4",
-        "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb-tour-thumb.jpg",
+        "media": {
+          "url": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/showcase/amb-tour.mp4",
+          "kind": "VIDEO",
+          "width": 1080,
+          "height": 1920,
+          "mimeType": "video/mp4",
+          "sizeBytes": 19084083,
+          "originalName": "amb-tour.mp4",
+          "provider": "CLOUDINARY",
+          "duration": 24,
+          "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb-tour-thumb.jpg"
+        },
+        "title": "amb-tour",
+        "altText": "amb-tour",
         "sortOrder": 2,
-        "isShowInVideoClips": true,
-        "metadata": { "width": 1080, "height": 1920, "duration": 24, "sizeMB": 18.2 }
+        "isActive": true,
+        "isShowInVideoClips": true
       }
     ]
   }
 }
 ```
+
+> ⚠️ Ye response bhi ab #44 wale **same whitelist** se jaata hai. Pehle prepared
+> documents seedhe laut te the — `storage.publicId` ke saath. `_id` yahan nahi
+> aata (pehle bhi nahi aata tha); list padhni ho to #44 use karein.
 
 ### Errors
 | Status | Message | Kab |
@@ -4071,9 +4138,9 @@ Photos/videos upload karta hai. **Multipart request.**
 
 **3. `isShowInVideoClips` sirf videos pe apply hota hai** (naya). Photos par hamesha `false` store hota hai — response me bhi `false` dikhega. Pehle har media pe `true` chala jaata tha, jiska koi asar nahi hota tha (clips feed type pe filter karta hai) par panel me ek bekaar toggle dikh jaata tha.
 
-**4. Cover image auto-set hoti hai** — batch ki pehli media ka `thumbnail`, **agar pehle se koi cover na ho** aur `coverImageMode` `AUTO` ho. Video bhi cover ban sakta hai (uska poster frame use hota hai, `.mp4` link nahi).
+**4. Cover image auto-set hoti hai** — batch ki pehli media se, **agar pehle se koi cover na ho** aur `coverImageMode` `AUTO` ho. Video bhi cover ban sakta hai: uska **poster** use hota hai, `.mp4` link nahi.
 
-**5. Video thumbnail auto-generate hota hai** Cloudinary se.
+**5. 🔴 Video poster auto-generate ab nahi hota** — aap bhejte hain, `thumbnails` field me. Dekhein upar ka note. Pehle iska daawa tha ki Cloudinary bana deta hai; wo URL 404 deta tha.
 
 **6. `sortOrder` auto-assign hota hai** — existing ke baad append.
 
@@ -4156,9 +4223,9 @@ Media ka metadata update — **file nahi badalti**.
 
 **4. 🔴 `isShowInVideoClips` sirf video ka switch hai** (naya) — photo pe bhejne pe `422` aata hai. Panel me photo ke liye ye toggle dikhayein hi nahi (#44 photo rows me ye key bhejta hi nahi).
 
-**5. 🔴 Custom thumbnail bhi sirf video pe** (naya) — photo apna hi thumbnail hai. Pehle ye check nahi tha, aur photo pe thumbnail set karne se photo ka apna asset delete hone ka risk tha.
+**5. 🔴 Poster bhi sirf video pe** — photo apna hi thumbnail hai. Pehle ye check nahi tha, aur photo pe thumbnail set karne se photo ka apna asset delete hone ka risk tha.
 
-**6. ✅ Purana custom poster ab actually delete hota hai** (naya) — pehle ek galat condition ki wajah se Cloudinary pe orphan files chhut jaati thi. Auto-generated poster (video ke apne public id se bana) delete **nahi** hota — wo video ke saath hi jaata hai.
+**6. ✅ Purana poster hamesha delete hota hai** — bina koi "ye custom hai ya auto?" wala sawaal poochhe. Wo sawaal isliye tha ki auto-generated poster delete karne se video ka apna asset chala jaata; ab koi poster derive hota hi nahi, to har stored poster ek alag file hai jise sirf yahi media reference karta hai. (Us purane check ka apna bug bhi tha: S3 par `publicId` null hone se URL comparison skip ho jaata aur **har** auto poster custom padha jaata — yaani poster badalne par wahi poster delete ho jaata jo vendor dekh raha tha.)
 
 **7. ✅ Thumbnail upload fail hone pe ab request fail hoti hai** (naya) — pehle error swallow ho jaata tha aur `200` aa jaata tha, jabki poster badla hi nahi hota tha.
 
@@ -4181,7 +4248,8 @@ Media file replace karta hai. **Multipart.**
 ### Body (multipart)
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| *(file)* | file | ✅ | **Exactly ek** file |
+| `file` | file | ✅ | **Exactly ek** file |
+| `thumbnail` | file | ⚠️ | **Video replace karte waqt required** — poster image |
 
 ### Success — `200`
 ```json
@@ -4191,10 +4259,22 @@ Media file replace karta hai. **Multipart.**
   "data": {
     "_id": "68f1a2b3c4d5e6f7a8b9c5b1",
     "type": "PHOTO",
-    "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1-v2.jpg",
-    "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1-v2-thumb.jpg",
+    "media": {
+      "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1-v2.jpg",
+      "kind": "IMAGE",
+      "width": 2048,
+      "height": 1152,
+      "mimeType": "image/jpeg",
+      "sizeBytes": 3250585,
+      "originalName": "amb1-v2.jpg",
+      "provider": "CLOUDINARY"
+    },
+    "title": "seating area",
+    "altText": "cafe seating with wooden tables",
     "sortOrder": 1,
-    "metadata": { "width": 2048, "height": 1152, "sizeMB": 3.1 }
+    "isActive": true,
+    "createdAt": "2026-08-22T16:05:00.000Z",
+    "updatedAt": "2026-09-15T10:00:00.000Z"
   }
 }
 ```
@@ -4205,16 +4285,22 @@ Media file replace karta hai. **Multipart.**
 | `404` | `Media not found.` | Section ya media nahi, ya media inactive/deleted hai |
 | `400` | `Please upload exactly one media file.` | Zero ya multiple files |
 | `400` | `Only photo replacement is allowed for this media.` | Type mismatch — **upload se pehle** check hota hai |
+| `422` | `A video needs a poster image. Attach one as "thumbnail".` | Video se replace kar rahe hain, poster nahi bheja |
 | `400` | *(format/size errors)* | #48 jaise |
 | `500` | `Failed to replace media` | Upload fail — file rollback ho jaati hai |
 
 ### ⚠️ Notes
 
-**1. Purani file Cloudinary se delete ho jaati hai** — sirf new upload succeed **aur** document save hone ke baad. Video ka custom poster bhi saath me hat jaata hai.
+**1. Purani file storage se delete ho jaati hai** — sirf new upload succeed **aur** document save hone ke baad. Video ka poster bhi saath me hat jaata hai.
 
 **2. `_id`, `sortOrder`, `isActive` aur `isShowInVideoClips` same rehte hain** — sirf file badalti hai.
 
 **3. 🔴 Type badal NAHI sakta** — photo ki jagah photo, video ki jagah video. (Ye rule pehle bhi tha par upload ke **baad** check hota tha, aur uska `400` outer catch me `500` ban jaata tha. Ab mime type se pehle hi check hota hai — na bekaar upload, na galat status code.)
+
+> ⚠️ Comparison **wire type** par hai, `kind` par nahi. JPEG ki jagah GIF chalega
+> — gallery ke liye dono photo hain aur dono ek hi ceiling me ginte hain — par
+> `media.kind` phir bhi `GIF` likhega, jo use `gifs/` prefix me rakhta hai, resize
+> step se door.
 
 **4. Cover image auto-sync hoti hai** — agar ye media cover thi to naya poster cover ban jaata hai (`coverImageMode: MANUAL` na ho to).
 

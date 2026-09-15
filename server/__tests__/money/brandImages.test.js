@@ -19,17 +19,42 @@
  * outlet counters are exactly the parts that a mock would hide.
  */
 
+/**
+ * ⚠️ `metadata` is part of the contract, not decoration.
+ *
+ * 🔴 This mock used to return `{ url, storage }` only, and it went stale the day
+ * `toMediaDocument` landed (M-1): that helper derives `kind` from
+ * `metadata.mimeType` and **throws** rather than guessing, so every service that
+ * stores a media sibling failed here with "Cannot store media: no kind". The
+ * real facade always fills `metadata` — both providers build it from
+ * `originalFile` — so this was a mock that had stopped describing the thing it
+ * stands in for, and nothing noticed because the money suite is not run per
+ * phase.
+ *
+ * Deriving rather than defaulting is deliberate: a wrong `kind` decides the
+ * object's prefix (`images/` vs `gifs/` vs `videos/`), which decides whether the
+ * resize step flattens an animation, and nothing downstream would question it.
+ */
 jest.mock("../../services/storage", () => {
   let n = 0;
   return {
-    uploadFromPath: jest.fn(async () => {
+    uploadFromPath: jest.fn(async ({ originalFile } = {}) => {
       n += 1;
       return {
         url: `https://cdn.test/uploaded-${n}.webp`,
         storage: { provider: "AWS_S3", bucket: "b", key: `k-${n}` },
+        metadata: {
+          originalName: originalFile?.name ?? null,
+          mimeType: originalFile?.mimetype ?? "image/webp",
+          size: 1024,
+          width: null,
+          height: null,
+          duration: 0,
+        },
       };
     }),
     deleteAsset: jest.fn(async () => true),
+    deleteAssets: jest.fn(async () => ({ deleted: 0, failed: 0 })),
   };
 });
 
@@ -46,10 +71,8 @@ const User = require("../../models/User");
 const ShowcaseSection = require("../../models/ShowcaseSection");
 const Category = require("../../models/Category");
 const { ROLES } = require("../../constants");
-const {
-  SHOWCASE_COVER_IMAGE_MODE,
-  SHOWCASE_MEDIA_TYPE,
-} = require("../../constants/showcase");
+const { SHOWCASE_COVER_IMAGE_MODE } = require("../../constants/showcase");
+const { MEDIA_KIND } = require("../../constants/storage");
 const {
   generateBrandMerchantId,
 } = require("../../helpers/brands/generateBrandMerchantId");
@@ -458,10 +481,14 @@ describe("pinning a section cover", () => {
       medias,
     });
 
+  /**
+   * ⚠️ The file sits inside `media` now (M-4), and there is no `type` beside it
+   * — `PHOTO` / `VIDEO` is derived from `media.kind` on the way out. A photo is
+   * its own cover, so no poster is needed here; a video would need one, because
+   * `mediaSchema` makes it mandatory.
+   */
   const photo = (sortOrder, url) => ({
-    type: SHOWCASE_MEDIA_TYPE.PHOTO,
-    url,
-    thumbnail: url,
+    media: { url, kind: MEDIA_KIND.IMAGE },
     sortOrder,
   });
 

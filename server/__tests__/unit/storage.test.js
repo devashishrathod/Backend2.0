@@ -2,9 +2,12 @@
  * The storage facade, and the four silent failures it exists to end.
  *
  * Every test here is about something that used to succeed while doing nothing:
- * an `case "S3"` that returned without deleting, a URL check that skipped any
- * host it did not recognise, a rollback that deleted by URL, and a thumbnail
- * check that read an auto-generated poster as one the vendor had uploaded.
+ * a `case "S3"` that returned without deleting, a URL check that skipped any
+ * host it did not recognise, and a rollback that deleted by URL.
+ *
+ * ⚠️ A fourth one used to live here — a thumbnail check that read an
+ * auto-generated poster as one the vendor had uploaded. It is gone with the
+ * function; see the note where those tests were.
  */
 
 const mockConfig = {
@@ -57,7 +60,6 @@ const {
   STORAGE_BUCKET,
   kindFromMime,
 } = require("../../constants/storage");
-const { isCustomThumbnail } = require("../../helpers/showcases/upload");
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -336,73 +338,23 @@ describe("deleteAssets — L-3, the rollback that left orphans", () => {
   });
 });
 
-describe("isCustomThumbnail — L-4, the poster that got deleted", () => {
-  test("an S3 video with an auto poster is NOT custom", () => {
-    // The bug: `publicId` is null on S3, so the old equality check was skipped
-    // and this returned true — deleting the poster the vendor was looking at.
-    expect(
-      isCustomThumbnail({
-        type: "VIDEO",
-        url: "https://cdn.test/dev/videos/showcase/s1/v.mp4",
-        thumbnail: "https://cdn.test/dev/images/showcase/s1/auto.webp",
-        storage: {
-          provider: STORAGE_PROVIDER.AWS_S3,
-          publicId: null,
-          key: "dev/videos/showcase/s1/v.mp4",
-        },
-      }),
-    ).toBe(false);
-  });
-
-  test("a poster the vendor uploaded IS custom, on either provider", () => {
-    for (const provider of [STORAGE_PROVIDER.AWS_S3, STORAGE_PROVIDER.CLOUDINARY]) {
-      expect(
-        isCustomThumbnail({
-          type: "VIDEO",
-          url: "https://cdn.test/v.mp4",
-          thumbnail: "https://cdn.test/poster.webp",
-          storage: { provider },
-          thumbnailStorage: { provider, key: "dev/images/showcase/s1/p.webp" },
-        }),
-      ).toBe(true);
-    }
-  });
-
-  test("a photo is never its own custom thumbnail", () => {
-    expect(
-      isCustomThumbnail({
-        type: "PHOTO",
-        url: "https://res.cloudinary.test/Images/p1",
-        thumbnail: "https://res.cloudinary.test/Images/p1",
-        storage: { provider: STORAGE_PROVIDER.CLOUDINARY, publicId: "Images/p1" },
-      }),
-    ).toBe(false);
-  });
-
-  test("legacy Cloudinary rows still read the old way", () => {
-    // They predate `thumbnailStorage`, and on Cloudinary the derived poster
-    // really is a transformation of the media's own public id.
-    const derived = {
-      type: "VIDEO",
-      url: "https://res.cloudinary.test/Videos/v1.mp4",
-      thumbnail: "https://res.cloudinary.test/Videos/v1",
-      storage: { provider: STORAGE_PROVIDER.CLOUDINARY, publicId: "Videos/v1" },
-    };
-    expect(isCustomThumbnail(derived)).toBe(false);
-
-    expect(
-      isCustomThumbnail({
-        ...derived,
-        thumbnail: "https://res.cloudinary.test/Images/uploaded-poster",
-      }),
-    ).toBe(true);
-  });
-
-  test("no thumbnail at all is not custom", () => {
-    expect(isCustomThumbnail({ type: "VIDEO", url: "a" })).toBe(false);
-    expect(isCustomThumbnail(null)).toBe(false);
-  });
-});
+/**
+ * 🔴 `isCustomThumbnail` ke test yahan se hate — function hi nahi raha.
+ *
+ * Wo ek sawaal ka jawab deta tha: "ye poster vendor ne upload kiya ya humne
+ * derive kiya?" — kyunki derived poster ko delete karna video ka apna asset le
+ * doobta tha. Us sawaal ka koi bharosemand jawab tha hi nahi: S3 par `publicId`
+ * null hota hai, to URL comparison skip ho jaata aur **har** derived poster
+ * custom padha jaata — yaani video ka poster badalne par wahi poster delete ho
+ * jaata jo vendor abhi dekh raha tha.
+ *
+ * M-4 me poster derive hona band ho gaya (dono provider par), aur
+ * `mediaSchema` use VIDEO par mandatory rakhta hai. Ab har stored poster ek
+ * alag file hai jise sirf wahi media reference karta hai — to sawaal hi khatam.
+ *
+ * Poster ka naya behaviour `sectionCover.test.js` aur `bannerMedia.test.js` me
+ * test hota hai.
+ */
 
 describe("S3 provider URLs", () => {
   const s3 = require("../../services/storage/providers/s3");
@@ -521,7 +473,6 @@ describe("🔴 a private object has no URL, and asking for one must not throw", 
     });
 
     expect(result.url).toBeNull();
-    expect(result.thumbnail).toBeNull();
     // and it still says where the bytes are, which is what mints the real link
     expect(result.storage.key).toContain("dev/documents/");
     expect(result.storage.bucket).toBe("trydood-nonprod-private");
@@ -537,7 +488,49 @@ describe("🔴 a private object has no URL, and asking for one must not throw", 
     });
 
     expect(result.url).toContain("https://cdn.test/");
-    expect(result.thumbnail).toBe(result.url);
+  });
+
+  /**
+   * 🔴 No provider returns a `thumbnail` any more (M-4).
+   *
+   * It was `getOptimizedImageUrl(publicId)` on Cloudinary — the delivery URL a
+   * second time for a photo, and for a **video** an `/image/upload/` path for an
+   * asset under `/video/upload/`, which 404s. S3 returned `null` for a video and
+   * the URL again for a photo. A caller that trusted the field got a broken
+   * poster on one provider and nothing on the other, and `thumbnail || url` then
+   * made a section's cover the `.mp4` itself.
+   *
+   * A poster is uploaded alongside the video now and lives in
+   * `mediaSchema.poster`, so there is no derived field left to trust.
+   */
+  test("no provider hands back a derived thumbnail", async () => {
+    const fromS3 = await s3.upload({
+      filePath: probe,
+      purpose: UPLOAD_PURPOSE.BRAND_LOGO,
+      entityId: "b1",
+      kind: MEDIA_KIND.IMAGE,
+      originalFile: { name: "a.webp", mimetype: "image/webp" },
+    });
+
+    expect(fromS3).not.toHaveProperty("thumbnail");
+
+    cloudinary.uploadFile.mockResolvedValueOnce({
+      public_id: "Images/x",
+      secure_url: "https://res.cloudinary.test/Images/x.mp4",
+      format: "mp4",
+      bytes: 10,
+    });
+    const fromCloudinary = await require("../../services/storage/providers/cloudinary").upload(
+      {
+        filePath: probe,
+        purpose: UPLOAD_PURPOSE.SHOWCASE_MEDIA,
+        entityId: "s1",
+        kind: MEDIA_KIND.VIDEO,
+        originalFile: { name: "v.mp4", mimetype: "video/mp4" },
+      },
+    );
+
+    expect(fromCloudinary).not.toHaveProperty("thumbnail");
   });
 
   test("and `url()` itself still refuses a private object outright", () => {

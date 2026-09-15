@@ -106,17 +106,18 @@ exports.upload = async ({
      */
     url: isPublic ? exports.url({ storage }) : null,
     /**
-     * ⚠️ Same guard. A private object has no poster to serve either, and this
-     * line would have thrown for exactly the same reason.
+     * 🔴 `thumbnail` is gone from here too (M-4).
      *
-     * 🔴 The comment that used to sit here said a missing thumbnail makes
-     * `syncSectionCoverImage` "fall through to the next visible media". It does
-     * not — `getMediaCoverImage` is `thumbnail || url`, so the cover became the
-     * `.mp4` itself. M-4 removes the derivation entirely; a poster is uploaded
-     * alongside the video on both providers.
+     * It never had anything to return for a video — S3 produces no poster — and
+     * for a photo it was the delivery URL a second time. The comment that used
+     * to sit here claimed a missing thumbnail made `syncSectionCoverImage`
+     * "fall through to the next visible media"; it did not. `getMediaCoverImage`
+     * was `thumbnail || url`, so a video-first section's cover became the `.mp4`
+     * itself.
+     *
+     * A poster is uploaded alongside the video now, on both providers, and lives
+     * in `mediaSchema.poster`.
      */
-    thumbnail:
-      isPublic && kind !== MEDIA_KIND.VIDEO ? exports.url({ storage }) : null,
     storage,
     metadata: {
       originalName: originalFile?.name ?? null,

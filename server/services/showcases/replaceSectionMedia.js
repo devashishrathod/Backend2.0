@@ -1,42 +1,42 @@
 const { throwError } = require("../../utils");
-const { SHOWCASE_MEDIA_TYPE } = require("../../constants/showcase");
+const { showcaseTypeOf } = require("../../constants/showcase");
+const { MEDIA_KIND, kindFromMime } = require("../../constants/storage");
 const { getShowcaseConfig } = require("../../helpers/settings");
 const {
   resolveSectionForActor,
   normalizeFiles,
   validateMediaFiles,
+  validateThumbnailFile,
   uploadSingleMedia,
   rollbackUploads,
   deleteMedia,
-  deleteCustomThumbnail,
   syncSectionCoverImage,
   formatManagedMedia,
 } = require("../../helpers/showcases");
-
-/** What a file will become once uploaded, from its mime type alone. */
-const mediaTypeOf = (file) =>
-  file.mimetype?.startsWith("video")
-    ? SHOWCASE_MEDIA_TYPE.VIDEO
-    : SHOWCASE_MEDIA_TYPE.PHOTO;
 
 /**
  * Swap the file behind one media, keeping its id, position and settings.
  *
  * A photo may only be replaced by a photo and a video by a video — the sort
  * order, the clips opt-in and the section's photo/video quotas are all tied to
- * the type. That check now runs on the incoming mime type *before* the upload;
- * it used to fire after the file was already on Cloudinary, so every rejected
+ * the type. That check runs on the incoming mime type *before* the upload; it
+ * used to fire after the file was already on Cloudinary, so every rejected
  * request paid for an upload and an immediate rollback.
+ *
+ * ⚠️ The comparison is on the **wire type**, not the kind. Swapping a JPEG for a
+ * GIF is allowed — both are photos to a gallery, and both count against the same
+ * ceiling — while `media.kind` still records which one it actually is, so the
+ * GIF lands under `gifs/` and away from the resize step.
  *
  * @param {{ userId: string, role: string, brandId?: string }} actor
  */
-exports.replaceSectionMedia = async (actor, payload, file) => {
+exports.replaceSectionMedia = async (actor, payload, file, posterFile) => {
   const section = await resolveSectionForActor(actor, payload.sectionId, {
     projection: { medias: 1, coverImage: 1, coverImageMode: 1, coverMediaId: 1 },
   });
 
-  const media = section.medias.id(payload.mediaId);
-  if (!media || media.isDeleted || !media.isActive) {
+  const item = section.medias.id(payload.mediaId);
+  if (!item || item.isDeleted || !item.isActive) {
     throwError(404, "Media not found.");
   }
 
@@ -48,34 +48,42 @@ exports.replaceSectionMedia = async (actor, payload, file) => {
   const config = await getShowcaseConfig();
   validateMediaFiles(uploadedFiles, config);
 
-  if (mediaTypeOf(uploadedFiles[0]) !== media.type) {
+  const currentType = showcaseTypeOf(item.media?.kind);
+  const nextKind = kindFromMime(uploadedFiles[0].mimetype);
+  if (showcaseTypeOf(nextKind) !== currentType) {
     throwError(
       400,
-      `Only ${media.type.toLowerCase()} replacement is allowed for this media.`,
+      `Only ${currentType.toLowerCase()} replacement is allowed for this media.`,
     );
   }
 
-  const oldMedia = media.toObject();
+  /**
+   * 🔴 A replacement video brings its own poster, because nothing derives one.
+   *
+   * The old code set `thumbnailStorage = undefined` here and relied on the
+   * provider having produced a poster automatically. Cloudinary's was a 404 and
+   * S3's did not exist, so a replaced video came back with a cover that was
+   * either broken or the `.mp4` itself.
+   */
+  if (nextKind === MEDIA_KIND.VIDEO) {
+    if (!posterFile) {
+      throwError(422, 'A video needs a poster image. Attach one as "thumbnail".');
+    }
+    validateThumbnailFile(posterFile, config);
+  }
+
+  const previous = item.media?.toObject?.() ?? item.media;
   let uploaded = null;
 
   try {
-    uploaded = await uploadSingleMedia(uploadedFiles[0], section._id);
+    uploaded = await uploadSingleMedia(uploadedFiles[0], section._id, posterFile);
 
-    media.type = uploaded.type;
-    media.url = uploaded.url;
-    media.thumbnail = uploaded.thumbnail;
-    media.storage = uploaded.storage;
-    media.metadata = uploaded.metadata;
-    // ⚠️ The replacement's poster is auto-generated, so the "vendor uploaded
-    // this" marker has to go with the old file. Leaving it behind would point
-    // at a poster that `deleteCustomThumbnail` is about to delete below, and
-    // the next poster change would try to delete it a second time.
-    media.thumbnailStorage = undefined;
+    // One assignment where there used to be five, and no marker field to keep
+    // in step with it.
+    item.media = uploaded;
 
     // The cover may have been this media's old poster. Recomputing keeps it
-    // pointing at an image that still exists — and at an *image*: comparing
-    // against `oldMedia.thumbnail` alone missed the case where the stored cover
-    // was a media `url` instead.
+    // pointing at an image that still exists — and at an *image*.
     syncSectionCoverImage(section);
 
     await section.save();
@@ -89,14 +97,15 @@ exports.replaceSectionMedia = async (actor, payload, file) => {
     throwError(500, error.message || "Failed to replace media");
   }
 
-  // The old asset — and the poster the vendor had uploaded for it, if any —
-  // goes only after the document is safely saved.
+  // The old file — and its poster — go only after the document is safely saved.
+  // `deleteMedia` takes the poster with it, so the separate
+  // `deleteCustomThumbnail` call this used to need is gone along with the
+  // question it answered ("did the vendor upload this poster?").
   try {
-    await deleteCustomThumbnail(oldMedia);
-    await deleteMedia(oldMedia);
+    await deleteMedia(previous);
   } catch (err) {
     console.error("Old media delete failed:", err.message);
   }
 
-  return formatManagedMedia(media);
+  return formatManagedMedia(item);
 };
