@@ -856,6 +856,17 @@ dono hisse chahiye — to uska koi caller bacha hi nahi.
 | **Depends on** | Phase 2 |
 | **Client change** | ❌ |
 
+> ⚠️ **Naam badal chuka hai.** Neeche jahan `documentStorage` likha tha, wo field
+> ab **`documentMedia`** hai aur `mediaSchema` ka poora shape leta hai
+> (`{ url, storage, kind, mimeType, sizeBytes, … }`) — **M-2** me, jab saare
+> surfaces ek hi generic media shape par aaye. Neeche text update kar diya gaya
+> hai; design waisa ka waisa hai, sirf naam aur shape badle.
+>
+> Aur is phase ka **per-request minting hissa pehle hi ship ho chuka hai** —
+> `storage.documentUrl` har request par naya presigned GET banata hai
+> ([services/storage/index.js:260](../services/storage/index.js#L260)). Jo bacha
+> hai wo sirf bucket routing hai: documents private bucket me jaayein.
+
 ## 4.1 🟢 Redirect ki wajah se ye free me mil jaata hai
 
 [controllers/documents/getByToken.js](../controllers/documents/getByToken.js)
@@ -871,7 +882,8 @@ request par ek **fresh presigned GET** bana sakte hain. **Client ko zero farq.**
 aaj:   record.invoiceUrl = "https://res.cloudinary.com/…/Documents/abc.pdf"
        → har request wahi URL, hamesha zinda, guessable (Math.random() public_id)
 
-baad:  record.documentStorage = { provider:"S3", bucket, key:"documents/2026/VCH/VCH-000123.pdf" }
+baad:  record.documentMedia = { url: null, kind:"DOCUMENT",
+                             storage: { provider:"AWS_S3", bucket, key:"documents/2026/VCH/VCH-000123.pdf" } }
        → har request par naya presigned GET, TTL 5 min
 ```
 
@@ -879,10 +891,10 @@ baad:  record.documentStorage = { provider:"S3", bucket, key:"documents/2026/VCH
 
 | # | Case | Handling |
 |---|---|---|
-| P4-1 | Purani rows me Cloudinary URL cached | `documentStorage` na ho to `urlField` se redirect — legacy chalta rahe |
+| P4-1 | Purani rows me Cloudinary URL cached | `documentMedia` na ho to `urlField` se redirect — legacy chalta rahe |
 | P4-2 | Presigned GET expire | Har request par naya. TTL 5 min — download shuru hone ko kaafi |
 | P4-3 | User ne link WhatsApp par forward kiya | 🟢 **Ab ye theek hai** — token hi credential hai, aur storage URL 5 min me mar jaata hai |
-| P4-4 | `Transaction.invoiceUrl` naam ka takraav (O-1) | Naya field `documentStorage` — purane naam ko chheda hi nahi |
+| P4-4 | `Transaction.invoiceUrl` naam ka takraav (O-1) | Naya field `documentMedia` — purane naam ko chheda hi nahi |
 | P4-5 | `regenerateInvoice` re-upload | Naya uuid key, purani `deleteAsset` se |
 | P4-6 | `scripts/sendDocumentVerificationMails.js` | Upload karta hi nahi, seedha attach karta hai. **Koi change nahi** |
 | P4-7 | Private bucket par CloudFront | Nahi chahiye — presigned GET seedha S3 se |

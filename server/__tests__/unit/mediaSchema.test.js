@@ -98,9 +98,37 @@ describe("🔴 a video must carry its poster", () => {
 });
 
 describe("the shape itself", () => {
-  test("url and kind are the two things every file must have", () => {
-    expect(validate({ kind: MEDIA_KIND.IMAGE })).toBeTruthy();
+  test("kind is always required", () => {
     expect(validate({ url: "https://x/a.png" })).toBeTruthy();
+  });
+
+  test("🔴 a media value must be locatable — by URL or by key", () => {
+    // A row with neither is a file nobody can reach and nobody can delete:
+    // a leak with a database record attached.
+    const error = validate({ kind: MEDIA_KIND.IMAGE });
+    expect(error.errors["media.url"].message).toMatch(/URL or a storage key/);
+  });
+
+  test("🔴 a private document has no URL, and that is correct", () => {
+    // The whole point of the private bucket: a link is minted per request with
+    // minutes of life, because a stored one would outlive the permission behind
+    // it. Requiring `url` made every invoice unsaveable.
+    expect(
+      validate({
+        url: null,
+        kind: MEDIA_KIND.DOCUMENT,
+        storage: { provider: "AWS_S3", bucket: "b", key: "dev/documents/x.pdf" },
+      }),
+    ).toBeUndefined();
+  });
+
+  test("a Cloudinary row locates itself by publicId", () => {
+    expect(
+      validate({
+        kind: MEDIA_KIND.DOCUMENT,
+        storage: { provider: "CLOUDINARY", publicId: "Documents/x" },
+      }),
+    ).toBeUndefined();
   });
 
   test("the provider enum comes from the constant, and says AWS_S3", () => {

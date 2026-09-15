@@ -90,12 +90,33 @@ exports.upload = async ({
   };
 
   return {
-    url: exports.url({ storage }),
-    // ⚠️ A video has no poster until the metadata Lambda makes one (Phase 7).
-    // Claiming the video's own URL as its thumbnail would put an un-playable
-    // tile in every cover slot, so this stays empty and `syncSectionCoverImage`
-    // falls through to the next visible media.
-    thumbnail: kind === MEDIA_KIND.VIDEO ? null : exports.url({ storage }),
+    /**
+     * 🔴 `null` for a private object, not a thrown error.
+     *
+     * `exports.url` refuses a private bucket on purpose — there is no lasting
+     * link to one, and handing out a guessable path would defeat the bucket.
+     * But calling it unconditionally here made **every document upload throw**
+     * the moment the provider was S3: invoices, settlements, refunds and
+     * chargebacks all render into the private bucket.
+     *
+     * Nothing caught it because the provider was still Cloudinary and the
+     * document tests mock the upload. `documentUrl` mints a presigned GET per
+     * request from `storage`, so a null here is the correct answer rather than
+     * a missing one.
+     */
+    url: isPublic ? exports.url({ storage }) : null,
+    /**
+     * ⚠️ Same guard. A private object has no poster to serve either, and this
+     * line would have thrown for exactly the same reason.
+     *
+     * 🔴 The comment that used to sit here said a missing thumbnail makes
+     * `syncSectionCoverImage` "fall through to the next visible media". It does
+     * not — `getMediaCoverImage` is `thumbnail || url`, so the cover became the
+     * `.mp4` itself. M-4 removes the derivation entirely; a poster is uploaded
+     * alongside the video on both providers.
+     */
+    thumbnail:
+      isPublic && kind !== MEDIA_KIND.VIDEO ? exports.url({ storage }) : null,
     storage,
     metadata: {
       originalName: originalFile?.name ?? null,

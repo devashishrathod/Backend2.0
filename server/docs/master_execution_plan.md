@@ -717,7 +717,7 @@ expire hone ke baad delete ho jayega."*
 > Har phase ek chhota, apne aap me poora chunk hai. Har ek ke baad report, phir
 > aapki commit permission.
 
-## A-1 · Voucher customer detail ka storage leak — ✅ **DONE** (uncommitted)
+## A-1 · Voucher customer detail ka storage leak — ✅ **DONE** (`90e1d3a`)
 `helpers/vouchers/customerListing.js` · `docs/customer_mobile_api_doc.md` · `postman/trydood-customer.*`
 - [x] Shared `toCustomerImage` / `toCustomerOffer` / `toCustomerOffers` — listing **aur** detail dono isi ko padhte hain, to dobara drift nahi ho sakta
 - [x] `mapCustomerVoucherDetail` me `images` whitelist → `{_id, url, sortOrder}`
@@ -733,7 +733,7 @@ expire hone ke baad delete ho jayega."*
 > me `sortOrder`/`isActive`/`isDeleted`. Patch in-place kiya (1 line diff), poori
 > collection regenerate nahi ki.
 
-## A-2 · Shared image delete se published voucher bachao — ✅ **DONE** (uncommitted)
+## A-2 · Shared image delete se published voucher bachao — ✅ **DONE** (`04d8e2e`)
 naya `helpers/vouchers/orphanImages.js` · `services/vouchers/updateVoucher.js` · `docs/vendor_panel_api_doc.md` · `postman/trydood-vendor.*`
 - [x] `pickOrphanImages(images, voucherId)` — identity par match: S3 `key` → Cloudinary `publicId` → legacy `url`
 - [x] Commit ke **baad** chalta hai, taaki surviving versions ki asli haalat padhe
@@ -755,7 +755,7 @@ naya `helpers/vouchers/orphanImages.js` · `services/vouchers/updateVoucher.js` 
 - [x] `keys.js` sahi tha, test stale tha — suite me ek permanent red
 - [x] Sahi contract par laaya + ek refusal test joda
 
-## A-3 · Ticker customer leak — ✅ **DONE** (uncommitted)
+## A-3 · Ticker customer leak — ✅ **DONE** (`2c84707`)
 `services/promotionalTickers/getActiveTickersForCustomer.js` · `docs/customer_mobile_api_doc.md` · `postman/trydood-customer.*`
 - [x] `toCustomerShape` whitelist (banner jaisa) — `{_id, title, icon, redirect, displayOrder}`
 - [x] `icon` ab **string** hai, object nahi — banner ke `url` jaisa
@@ -772,7 +772,7 @@ naya `helpers/vouchers/orphanImages.js` · `services/vouchers/updateVoucher.js` 
 
 ---
 
-## F-1 · `getSetting()` TTL cache — ✅ **DONE** (uncommitted)
+## F-1 · `getSetting()` TTL cache — ✅ **DONE** (`765669c`)
 `helpers/settings/getSetting.js` · `helpers/settings/index.js` · `services/settings/updateSetting.js` · `helpers/notifications/audienceChannels.js`
 - [x] 30s TTL snapshot; `updateSetting` **save ke baad** invalidate karta hai
 - [x] **Read path se `upsert` hata** — ab wo sirf tab chalta hai jab document hai hi nahi
@@ -789,7 +789,7 @@ naya `helpers/vouchers/orphanImages.js` · `services/vouchers/updateVoucher.js` 
 > 30 second purane number se reconcile nahi hota. Jis value ko sach me exact hona
 > ho, wo is function se **padhi hi nahi jaani chahiye**.
 
-## F-2 · `Setting.storage` block — ✅ **DONE** (uncommitted)
+## F-2 · `Setting.storage` block — ✅ **DONE** (`64d1a34`)
 `models/Setting.js` · `validator/settings.js` · naye `helpers/settings/{getStorageConfig,assertStorageLimitRule}.js` · `services/settings/updateSetting.js` · 3 docs · postman
 - [x] Naya **top-level** `storage` block — `provider` · `limits` (5) · `allowed` (5) · `upload` (3) · `delivery` (1) = **15 field**
 - [x] `getStorageConfig()` — `MEDIA_KIND` ke hisaab se `maxBytes` / `maxSizeMB` / `allowedTypes`, aur TTL har caller ki unit me
@@ -813,7 +813,7 @@ naya `helpers/vouchers/orphanImages.js` · `services/vouchers/updateVoucher.js` 
 > (wo bhi uncommitted). Use abhi chhedne ka matlab doosre phase ka aadha kaam is
 > commit me ghaseetna hota. `getStorageConfig()` taiyaar hai; U-1 usi se padhega.
 
-## F-3 · `mediaSchema` + `toMediaResponse` — ✅ **DONE** (uncommitted)
+## F-3 · `mediaSchema` + `toMediaResponse` — ✅ **DONE** (`9e0b19c`, enum rename `7d716bc`)
 naye `models/mediaSchema.js` · `helpers/media/toMediaResponse.js` · `constants/storage.js` · 4 models · `configs/env/schema.js` · 5 test files
 - [x] `storageRefSchema` · `posterSchema` · `mediaSchema`
 - [x] **VIDEO par `poster` required**
@@ -841,7 +841,7 @@ naye `models/mediaSchema.js` · `helpers/media/toMediaResponse.js` · `constants
 > jaata. M-4 me showcase `poster` par jaayega aur derivation usi commit me hategi,
 > to kabhi dono ke beech ka haal nahi aayega.
 
-## F-4 · Provider Setting se + preflight — ✅ **DONE** (uncommitted)
+## F-4 · Provider Setting se + preflight — ✅ **DONE** (`6518df1`)
 naya `services/storage/preflight.js` · `services/storage/index.js` · `services/settings/updateSetting.js` · `controllers/settings/update.js` · `models/Setting.js`
 - [x] `activeProvider()` ab **async**, `Setting.storage.provider` se
 - [x] `MEDIA_PROVIDER` sirf **seed default** — model ke `default: () => config.MEDIA_PROVIDER` se, jo sirf document banne par chalta hai. Redeploy panel ki choice ko override nahi karta
@@ -865,7 +865,7 @@ naya `services/storage/preflight.js` · `services/storage/index.js` · `services
 
 ---
 
-## M-1 · Sidecar models → `mediaSchema` — ✅ **DONE** (uncommitted)
+## M-1 · Sidecar models → `mediaSchema` — ✅ **DONE** (`177d67f`, missing-import fix `3118e1a`)
 6 models · 11 services · naya `helpers/media/toMediaDocument.js` · 4 docs
 - [x] **M-1a ke mutabik**: `logo: String` waisa hi, `logoStorage: storageSchema` → **`logoMedia: mediaSchema`**. Aath field, chhe model
 - [x] `toMediaDocument(uploaded)` — ek jagah jo facade ke result ko model ke shape me badalti hai. Pehle gyarah services apni do line likhti thin (`url` + `storage`), isi liye platform ko file ke baare me **kuch aur pata hi nahi tha**
@@ -889,7 +889,7 @@ naya `services/storage/preflight.js` · `services/storage/index.js` · `services
 > dono barabar hain. Par ek asli farak hai: `{ ...current, poster: undefined }`
 > maujood poster ko **mita** deta hai. Wahi pin karne wala test joda — ab 9/9.
 
-## M-1a′ · Naam: check case-insensitive, save jaisa type kiya — ✅ **DONE** (uncommitted)
+## M-1a′ · Naam: check case-insensitive, save jaisa type kiya — ✅ **DONE** (`0affcfa`)
 naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` · 5 services
 - [x] Ye `refactor(naming)` commit ka **anjaana side-effect** theek karta hai. Naam ab jaisa type kiya waisa save hota hai — wo sahi hai — par usi ne duplicate check tod diya tha, kyunki check pehle *lowercase storage* par nirbhar tha
 - [x] **Category / SubCategory**: `findOne({ name })` exact match tha → ab `sameNameAs(name)`, anchored + escaped + case-insensitive. "Pizza" aur "pizza" dono nahi ban sakte
@@ -898,7 +898,7 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 - [x] `name` / `brandName` / category ka `name` — **sab jaisa type kiya waisa hi** store hote hain. Koi display badla nahi
 - [x] **11 unit test** · **Mutation 7/7**
 
-## M-1a″ · Naam UI me jaisa dikhna chahiye waisa save — ✅ **DONE** (uncommitted)
+## M-1a″ · Naam UI me jaisa dikhna chahiye waisa save — ✅ **DONE** (`77dc38f`, missing-import fix `fc5531c`)
 `helpers/common/names.js` (renamed) · 19 services · 1 helper
 - [x] `toDisplayName()` — **sirf tab** badalta hai jab input **poora lowercase** ho. Ek bhi capital ho to vendor par bharosa
 - [x] `"john doe"` → `"John Doe"` · `"30% off"` → `"30% Off"` · `"jean-luc"` → `"Jean-Luc"`
@@ -916,7 +916,7 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 > koi write path hai hi nahi (M-1b me aayega), doosra **filename se machine-derived**
 > hai — `"my_photo_01"` ko `"My_photo_01"` karna behtar nahi.
 
-## M-1b · Customer profile pic — ✅ **DONE** (uncommitted)
+## M-1b · Customer profile pic — ✅ **DONE** (`564e99c`, doc fix `c0a412b`)
 `models/Customer.js` · `services/users/updateUserById.js` · `services/customers/{getAdminCustomerDetail,getAllAdminCustomers}.js` · doc · postman
 - [x] `Customer.imageMedia` → `mediaSchema` (M-1a ke sidecar pattern par)
 - [x] **CUSTOMER** ka photo `Customer` row par, **`User.image` unset**
@@ -940,12 +940,38 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 > `{ userData, customerData }` lautati hai. Ab sach likha hai. Postman ka captured
 > example sahi tha (asli API se capture hua tha).
 
-## M-2 · Documents → `mediaSchema`
-Dispute · RefundRequest · Settlement · Transaction
-- [ ] `documentStorage` → `document: mediaSchema`, `kind: DOCUMENT`
-- [ ] `documentUrl` response me waisa hi
-- [ ] Phase 4 ka presigned-GET flow na toote
-- [ ] **Proof:** invoice URL Cloudinary **aur** S3 dono par
+## M-2 · Documents → `mediaSchema` — ✅ **DONE** (uncommitted)
+`models/{Dispute,RefundRequest,Settlement,Transaction}.js` · `services/documents/getDocumentByToken.js` · `services/transactions/regenerateInvoice.js` · `services/storage/providers/s3.js` · `models/mediaSchema.js` · doc
+- [x] `documentStorage: storageSchema` → **`documentMedia: mediaSchema`**, `kind: DOCUMENT` — chaaron models
+- [x] `getDocumentByToken` ab `documentMedia.storage` se link mint karta hai; URL-only legacy rows waise hi chalti hain
+- [x] `regenerateInvoice` purana document `toDeletable(previousMedia, previousUrl)` se hataata hai
+- [x] Response me **kuch nahi badla** — `documentUrl`, `invoiceUrl`, `invoiceDownloadUrl` sab waise ke waise. Postman me koi storage field tha hi nahi, to wahan change nahi
+- [x] Phase 4 ka per-request minting flow intact (`storage.documentUrl`)
+- [x] **313 unit test pass** · **Mutation 6/6** · `verifyNoUndef` 0 · `verifyImports` 0
+
+> 🔴 **`mediaSchema.url` ka `required: true` galat tha.** Private bucket me generated
+> document ka koi lasting URL hota hi nahi — link har request par minta hai. Sahi
+> invariant ye hai ki media **locatable** ho: ya URL ho, ya storage key/publicId.
+> Ab conditional `required` hai.
+>
+> ⚠️ Pehle ise `pre("validate")` + `this.invalidate()` se likha tha — **wo chup-chaap
+> kuch karta hi nahi**. Single nested sub-document par `invalidate()` parent ki error
+> list tak pahunchta hi nahi; measured: bina URL bina key wali media clean validate
+> ho gayi. **Yahi trap F-3 me poster par bhi laga tha** — doosri baar.
+
+> 🔴 **`services/storage/providers/s3.js` me ek latent bug mila.** `upload()` me
+> `url: exports.url({ storage })` bina guard ke call hota tha, aur `exports.url`
+> private bucket par jaan-boojh kar **throw** karta hai. Matlab `MEDIA_PROVIDER=AWS_S3`
+> hote hi **har invoice / settlement / refund / chargeback upload 500 deta** — chaaron
+> private bucket me render hote hain. Kisi ne pakda nahi kyunki provider abhi
+> Cloudinary hai aur document test upload ko mock karte hain. Ab `isPublic` guard hai,
+> aur private object par `url`/`thumbnail` dono `null` — jo sahi jawab hai, missing
+> nahi.
+
+> 🔴 **Ek jhootha comment hataya** — usi file me likha tha ki thumbnail na hone par
+> `syncSectionCoverImage` "falls through to the next visible media". Aisa hota hi
+> nahi: `getMediaCoverImage` `thumbnail || url` hai, to cover khud `.mp4` ban jaata
+> tha. M-4 derivation poori hataata hai.
 
 ## M-3 · Banner + Ticker → `mediaSchema`
 `models/Banner.js` · `models/PromotionalTicker.js` · `constants/banner.js` · banner/ticker services · docs · postman
@@ -1198,7 +1224,7 @@ generic media shape, customer profile pic zinda, aur admin se provider switch.
 
 ---
 
-# Part 5B — `verifyNoUndef` — ✅ **DONE** (uncommitted)
+# Part 5B — `verifyNoUndef` — ✅ **DONE** (`e2fd846`)
 
 naya `scripts/verifyNoUndef.js` · `.githooks/pre-commit` · `package.json` · `CLAUDE.md`
 

@@ -131,10 +131,14 @@ describe("the key a document lands on", () => {
 describe("a document that already has a file", () => {
   const withStorage = () =>
     seedTransaction({
-      documentStorage: {
-        provider: "AWS_S3",
-        bucket: "trydood-nonprod-private",
-        key: UPLOADED_KEY,
+      documentMedia: {
+        url: null,
+        kind: "DOCUMENT",
+        storage: {
+          provider: "AWS_S3",
+          bucket: "trydood-nonprod-private",
+          key: UPLOADED_KEY,
+        },
       },
     });
 
@@ -197,10 +201,14 @@ describe("rows written before any of this", () => {
     // URL is whatever it used to be.
     const txn = await seedTransaction({
       invoiceUrl: "https://res.cloudinary.com/x/image/upload/v1/Documents/old.pdf",
-      documentStorage: {
-        provider: "AWS_S3",
-        bucket: "trydood-nonprod-private",
-        key: UPLOADED_KEY,
+      documentMedia: {
+        url: null,
+        kind: "DOCUMENT",
+        storage: {
+          provider: "AWS_S3",
+          bucket: "trydood-nonprod-private",
+          key: UPLOADED_KEY,
+        },
       },
     });
 
@@ -219,7 +227,7 @@ describe("the first time anybody asks", () => {
 
     expect(generateAndUploadDocument).toHaveBeenCalledTimes(1);
     const saved = await Transaction.findById(txn._id);
-    expect(saved.documentStorage.key).toBe(UPLOADED_KEY);
+    expect(saved.documentMedia.storage.key).toBe(UPLOADED_KEY);
     expect(url).toContain("X-Amz-Signature");
   });
 

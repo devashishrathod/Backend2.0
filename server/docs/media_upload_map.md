@@ -428,9 +428,19 @@ Ye design decision important hai:
   snapshot + 32-byte random `documentToken` record par likha jaata hai. **Koi PDF
   nahi banti, Cloudinary par kuch nahi jaata.**
 - **Pehli baar** koi `GET /documents/:token` hit karta hai, tab PDF render + upload
-  hoti hai aur URL record par cache ho jaata hai
-  ([services/documents/getDocumentByToken.js:134-146](../services/documents/getDocumentByToken.js#L134-L146)).
-- Uske baad har request cached URL return karti hai — dobara upload nahi.
+  hoti hai aur record par **`documentMedia`** likh diya jaata hai — `mediaSchema`
+  ka wahi generic shape jo baaki har media surface use karti hai
+  ([services/documents/getDocumentByToken.js:167-190](../services/documents/getDocumentByToken.js#L167-L190)).
+- Uske baad dobara upload nahi hota, **par URL dobara stored bhi nahi milta**:
+  link har request par `storage.documentUrl()` se banta hai
+  ([services/storage/index.js:260](../services/storage/index.js#L260)). S3 par wo
+  ek presigned GET hai jo 5 min me mar jaata hai; Cloudinary par wahi permanent
+  delivery URL hai, kyunki uske paas short-lived kuch hai hi nahi.
+- 🔴 Private bucket me document ka **koi lasting URL hota hi nahi** — isliye
+  `documentMedia.url` wahan `null` hota hai aur `mediaSchema` ka locatable
+  invariant key se satisfy hota hai, URL se nahi.
+- Purani rows jinke paas sirf `invoiceUrl` / `documentUrl` string hai, wo waise hi
+  chalti hain — kuch migrate nahi hua, file jahan hai wahin hai.
 
 Wajah: har claim/payout/refund ki PDF banana scale par nahi chalta aur zyadatar
 kabhi khuli hi nahi jaati. Number pehle allot hota hai taaki series me gap na ho.
@@ -439,7 +449,7 @@ kabhi khuli hi nahi jaati. Number pehle allot hota hai taaki series me gap na ho
 
 | # | Method + Path | Gate | Operation |
 |---|---|---|---|
-| 28 | `GET /documents/:token` | **PUBLIC — koi JWT nahi** | lazy render + upload + cache |
+| 28 | `GET /documents/:token` | **PUBLIC — koi JWT nahi** | lazy render + upload + `documentMedia` cache; link har baar naya |
 | 29 | `POST /transactions/invoice/regenerate` | `isVendorOrAdmin` | **forced re-render + re-upload** |
 
 - **28** — deliberately unauthenticated. Link WhatsApp/email se khulta hai jahan

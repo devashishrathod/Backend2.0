@@ -76,8 +76,43 @@ const posterSchema = new mongoose.Schema(
 
 const mediaSchema = new mongoose.Schema(
   {
-    /** What a client fetches. */
-    url: { type: String, required: true, trim: true },
+    /**
+     * What a client fetches — when there is something lasting to fetch.
+     *
+     * ⚠️ **Not required**, and the reason is the private bucket. A generated
+     * document has no durable URL at all: one is minted per request with a few
+     * minutes' life, because a stored link would outlive the permission behind
+     * it. `null` here is the correct answer for those rows, not a missing one.
+     *
+     * The real invariant is below: a media value has to be **locatable**, by a
+     * URL or by a storage key. Requiring the URL alone was requiring the wrong
+     * half.
+     */
+    url: {
+      type: String,
+      trim: true,
+      default: null,
+      /**
+       * 🔴 Required only when there is no key to mint one from.
+       *
+       * The invariant is that a media value must be **locatable** — by a URL
+       * somebody can fetch, or by a storage key the server can sign. A row with
+       * neither is a file nobody can reach and nobody can delete: a leak with a
+       * database record attached.
+       *
+       * ⚠️ Written as a conditional `required` and not a `pre("validate")`
+       * hook, for the same measured reason as `poster` below: `this.invalidate()`
+       * on a single nested sub-document never reaches the parent's error list,
+       * so the check passes everything. That was tried here first and let a
+       * media value with no URL **and** no key validate cleanly.
+       */
+      required: [
+        function () {
+          return !this.storage?.key && !this.storage?.publicId;
+        },
+        "A media value needs either a URL or a storage key - this has neither.",
+      ],
+    },
 
     /**
      * ⚠️ `default: undefined`, always.

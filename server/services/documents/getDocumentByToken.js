@@ -1,4 +1,6 @@
 const Transaction = require("../../models/Transaction");
+const { toMediaDocument } = require("../../helpers/media");
+const { MEDIA_KIND } = require("../../constants/storage");
 const RefundRequest = require("../../models/RefundRequest");
 const Dispute = require("../../models/Dispute");
 const Settlement = require("../../models/Settlement");
@@ -140,17 +142,22 @@ exports.getDocumentByToken = async (token) => {
    * forwarded WhatsApp message stops being a permanent key to somebody's name,
    * address, GSTIN and amount.
    */
-  if (record.documentStorage) {
+  if (record.documentMedia?.storage) {
+    /**
+     * ⚠️ The media value **is** `{ url, storage }` — the shape `documentUrl`
+     * takes — so it goes straight through. The URL beside it is still passed
+     * for the Cloudinary case, where the delivery link is the only one there is.
+     */
     return answer(
       await storage.documentUrl({
-        storage: record.documentStorage,
-        url: record[source.urlField],
+        storage: record.documentMedia.storage,
+        url: record.documentMedia.url || record[source.urlField],
       }),
     );
   }
 
   /**
-   * ⚠️ Rows written before `documentStorage` existed have only the URL, and
+   * ⚠️ Rows written before `documentMedia` existed have only the URL, and
    * they must keep working. Nothing is migrated: the file is where it is, and
    * that link is the only way back to it.
    */
@@ -176,7 +183,7 @@ exports.getDocumentByToken = async (token) => {
     { _id: record._id },
     {
       $set: {
-        documentStorage: uploaded.storage,
+        documentMedia: toMediaDocument(uploaded, { kind: MEDIA_KIND.DOCUMENT }),
         ...(uploaded.url ? { [source.urlField]: uploaded.url } : {}),
       },
     },

@@ -1,4 +1,6 @@
 const crypto = require("crypto");
+const { toMediaDocument, toDeletable } = require("../../helpers/media");
+const { MEDIA_KIND } = require("../../constants/storage");
 const Brand = require("../../models/Brand");
 const Subscription = require("../../models/Subscription");
 const Transaction = require("../../models/Transaction");
@@ -173,7 +175,8 @@ exports.regenerateInvoice = async (actor, payload) => {
   }
 
   const previousUrl = transaction.invoiceUrl || null;
-  const previousStorage = transaction.documentStorage;
+  const previousMedia = transaction.documentMedia;
+  const previousStorage = previousMedia?.storage;
 
   // Deliberately not wrapped: a re-issue that cannot produce a PDF should fail
   // loudly, unlike the fire-and-forget generation during checkout.
@@ -187,7 +190,7 @@ exports.regenerateInvoice = async (actor, payload) => {
     { _id: transaction._id },
     {
       $set: {
-        documentStorage: generated.storage,
+        documentMedia: toMediaDocument(generated, { kind: MEDIA_KIND.DOCUMENT }),
         ...(generated.url ? { invoiceUrl: generated.url } : {}),
       },
     },
@@ -212,7 +215,7 @@ exports.regenerateInvoice = async (actor, payload) => {
     previousStorage?.key && previousStorage.key !== generated.storage?.key;
   if (replacedSomethingElse || (previousUrl && !previousStorage)) {
     try {
-      await deleteDocument({ url: previousUrl, storage: previousStorage });
+      await deleteDocument(toDeletable(previousMedia, previousUrl));
     } catch (error) {
       console.error("Failed to delete the replaced document:", error.message);
     }

@@ -474,3 +474,79 @@ describe("provider selection", () => {
     expect(mockS3Send).not.toHaveBeenCalled();
   });
 });
+
+describe("🔴 a private object has no URL, and asking for one must not throw", () => {
+  /**
+   * `exports.url` refuses a private bucket on purpose — there is no lasting link
+   * to one. But `upload` called it unconditionally, so **every document upload
+   * would have thrown** the moment the provider became S3: invoices,
+   * settlements, refunds and chargebacks all render into the private bucket.
+   *
+   * Nothing caught it because the provider was still Cloudinary and the document
+   * tests mock the upload away.
+   */
+  const fs = require("fs");
+  const os = require("os");
+  const path = require("path");
+  const s3 = require("../../services/storage/providers/s3");
+
+  let probe;
+
+  beforeAll(() => {
+    probe = path.join(os.tmpdir(), `storage-probe-${Date.now()}`);
+    fs.writeFileSync(probe, "%PDF-1.7\n");
+  });
+
+  /**
+   * ⚠️ Deliberately **not** deleted.
+   *
+   * `PutObjectCommand` is handed a read stream, and `fs.createReadStream` opens
+   * the file on a later tick. The mocked `send` resolves without ever consuming
+   * it, so the handle is still pending when a cleanup would run — removing the
+   * file raced that open and crashed the worker with ENOENT, from both a
+   * per-test `finally` and an `afterAll`.
+   *
+   * Nine bytes in the OS temp directory is the cheaper answer than teaching the
+   * shared `send` mock to drain a stream nothing else cares about.
+   */
+
+  test("a document upload returns null rather than throwing", async () => {
+    const result = await s3.upload({
+      filePath: probe,
+      purpose: UPLOAD_PURPOSE.DOCUMENT,
+      entityId: "e1",
+      kind: MEDIA_KIND.DOCUMENT,
+      originalFile: { name: "x.pdf", mimetype: "application/pdf" },
+      key: "dev/documents/26-27/VCH/TD-VCH-26-27-000001.pdf",
+    });
+
+    expect(result.url).toBeNull();
+    expect(result.thumbnail).toBeNull();
+    // and it still says where the bytes are, which is what mints the real link
+    expect(result.storage.key).toContain("dev/documents/");
+    expect(result.storage.bucket).toBe("trydood-nonprod-private");
+  });
+
+  test("⚠️ a public upload still gets its URL", async () => {
+    const result = await s3.upload({
+      filePath: probe,
+      purpose: UPLOAD_PURPOSE.BRAND_LOGO,
+      entityId: "b1",
+      kind: MEDIA_KIND.IMAGE,
+      originalFile: { name: "a.webp", mimetype: "image/webp" },
+    });
+
+    expect(result.url).toContain("https://cdn.test/");
+    expect(result.thumbnail).toBe(result.url);
+  });
+
+  test("and `url()` itself still refuses a private object outright", () => {
+    // The guard stays where it belongs — building a plain URL for a private
+    // object would produce a link that 403s, or worse, one that works.
+    expect(() =>
+      s3.url({
+        storage: { bucket: "trydood-nonprod-private", key: "dev/documents/x.pdf" },
+      }),
+    ).toThrow(/no public URL/);
+  });
+});
