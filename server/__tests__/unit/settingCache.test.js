@@ -1,3 +1,5 @@
+const mongoose = require("mongoose");
+
 const Setting = require("../../models/Setting");
 const {
   getSetting,
@@ -15,10 +17,23 @@ const {
  * which would have meant a write on every anonymous page view.
  */
 
-/** A stored document, deliberately missing a field the schema defaults. */
+/**
+ * A stored document, deliberately missing a field the schema defaults.
+ *
+ * ⚠️ A real `ObjectId`, not the string `"settings"`.
+ *
+ * 🔴 That string is what hid a live crash for the whole of F-1. An `ObjectId`'s
+ * only own property is a `Buffer`, `Object.freeze` on a typed array with
+ * elements throws, and `deepFreeze` walked into everything — so `getSetting()`
+ * threw for **every real document**, on every request that read a setting. The
+ * fixture had no Buffer anywhere in it, so twenty tests passed over the top of
+ * it. A stand-in that cannot fail the way the real thing fails is not a
+ * stand-in.
+ */
 const storedRaw = (over = {}) => ({
-  _id: "settings",
+  _id: new mongoose.Types.ObjectId(),
   vendor: { voucher: { maxOffers: 7 } },
+  updatedAt: new Date("2026-09-16T00:00:00.000Z"),
   ...over,
 });
 
@@ -124,6 +139,30 @@ describe("⚠️ what the snapshot is, and is not", () => {
       "use strict";
       setting.vendor.voucher.maxImages = 999;
     }).toThrow();
+  });
+
+  /**
+   * 🔴 The freeze must not walk into a Buffer.
+   *
+   * `Object.freeze` on a typed array that has elements throws outright, and an
+   * `ObjectId`'s only own property **is** one. So a `deepFreeze` that recursed
+   * into everything threw for every real document — every settings read, on
+   * every request that took one — while twenty tests over a fixture with a
+   * string `_id` reported green.
+   *
+   * The money suite is what found it, which is the argument for running it.
+   */
+  test("🔴 an ObjectId, a Date and a Buffer do not break the freeze", async () => {
+    findOneReturns(
+      storedRaw({ raw: Buffer.from("abc"), ids: [new mongoose.Types.ObjectId()] }),
+    );
+
+    const setting = await getSetting();
+
+    expect(Object.isFrozen(setting)).toBe(true);
+    // Walked past, not frozen — and nothing mutates a value object in place.
+    expect(setting._id).toBeTruthy();
+    expect(setting.updatedAt instanceof Date).toBe(true);
   });
 
   test("it is a plain object, not a live document", async () => {

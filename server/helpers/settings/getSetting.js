@@ -57,11 +57,35 @@ let cachedAt = 0;
 /** One in-flight load, so a cold cache under load makes one query, not N. */
 let loading = null;
 
-/** Nothing downstream may edit the shared snapshot — including by mistake. */
+/**
+ * Nothing downstream may edit the shared snapshot — including by mistake.
+ *
+ * ### 🔴 Only plain objects and arrays are walked, and that is not tidiness
+ *
+ * This used to recurse into **everything** and call `Object.freeze` on it. A
+ * settings document always contains at least one `ObjectId` (its own `_id`), an
+ * `ObjectId`'s single own property is a `Buffer`, and `Object.freeze` on a typed
+ * array that has elements throws outright:
+ *
+ *     TypeError: Cannot freeze array buffer views with elements
+ *
+ * So `getSetting()` threw for **every real document** — every settings read, on
+ * every request that took one. It survived review because the cache's unit tests
+ * build plain fixtures with no `_id`, so nothing there ever held a Buffer.
+ *
+ * ⚠️ Skipping them loses nothing. An `ObjectId`, a `Date` and a `Buffer` are
+ * value objects: no caller mutates one in place, and the field holding them is
+ * frozen on the parent anyway, so it cannot be swapped for another.
+ */
+const isWalkable = (value) =>
+  Array.isArray(value) || Object.getPrototypeOf(value) === Object.prototype;
+
 const deepFreeze = (value) => {
   if (value === null || typeof value !== "object" || Object.isFrozen(value)) {
     return value;
   }
+  if (!isWalkable(value)) return value;
+
   Object.values(value).forEach(deepFreeze);
   return Object.freeze(value);
 };
