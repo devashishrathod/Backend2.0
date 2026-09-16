@@ -43,13 +43,33 @@ const SHOWCASE_COVER_IMAGE_MODE = {
   MANUAL: "MANUAL",
 };
 
+/**
+ * The last-resort fallback when `Setting.vendor.showcase` has no value.
+ *
+ * ⚠️ Every number here has a twin on the Setting schema, and the two must agree.
+ * They are not one source: the schema's defaults apply to a document being
+ * created, and these apply to a document that somehow lacks the field. A
+ * disagreement between them is a platform that behaves differently depending on
+ * how old its settings row is.
+ */
 const SHOWCASE_MEDIA_CONFIG = {
   maxItems: 15,
   maxImages: 15,
   maxVideos: 5,
+  /** The floor — see `minItemsPerSection` on the schema for what raising it does. */
+  minItems: 3,
+  minSections: 1,
   maxImageSizeMB: 10,
+  /** Larger than an image on purpose: a GIF stores every frame whole. */
+  maxGifSizeMB: 15,
   maxVideoSizeMB: 50,
-  allowedImages: ["image/jpeg", "image/jpg", "image/png", "image/webp"],
+  allowedImages: [
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+  ],
   allowedVideos: ["video/mp4", "video/webm", "video/quicktime"],
 };
 

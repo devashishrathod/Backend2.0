@@ -27,12 +27,43 @@ const showcaseSettingSchema = Joi.object({
   maxItemsPerSection: Joi.number().integer().min(1).optional(),
   maxImagesPerSection: Joi.number().integer().min(1).optional(),
   maxVideosPerSection: Joi.number().integer().min(1).optional(),
+  /**
+   * ⚠️ Raising this hides sections **immediately** — every section below the new
+   * floor drops out of the customer's view the moment it saves. The admin doc
+   * says so where an admin will read it; there is nothing code can do about it,
+   * because the number is the rule.
+   */
+  minItemsPerSection: Joi.number().integer().min(1).optional(),
+  minSectionsPerBrand: Joi.number().integer().min(1).optional(),
   maxImageSizeMB: Joi.number().integer().min(1).optional(),
+  maxGifSizeMB: Joi.number().integer().min(1).optional(),
   maxVideoSizeMB: Joi.number().integer().min(1).optional(),
   allowedImages: Joi.array().items(Joi.string().trim()).min(1).optional(),
   allowedVideos: Joi.array().items(Joi.string().trim()).min(1).optional(),
   isActive: Joi.boolean().optional(),
-});
+})
+  /**
+   * 🔴 The floor cannot climb above the ceiling.
+   *
+   * `minItemsPerSection: 6` with `maxItemsPerSection: 5` makes every section at
+   * once too small to show and too full to fix — the customer read hides it and
+   * the upload that would rescue it is refused. No request escapes that.
+   *
+   * ⚠️ This only catches a payload that carries **both** numbers. An admin who
+   * lowers the ceiling today and raised the floor yesterday sends one of them,
+   * and Joi sees a single field it has nothing to compare against. The merged
+   * document is checked in `assertShowcaseFloorRule`, which runs on what will
+   * actually be stored — the same split as the storage limits.
+   */
+  .custom((value, helpers) => {
+    const { minItemsPerSection: floor, maxItemsPerSection: ceiling } = value;
+    if (Number.isFinite(floor) && Number.isFinite(ceiling) && floor > ceiling) {
+      return helpers.message(
+        `minItemsPerSection (${floor}) cannot be more than maxItemsPerSection (${ceiling}).`,
+      );
+    }
+    return value;
+  });
 
 // Everything the subscription / checkout flow reads at runtime. Merged onto the
 // existing block, so an admin can change just the GST rate without resetting

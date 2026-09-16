@@ -526,11 +526,22 @@ Saare enum values **UPPERCASE** hain (payment gateway values ke alawa).
 | Max items | 15 |
 | Max images | 15 |
 | Max videos | 5 |
+| Min items per section | 3 🆕 |
 | Max image size | 10 MB |
+| Max GIF size | 15 MB 🆕 |
 | Max video size | 50 MB |
 
-Allowed images: `image/jpeg` · `image/jpg` · `image/png` · `image/webp`
+Allowed images: `image/jpeg` · `image/jpg` · `image/png` · `image/webp` · 🆕 `image/gif`
 Allowed videos: `video/mp4` · `video/webm` · `video/quicktime`
+
+> ⚠️ **GIF ka apna cap hai** — 15 MB, image ka 10 MB nahi. Animated GIF har frame
+> poora store karta hai, to usi tasveer ka GIF photo se kai guna bhaari hota hai.
+> Error message wahi limit bolta hai jo lagi hai:
+> `<file> exceeds maximum GIF size of 15 MB.`
+>
+> 🆕 **Min items** ek floor hai, ceiling nahi: jis section me itni visible media
+> na ho, wo customer ko dikhta hi nahi. Admin ise badal sakta hai — badhane par
+> chhote sections turant chhup jaate hain.
 
 ### DEVICE_PLATFORMS
 `ANDROID` · `IOS` · `WEB`
@@ -3539,11 +3550,22 @@ Live values `Setting.vendor.showcase` se aate hain; ye fallbacks hain:
 | Max items per section | 15 |
 | Max images per section | 15 |
 | Max videos per section | 5 |
+| Min items per section | 3 🆕 |
 | Max image size | 10 MB |
+| Max GIF size | 15 MB 🆕 |
 | Max video size | 50 MB |
 
-Allowed images: `image/jpeg` · `image/jpg` · `image/png` · `image/webp`
+Allowed images: `image/jpeg` · `image/jpg` · `image/png` · `image/webp` · 🆕 `image/gif`
 Allowed videos: `video/mp4` · `video/webm` · `video/quicktime`
+
+> ⚠️ **GIF ka apna cap hai** — 15 MB, image ka 10 MB nahi. Animated GIF har frame
+> poora store karta hai, to usi tasveer ka GIF photo se kai guna bhaari hota hai.
+> Error message wahi limit bolta hai jo lagi hai:
+> `<file> exceeds maximum GIF size of 15 MB.`
+>
+> 🆕 **Min items** ek floor hai, ceiling nahi: jis section me itni visible media
+> na ho, wo customer ko dikhta hi nahi. Admin ise badal sakta hai — badhane par
+> chhote sections turant chhup jaate hain.
 
 ---
 

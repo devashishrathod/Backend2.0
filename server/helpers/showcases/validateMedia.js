@@ -1,6 +1,6 @@
 const path = require("path");
 const { SHOWCASE_COVER_IMAGE_MODE } = require("../../constants/showcase");
-const { MEDIA_KIND } = require("../../constants/storage");
+const { MEDIA_KIND, kindFromMime } = require("../../constants/storage");
 const { throwError } = require("../../utils");
 
 exports.normalizeFiles = (files) => {
@@ -60,11 +60,28 @@ exports.validateMediaFiles = (
       if (!config.allowedImages.includes(mime)) {
         throwError(400, `${file.name} image format is not supported.`);
       }
+      /**
+       * ⚠️ A GIF is metered against its own ceiling (S-1).
+       *
+       * It is an `image/*` type, so it lands in this branch — but an animated
+       * GIF stores every frame whole and routinely outweighs a photograph of
+       * the same picture several times over. Holding it to `maxImageSizeMB`
+       * would refuse ordinary GIFs while `allowedImages` claims to accept them:
+       * a format the platform says is supported and in practice is not.
+       *
+       * The word in the message follows the limit, so a vendor is told which
+       * number they are up against rather than a number that is not the one
+       * being applied.
+       */
+      const isGif = kindFromMime(mime) === MEDIA_KIND.GIF;
+      const cap = isGif ? config.maxGifSizeMB : config.maxImageSizeMB;
+      const label = isGif ? "GIF" : "image";
+
       const sizeMB = file.size / 1024 / 1024;
-      if (sizeMB > config.maxImageSizeMB) {
+      if (sizeMB > cap) {
         throwError(
           400,
-          `${file.name} exceeds maximum image size of ${config.maxImageSizeMB} MB.`,
+          `${file.name} exceeds maximum ${label} size of ${cap} MB.`,
         );
       }
     } else if (mime.startsWith("video")) {

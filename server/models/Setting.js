@@ -82,10 +82,47 @@ const showcaseSettingSchema = new mongoose.Schema(
       default: 5,
       min: 1,
     },
+    /**
+     * How many visible media a section must keep to stay on the brand's
+     * profile — the floor, where everything else here is a ceiling.
+     *
+     * ⚠️ Raising this **hides sections immediately**. Move it from 3 to 5 and
+     * every 3- and 4-media section disappears from the customer's view that
+     * second, with no write anywhere and nothing in a log. Code cannot soften
+     * that: the number is the rule. It is called out in the admin doc for the
+     * same reason.
+     */
+    minItemsPerSection: {
+      type: Number,
+      required: true,
+      default: 3,
+      min: 1,
+    },
+    /** A brand keeps at least this many sections — the delete guard reads it. */
+    minSectionsPerBrand: {
+      type: Number,
+      required: true,
+      default: 1,
+      min: 1,
+    },
     maxImageSizeMB: {
       type: Number,
       required: true,
       default: 10,
+      min: 1,
+    },
+    /**
+     * GIFs get their own ceiling, and it is larger on purpose.
+     *
+     * An animated GIF is every frame stored whole — a two-second loop routinely
+     * outweighs a photograph of the same picture several times over. Metering it
+     * against `maxImageSizeMB` would refuse ordinary GIFs while claiming to
+     * allow them, which is the worst of both.
+     */
+    maxGifSizeMB: {
+      type: Number,
+      required: true,
+      default: 15,
       min: 1,
     },
     maxVideoSizeMB: {
@@ -94,9 +131,18 @@ const showcaseSettingSchema = new mongoose.Schema(
       default: 50,
       min: 1,
     },
+    /**
+     * ⚠️ `image/gif` is in here now.
+     *
+     * It is an `image/*` type, so it already passed every "is this an image"
+     * check in the codebase — this list is what decides whether it is actually
+     * accepted. `media.kind` still records it as `GIF` rather than `IMAGE`,
+     * which is what routes the object to `gifs/` and clear of the resize step
+     * that would flatten the animation.
+     */
     allowedImages: {
       type: [String],
-      default: ["image/jpeg", "image/jpg", "image/png", "image/webp"],
+      default: ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"],
     },
     allowedVideos: {
       type: [String],
@@ -106,6 +152,29 @@ const showcaseSettingSchema = new mongoose.Schema(
   },
   { _id: false },
 );
+
+/**
+ * The floor cannot climb above the ceiling.
+ *
+ * 🔴 `minItemsPerSection: 6` beside `maxItemsPerSection: 5` is a setting that
+ * makes every section on the platform simultaneously too small to show and too
+ * full to fix: the customer read hides it, and the upload that would rescue it
+ * is refused. There is no request a vendor can make that escapes, and nothing
+ * would say why.
+ *
+ * ⚠️ Enforced here **and** in `validator/settings.js`, because the admin panel
+ * is not the only writer — the seeders and any script that touches the document
+ * go straight to the model.
+ *
+ * `validate` on the path rather than `pre("validate")`: a hook does not run on
+ * `validateSync()`, so the sync path would report a document like this as clean.
+ * That has cost this migration three separate findings already.
+ */
+showcaseSettingSchema.path("minItemsPerSection").validate(function (value) {
+  const ceiling = this.maxItemsPerSection;
+  if (!Number.isFinite(value) || !Number.isFinite(ceiling)) return true;
+  return value <= ceiling;
+}, "minItemsPerSection cannot be more than maxItemsPerSection.");
 
 /**
  * Everything the subscription / checkout flow is allowed to vary by admin.

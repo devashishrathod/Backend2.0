@@ -35,8 +35,26 @@ exports.getShowcaseConfig = async () => {
     maxItems: showcase.maxItemsPerSection ?? SHOWCASE_MEDIA_CONFIG.maxItems,
     maxImages: showcase.maxImagesPerSection ?? SHOWCASE_MEDIA_CONFIG.maxImages,
     maxVideos: showcase.maxVideosPerSection ?? SHOWCASE_MEDIA_CONFIG.maxVideos,
+    /**
+     * The floors (S-1). Everything above is a ceiling; these two are the only
+     * numbers here that say what a section must **keep**.
+     *
+     * ⚠️ `minItems` is what decides whether a section reaches a customer at all,
+     * so raising it hides sections the moment it is saved — see the note on the
+     * schema field. Nothing reads it yet; the write guards that will are S-3 and
+     * the customer filter is S-4.
+     */
+    minItems: showcase.minItemsPerSection ?? SHOWCASE_MEDIA_CONFIG.minItems,
+    minSections:
+      showcase.minSectionsPerBrand ?? SHOWCASE_MEDIA_CONFIG.minSections,
     maxImageSizeMB:
       showcase.maxImageSizeMB ?? SHOWCASE_MEDIA_CONFIG.maxImageSizeMB,
+    /**
+     * ⚠️ Its own ceiling, not `maxImageSizeMB`. A GIF is an `image/*` type but
+     * it stores every frame whole, so metering it against the photo limit
+     * refuses ordinary GIFs while the allow-list claims to accept them.
+     */
+    maxGifSizeMB: showcase.maxGifSizeMB ?? SHOWCASE_MEDIA_CONFIG.maxGifSizeMB,
     maxVideoSizeMB:
       showcase.maxVideoSizeMB ?? SHOWCASE_MEDIA_CONFIG.maxVideoSizeMB,
     allowedImages: showcase.allowedImages?.length

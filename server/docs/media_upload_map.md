@@ -297,18 +297,46 @@ Helper: [helpers/showcases/upload.js](../helpers/showcases/upload.js) +
 `getShowcaseConfig()` pehle `Setting.showcase` padhta hai, na mile to
 `constants/showcase.js` ke defaults:
 
-| Limit | Default | Setting field |
+Baayen `getShowcaseConfig()` ka naam, daayen us Setting field ka jisse wo aata
+hai — dono alag hain, aur ye table hi unhe jodti hai.
+
+| Config key | Default | Setting field |
 |---|---|---|
-| `maxItems` (ek section me total) | 15 | `Setting.showcase.maxItems` |
-| `maxImages` | 15 | `Setting.showcase.maxImagesPerSection` |
-| `maxVideos` | 5 | `Setting.showcase.maxVideos` |
-| `maxImageSizeMB` | **10 MB** | `Setting.showcase.maxImageSizeMB` |
-| `maxVideoSizeMB` | **50 MB** | `Setting.showcase.maxVideoSizeMB` |
-| `allowedImages` | jpeg, jpg, png, webp | `Setting.showcase.allowedImages` |
-| `allowedVideos` | mp4, webm, quicktime | `Setting.showcase.allowedVideos` |
+| `maxItems` (ek section me total) | 15 | `vendor.showcase.maxItemsPerSection` |
+| `maxImages` | 15 | `vendor.showcase.maxImagesPerSection` |
+| `maxVideos` | 5 | `vendor.showcase.maxVideosPerSection` |
+| `minItems` 🆕 | **3** | `vendor.showcase.minItemsPerSection` |
+| `minSections` 🆕 | **1** | `vendor.showcase.minSectionsPerBrand` |
+| `maxImageSizeMB` | **10 MB** | `vendor.showcase.maxImageSizeMB` |
+| `maxGifSizeMB` 🆕 | **15 MB** | `vendor.showcase.maxGifSizeMB` |
+| `maxVideoSizeMB` | **50 MB** | `vendor.showcase.maxVideoSizeMB` |
+| `allowedImages` | jpeg, jpg, png, webp, **gif** 🆕 | `vendor.showcase.allowedImages` |
+| `allowedVideos` | mp4, webm, quicktime | `vendor.showcase.allowedVideos` |
+
+> ⚠️ Teen naam pehle galat likhe the — `Setting.showcase.maxItems` aur
+> `.maxVideos` jaisi koi field hai hi nahi, aur block `vendor.showcase` ke andar
+> hai. Jo doc field ka naam galat bole, wo us doc se bura hai jo use likhta hi
+> nahi.
 
 > **Poore project me size limit sirf yahan hai.** Baaki har media endpoint
 > unlimited size accept karta hai — §8.1.
+
+> ### 🆕 S-1: do floor, aur GIF ka apna cap
+>
+> Upar ke sab **ceiling** hain; `minItems` aur `minSections` akele **floor** hain
+> — wo batate hain ki kya bacha rehna chahiye, kitna zyada nahi ho sakta.
+>
+> `minItems` tay karta hai ki section customer tak pahunchega ya nahi, isliye use
+> **badhate hi** us line se neeche ke sections chhup jaate hain — bina kisi write
+> ke. Floor ko ceiling se upar le jaana `422` se rukta hai (teen jagah check:
+> model path validator, Joi payload, aur merged document).
+>
+> `maxGifSizeMB` alag isliye ki GIF `image/*` hai par har frame poora store karta
+> hai. Photo wale cap par naapte to platform GIF ko allow-list me rakhta aur
+> practice me reject karta — wahi "knob jo kuch nahi karta" wala pattern.
+>
+> ⚠️ `minItems`/`minSections` abhi **koi nahi padhta** — write guards S-3 me hain,
+> customer filter S-4 me.
 
 #### 19 — add-media (bulk)
 

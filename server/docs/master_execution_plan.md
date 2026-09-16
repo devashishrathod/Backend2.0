@@ -1189,7 +1189,37 @@ document banane me nahi.
 ## S-1 … S-5 · Showcase
 Detail: [showcase_rules_and_upload_plan.md](./showcase_rules_and_upload_plan.md) §SC-1…SC-5
 
-- **S-1** Setting: `minItemsPerSection` · `minSectionsPerBrand` · GIF · `maxGifSizeMB` · cross-validation
+### S-1 — ✅ **DONE** (uncommitted)
+`models/Setting.js` · `constants/showcase.js` · `helpers/settings/{getShowcaseConfig,assertShowcaseFloorRule,index}.js` · `validator/settings.js` · `services/settings/updateSetting.js` · `helpers/showcases/validateMedia.js` · docs · postman
+
+- [x] `minItemsPerSection` (3) · `minSectionsPerBrand` (1) · `maxGifSizeMB` (15) schema par
+- [x] `allowedImages` me **`image/gif`** — schema aur constant dono
+- [x] Cross-validation **teen jagah**: path validator (model), Joi (payload), `assertShowcaseFloorRule` (merged document)
+- [x] `getShowcaseConfig()` ab `minItems` · `minSections` · `maxGifSizeMB` lautata hai
+- [x] `validateMediaFiles` GIF ko uske apne cap par naapta hai, aur message me wahi limit bolta hai
+- [x] **19 naye unit test** · poori suite **425 pass** · **Mutation 12/12** · guards clean
+
+> ⚠️ **GIF ka cap enforce karna isi phase me rakha.** `image/gif` ko allow-list me
+> daalkar `maxGifSizeMB` na lagana ek aisa knob chhod deta jo kuch nahi karta —
+> GIF `maxImageSizeMB` (10 MB) par naapa jaata, yaani platform format ko
+> "supported" kehta aur practice me reject karta. Is codebase me wahi pattern
+> `maxSections` aur `showcase.isActive` dono ke saath ho chuka hai.
+
+> ⚠️ **Cross-validation teen jagah kyun.** Joi sirf payload dekhta hai, to ek hi
+> request me dono number aayein tabhi pakadta hai. Admin aaj floor 6 kar sakta
+> hai (legal — ceiling 15) aur kal ceiling 5 — dono baar ek hi field aata hai.
+> `assertShowcaseFloorRule` merged document par chalta hai, jahan dono number ek
+> saath sach hote hain. Model ka path validator isliye ki panel akela writer nahi
+> hai — seeder aur script seedhe model par jaate hain.
+
+> 🔴 **Floor > ceiling** har section ko ek saath *dikhane ke liye bahut chhota*
+> aur *theek karne ke liye bahut bhara* bana deta — customer read use chhupa deti
+> aur jo upload use bachata wo ceiling se ruk jaata. Vendor ke paas koi raasta
+> nahi bachta, aur kahin kuch batata bhi nahi.
+
+> ⚠️ `minItems`/`minSections` abhi **koi nahi padhta** — write guards **S-3** me
+> hain, customer filter **S-4** me. S-1 sirf unhe rakhta aur pehra lagata hai.
+
 - **S-2** `sortOrder` auto-manage (media + section) · `versionKey` on · `VersionError` → **409** (aaj 500 girta hai) · `reorderSectionMedia` ka scope non-deleted sab · create/update se `sortOrder` hatao
 - **S-3** Write guards — `assertMediaFloor` · `assertSectionFloor` · ADMIN exempt
 - **S-4** Customer reads — `$expr` min filter · **re-sequencing (1,3 → 1,2)** · clips se incomplete sections exclude · clips 404 → empty list

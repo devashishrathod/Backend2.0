@@ -4,6 +4,7 @@ const {
   assertSettlementTimingRule,
   assertReserveRateRule,
   assertStorageLimitRule,
+  assertShowcaseFloorRule,
 } = require("../../helpers/settings");
 const {
   checkS3Ready,
@@ -263,6 +264,9 @@ exports.updateSetting = async (userId, payload = {}) => {
    * already stored.
    */
   assertStorageLimitRule(setting);
+  // Same reasoning, different pair: a section's floor and its ceiling can also
+  // arrive in separate requests.
+  assertShowcaseFloorRule(setting);
 
   setting.updatedBy = userId;
 

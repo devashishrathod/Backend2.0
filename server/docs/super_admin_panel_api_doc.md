@@ -6794,9 +6794,12 @@ Platform-wide configuration. **Ek singleton document.**
         "maxItemsPerSection": 15,
         "maxImagesPerSection": 15,
         "maxVideosPerSection": 5,
+        "minItemsPerSection": 3,
+        "minSectionsPerBrand": 1,
         "maxImageSizeMB": 10,
+        "maxGifSizeMB": 15,
         "maxVideoSizeMB": 50,
-        "allowedImages": ["image/jpeg", "image/jpg", "image/png", "image/webp"],
+        "allowedImages": ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"],
         "allowedVideos": ["video/mp4", "video/webm", "video/quicktime"],
         "isActive": true
       },
@@ -7007,12 +7010,54 @@ ka banner, generated invoice, sab.
 | Block | Fields |
 |---|---|
 | `vendor.voucher` | `maxOffers` (1–100) · `maxImages` (≥1) · `maxDistanceKm` (≥1) |
-| `vendor.showcase` | `maxItemsPerSection` · `maxImagesPerSection` · `maxVideosPerSection` · `maxImageSizeMB` · `maxVideoSizeMB` (sab ≥1) · `allowedImages[]` · `allowedVideos[]` (min 1 item) · `isActive` (showcase **edit** ka kill switch — neeche) |
+| `vendor.showcase` | `maxItemsPerSection` · `maxImagesPerSection` · `maxVideosPerSection` · 🆕 `minItemsPerSection` · 🆕 `minSectionsPerBrand` · `maxImageSizeMB` · 🆕 `maxGifSizeMB` · `maxVideoSizeMB` (sab ≥1) · `allowedImages[]` · `allowedVideos[]` (min 1 item) · `isActive` (showcase **edit** ka kill switch — neeche) |
 | `vendor.subscription` | Niche full table |
 | `customer` | Niche full table — **naya**, pehle pahunch me hi nahi tha |
 | `admin.notification` | 🆕 `isEmailNotificationEnabled` · `isPushNotificationEnabled` · `isWhatsAppNotificationEnabled` |
 | `app` | 🆕 `minVersion` · `latestVersion` · `support` · `features` — niche |
 | `isActive` | boolean |
+
+### 🆕 `vendor.showcase` ke naye field — floors aur GIF
+
+| Field | Default | Kya karta hai |
+|---|---|---|
+| `minItemsPerSection` | `3` | Section ko customer ke saamne rehne ke liye itni **visible media** chahiye |
+| `minSectionsPerBrand` | `1` | Brand ke paas kam se kam itne section rahein — delete guard isse padhega |
+| `maxGifSizeMB` | `15` | GIF ka apna ceiling, image se alag |
+
+> ### 🔴 `minItemsPerSection` badhana sections ko **turant** chhupa deta hai
+>
+> 3 se 5 karte hi har wo section jisme 3 ya 4 media hain, customer ke view se usi
+> second gayab ho jaata hai — koi write nahi hota, kisi log me kuch nahi aata.
+> Code isse narm nahi kar sakta: **number hi rule hai.**
+>
+> Badhane se pehle dekh lijiye ki kitne sections us line ke neeche hain. Vendor ko
+> unme media add karne padenge, warna unka gallery chhota ho jayega aur unhe pata
+> bhi nahi chalega.
+
+> ⚠️ **Floor ceiling se upar nahi ja sakta.** `minItemsPerSection` ko
+> `maxItemsPerSection` se bada karne par `422`:
+>
+> ```
+> vendor.showcase.minItemsPerSection (6) cannot be more than
+> maxItemsPerSection (5). A section cannot be required to hold more media
+> than it is allowed to hold.
+> ```
+>
+> Wo state har section ko ek saath **dikhane ke liye bahut chhota** aur **theek
+> karne ke liye bahut bhara** bana deti — vendor ke paas koi raasta nahi bachta.
+> Check dono taraf hai: ek hi request me dono number aayein to Joi rokta hai, aur
+> alag-alag request me aayein to merge ke baad wala check.
+
+> ### 🆕 GIF ab showcase me chalta hai
+>
+> `allowedImages` me `image/gif` juda hai, aur uska cap `maxGifSizeMB` (15 MB) hai,
+> `maxImageSizeMB` (10 MB) nahi. Wajah: animated GIF har frame poora store karta
+> hai, to usi tasveer ka GIF photo se kai guna bhaari hota hai. Photo wale cap par
+> naapte to platform GIF ko "supported" kehta aur practice me reject karta.
+>
+> ⚠️ `media.kind` GIF ko `IMAGE` nahi, **`GIF`** hi likhta hai — isi se wo `gifs/`
+> prefix me jaata hai, resize step se door jo uski animation flatten kar deta.
 
 ### 🆕 `vendor.showcase.isActive` — showcase **edit** ka kill switch
 
