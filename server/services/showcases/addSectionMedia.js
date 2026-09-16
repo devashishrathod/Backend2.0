@@ -53,6 +53,22 @@ exports.addSectionMedia = async (actor, payload, files) => {
   let uploaded = [];
   try {
     uploaded = await uploadMultipleMedia(uploadedFiles, section._id, posters);
+    /**
+     * One past the count of non-deleted media, not one past the highest number —
+     * see `getNextMediaSortOrder`, which used to count deleted rows and made a
+     * much-edited section hand out positions like 9 when it held two photos.
+     *
+     * ⚠️ This is the one write in the domain deliberately left outside the
+     * optimistic lock, and the `$push` below is why. A concurrent delete could
+     * renumber while these bytes were uploading, so the pushed media can land one
+     * past where it belongs — a gap, never a lost or duplicated row, and the next
+     * delete or reorder closes it.
+     *
+     * The alternative is `save()`, which would make this conflict properly and
+     * answer 409 — after the vendor had already waited out a 50 MB video upload,
+     * asking them to do it again. A position that is briefly one too high is the
+     * cheaper wrong answer.
+     */
     const startSortOrder = getNextMediaSortOrder(section.medias);
     const medias = prepareMediaDocuments(
       uploaded,

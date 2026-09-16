@@ -10,6 +10,7 @@ const {
   prepareMediaDocuments,
   getExistingMediaCounts,
   getNextMediaSortOrder,
+  resequenceMedias,
   normalizeSortOrder,
   validateUniqueIds,
   validateUniqueSortOrders,
@@ -26,6 +27,7 @@ const {
   POSTER_FILE_FIELD,
 } = require("./upload");
 const { resolveSectionForActor } = require("./resolveSectionForActor");
+const { resequenceSections } = require("./resequenceSections");
 const {
   customerSectionMatch,
   visibleMediaCondition,
@@ -43,6 +45,7 @@ const {
 
 module.exports = {
   resolveSectionForActor,
+  resequenceSections,
   generateSlug,
   generateUniqueSlug,
   normalizeFiles,
@@ -55,6 +58,7 @@ module.exports = {
   prepareMediaDocuments,
   getExistingMediaCounts,
   getNextMediaSortOrder,
+  resequenceMedias,
   normalizeSortOrder,
   validateUniqueIds,
   validateUniqueSortOrders,

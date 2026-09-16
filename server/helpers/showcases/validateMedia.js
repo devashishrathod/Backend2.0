@@ -178,9 +178,59 @@ exports.getExistingMediaCounts = (medias = []) => {
   );
 };
 
-exports.getNextMediaSortOrder = (medias = []) => {
-  if (!medias.length) return 1;
-  return Math.max(...medias.map((media) => media.sortOrder || 0)) + 1;
+/**
+ * Where the next media goes.
+ *
+ * 🔴 Counted, not measured from the highest number in the array.
+ *
+ * `max(sortOrder) + 1` counted **deleted** rows, because their `sortOrder` stays
+ * where it was (S-5 — zeroing it would collide with the schema default). So a
+ * section that had eight photos and now has two handed the next upload position
+ * 9, and the panel showed `1, 2, 9`. Delete enough and the numbers drift for
+ * ever, which is the state a lot of live sections are already in.
+ *
+ * The stored order is dense 1..n over **non-deleted** media (S-12 — hidden ones
+ * included, so switching one back on keeps its place), and this is the other half
+ * of that: the next position is simply one past the count.
+ *
+ * ⚠️ Correct only while the invariant holds. `resequenceMedias` is what keeps it
+ * holding, and it runs on every delete — see the note there about `$push`.
+ */
+exports.getNextMediaSortOrder = (medias = []) =>
+  medias.filter((media) => !media.isDeleted).length + 1;
+
+/**
+ * Renumber a section's media dense 1..n, in place.
+ *
+ * Deleted rows keep the number they had and are not counted (S-5, S-12): they
+ * are an audit trail, and a deleted row at `sortOrder: 0` would sit in front of
+ * everything the moment somebody sorted the raw array.
+ *
+ * Order is taken from the positions already stored, so this only ever closes
+ * gaps — it never reshuffles what the vendor arranged. Ties keep their array
+ * order, which makes the result of two media sharing a position deterministic
+ * rather than dependent on the sort implementation.
+ *
+ * @param {Array} medias a Mongoose DocumentArray, mutated in place
+ * @returns {boolean} whether anything actually moved
+ */
+exports.resequenceMedias = (medias = []) => {
+  const live = medias
+    .map((media, index) => ({ media, index }))
+    .filter(({ media }) => !media.isDeleted)
+    .sort(
+      (a, b) =>
+        (a.media.sortOrder || 0) - (b.media.sortOrder || 0) || a.index - b.index,
+    );
+
+  let moved = false;
+  live.forEach(({ media }, position) => {
+    if (media.sortOrder !== position + 1) {
+      media.sortOrder = position + 1;
+      moved = true;
+    }
+  });
+  return moved;
 };
 
 exports.normalizeSortOrder = (items = []) => {

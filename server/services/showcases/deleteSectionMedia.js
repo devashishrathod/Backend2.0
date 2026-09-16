@@ -2,6 +2,7 @@ const { throwError } = require("../../utils");
 const {
   resolveSectionForActor,
   deleteMedia,
+  resequenceMedias,
   syncSectionCoverImage,
 } = require("../../helpers/showcases");
 
@@ -43,6 +44,20 @@ exports.deleteSectionMedia = async (actor, payload) => {
   item.isActive = false;
   item.isDeleted = true;
   item.deletedAt = new Date();
+
+  /**
+   * 🔴 The gap is closed here, not left for the next reorder.
+   *
+   * A delete used to leave the removed media's position behind — three photos at
+   * 1, 2, 3, delete the middle one, and the panel showed `1, 3`. The vendor had
+   * no way to fix it except a full drag-and-drop reorder, and `getNextMediaSortOrder`
+   * kept counting from the highest number, so the drift grew with every delete.
+   *
+   * The removed row keeps the number it had (S-5): it is an audit record and is
+   * not counted, and a deleted row at `sortOrder: 0` would sort in front of
+   * everything the moment anybody read the raw array.
+   */
+  resequenceMedias(section.medias);
 
   // Recomputed from what is left, rather than compared field by field. The old
   // code tested `coverImage === media.url`, while the cover had been written

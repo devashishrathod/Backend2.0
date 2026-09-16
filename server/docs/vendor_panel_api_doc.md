@@ -3606,7 +3606,7 @@ Naya showcase section banata hai.
 | `brandId` | ObjectId | admin ke liye ✅ | – | Vendor ke liye optional (apna brand auto) |
 | `title` | string | ✅ | – | 2–60 chars. **Jaisa likha waisa store hota hai** (pehle lowercase hota tha) |
 | `description` | string | ❌ | – | Max 500 chars, `""` allowed |
-| `sortOrder` | number | ❌ | auto (last + 1) | Integer ≥ 1 |
+| `sortOrder` | number | ❌ | **server decide karta hai** | 🆕 Bheja to **ignore** hota hai — note 4 |
 | `sectionType` | string | ❌ | `CUSTOM` | `CUSTOM` \| `SYSTEM` |
 | `isActive` | boolean | ❌ | `true` | |
 | `isVisible` | boolean | ❌ | `true` | `false` bhejein to section hidden banega |
@@ -3666,7 +3666,13 @@ Naya showcase section banata hai.
 
 **3. `slug` auto-generate hota hai** brand ke andar unique — same title dobara nahi ho sakta, par slug collision handle ho jaata hai.
 
-**4. `sortOrder` na do to auto** — last section ka `sortOrder + 1`.
+**4. 🆕 `sortOrder` server decide karta hai** — brand ke **non-deleted sections ki ginti + 1**. Pehle `last.sortOrder + 1` tha, jo sirf badhta tha.
+
+Wajah deleted sections nahi the — wo query pehle se `isDeleted: false` filter karti thi. Wajah ye thi ki **delete par bache hue sections renumber nahi hote the**: `1, 2, 3` me se doosra delete karo to `1, 3` reh jaata tha, agla create sabse bada number padhkar `4` deta, aur list `1, 3, 4` ban jaati. Phir delete karo to `1, 4, 5` — numbers ginti se door hote chale jaate the.
+
+Ab positions **dense `1..n`** rehti hain. Delete (#53) gap band karta hai, aur **create bhi pehle brand ko dense karta hai** — to jin brands me ye drift pehle se hai, unka agla section banate hi list sudhar jaati hai aur naya section hamesha aakhir me aata hai.
+
+Request me `sortOrder` bhejenge to wo **ignore** hoga — position sirf reorder endpoint (#47) ki property hai, wahi wajah jo media update (#49) me pehle se lagu hai.
 
 **5. ✅ Teeno toggle ab actually apply hote hain** (naya) — `isActive` / `isVisible` / `isShowVideosInClips` validator accept karta tha par service inhe drop kar deti thi, to hidden section banane ki koshish karne pe bhi visible section banta tha.
 
@@ -4189,7 +4195,9 @@ Photos/videos upload karta hai. **Multipart request.**
 
 **5. 🔴 Video poster auto-generate ab nahi hota** — aap bhejte hain, `thumbnails` field me. Dekhein upar ka note. Pehle iska daawa tha ki Cloudinary bana deta hai; wo URL 404 deta tha.
 
-**6. `sortOrder` auto-assign hota hai** — existing ke baad append.
+**6. 🆕 `sortOrder` auto-assign hota hai** — section ki **non-deleted media ki ginti + 1** se shuru hokar batch append hota hai. Pehle `max(sortOrder) + 1` tha, jo **deleted rows bhi ginta** tha (unka number wahin rehta hai), to bahut edit hui section me agli upload `9` par chali jaati jabki andar 2 hi photo thi.
+
+> ⚠️ Ye domain ki ekmaat­ra write hai jo **optimistic lock ke bahar** hai, kyunki `$push` use hoti hai. Upload ke dauraan koi aur media delete kar de to nayi media apni jagah se **ek aage** gir sakti hai — gap banta hai, koi row kabhi gum ya duplicate nahi hoti, aur agla delete/reorder use band kar deta hai. Iske badle `save()` rakhte to yahan bhi `409` aata — 50 MB video upload karne ke baad vendor se dobara upload karwana, jo isse mehnga sauda hai.
 
 **7. Limits admin-configurable hain** — `Setting.vendor.showcase` se. Upar diye defaults hain; live values alag ho sakti hain. Error message me actual value aati hai.
 
@@ -4399,14 +4407,18 @@ Media file replace karta hai. **Multipart.**
 |---|---|---|
 | `400` | `Media list is required.` | Empty |
 | `404` | `Showcase section not found.` | |
-| `400` | `Please send the complete media order — N media expected, M received.` | ⚠️ **Section ki saari live media bhejni hoti hai**, sirf badli hui nahi |
-| `400` | `Invalid media id : <id>` | Koi id us section ki nahi (ya inactive/deleted hai) |
+| `400` | `Please send the complete media order — N media expected, M received.` | ⚠️ **Section ki saari non-deleted media bhejni hoti hai** (hidden bhi), sirf badli hui nahi |
+| `400` | `Invalid media id : <id>` | Koi id us section ki nahi, ya deleted hai |
 
 ### ⚠️ Notes
 
 **1. ⚠️ Poori list mandatory hai.** Partial reorder allowed nahi. Error message ab batata hai kitni expected thi aur kitni mili.
 
-**2. `sortOrder` `1` se start hota hai** — #47 ke saath ab consistent.
+**2. 🆕 Hidden media bhi list me aati hai** — pehle sirf `isActive: true` wali renumber hoti thi. Media #2 ko hide karke baaki ko reorder karo, to bache hue 1, 2, 3 ho jaate the aur **hidden wali bhi 2 par** hi rehti thi. Wapas on karte hi do media ek hi position par — kaun pehle aayega, ye Mongo ke return order par chhod diya jaata tha.
+
+Hidden ≠ deleted: jo vendor ko apne panel me dikhti hai, wo order ka hissa hai (S-12). Section reorder (#47) hamesha aisa hi tha — ab dono ek jaise hain. Iska matlab **expected count me hidden media bhi gini jaati hai** — pehle wo error "2 media expected" bolta tha jabki panel me teen dikh rahi thi.
+
+**3. `sortOrder` `1` se start hota hai** — #47 ke saath ab consistent.
 
 **3. Cover image order ke saath move karti hai** — pehli media ka thumbnail cover ban jaata hai, isliye response me naya `coverImage` bhi aata hai. `coverImageMode: MANUAL` ho to cover nahi badalta. (Pehle cover ke liye media ka `url` prefer hota tha — video pehle number pe aa jaaye to cover ek `.mp4` link ban jaati thi aur UI me broken image dikhti thi. Ab hamesha `thumbnail` prefer hota hai.)
 
@@ -4449,6 +4461,12 @@ Media file replace karta hai. **Multipart.**
 **3. Cloudinary se file phir bhi delete hoti hai** — storage cost bachane ke liye. Matlab soft delete ek **audit record** hai, restore point nahi.
 
 **4. ✅ Cover image ab khud sudhar jaati hai** (naya) — deleted media cover thi to bachi hui pehli media ka thumbnail cover ban jaata hai, aur naya `coverImage` response me aata hai. Pehle cover stale reh jaati thi (comparison `url` se hoti thi jabki cover `thumbnail` se set hui thi).
+
+**5. 🆕 Baaki media ki position turant renumber ho jaati hai** — teen photo `1, 2, 3` par hain aur beech wali delete karein to bachi hui `1, 2` par aa jaati hain. Pehle deleted media apni position chhod jaati thi aur panel me `1, 3` dikhta tha; vendor ke paas theek karne ka ek hi raasta tha — poora drag-and-drop reorder. Aur agli upload sabse bade number se aage jaati thi, to har delete ke saath farak badhta jaata tha.
+
+Deleted row apna purana number **rakhta hai** — wo audit record hai, ginti me nahi aata, aur `sortOrder: 0` karne par wo schema default se takra kar har read me sabse aage aa jaata. Koi bhi API deleted media nahi lautati, to ye number kahin dikhta nahi.
+
+Hidden media renumber me **shaamil** hoti hai, to use wapas on karne par wo apni hi jagah par aati hai.
 
 ---
 
@@ -4493,6 +4511,10 @@ Poora section delete — media ke saath.
 **2. Soft delete hai** — section aur uski saari media pe `isDeleted: true`. **Cloudinary files delete ho jaati hain** (doc me pehle ulta likha tha) — to restore possible nahi, ye audit record hai.
 
 **3. Sirf hide karna ho to `isVisible: false` ya `isActive: false` (#46) use karein** — wo slot release **nahi** karte, par customer ko dikhna band ho jaata hai aur file bhi safe rehti hai.
+
+**4. 🆕 Baaki sections turant renumber ho jaate hain** — brand ke paas `1, 2, 3` the aur doosra delete hua to bache hue `1, 2` ho jaate hain. Pehle section-level par ye hota hi nahi tha (media ke andar hota tha), to brand hamesha ke liye `1, 3, 4` list karta rehta — aur create bhi sabse bade number se aage jaata tha, to farak badhta jaata tha.
+
+Delete hua section apna purana number rakhta hai, par wo kisi listing me aata hi nahi. **Sirf isi brand ke** sections renumber hote hain.
 
 ---
 

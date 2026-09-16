@@ -1,6 +1,7 @@
 const {
   deleteAllMedia,
   resolveSectionForActor,
+  resequenceSections,
 } = require("../../helpers/showcases");
 const { releaseSlot } = require("../../helpers/brands");
 const { ENTITLEMENT_BUCKETS } = require("../../constants/subscription");
@@ -40,6 +41,11 @@ exports.deleteFullSection = async (actor, payload) => {
   section.isActive = false;
   section.isDeleted = true;
   await section.save();
+
+  // The hole this delete just made, closed — `1, 2, 3` minus the second is
+  // `1, 2`, not `1, 3`. Media inside a section have always been renumbered on
+  // delete; sections never were, which is where the drift came from.
+  await resequenceSections(section.brandId);
 
   // Deleting a section frees its slot in the plan's showcase pool.
   await releaseSlot(section.brandId, ENTITLEMENT_BUCKETS.SHOWCASE);
