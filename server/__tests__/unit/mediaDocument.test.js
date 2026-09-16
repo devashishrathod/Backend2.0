@@ -121,6 +121,55 @@ describe("what a model now stores about a file", () => {
   test("nothing uploaded is null, not a half-built object", () => {
     expect(toMediaDocument(null)).toBeNull();
     expect(toMediaDocument({})).toBeNull();
+    // A shape with neither a URL nor a locator is unreachable — a file nobody
+    // can fetch and nobody can delete.
+    expect(toMediaDocument({ storage: { provider: "AWS_S3" } })).toBeNull();
+  });
+
+  /**
+   * 🔴 A private document has **no URL**, and that must not read as "nothing".
+   *
+   * `s3.upload` returns `url: null` for the private bucket on purpose — a stored
+   * link would outlive the permission behind it, so the link is minted per
+   * request from `storage`. This function used to bail on `!uploaded.url`, so
+   * the caller wrote `documentMedia: null` and **the key was never recorded**:
+   * the invoice sat in the bucket with nothing pointing at it, and every later
+   * request rendered and uploaded it again.
+   *
+   * `mediaSchema` already had the right rule — locatable by a URL *or* a key.
+   * The two halves of M-2 simply disagreed, and only the money suite ran both.
+   */
+  test("🔴 a private upload keeps its key, even with no URL", () => {
+    const media = toMediaDocument(
+      {
+        url: null,
+        storage: {
+          provider: "AWS_S3",
+          bucket: "trydood-nonprod-private",
+          key: "dev/documents/26-27/VCH/TD-VCH-26-27-000001.pdf",
+        },
+        metadata: { mimeType: "application/pdf" },
+      },
+      { kind: MEDIA_KIND.DOCUMENT },
+    );
+
+    expect(media).not.toBeNull();
+    expect(media.url).toBeNull();
+    expect(media.storage.key).toBe(
+      "dev/documents/26-27/VCH/TD-VCH-26-27-000001.pdf",
+    );
+    // And it is a valid media value — that is the invariant it had to match.
+    expect(new Holder({ media }).validateSync()).toBeUndefined();
+  });
+
+  test("a Cloudinary upload with only a publicId is locatable too", () => {
+    const media = toMediaDocument({
+      url: null,
+      storage: { provider: "CLOUDINARY", publicId: "Documents/inv-1" },
+      metadata: { mimeType: "application/pdf" },
+    });
+
+    expect(media?.storage.publicId).toBe("Documents/inv-1");
   });
 
   test("a video carries its poster through", () => {

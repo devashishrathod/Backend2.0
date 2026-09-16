@@ -26,7 +26,23 @@ const { throwError } = require("../../utils");
  * @returns {object|null} a `mediaSchema` value
  */
 exports.toMediaDocument = (uploaded, { kind, poster } = {}) => {
-  if (!uploaded?.url) return null;
+  /**
+   * 🔴 Locatable, not "has a URL" — the same invariant `mediaSchema` enforces.
+   *
+   * This used to be `if (!uploaded?.url) return null`, and the two halves of M-2
+   * disagreed with each other. A document rendered into the **private** bucket
+   * has no durable URL by design — `s3.upload` returns `url: null` because a
+   * stored link would outlive the permission behind it — so this bailed, the
+   * caller wrote `documentMedia: null`, and **the storage key was never
+   * recorded**. The file existed in the bucket and nothing pointed at it: every
+   * later request re-rendered and re-uploaded the same invoice.
+   *
+   * `mediaSchema` had it right — a media value is usable when it can be reached
+   * by a URL *or* by a key the server can sign. This now asks the same question.
+   */
+  const locatable =
+    uploaded?.url || uploaded?.storage?.key || uploaded?.storage?.publicId;
+  if (!locatable) return null;
 
   const metadata = uploaded.metadata || {};
   const resolved = kind || kindFromMime(metadata.mimeType);
@@ -39,7 +55,9 @@ exports.toMediaDocument = (uploaded, { kind, poster } = {}) => {
   }
 
   return {
-    url: uploaded.url,
+    // `null` on a private object, which is the honest answer rather than a
+    // missing one — the link is minted per request from `storage`.
+    url: uploaded.url ?? null,
     storage: uploaded.storage,
     kind: resolved,
     mimeType: metadata.mimeType ?? null,
