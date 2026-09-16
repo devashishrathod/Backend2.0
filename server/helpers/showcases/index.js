@@ -35,6 +35,10 @@ const {
   assertBrandKeepsAVisibleSection,
 } = require("./guards");
 const {
+  describeCustomerVisibility,
+  attachCustomerVisibility,
+} = require("./customerVisibility");
+const {
   customerSectionMatch,
   visibleMediaCondition,
   managedMediaCondition,
@@ -58,6 +62,9 @@ module.exports = {
   assertSectionKeepsItsFloor,
   assertBrandKeepsASection,
   assertBrandKeepsAVisibleSection,
+  // The read side of the same rule (customerVisibility.js)
+  describeCustomerVisibility,
+  attachCustomerVisibility,
   generateSlug,
   generateUniqueSlug,
   normalizeFiles,

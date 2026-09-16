@@ -2865,13 +2865,13 @@ Neeche sirf do ke apne section hain — `get-all` (#36) aur `reorder` (#37), kyu
 
 ### ⚠️ Notes
 
-**1. Ye platform-wide list hai** — admin ke liye by design theek. Service me brand filter commented out hai.
+**1. Ye platform-wide list hai** — `brandId` na dein to har brand ke sections aate hain.
 
-**2. ⚠️ `brandId` filter kaam nahi karta.** Na service usko read karta hai, na validator me defined hai (aur `stripUnknown` usko hata deta hai). **Brand-wise moderation abhi possible nahi.**
+**2. ✅ `brandId` filter ab kaam karta hai** (doc yahan purana pada tha). Validator use accept karta hai ([validator/showcase.js:85](../validator/showcase.js#L85)) aur service admin ke liye use `$match` me daalta hai ([getAllSections.js:73](../services/showcases/getAllSections.js#L73)). **Brand-wise moderation ab possible hai.** Response me `brandId` bhi project hota hai.
 
-Response me `brandId` bhi project nahi hota, to client-side filter bhi nahi kar sakte — sirf `GET /brands/get?brandId=` se us brand ka showcase dekh sakte hain.
+> ⚠️ Vendor ke liye wahi param alag matlab rakhta hai: `resolveActorBrand` use unke apne brand par pin karta hai, to koi vendor ise chaudha nahi kar sakta.
 
-Ye security finding #4 hai ([Appendix B](#appendix-b--known-issues)).
+**3. 🆕 `customerVisibility` har row par aata hai** — section customer ko dikh raha hai ya nahi, aur kyun nahi (`HIDDEN` / `INACTIVE` / `NOT_ENOUGH_MEDIA`). Poora shape aur samjhauta [vendor doc](./vendor_panel_api_doc.md) ke #44 par. Moderation ke liye seedha kaam ka: `isLive: false` wale sections wo hain jo bane hue hain par customer tak pahunch hi nahi rahe.
 
 ---
 

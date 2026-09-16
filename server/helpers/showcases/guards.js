@@ -31,10 +31,20 @@ const { getShowcaseConfig } = require("../settings");
 
 const isAdmin = (actor) => actor?.role === ROLES.ADMIN;
 
-/** Visible to a customer: not deleted, and not switched off by the vendor. */
-const isVisibleMedia = (media) => Boolean(media?.isActive) && !media?.isDeleted;
+/**
+ * ⚠️ Imported, not defined here — and `customerVisibility.js` is the right home
+ * for it because that module is where "visible to a customer" is decided.
+ *
+ * These guards and that module have to count the same media or the platform
+ * tells a vendor two different things: refused a delete because the section
+ * would fall below the floor, and then shown a section that reads as live.
+ */
+const {
+  countVisibleMedia,
+  isVisibleMedia,
+} = require("./customerVisibility");
 
-exports.countVisibleMedia = (medias = []) => medias.filter(isVisibleMedia).length;
+exports.countVisibleMedia = countVisibleMedia;
 
 /**
  * Refuse a change that would drop a section below the media floor.

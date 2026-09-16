@@ -5,6 +5,8 @@ const {
 const {
   resolveSectionForActor,
   formatManagedMedia,
+  countVisibleMedia,
+  attachCustomerVisibility,
 } = require("../../helpers/showcases");
 
 /** Case-insensitive substring test that tolerates a missing field. */
@@ -63,6 +65,23 @@ exports.getSection = async (actor, query) => {
 
   const data = filtered.slice(skip, skip + limit).map(formatManagedMedia);
 
+  /**
+   * S-5 — whether a customer can see this section, and if not, why.
+   *
+   * ⚠️ Computed from `managed`, which is every non-deleted media — not from
+   * `filtered`, which the caller's `type` / `search` / `isActive` query has
+   * already narrowed. Visibility is a property of the section, not of the page
+   * the vendor happens to be looking at; deriving it from the filtered list
+   * would report a section as invisible because somebody searched for "patio".
+   */
+  const [{ customerVisibility }] = await attachCustomerVisibility([
+    {
+      isActive: section.isActive,
+      isVisible: section.isVisible,
+      visibleMediaCount: countVisibleMedia(managed),
+    },
+  ]);
+
   return {
     _id: section._id,
     brandId: section.brandId,
@@ -76,6 +95,8 @@ exports.getSection = async (actor, query) => {
     isActive: section.isActive,
     isVisible: section.isVisible,
     isShowVideosInClips: section.isShowVideosInClips,
+    // Derived on every read, never stored — see `customerVisibility.js`.
+    customerVisibility,
     createdAt: section.createdAt,
     updatedAt: section.updatedAt,
     // Whole-album counts, as the vendor docs describe — unaffected by the

@@ -73,6 +73,28 @@ const SHOWCASE_MEDIA_CONFIG = {
   allowedVideos: ["video/mp4", "video/webm", "video/quicktime"],
 };
 
+/**
+ * Why a section is not on a customer's screen (S-5).
+ *
+ * Machine codes, so a panel can branch and localise. The numbers a message needs
+ * — how many visible media the section has, and how many it needs — ride
+ * alongside in `customerVisibility`, because a client that has to fetch the
+ * platform settings to phrase "2 of 3" will end up caching the wrong number.
+ *
+ * ⚠️ There is deliberately no `DELETED`. Both managed reads filter deleted
+ * sections out before visibility is described, so the value could never be
+ * returned — and a value that cannot occur is worse than none, because clients
+ * write branches for it.
+ */
+const SHOWCASE_VISIBILITY_REASON = {
+  /** `isVisible: false` — the vendor's public switch. */
+  HIDDEN: "HIDDEN",
+  /** `isActive: false` — the vendor's own on/off. */
+  INACTIVE: "INACTIVE",
+  /** Fewer visible media than `Setting.vendor.showcase.minItemsPerSection`. */
+  NOT_ENOUGH_MEDIA: "NOT_ENOUGH_MEDIA",
+};
+
 // `STORAGE_PROVIDER` used to live here. It was never showcase-specific —
 // banners, vouchers and tickers all store the same field — so it moved to
 // `constants/storage.js` alongside the rest of the storage vocabulary.
@@ -84,4 +106,5 @@ module.exports = {
   SHOWCASE_SECTION_TYPE,
   SHOWCASE_COVER_IMAGE_MODE,
   SHOWCASE_MEDIA_CONFIG,
+  SHOWCASE_VISIBILITY_REASON,
 };

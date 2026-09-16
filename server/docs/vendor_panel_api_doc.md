@@ -3755,6 +3755,12 @@ GET /showcase/section/get/68f1a2b3c4d5e6f7a8b9c5a1?type=VIDEO
     "isActive": true,
     "isVisible": true,
     "isShowVideosInClips": true,
+    "customerVisibility": {
+      "isLive": true,
+      "reasons": [],
+      "visibleMediaCount": 4,
+      "minItemsRequired": 3
+    },
     "mediaCount": 5,
     "photoCount": 4,
     "videoCount": 1,
@@ -3815,6 +3821,40 @@ GET /showcase/section/get/68f1a2b3c4d5e6f7a8b9c5a1?type=VIDEO
 ```
 
 > ⚠️ **Media ek nested block hai — `data.media.data[]`, na ki `data.medias[]`.** Pagination bhi usi block me hai, section ke saath flat nahi. Live run me pakda gaya (2026-08-27); doc me pehle flat `medias[]` + top-level `total` likha tha.
+
+### 🆕 `customerVisibility` — section customer ko dikh raha hai ya nahi, aur kyun nahi
+
+```json
+"customerVisibility": {
+  "isLive": false,
+  "reasons": ["NOT_ENOUGH_MEDIA"],
+  "visibleMediaCount": 2,
+  "minItemsRequired": 3
+}
+```
+
+| Field | Matlab |
+|---|---|
+| `isLive` | `true` = section customer ke teeno surface par dikh raha hai |
+| `reasons[]` | Kyun nahi dikh raha. `isLive: true` par hamesha `[]` |
+| `visibleMediaCount` | Kitni media customer ko dikhegi (`isActive && !isDeleted`) |
+| `minItemsRequired` | Abhi ka floor — `Setting.vendor.showcase.minItemsPerSection` |
+
+**`reasons[]` ki values:**
+
+| Code | Kab | Vendor kya kare |
+|---|---|---|
+| `HIDDEN` | `isVisible: false` | Toggle on karein (#46) |
+| `INACTIVE` | `isActive: false` | Toggle on karein (#46) |
+| `NOT_ENOUGH_MEDIA` | `visibleMediaCount < minItemsRequired` | Media add karein (#48), ya chhupi hui media wapas on karein (#49) |
+
+**Ye field kyun hai.** Section ka customer se gayab ho jaana **chup-chaap** hota hai — koi write nahi, koi log nahi, vendor ki apni list bilkul waisi hi. Do wajah aisi hain jo vendor ne khud ki (dono toggle), par teesri kaa jawab panel apne aap nikal hi nahi sakta: wo ek admin setting par nirbhar hai. Isliye teeno ek saath yahin bhej dete hain.
+
+> ⚠️ **Saari wajahein aati hain, sirf pehli nahi.** Section ek saath hidden bhi ho sakta hai aur media me kam bhi. Ek hi bata dena vendor ko ek cheez theek karne bhejta hai aur wo dekhta hai kuch nahi badla. UI chahe ek line dikhaye — par jo wajah batayi hi nahi gayi wo dikha nahi sakta.
+
+> ⚠️ **Ye field derive hoti hai, stored nahi.** Admin `minItemsPerSection` badal de to platform ke har section ka jawab badal jaata hai, bina kisi document ko chhue. Stored flag us waqt har jagah galat ho jaata. Customer read wahi ginti usi tarah karti hai, to dono kabhi alag nahi bol sakte.
+
+> Query ke `search` / `type` / `isActive` filter **is field ko nahi badalte** — visibility section ki property hai, us page ki nahi jo aap dekh rahe hain.
 
 ### Errors
 | Status | Message |
@@ -3903,6 +3943,13 @@ Sections ki paginated list.
         "photoCount": 4,
         "videoCount": 1,
         "inactiveMediaCount": 0,
+        "visibleMediaCount": 5,
+        "customerVisibility": {
+          "isLive": true,
+          "reasons": [],
+          "visibleMediaCount": 5,
+          "minItemsRequired": 3
+        },
         "createdAt": "2026-08-22T16:00:00.000Z",
         "updatedAt": "2026-08-22T16:05:00.000Z"
       }
@@ -3928,6 +3975,10 @@ Sections ki paginated list.
 Panel me "Hidden" tab chahiye to `?isVisible=false` bhejein.
 
 **3. Counts soft-deleted media ko chhod kar sab count karte hain** — `isActive: false` media bhi `mediaCount` me hai, aur `inactiveMediaCount` alag se batata hai kitni off hain.
+
+**3a. 🆕 `customerVisibility` har row par aata hai** — wahi shape jo #44 par hai, poora explanation [wahan](#44-get-showcasesectiongetsectionid) hai. List screen par seedha badge bana sakte hain: `isLive: false` wale sections ko mark karein aur `reasons[0]` ki line dikhayein.
+
+> ⚠️ `visibleMediaCount` aur `mediaCount` **alag** hain. `mediaCount` sab kuch ginta hai jo vendor manage karta hai (chhupi media bhi); `visibleMediaCount` sirf wo jo customer dekhega — aur floor **usi** par lagta hai. Jis section me `mediaCount: 5` aur `visibleMediaCount: 2` ho wo customer ko nahi dikhega.
 
 **4. Search case-insensitive hai** aur title pe chalta hai.
 
