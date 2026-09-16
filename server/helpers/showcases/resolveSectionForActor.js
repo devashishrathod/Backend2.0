@@ -30,10 +30,26 @@ exports.resolveSectionForActor = async (actor = {}, sectionId, options = {}) => 
   const filter = { _id: sectionId, isDeleted: false };
   if (options.requireActive) filter.isActive = true;
 
-  // `brandId` is what ownership is decided on, so it is always read back even
-  // when a caller's projection forgot to ask for it.
+  /**
+   * `brandId` is what ownership is decided on, so it is always read back even
+   * when a caller's projection forgot to ask for it.
+   *
+   * 🔴 `__v` for a sharper reason. An inclusion projection returns **only** the
+   * named fields, so a document loaded without the version key has no version to
+   * check — and Mongoose then saves it with no version predicate at all, even
+   * with `optimisticConcurrency` on. The lock would not fail loudly; it would
+   * **silently not be a lock**, on exactly the read-modify-write paths it exists
+   * to protect, and every service in this domain projects.
+   *
+   * Measured both ways in `__tests__/money/showcaseVersionLock.test.js`: the same
+   * two concurrent deletes damage the order when loaded through a projection
+   * without `__v`, and raise a `VersionError` when loaded through this function.
+   *
+   * A guarantee that quietly does nothing is worse than no guarantee, because
+   * everyone downstream believes it.
+   */
   const projection = options.projection
-    ? { ...options.projection, brandId: 1 }
+    ? { ...options.projection, brandId: 1, __v: 1 }
     : undefined;
 
   const query = ShowcaseSection.findOne(filter, projection);

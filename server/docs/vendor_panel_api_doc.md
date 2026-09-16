@@ -3567,6 +3567,31 @@ Allowed videos: `video/mp4` · `video/webm` · `video/quicktime`
 > na ho, wo customer ko dikhta hi nahi. Admin ise badal sakta hai — badhane par
 > chhote sections turant chhup jaate hain.
 
+### 🆕 `409` — koi aur usi section par kaam kar raha tha
+
+Ek hi section par do log ek saath likhein — ek media delete kare, dusra usi waqt
+reorder kare — to **dusre ko `409` milta hai**, aur uski write hoti hi nahi:
+
+```json
+{
+  "success": false,
+  "message": "Somebody else changed this while you were editing it. Reload and try again."
+}
+```
+
+Ye **sab section-write endpoints** par lag sakta hai — #46 (update), #49 (media
+update), #50 (media replace), #51 (media reorder), #52 (media delete), #53
+(section delete). Pehle aisi haalat me dono write "safal" hoti thi aur section ka
+order aadha-aadha bach jaata tha — panel me media `1, 3` par dikhte the, `1, 2`
+par nahi.
+
+**Client ko kya karna hai:** section dobara fetch karke user ko naya state
+dikhaiye, phir unka action repeat karwaiye. Apne aap retry **mat** kijiye — jo
+badla hai wo user ko dikhna chahiye, warna wahi conflict phir se hoga.
+
+Ye error toote hue server ka nahi hai: write isliye ruki kyunki document beech me
+badal gaya. `500` nahi bhejte, isliye "Something went wrong" wala raasta khatam.
+
 ---
 
 ## 43. POST /showcase/section/add

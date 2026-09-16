@@ -2798,7 +2798,15 @@ Koi ownership check nahi — admin ke liye theek, par sabke liye khula hai.
 
 # Showcase APIs
 
-Admin showcase ke **saare 11 endpoints** chala sakta hai — section/media CRUD samet. Sab `routes/showcase.js` me `isVendorOrAdmin` ke peeche hain, aur `helpers/showcases/resolveSectionForActor.js:46` admin ke liye ownership check chhod deta hai (*"Admins moderate every brand's content"*).
+Admin showcase ke **saare 11 endpoints** chala sakta hai — section/media CRUD samet. Sab `routes/showcase.js` me `isVendorOrAdmin` ke peeche hain, aur `helpers/showcases/resolveSectionForActor.js:62` admin ke liye ownership check chhod deta hai (*"Admins moderate every brand's content"*).
+
+> 🆕 **`409` — koi aur usi section par kaam kar raha tha.** Admin aur vendor ek hi
+> section par ek saath likhein to **dusre ko `409`** milta hai aur uski write hoti
+> hi nahi: *"Somebody else changed this while you were editing it. Reload and try
+> again."* Admin ke liye ye khaas tarah se mumkin hai — moderation ke waqt vendor
+> apni gallery edit kar raha ho sakta hai. Section dobara fetch karke action
+> repeat kijiye; apne aap retry mat kijiye. Poora explanation aur affected
+> endpoints ki list [vendor doc](./vendor_panel_api_doc.md) ke Showcase block me.
 
 Neeche sirf do ke apne section hain — `get-all` (#36) aur `reorder` (#37), kyunki baaki nau ki request aur saved example [vendor collection](./vendor_panel_api_doc.md) ke `10 — Showcase` folder me hain. Unki list [Showcase — admin bhi kar sakta hai](#showcase--admin-bhi-kar-sakta-hai) me hai.
 

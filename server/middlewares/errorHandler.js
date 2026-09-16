@@ -8,6 +8,26 @@ exports.errorHandler = (err, req, res, next) => {
     const cleanMessage = Object.values(err.errors)[0].message;
     return sendError(res, 422, cleanMessage);
   }
+  /**
+   * ⭐ Two people edited the same document at once.
+   *
+   * 🔴 Without this branch a `VersionError` fell through to the 500 below, so a
+   * vendor reordering media while a colleague deleted one was told
+   * "Something went wrong" — an answer that reads as a broken server and invites
+   * exactly the wrong response, which is to try something else. It is not broken
+   * and the fix is simply to reload: the request was refused **because** the
+   * document moved, which is the guarantee working.
+   *
+   * `409 Conflict` is what a client can act on, and the message says the one
+   * thing that resolves it.
+   */
+  if (err.name === "VersionError") {
+    return sendError(
+      res,
+      409,
+      "Somebody else changed this while you were editing it. Reload and try again.",
+    );
+  }
   // ⭐ Handle Duplicate Key Error
   if (err.code === 11000) {
     const field = Object.keys(err.keyValue)[0];

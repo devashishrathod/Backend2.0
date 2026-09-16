@@ -126,7 +126,44 @@ const showcaseSectionSchema = new mongoose.Schema(
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
   },
-  { timestamps: true, versionKey: false },
+  /**
+   * ⚠️ `__v` is **on** here, unlike most models in this repo — and `__v` alone
+   * was not enough.
+   *
+   * 🔴 Every renumber in this domain is a read-modify-write over the whole
+   * `medias` array — load the section, recompute `sortOrder` on each row, save.
+   * Two of those at once do **not** produce a clean last-writer-wins: Mongoose
+   * sends a `$set` only for the paths that moved relative to *that writer's own
+   * load*, so the second writer stays silent about positions the first already
+   * shifted and the section keeps half of each renumber. Measured: four photos,
+   * one deleted by each of two vendors, and the two survivors come back at
+   * positions 2 and 3 with nothing at 1 — the "1, 3" the panel has been showing.
+   * Both vendors were told it worked, because both deletes did work.
+   *
+   * ### Why `optimisticConcurrency` and not just the version key
+   *
+   * Dropping `versionKey: false` gets the field back, but Mongoose's **default**
+   * versioning only puts `__v` in the update filter for operations it judges
+   * positionally unsafe — `$pop`, `$pull`, and friends. Every write in this
+   * domain is a `$set` on a positional path (`medias.3.isDeleted`,
+   * `medias.3.sortOrder`), which is not one of them, so the save went out with
+   * **no version predicate at all** and both writers won.
+   *
+   * That was measured, not assumed: `__tests__/money/showcaseVersionLock.test.js`
+   * reproduces the damaged order, and every conflict test in it still passed
+   * with the version key on and this flag off. A lock that is present in the
+   * schema and absent from the query is worse than none, because everything
+   * downstream believes it.
+   *
+   * `optimisticConcurrency: true` checks the version on **every** `save()`, which
+   * is what this domain needs. `errorHandler` turns the resulting `VersionError`
+   * into a **409** telling the vendor to reload — a refused write they can retry
+   * beats a quiet corruption they cannot see.
+   *
+   * The cost is that any caller doing `findOne` → mutate → `save()` must handle
+   * the conflict; `updateOne` / `findOneAndUpdate` paths are unaffected.
+   */
+  { timestamps: true, optimisticConcurrency: true },
 );
 
 // Indexes are shaped after the three queries that actually run, rather than one
