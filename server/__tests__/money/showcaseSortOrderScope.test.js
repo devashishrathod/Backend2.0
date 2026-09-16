@@ -34,6 +34,7 @@ const {
   reorderSectionMedia,
 } = require("../../services/showcases/reorderSectionMedia");
 const { createSection } = require("../../services/showcases/createSection");
+const { updateSection } = require("../../services/showcases/updateSection");
 const {
   resolveActorBrand,
 } = require("../../helpers/brands/resolveActorBrand");
@@ -455,6 +456,40 @@ describe("sections are dense across the brand", () => {
 
     expect(fresh.sortOrder).toBe(3);
     expect(await sectionOrder()).toEqual(["B@1", "C@2", "D@3"]);
+  });
+
+  /**
+   * 🔴 S-13 — the update endpoint used to write the payload's number straight
+   * through, so two sections could hold `1` and one could hold `99`. Nothing
+   * renumbered afterwards, so the list just stayed wrong, and which of the two
+   * came first depended on which document Mongo returned.
+   *
+   * The validator drops the field now, but the service is tested with it still
+   * present: a validator can be bypassed by a seeder or a script, and this is the
+   * layer that has to hold either way.
+   */
+  test("updating a section cannot move it", async () => {
+    await makeSection([photo(1)], {
+      title: "First",
+      slug: "first",
+      sortOrder: 1,
+    });
+    const second = await makeSection([photo(1)], {
+      title: "Second",
+      slug: "second",
+      sortOrder: 2,
+    });
+
+    await updateSection(ADMIN, {
+      sectionId: second._id,
+      title: "Renamed",
+      sortOrder: 1,
+    });
+
+    const stored = await ShowcaseSection.findById(second._id).lean();
+    expect(stored.title).toBe("Renamed");
+    expect(stored.sortOrder).toBe(2);
+    expect(await sectionOrder()).toEqual(["First@1", "Renamed@2"]);
   });
 
   test("another brand's sections are not renumbered", async () => {

@@ -3606,7 +3606,7 @@ Naya showcase section banata hai.
 | `brandId` | ObjectId | admin ke liye ✅ | – | Vendor ke liye optional (apna brand auto) |
 | `title` | string | ✅ | – | 2–60 chars. **Jaisa likha waisa store hota hai** (pehle lowercase hota tha) |
 | `description` | string | ❌ | – | Max 500 chars, `""` allowed |
-| `sortOrder` | number | ❌ | **server decide karta hai** | 🆕 Bheja to **ignore** hota hai — note 4 |
+| ~~`sortOrder`~~ | — | — | **server decide karta hai** | 🆕 **Hata diya gaya** — note 4 |
 | `sectionType` | string | ❌ | `CUSTOM` | `CUSTOM` \| `SYSTEM` |
 | `isActive` | boolean | ❌ | `true` | |
 | `isVisible` | boolean | ❌ | `true` | `false` bhejein to section hidden banega |
@@ -3672,7 +3672,7 @@ Wajah deleted sections nahi the — wo query pehle se `isDeleted: false` filter 
 
 Ab positions **dense `1..n`** rehti hain. Delete (#53) gap band karta hai, aur **create bhi pehle brand ko dense karta hai** — to jin brands me ye drift pehle se hai, unka agla section banate hi list sudhar jaati hai aur naya section hamesha aakhir me aata hai.
 
-Request me `sortOrder` bhejenge to wo **ignore** hoga — position sirf reorder endpoint (#47) ki property hai, wahi wajah jo media update (#49) me pehle se lagu hai.
+🔴 **Request se `sortOrder` hata diya gaya hai** — position sirf reorder endpoint (#47) ki property hai, wahi wajah jo media update (#49) me pehle se lagu thi. Purana client bhejta rahe to `422` nahi aayega; `stripUnknown` use chup-chaap hata deta hai.
 
 **5. ✅ Teeno toggle ab actually apply hote hain** (naya) — `isActive` / `isVisible` / `isShowVideosInClips` validator accept karta tha par service inhe drop kar deti thi, to hidden section banane ki koshish karne pe bhi visible section banta tha.
 
@@ -3916,7 +3916,7 @@ Panel me "Hidden" tab chahiye to `?isVisible=false` bhejein.
 |---|---|---|
 | `title` | string | 2–60 chars |
 | `description` | string | Max 500 chars, `""` bhej kar clear kar sakte hain |
-| `sortOrder` | number | Integer ≥ **1** (pehle `0` bhi allowed tha — ab create/reorder ke saath consistent) |
+| ~~`sortOrder`~~ | — | 🆕 **Hata diya gaya** — neeche note dekhein |
 | `sectionType` | string | `CUSTOM` \| `SYSTEM` |
 | `isActive` | boolean | – |
 | `isVisible` | boolean | – |
@@ -4013,6 +4013,12 @@ Section poora hatana ho tabhi delete (#53) — wohi slot release karta hai.
 **4. ✅ Rename pe slug ab drift nahi karta** (naya) — pehle har rename `ambience` → `ambience-2` → `ambience-3` karta chala jaata tha, kyunki section apne hi slug se "duplicate" match kar jaata tha.
 
 **5. ✅ Ownership check hoti hai** — `resolveSectionForActor`.
+
+**6. 🔴 `sortOrder` hata diya gaya hai** (naya) — position ab sirf reorder endpoint (#47) badalta hai. Yahan se set karne par do sections ek hi number par aa sakte the (ya ek `99` par), aur baad me kuch renumber karta hi nahi tha — to list bas galat padi rehti, bina kisi error ke. Koi per-field rule isse rok nahi sakta: uniqueness aur density **poori list** ki property hain, isliye wo wahin check ho sakti hain jahan poori list aati hai.
+
+Media update (#49) me ye pehle se aisa hi tha — ab baaki domain bhi wahin aa gaya.
+
+> Purana client `sortOrder` bhejta rahe to `422` **nahi** milega — `stripUnknown` use chup-chaap hata deta hai. Kuch migrate karne ki zarurat nahi; bas wo value ka ab koi asar nahi.
 
 ---
 

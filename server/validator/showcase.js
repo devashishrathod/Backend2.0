@@ -7,6 +7,19 @@ const {
   SHOWCASE_COVER_IMAGE_MODE,
 } = require("../constants/showcase");
 
+/**
+ * ⚠️ No `sortOrder` here, and none on update either (S-13).
+ *
+ * Positions belong to the reorder endpoints, which renumber a whole list at once
+ * and can therefore keep it dense and unique. A position accepted one section at
+ * a time cannot: two creates naming `1` both get it, and the order that comes
+ * back depends on which document Mongo returns first. The media update endpoint
+ * has refused it from the start for exactly this reason; this is the rest of the
+ * domain catching up.
+ *
+ * `stripUnknown` is on for every request, so a client still sending the field
+ * has it dropped rather than being refused — nothing to migrate.
+ */
 exports.validateCreateSection = Joi.object({
   // Required when an admin is creating on a brand's behalf; a vendor may omit
   // it and gets their own brand. `resolveActorBrand` enforces both halves.
@@ -21,9 +34,6 @@ exports.validateCreateSection = Joi.object({
   }),
   description: Joi.string().trim().allow("").max(500).optional().messages({
     "string.max": "Description cannot exceed 500 characters.",
-  }),
-  sortOrder: Joi.number().integer().min(1).optional().messages({
-    "number.min": "Sort order must be at least 1.",
   }),
   sectionType: Joi.string()
     .valid(...Object.values(SHOWCASE_SECTION_TYPE))
@@ -101,10 +111,7 @@ exports.validateUpdateSection = {
     description: Joi.string().trim().allow("").max(500).optional().messages({
       "string.max": "Description cannot exceed 500 characters.",
     }),
-    // Min 1, matching create and reorder. It used to allow 0 here only.
-    sortOrder: Joi.number().integer().min(1).optional().messages({
-      "number.min": "Sort order must be at least 1.",
-    }),
+    // ⚠️ No `sortOrder` — see the note on `validateCreateSection`.
     sectionType: Joi.string()
       .valid(...Object.values(SHOWCASE_SECTION_TYPE))
       .optional()

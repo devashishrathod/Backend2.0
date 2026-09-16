@@ -53,7 +53,17 @@ exports.updateSection = async (actor, payload) => {
   if (payload.sectionType !== undefined) {
     section.sectionType = payload.sectionType;
   }
-  if (payload.sortOrder !== undefined) section.sortOrder = payload.sortOrder;
+  /**
+   * ⚠️ `sortOrder` is not here, and is not accepted (S-13).
+   *
+   * 🔴 It used to be written straight through from the payload, so a vendor
+   * could put two sections on `1` — or one on `99` — and the order that came
+   * back depended on which document Mongo returned first. Nothing renumbered
+   * afterwards, so the section list simply stayed wrong.
+   *
+   * Positions move through `PUT /showcase/section/:brandId/reorder`, which takes
+   * the whole list and can keep it dense and unique.
+   */
   if (payload.isActive !== undefined) section.isActive = payload.isActive;
   if (payload.isVisible !== undefined) section.isVisible = payload.isVisible;
   if (payload.isShowVideosInClips !== undefined) {
