@@ -1046,6 +1046,24 @@ only what is done leaves them to go re-read the plan to find out what they are
 approving next, and it hides the case where the plan and the work have drifted
 apart. Asked for on 2026-09-15.
 
+### 🔴 A running suite reports its progress, always
+
+Whenever a test suite runs — any suite, any session, asked for or not — keep
+reporting where it is while it runs. Never start one and go quiet until it ends.
+
+The money suite is the reason: ~79 files against real Atlas, the better part of
+an hour. A silent hour is indistinguishable from a hung run, and the first
+failure is worth knowing about at minute three rather than minute fifty.
+
+**What an update says:** how many files are done out of the total, which ones
+have failed so far, and — when something fails — whether it looks related to the
+change under test or not. A count with no triage is noise.
+
+**How:** run it backgrounded with output to a file, and read that file between
+other work rather than blocking on it. Report at natural pauses, not on a timer.
+
+This is a standing rule; it does not need to be asked for again.
+
 ### Databases here are disposable
 
 `Trydood2` (dev), `Trydood2_postman` (collection fixtures) and `Trydood2_test`
