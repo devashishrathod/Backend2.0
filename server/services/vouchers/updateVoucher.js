@@ -197,13 +197,26 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
   let uploadedImages = [];
   let removedImagesToDelete = [];
   try {
-    session.startTransaction();
-
+    /**
+     * ---------------- reads and uploads first, transaction after ----------------
+     *
+     * 🔴 P3 — the image upload used to run **inside** the transaction.
+     *
+     * Five images to S3 with a Mongo transaction open means the transaction's
+     * locks are held for the length of the upload, and the server aborts it at
+     * `transactionLifetimeLimitSeconds` (60 by default). A vendor on a slow
+     * connection did not get a slow edit: they got one that ran for a minute,
+     * uploaded everything, and then failed at commit talking about a
+     * transaction — with the bytes already paid for.
+     *
+     * Everything between here and `startTransaction()` below is reads and pure
+     * merging. The transaction covers the writes, which is what it was for.
+     */
     const voucher = await Voucher.findOne({
       _id: payload.voucherId,
       isDeleted: false,
       isActive: true,
-    }).session(session);
+    });
 
     if (!voucher) throwError(404, "Voucher not found.");
 
@@ -216,14 +229,13 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
       throwError(400, "Voucher has no editable version.");
     }
 
+    // No session — the transaction has not started yet, and this is a read.
     const currentVersion = await VoucherVersion.findOne({
       _id: voucher.currentVersionId,
       voucherId: voucher._id,
       isDeleted: false,
       isActive: true,
-    })
-      .session(session)
-      .lean();
+    }).lean();
 
     if (!currentVersion) throwError(404, "Voucher current version not found.");
 
@@ -279,14 +291,19 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
     const normalizedName = normalizeVoucherName(name);
 
     if (payload.name !== undefined) {
+      /**
+       * ⚠️ No session, and it does not need one — see the same read in
+       * `createVoucher`. This turns the common case into a clear 409; the
+       * partial unique index on `(brandId, normalizedName)` is what actually
+       * settles a race, and the `11000` branch below turns that into the same
+       * 409.
+       */
       const duplicateVoucher = await Voucher.findOne({
         _id: { $ne: voucher._id },
         brandId: voucher.brandId,
         normalizedName,
         isDeleted: false,
-      })
-        .session(session)
-        .select("_id");
+      }).select("_id");
       if (duplicateVoucher) {
         throwError(
           409,
@@ -338,6 +355,9 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
       maxImages,
       minImages,
     );
+
+    // ---------------- the writes, and only the writes: inside ----------------
+    session.startTransaction();
 
     const existingSubBrandDocs = await VoucherSubBrand.find({
       voucherId: voucher._id,

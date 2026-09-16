@@ -67,7 +67,6 @@ exports.createVoucher = async (actor, payload, files = {}) => {
   let uploadedImages = [];
   let uploadedBanner = null;
   try {
-    session.startTransaction();
     let {
       brandId,
       name,
@@ -80,6 +79,24 @@ exports.createVoucher = async (actor, payload, files = {}) => {
       isActive,
       bannerType,
     } = payload;
+
+    /**
+     * ---------------- everything that does not write: outside ----------------
+     *
+     * 🔴 P3 — the uploads used to run **inside** the transaction.
+     *
+     * A voucher carries up to five images and a banner that may be a video, and
+     * every one of those bytes went to S3 with a Mongo transaction open. A
+     * transaction holds its locks for its whole life and the server aborts it at
+     * `transactionLifetimeLimitSeconds` — 60 by default. So a vendor on a slow
+     * connection did not get a slow request: they got a create that ran for a
+     * minute, uploaded everything, and then failed at commit with an error about
+     * a transaction, having paid for the storage.
+     *
+     * Nothing below the line needs a transaction. These are reads and pure
+     * validation, and the uploads touch no document at all — the transaction
+     * exists for the four inserts that follow them, which take milliseconds.
+     */
     const brand = await Brand.findById(brandId);
     if (!brand || brand.isDeleted) throwError(400, "Brand not found");
 
@@ -89,26 +106,30 @@ exports.createVoucher = async (actor, payload, files = {}) => {
     if (!normalizedName) throwError(400, "Voucher name is required.");
 
     const { categoryId, subCategoryId } = brand;
+    /**
+     * ⚠️ No session, and it does not need one.
+     *
+     * This read is a **courtesy**: it turns the common case into a clear 409
+     * instead of a duplicate-key error. What actually enforces uniqueness is the
+     * partial unique index on `(brandId, normalizedName)` where `isDeleted:
+     * false` — and the `11000` branch in the catch below turns that into the
+     * same 409. Two creates racing the same name were always settled by the
+     * index; running this inside a transaction never changed that.
+     */
     const existingVoucher = await Voucher.findOne({
       brandId,
       normalizedName,
       isDeleted: false,
-    })
-      .session(session)
-      .select("_id");
+    }).select("_id");
 
     if (existingVoucher) {
       throwError(409, "Voucher with this name already exists for this brand.");
     }
 
-    await validateVoucherCategory(categoryId, session);
-    await validateVoucherSubCategory(subCategoryId, categoryId, session);
+    await validateVoucherCategory(categoryId);
+    await validateVoucherSubCategory(subCategoryId, categoryId);
 
-    const subBrands = await validateVoucherSubBrands(
-      subBrandIds,
-      brandId,
-      session,
-    );
+    const subBrands = await validateVoucherSubBrands(subBrandIds, brandId);
 
     // The whole config, not two numbers off it — `validateVoucherImages` needs
     // the size ceilings too, which is what P12 was missing.
@@ -136,7 +157,25 @@ exports.createVoucher = async (actor, payload, files = {}) => {
     const voucherId = new mongoose.Types.ObjectId();
     uploadedImages = await uploadVoucherImages(voucherFiles, voucherId);
 
+    /**
+     * The banner goes up here too, for the same reason — and it is the one that
+     * matters most, because a banner may be a **video**. It used to upload after
+     * `Voucher.create`, purely because it wanted the id; the id is minted above,
+     * so nothing required that.
+     */
+    const bannerField = bannerType ? VOUCHER_BANNER_MEDIA_FIELD[bannerType] : null;
+    if (bannerType) {
+      uploadedBanner = await uploadVoucherBannerMedia(
+        bannerType,
+        files?.[VOUCHER_BANNER_FILE_FIELD[bannerType]],
+        voucherId,
+      );
+    }
+
     tags = getUniqueTags(tags || []);
+
+    // ---------------- the writes, and only the writes: inside ----------------
+    session.startTransaction();
 
     const { voucherCode } = await generateVoucherCode(session);
 
@@ -196,14 +235,8 @@ exports.createVoucher = async (actor, payload, files = {}) => {
       { session },
     );
 
+    // Already uploaded above; this only attaches what came back.
     if (bannerType) {
-      const bannerField = VOUCHER_BANNER_MEDIA_FIELD[bannerType];
-      const bannerFile = files?.[VOUCHER_BANNER_FILE_FIELD[bannerType]];
-      uploadedBanner = await uploadVoucherBannerMedia(
-        bannerType,
-        bannerFile,
-        voucher._id,
-      );
       voucher.banner = { type: bannerType, [bannerField]: uploadedBanner };
     }
 
@@ -236,7 +269,14 @@ exports.createVoucher = async (actor, payload, files = {}) => {
       status: version.status,
     };
   } catch (error) {
-    await session.abortTransaction();
+    /**
+     * ⚠️ Guarded, because most failures now happen **before** the transaction
+     * starts — a duplicate name, a bad category, an image over the size cap, a
+     * failed upload. `abortTransaction()` on a session that never began one
+     * throws, and that error would replace the real one: the vendor would be
+     * told about a transaction instead of their voucher.
+     */
+    if (session.inTransaction()) await session.abortTransaction();
     // Hand the reserved slot back before rethrowing, otherwise a failed create
     // silently costs the vendor one voucher from their plan.
     await releaseSlot(payload.brandId, ENTITLEMENT_BUCKETS.VOUCHERS);

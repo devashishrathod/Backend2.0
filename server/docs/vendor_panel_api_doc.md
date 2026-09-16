@@ -4822,7 +4822,17 @@ bannerImage:  <file>
 
 ### ⚠️ Edge cases & notes
 
-**1. Fully transactional hai.** Voucher + Version + SubBrand mappings sab ek MongoDB transaction me bante hain. Fail hone pe **uploaded images bhi rollback** ho jaati hain (`rollbackVoucherImages`).
+**1. Writes fully transactional hain.** Voucher + Version + SubBrand mappings sab ek MongoDB transaction me bante hain. Fail hone pe **uploaded images bhi rollback** ho jaati hain (`rollbackVoucherImages`), aur plan ka slot bhi wapas milta hai.
+
+> ### 🆕 Uploads ab transaction ke **bahar** hote hain
+>
+> Pehle images aur banner dono transaction khulne ke **baad** upload hote the. Transaction apne locks poori umar rakhta hai aur server use `transactionLifetimeLimitSeconds` (default **60s**) par khud abort kar deta hai. Matlab slow connection wale vendor ko slow request nahi milti thi — use ek aisi request milti thi jo minute bhar chalti, sab kuch upload kar deti, aur phir commit par transaction ki error deti. Bytes ka paisa lag chuka hota.
+>
+> Ab tarteeb ye hai: **saari validation aur dono upload pehle, transaction sirf writes ke liye** — jo milliseconds me hote hain. Banner bhi isi wajah se pehle chala gaya (wo video ho sakta hai); use voucher id chahiye thi, aur wo id upload se pehle hi ban jaati hai.
+>
+> **Aapke liye kya badla:** kuch nahi, contract wahi hai. Farak sirf ye ki ab ek badi upload par transaction timeout nahi milega, aur upload fail hone par error **upload ki** hogi — transaction ki nahi.
+>
+> ⚠️ Iska matlab ye bhi hai ki ab zyadatar failures transaction shuru hone se **pehle** hote hain (duplicate naam, galat category, image size, upload fail). Rollback aur slot release dono par pehle jaisa hi chalte hain.
 
 **2. `offers` JSON string ho sakta hai** — multipart me array bhejna mushkil hai, isliye validator string parse kar leta hai. Error message me index bhi aata hai (`Offer 1: …`).
 
@@ -4889,6 +4899,17 @@ Voucher edit — **naya version banata hai**. Multipart.
 >
 > Vendor ko farak nahi padta: image us version se hat hi jaati hai. Ye sirf ye
 > batata hai ki purana version kyun theek chalta rehta hai.
+>
+> 🆕 Ab ye baat **service level par test** hoti hai — v1 PUBLISHED, uska fork v2,
+> v2 se shared image hatao, aur v1 ki file zinda rehni chahiye. Pehle iska koi
+> test is raaste par nahi tha, to check ko bypass karne wala change kahin pakda
+> hi nahi jaata.
+
+> ### 🆕 Images ab transaction ke **bahar** upload hoti hain
+>
+> Wahi badlav jo create (#54) par hai: upload pehle, transaction sirf writes ke
+> liye. Ek badi upload par ab transaction timeout nahi milega, aur upload fail ho
+> to error **upload ki** aayegi, transaction ki nahi. Contract wahi hai.
 
 ```json
 {
