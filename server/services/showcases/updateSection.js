@@ -9,6 +9,7 @@ const {
   formatSectionSummary,
   getMediaCoverImage,
   syncSectionCoverImage,
+  assertBrandKeepsAVisibleSection,
 } = require("../../helpers/showcases");
 
 /**
@@ -25,6 +26,14 @@ exports.updateSection = async (actor, payload) => {
   // Returns the document, so the second identical `findOne` this service used
   // to run is gone.
   const section = await resolveSectionForActor(actor, payload.sectionId);
+
+  /**
+   * S-3 — a brand keeps one section customers can see.
+   *
+   * Checked before anything is written, so a refused request leaves the title
+   * and description exactly as they were rather than half-applied.
+   */
+  await assertBrandKeepsAVisibleSection(section, { payload, actor });
 
   if (payload.title !== undefined) {
     const title = toDisplayName(payload.title);

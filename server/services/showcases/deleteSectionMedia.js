@@ -4,6 +4,8 @@ const {
   deleteMedia,
   resequenceMedias,
   syncSectionCoverImage,
+  countVisibleMedia,
+  assertSectionKeepsItsFloor,
 } = require("../../helpers/showcases");
 
 /**
@@ -32,12 +34,25 @@ exports.deleteSectionMedia = async (actor, payload) => {
     throwError(404, "Media not found.");
   }
 
-  const liveCount = section.medias.filter(
-    (entry) => entry.isActive && !entry.isDeleted,
-  ).length;
-  if (liveCount <= 1) {
+  /**
+   * A section cannot be emptied from here — use the section delete endpoint.
+   *
+   * ⚠️ Kept alongside the floor below rather than folded into it. The floor is
+   * configurable and only fires on the way past it, so a section already under
+   * `minItems` is free to shrink; this one is the hard bottom, and it is what
+   * keeps that freedom from ending at zero.
+   */
+  if (countVisibleMedia(section.medias) <= 1) {
     throwError(400, "At least one media is required in this section.");
   }
+
+  // S-3: refuse a delete that would drop a live section off the customer's
+  // profile. Admins are exempt — an admin removing media is moderating.
+  await assertSectionKeepsItsFloor(section, {
+    mediaId: payload.mediaId,
+    actor,
+    statusCode: 400,
+  });
 
   const removed = item.toObject();
 

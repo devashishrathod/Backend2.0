@@ -29,6 +29,12 @@ const {
 const { resolveSectionForActor } = require("./resolveSectionForActor");
 const { resequenceSections } = require("./resequenceSections");
 const {
+  countVisibleMedia,
+  assertSectionKeepsItsFloor,
+  assertBrandKeepsASection,
+  assertBrandKeepsAVisibleSection,
+} = require("./guards");
+const {
   customerSectionMatch,
   visibleMediaCondition,
   managedMediaCondition,
@@ -46,6 +52,11 @@ const {
 module.exports = {
   resolveSectionForActor,
   resequenceSections,
+  // Write guards — the two floors, in one place (guards.js)
+  countVisibleMedia,
+  assertSectionKeepsItsFloor,
+  assertBrandKeepsASection,
+  assertBrandKeepsAVisibleSection,
   generateSlug,
   generateUniqueSlug,
   normalizeFiles,

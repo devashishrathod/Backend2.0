@@ -8,6 +8,7 @@ const {
   syncSectionCoverImage,
   formatManagedMedia,
   rollbackUploads,
+  assertSectionKeepsItsFloor,
 } = require("../../helpers/showcases");
 
 /**
@@ -57,6 +58,23 @@ exports.updateSectionMedia = async (actor, payload, thumbnailFile) => {
       "isShowInVideoClips applies to video media only. This media is a photo.",
     );
   }
+  /**
+   * S-3 — hiding a media is a delete as far as a customer is concerned, so it
+   * meets the same floor. A rule that caught only the delete would be one the
+   * vendor walks around without meaning to: switch three media off and the
+   * section leaves their profile exactly as if they had removed them.
+   *
+   * 422 rather than the delete's 400 — this is a field on an update being
+   * refused, which is the shape the rest of this service already answers with.
+   */
+  if (isActive === false) {
+    await assertSectionKeepsItsFloor(section, {
+      mediaId,
+      actor,
+      statusCode: 422,
+    });
+  }
+
   if (thumbnailFile && !isVideo) {
     throwError(
       422,

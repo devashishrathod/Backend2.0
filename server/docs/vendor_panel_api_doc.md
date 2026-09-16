@@ -3567,6 +3567,29 @@ Allowed videos: `video/mp4` · `video/webm` · `video/quicktime`
 > na ho, wo customer ko dikhta hi nahi. Admin ise badal sakta hai — badhane par
 > chhote sections turant chhup jaate hain.
 
+### 🆕 Do floors — section apne aap customer se gayab na ho jaye
+
+Ab tak sab ceilings the. Ye do floors kehte hain ki **kam se kam kya bacha rehna chahiye**, aur inhe todne wali write **rok di jaati hai**:
+
+| Floor | Default | Kya rokta hai |
+|---|---|---|
+| `minItemsPerSection` | `3` | Jo delete/hide section ko customer ki nazar se **utaar de** |
+| `minSectionsPerBrand` | `1` | Brand ka **aakhri section** delete karna, ya aakhra dikhne wala hide karna |
+
+**Media hide karna = media delete karna** (customer ke liye). Isliye `isActive: false` (#49) par wahi floor lagta hai jo delete (#52) par — warna vendor teen media chup-chaap off karke wahi haalat bana leta, bina kisi rok ke.
+
+> ⚠️ **Jo section pehle se floor ke neeche hai, uspar rok nahi hai.**
+>
+> `minItems` 3 hai aur section me 2 media hain — wo section customer ko waise bhi nahi dikh raha. Uspar delete rokne se kuch bachta nahi, sirf vendor phansta hai: media delete band, aur "poora section delete kar dein" wala raasta bhi band (kyunki `minSectionsPerBrand` 1 se neeche nahi ja sakta). Ek section, do photo — koi legal move hi nahi bachta.
+>
+> Isliye rok sirf **us kadam par** hai jo section ko floor se neeche le jaata hai. Neeche wala section ghat sakta hai, `1` tak — us par purana rule lagta hai: *"At least one media is required in this section."*
+
+**ADMIN par ye floors nahi lagte.** Admin media hata raha hai matlab wo **moderate** kar raha hai. Agar floor use rokta, to platform kisi galat content ko isliye nahi utaar paata kyunki utaarne se section chhota ho jayega — floor vendor ko apni hi galti se bachane ke liye hai, content ko platform se nahi.
+
+**Client ko kya karna hai:** ye `400`/`422` message me hi raasta likha hota hai (naya media add karein, ya doosra section dikhayein). Message seedha dikha dena kaafi hai.
+
+---
+
 ### 🆕 `409` — koi aur usi section par kaam kar raha tha
 
 Ek hi section par do log ek saath likhein — ek media delete kare, dusra usi waqt
@@ -3991,6 +4014,7 @@ Panel me "Hidden" tab chahiye to `?isVisible=false` bhejein.
 |---|---|---|
 | `404` | `Showcase section not found.` | |
 | `409` | `Section title already exists.` | Naya title kisi aur section ka hai |
+| `422` | 🆕 `This is the last section customers can see on your profile. Show another one before hiding this.` | `isVisible: false` ya `isActive: false`, aur brand ka koi aur section on nahi hai. **ADMIN par nahi lagta.** |
 | `422` | *(min-1 message)* | Body khali |
 | `422` | `Section title must contain at least 2 characters.` | |
 
@@ -4270,6 +4294,7 @@ Media ka metadata update — **file nahi badalti**.
 | `404` | `Media not found.` | Media nahi, ya soft-deleted hai |
 | `422` | `isShowInVideoClips applies to video media only. This media is a photo.` | **Naya** |
 | `422` | `A custom thumbnail can only be set on video media. This media is a photo.` | **Naya** |
+| `422` | 🆕 `A section needs at least 3 visible media to stay on your profile. Add another one first, or delete the whole section.` | `isActive: false` bheja aur wo section ko floor se **neeche** le jaata. Hide karna delete jaisa hi hai — [floors block](#🆕-do-floors--section-apne-aap-customer-se-gayab-na-ho-jaye). **ADMIN par nahi lagta.** |
 | `400` | `Thumbnail must be an image in a supported format.` | **Naya** — thumbnail ab validate hoti hai |
 | `400` | `Thumbnail exceeds maximum image size of 10 MB.` | **Naya** |
 | `422` | *(Joi message)* | invalid ids, title/altText limit cross |
@@ -4457,6 +4482,7 @@ Hidden ≠ deleted: jo vendor ko apne panel me dikhti hai, wo order ka hissa hai
 |---|---|---|
 | `404` | `Media not found.` | Section ya media nahi, ya pehle se deleted/inactive |
 | `400` | `At least one media is required in this section.` | ⚠️ **Aakhri live media delete nahi kar sakte** |
+| `400` | 🆕 `A section needs at least 3 visible media to stay on your profile. Add another one first, or delete the whole section.` | Delete section ko floor se **neeche** le jaata. Number `Setting` se aata hai. **ADMIN par nahi lagta.** Jo section pehle se neeche hai wo ghat sakta hai — [floors block](#🆕-do-floors--section-apne-aap-customer-se-gayab-na-ho-jaye) dekhein |
 
 ### ⚠️ Notes
 
@@ -4509,6 +4535,7 @@ Poora section delete — media ke saath.
 |---|---|
 | `404` | `Showcase section not found.` |
 | `422` | `Invalid section ID format` |
+| `400` | 🆕 `A brand needs at least one showcase section. Create another one before deleting this.` | Ye brand ka aakhri non-deleted section hai. **ADMIN par nahi lagta.** |
 
 ### ⚠️ Notes
 

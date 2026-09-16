@@ -2800,6 +2800,8 @@ Koi ownership check nahi — admin ke liye theek, par sabke liye khula hai.
 
 Admin showcase ke **saare 11 endpoints** chala sakta hai — section/media CRUD samet. Sab `routes/showcase.js` me `isVendorOrAdmin` ke peeche hain, aur `helpers/showcases/resolveSectionForActor.js:62` admin ke liye ownership check chhod deta hai (*"Admins moderate every brand's content"*).
 
+> 🆕 **Vendor ke do floors admin par lagte hi nahi.** Vendor ko ab rok hai: media delete/hide jo section ko `minItemsPerSection` (default 3) se neeche le jaaye, brand ka aakhri section delete karna, aur aakhri dikhne wale section ko hide karna. **Admin ke liye chaaron rok band hain** — admin media hata raha hai matlab wo moderate kar raha hai, aur floor use rokta to platform kisi galat content ko sirf isliye nahi utaar paata kyunki utaarne se section chhota ho jaata. Floor vendor ko apni galti se bachane ke liye hai, content ko platform se nahi. Poori table [vendor doc](./vendor_panel_api_doc.md) ke Showcase floors block me.
+
 > 🆕 **`409` — koi aur usi section par kaam kar raha tha.** Admin aur vendor ek hi
 > section par ek saath likhein to **dusre ko `409`** milta hai aur uski write hoti
 > hi nahi: *"Somebody else changed this while you were editing it. Reload and try

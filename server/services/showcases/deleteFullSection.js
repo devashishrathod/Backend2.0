@@ -2,6 +2,7 @@ const {
   deleteAllMedia,
   resolveSectionForActor,
   resequenceSections,
+  assertBrandKeepsASection,
 } = require("../../helpers/showcases");
 const { releaseSlot } = require("../../helpers/brands");
 const { ENTITLEMENT_BUCKETS } = require("../../constants/subscription");
@@ -21,6 +22,15 @@ exports.deleteFullSection = async (actor, payload) => {
   const section = await resolveSectionForActor(actor, payload.sectionId, {
     projection: { medias: 1 },
   });
+
+  /**
+   * S-3 — a brand keeps at least one section.
+   *
+   * ⚠️ Before the storage delete, not after. The files are destroyed for real
+   * and cannot be restored, so a guard that ran later would refuse the request
+   * having already thrown the vendor's photographs away.
+   */
+  await assertBrandKeepsASection(section.brandId, { actor });
 
   try {
     // The files, not the gallery entries — and `deleteAllMedia` takes each
