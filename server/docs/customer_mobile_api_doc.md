@@ -4332,6 +4332,10 @@ Brand profile screen ka **single call** — brand, features, visible showcase pr
 
 **3. Sirf wahi albums aate hain jo vendor ne dikhane chune hain** — `isVisible: true` filter lagta hai. ✅ Ab `/showcase/get-brand-showcase` ([#19](#19-get-showcaseget-brand-showcasebrandid)) bhi yehi filter lagata hai — dono endpoints ek hi shared projection use karte hain, to shape aur rules kabhi alag nahi honge.
 
+🆕 Ismein wo **media floor** bhi shaamil hai: jis section me `minItemsPerSection` (default 3) se kam visible media hain wo yahan bhi nahi aata. Aur `sortOrder` yahan bhi **display position** hai — sections `1, 2, 3…`, aur har section ke preview media `1` se. Poora explanation [#19 note 4a](#19-get-showcaseget-brand-showcasebrandid) me hai.
+
+> ⚠️ Yahan media ek **preview slice** hai (`mediaPreviewLimit`, 6), to media ke number us strip ko ginte hain jo dikh rahi hai. Poora album #19 par hai, jo khud ko usi tarah `1` se ginta hai. `hasMoreMedia` batata hai ki aur bhi hai.
+
 **4. `isVerified` ab sahi aata hai.** Pehle `brand.isApproved` document hota tha jo **hamesha `false`** rehta hai (code me kahin set hi nahi hota). Ab ye `SystemVerify.status === "APPROVED"` se derive hota hai — verified badge ab actually kaam karega.
 
 **5. Response chhota hai** — typical brand ~4 KB, max plan limits pe bhi ~20 KB. Screen pe ek baar call karke cache kar sakte hain.
@@ -4591,11 +4595,29 @@ Brand ka photo/video gallery, sections me organized.
 
 Poora filter: section pe `isVisible && isActive && !isDeleted`, media pe `isActive && !isDeleted`.
 
+🆕 **Aur ek chauthi shart:** section ke paas kam se kam `minItemsPerSection` **visible** media honi chahiye (default `3`, admin badal sakta hai). Itni na ho to section is list me aata hi nahi — na khali, na aadha.
+
+- Ginti **visible** media ki hai, stored rows ki nahi. Chhupi ya deleted media ginti me nahi aati, warna 6 chhupi photo wala section list me aakar khali render hota.
+- Ye wahi number hai jo vendor side par delete/hide rokta hai. Naya section hamesha khali banta hai, to vendor ke 3 media add karne tak wo customer ko nahi dikhega — ye expected hai.
+- Yahi shart clips feed (#20) par bhi lagti hai.
+
 **2. `isShowInVideoClips` yahan filter NAHI karta.** Wo sirf reels feed (#20) ka switch hai — jis video ko vendor ne clips se hataya ho, wo apne album me phir bhi dikhega. Ye jaan-boojh kar hai.
 
 **3. Brand check hota hai** (naya) — deleted ya deactivated brand ki gallery ab public nahi rehti, `404` aata hai. Pehle aise brand pe bhi `200` + `sections: []` milta tha.
 
 **4. Sorting handled hai** — sections `sortOrder` ascending, aur har section ke `medias` bhi `sortOrder` ascending. Jo order mile usi me dikhayein.
+
+**4a. 🆕 `sortOrder` ab display position hai — `1, 2, 3`, bina kisi gap ke.**
+
+Pehle stored number aata tha, jo **har non-deleted row** par dense hai — chhupi media bhi ginta hai. To vendor ne doosri photo hide ki, aur customer ko `1, 3` milta tha: list me ya to khaali jagah dikhti, ya app ke sort karne ke tareeke par order nirbhar ho jaata.
+
+Ab number sirf **us cheez par** dense hai jo customer dekh sakta hai:
+
+- Sections: `1, 2, 3…` us list par jo aap ko mili. Beech ka koi section floor se neeche hone par filter ho gaya to number me gap nahi aata.
+- Media: har section ke andar `1` se shuru.
+- **Pagination ke paar continue hota hai** — `page=2&limit=10` par sections `11, 12…` se shuru honge, dobara `1` se nahi. Warna ek hi gallery me do sections ek hi position par aa jaate.
+
+> Ye vendor panel wale number se **alag** hai. Wahan position chhupi media bhi ginti hai, taaki vendor media wapas on kare to wo apni hi jagah par aaye. Dono number ek naam rakhte hain par ek jaisa nahi hai — customer app ko bas jo mila hai wahi dikhana hai.
 
 **5. Response strict whitelist hai** — `storage`, `metadata`, `isActive` aur `isShowInVideoClips` ab response me **nahi** aate (pehle aakhri do aate the). Ye vendor ke internal toggles hain.
 
@@ -4661,8 +4683,7 @@ GET /showcase/68f1a2b3c4d5e6f7a8b9c3a1/video-clips?page=1&limit=10
           "altText": "video tour",
           "createdAt": "2026-06-01T10:05:00.000Z",
           "resolution": { "width": 1080, "height": 1920 },
-          "duration": 24,
-          "sortOrder": 2
+          "duration": 24
         }
       }
     ]
@@ -4670,13 +4691,15 @@ GET /showcase/68f1a2b3c4d5e6f7a8b9c3a1/video-clips?page=1&limit=10
 }
 ```
 
+> 🆕 **`video.sortOrder` ab nahi aata.** Wo ek **section ke andar ki position** thi, aur ye feed video ko uske section se bahar nikal leta hai — feed ka teesra clip apne album ka pehla ho sakta hai, to wo number us order se ulta padta jo user scroll kar raha hai. Feed ka apna order hi order hai. Agar aap us field par sort kar rahe the, **hata dein** — response ka order pehle se sahi hai.
+
 > Note: is endpoint ka pagination shape standard `pagination` util se **thoda different** hai — field order alag hai (`page`, `limit`, `total`, `totalPages`, `data`) par same fields hain.
 
 ### Errors
 | Status | Message | Kab |
 |---|---|---|
 | `404` | `Brand not found` | brandId exist nahi karta, ya brand deactivate/delete ho chuka hai |
-| `404` | `No video clips found for this brand` | Koi eligible video nahi — **empty-state dikhayein** |
+| ~~`404`~~ | ~~`No video clips found for this brand`~~ | 🆕 **Ab nahi aata** — neeche note 7 |
 | `422` | *(Joi message)* | `brandId` invalid, ya `limit > 50` |
 
 ### ⚠️ Notes
@@ -4686,6 +4709,8 @@ GET /showcase/68f1a2b3c4d5e6f7a8b9c3a1/video-clips?page=1&limit=10
 - Media pe `isShowInVideoClips: true`
 
 Iske upar section ka `isVisible: true` bhi chahiye — chhupaya hua section clips me bhi nahi aata.
+
+🆕 Aur section ke paas **kam se kam `minItemsPerSection` visible media** honi chahiye (default 3) — wahi shart jo #19 par lagti hai. Aisa na hota to jo section customer khol hi nahi sakta uske video feed me dikhte, aur tap karne par wo section milta hi nahi — "chhupa hua" ek screen par sach hota aur doosri par jhooth.
 
 Matlab showcase (#19) me video dikhe par clips feed me na aaye — ye normal hai, vendor ne opt-out kiya hoga.
 
@@ -4706,9 +4731,17 @@ banta hai, video-first section me wo `.mp4` link hota tha.
 Poster ab upload ke waqt **mandatory** hai, to fallback ki zarurat hi nahi bachi.
 Field phir bhi practically kabhi `null` nahi hoga — is baar sach me.
 
-**5. Sorting:** section `sortOrder` → media `sortOrder` → `createdAt` descending.
+**5. Sorting:** section `sortOrder` → media `sortOrder` → `createdAt` descending. Ye teeno server par lagte hain; response ka order hi final order hai (media wala `sortOrder` payload me nahi aata — upar dekhein).
 
 **6. `sectionTitle` context deta hai** — video kis section ka hai, UI pe caption me dikha sakte hain.
+
+**7. 🆕 Khaali feed ab `200` + `data: []` hai, `404` nahi.**
+
+Pehle "No video clips found for this brand" ke saath `404` aata tha, jise app ko catch karke empty state me badalna padta tha. `404` ka matlab hota hai **brand hi nahi mila** — aur wo sawal `assertPublicBrand` pehle hi jawab de deta hai, wo `404` waise hi aata rahega.
+
+Ab ye aur bhi zaroori hai: jis brand ke saare sections floor se neeche hain uska feed khaali hoga, aur wo koi error nahi — bas abhi dikhane ko kuch nahi hai. #19 shuru se aise hi jawab deta hai.
+
+> Agar app `404` par empty state dikhata hai, wo code **abhi bhi chalega** (brand-not-found par). Par khaali feed ka raasta ab `200` se aayega — `data.length === 0` par empty state dikhayein.
 
 ---
 

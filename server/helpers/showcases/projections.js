@@ -37,13 +37,59 @@ const typeExpr = (as) => ({
  * `isVisible` is the vendor's public switch, `isActive` their own on/off, and
  * both have to be true. Vendor and admin reads deliberately do NOT use this —
  * they only exclude `isDeleted`, so hidden sections stay togglable.
+ *
+ * ### 🆕 The fourth condition: enough media to be worth showing (S-4)
+ *
+ * A section below `minItemsPerSection` does not reach a customer at all. That is
+ * the read half of the floor the write guards enforce in `guards.js`, and the
+ * two have to agree: a guard that refuses to let a section fall below the floor
+ * is pointless if a section that starts below it is served anyway — which is
+ * exactly what a brand's first, empty section does.
+ *
+ * ⚠️ Counted over **visible** media, the same condition the rest of the pipeline
+ * filters on. Counting stored rows instead would let a section of six hidden
+ * photos qualify and then render empty.
+ *
+ * `minItems` is optional so vendor and admin reads can reuse the other three
+ * conditions without inheriting this one — they must keep seeing the section
+ * they are being told is too small.
+ *
+ * @param {ObjectId} brandObjectId
+ * @param {object} [options]
+ * @param {number} [options.minItems]  omit to skip the media-count condition
  */
-exports.customerSectionMatch = (brandObjectId) => ({
-  brandId: brandObjectId,
-  isDeleted: false,
-  isActive: true,
-  isVisible: true,
-});
+exports.customerSectionMatch = (brandObjectId, { minItems } = {}) => {
+  const match = {
+    brandId: brandObjectId,
+    isDeleted: false,
+    isActive: true,
+    isVisible: true,
+  };
+
+  /**
+   * ⚠️ `>= 1` even when the floor is 1, rather than dropping the condition. An
+   * empty section is never a customer's problem, and leaving the stage out at
+   * `minItems: 1` would make that depend on a setting.
+   */
+  if (Number.isFinite(minItems)) {
+    match.$expr = {
+      $gte: [
+        {
+          $size: {
+            $filter: {
+              input: { $ifNull: ["$medias", []] },
+              as: "m",
+              cond: exports.visibleMediaCondition("m"),
+            },
+          },
+        },
+        Math.max(minItems, 1),
+      ],
+    };
+  }
+
+  return match;
+};
 
 /** Media a customer may see. Nothing to do with the clips feed. */
 exports.visibleMediaCondition = (as = "m") => ({
@@ -135,11 +181,15 @@ exports.mediaCounts = (input) => ({
  * @param {boolean} [options.withCreatedAt]  include `createdAt`
  * @param {boolean} [options.withVideoMeta]  include `duration` / `resolution`,
  *        emitted only on VIDEO rows so photo payloads stay clean.
+ * @param {boolean} [options.withSortOrder]  include `sortOrder`. Off for the
+ *        clips feed, where a media has been lifted out of its section and a
+ *        per-section position means nothing — see `getAllVideoClips`.
  */
 exports.customerMediaFields = ({
   as = "m",
   withCreatedAt = true,
   withVideoMeta = true,
+  withSortOrder = true,
 } = {}) => {
   const ref = (field) => `$$${as}.${field}`;
   const isVideo = { $eq: [ref("media.kind"), MEDIA_KIND.VIDEO] };
@@ -162,9 +212,15 @@ exports.customerMediaFields = ({
     },
     title: ref("title"),
     altText: ref("altText"),
-    sortOrder: ref("sortOrder"),
   };
 
+  /**
+   * ⚠️ The **stored** position, and every customer read overwrites it before
+   * answering — see `applyDisplayPositions`. It is projected at all because the
+   * clips feed sorts on it inside the pipeline, and because dropping it here
+   * would mean each caller re-deriving a field it is about to replace anyway.
+   */
+  if (withSortOrder) fields.sortOrder = ref("sortOrder");
   if (withCreatedAt) fields.createdAt = ref("createdAt");
   if (!withVideoMeta) return fields;
 
@@ -196,6 +252,57 @@ exports.customerMediaMap = (input, options = {}) => ({
     in: exports.customerMediaFields(options),
   },
 });
+
+/**
+ * Number a customer's sections and media 1, 2, 3 — in place (S-4, S-12).
+ *
+ * ### 🔴 Two different numbers wear the name `sortOrder`
+ *
+ * The **stored** one is dense over everything not deleted, hidden rows included,
+ * so a vendor switching a media back on finds it where they left it. The
+ * **customer's** one is dense over what that customer can actually see. They are
+ * not the same number and neither can serve for the other.
+ *
+ * Serving the stored one is what produced `1, 3` on a customer's screen: the
+ * vendor hid the second photo, the section stayed at positions 1 and 3, and the
+ * app either showed a gap or rendered its list in an order that depended on how
+ * it read the field. Anything the customer cannot see should not leave a hole
+ * where it used to be.
+ *
+ * ### Why JS and not `$setWindowFields`
+ *
+ * `$documentNumber` would do this in the pipeline, but it appears nowhere else
+ * in this codebase and would tie these three endpoints to a newer server than
+ * everything around them. The arrays are small by construction — a plan caps a
+ * brand at a handful of sections, each holding at most `maxItemsPerSection`
+ * media — so the loop costs nothing measurable.
+ *
+ * ⚠️ Positions continue across pages. A section is the third of the brand's
+ * gallery whether or not this request started at the third; restarting at 1 on
+ * page 2 would give two different sections the same position in one list.
+ *
+ * @param {Array}  sections         the projected sections, already in order
+ * @param {object} [options]
+ * @param {number} [options.startAt] position of the first section (1-based)
+ * @param {string} [options.mediaKey] array to renumber inside each section
+ * @returns {Array} the same array, for chaining
+ */
+exports.applyDisplayPositions = (
+  sections = [],
+  { startAt = 1, mediaKey = "medias" } = {},
+) => {
+  sections.forEach((section, index) => {
+    section.sortOrder = startAt + index;
+
+    const medias = section?.[mediaKey];
+    if (!Array.isArray(medias)) return;
+    medias.forEach((media, position) => {
+      media.sortOrder = position + 1;
+    });
+  });
+
+  return sections;
+};
 
 /**
  * One section without its media array, for write responses.

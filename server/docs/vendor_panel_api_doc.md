@@ -3566,6 +3566,14 @@ Allowed videos: `video/mp4` · `video/webm` · `video/quicktime`
 > 🆕 **Min items** ek floor hai, ceiling nahi: jis section me itni visible media
 > na ho, wo customer ko dikhta hi nahi. Admin ise badal sakta hai — badhane par
 > chhote sections turant chhup jaate hain.
+>
+> ✅ **Ab ye sach me lagu hai** (pehle number rakha tha par padhta koi nahi tha).
+> Customer ke teeno surface — brand profile, poori gallery, aur clips feed — aise
+> section ko chhod dete hain. Vendor/admin ke apne endpoints par **koi farak
+> nahi**: aapko wo section dikhta rahega, warna aap theek hi nahi kar paate.
+>
+> Iska seedha matlab: **naya section banate hi customer ko nahi dikhta** — wo
+> khali banta hai — aur teesri media add karte hi dikhne lagta hai.
 
 ### 🆕 Do floors — section apne aap customer se gayab na ho jaye
 

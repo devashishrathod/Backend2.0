@@ -45,6 +45,7 @@ const {
   mediaCounts,
   customerMediaFields,
   customerMediaMap,
+  applyDisplayPositions,
   formatSectionSummary,
   formatManagedMedia,
 } = require("./projections");
@@ -93,6 +94,7 @@ module.exports = {
   mediaCounts,
   customerMediaFields,
   customerMediaMap,
+  applyDisplayPositions,
   formatSectionSummary,
   formatManagedMedia,
 };

@@ -5,7 +5,9 @@ const {
   sortedVisibleMedias,
   mediaCounts,
   customerMediaMap,
+  applyDisplayPositions,
 } = require("../../helpers/showcases");
+const { getShowcaseConfig } = require("../../helpers/settings");
 
 /**
  * Sections returned when the caller does not ask for a page.
@@ -42,8 +44,17 @@ exports.getBrandsAllShowcase = async (query) => {
   const limit = query.limit || DEFAULT_SECTION_LIMIT;
   const skip = (page - 1) * limit;
 
+  // S-4: a section below the media floor does not reach a customer at all.
+  const { minItems } = await getShowcaseConfig();
+
   const pipeline = [
-    { $match: customerSectionMatch(brandObjectId) },
+    { $match: customerSectionMatch(brandObjectId, { minItems }) },
+    /**
+     * ⚠️ The **stored** order — which is what decides the sequence. The numbers
+     * the customer is handed are assigned after paging, in
+     * `applyDisplayPositions`, because a position only means anything once it is
+     * known which sections survived the filter above.
+     */
     { $sort: { sortOrder: 1, createdAt: 1 } },
     { $addFields: { visibleMedias: sortedVisibleMedias() } },
     {
@@ -77,6 +88,13 @@ exports.getBrandsAllShowcase = async (query) => {
     page,
     limit,
     totalPages: Math.ceil(total / limit) || 1,
-    sections: result?.sections || [],
+    /**
+     * Positions continue across pages — page 2 starts at `skip + 1`, not at 1.
+     * A section is the eleventh of this brand's gallery whether or not this
+     * request happened to begin there.
+     */
+    sections: applyDisplayPositions(result?.sections || [], {
+      startAt: skip + 1,
+    }),
   };
 };
