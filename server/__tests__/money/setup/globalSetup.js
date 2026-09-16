@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
 const os = require("os");
+const fs = require("fs");
+const path = require("path");
 const { connectTestDb, disconnectTestDb } = require("./testDb");
 
 /**
@@ -80,18 +82,31 @@ module.exports = async () => {
   await connectTestDb();
   await acquireRunLock();
 
-  const models = [
-    require("../../../models/Transaction"),
-    require("../../../models/VoucherUsage"),
-    require("../../../models/VoucherClaim"),
-    require("../../../models/VoucherClaimHistory"),
-    require("../../../models/LedgerEntry"),
-    require("../../../models/PromoCode"),
-    require("../../../models/PromoCodeUsage"),
-    require("../../../models/WebhookEvent"),
-    require("../../../models/JobLock"),
-    require("../../../models/Counter"),
-  ];
+  /**
+   * ⚠️ Every model, not a hand-picked list.
+   *
+   * The list here used to name ten, chosen for the tests known to depend on an
+   * index. **Thirty** models carry a unique index, so the list was a promise the
+   * setup could not keep — and a curated list is one somebody has to remember to
+   * add to every time a model gains an index.
+   *
+   * The failure mode is quiet in the worst way: indexes persist in the database,
+   * so once any earlier run's `autoIndex` has built one, the gap is invisible.
+   * It reappears only on a database that has not seen that model before — a new
+   * developer, a fresh cluster, CI — and then a test that is *about* an index
+   * passes while nothing enforces anything.
+   *
+   * `createIndexes` is idempotent and costs nothing once they exist, and it is
+   * still `createIndexes`, never `syncIndexes`, for the reason above.
+   */
+  const modelsDir = path.join(__dirname, "..", "..", "..", "models");
+  const models = fs
+    .readdirSync(modelsDir)
+    .filter((name) => name.endsWith(".js"))
+    .map((name) => require(path.join(modelsDir, name)))
+    // `models/` also holds bare schemas and helpers — `mediaSchema`,
+    // `validObjectId` — which are not models and have no indexes to build.
+    .filter((exported) => typeof exported?.createIndexes === "function");
 
   for (const model of models) {
     await model.createIndexes();

@@ -60,7 +60,10 @@ const {
   resolveAudienceChannels,
 } = require("../../helpers/notifications/audienceChannels");
 const { updateSetting } = require("../../services/settings");
-const { getAdminConfig } = require("../../helpers/settings");
+const {
+  getAdminConfig,
+  invalidateSettingCache,
+} = require("../../helpers/settings");
 const { sendTestPush } = require("../../services/deviceTokens");
 const { generateBrandMerchantId } = require("../../helpers/brands");
 const { ROLES } = require("../../constants");
@@ -160,25 +163,45 @@ const brandFor = async (u) => {
   });
 };
 
-/** Everything on at the platform level, so only the person's toggles vary. */
+/**
+ * Everything on at the platform level, so only the person's toggles vary.
+ *
+ * ### ⚠️ The cache has to be dropped after a direct write
+ *
+ * 🔴 `getSetting()` caches for 30 seconds (F-1). The real write path,
+ * `updateSetting`, calls `invalidateSettingCache()` for exactly this reason — but
+ * these fixtures go straight to the model, so nothing tells the cache its
+ * snapshot is stale. Without the invalidation below, a platform switch flipped
+ * here is simply not read: the code answers from a snapshot taken by an earlier
+ * test in the same file.
+ *
+ * That is what made "a platform switch beats a person who wants it" fail — a
+ * test written before the cache existed, asserting behaviour that is correct in
+ * production and unreachable through this back door.
+ */
+const writeSetting = async (update) => {
+  const result = await Setting.findOneAndUpdate({}, update, {
+    upsert: true,
+    new: true,
+  });
+  invalidateSettingCache();
+  return result;
+};
+
 const platformAllOn = () =>
-  Setting.findOneAndUpdate(
-    {},
-    {
-      $set: {
-        "vendor.subscription.isEmailNotificationEnabled": true,
-        "vendor.subscription.isPushNotificationEnabled": true,
-        "vendor.subscription.isWhatsAppNotificationEnabled": true,
-        "customer.notification.isEmailNotificationEnabled": true,
-        "customer.notification.isPushNotificationEnabled": true,
-        "customer.notification.isWhatsAppNotificationEnabled": true,
-        "admin.notification.isEmailNotificationEnabled": true,
-        "admin.notification.isPushNotificationEnabled": true,
-        "admin.notification.isWhatsAppNotificationEnabled": true,
-      },
+  writeSetting({
+    $set: {
+      "vendor.subscription.isEmailNotificationEnabled": true,
+      "vendor.subscription.isPushNotificationEnabled": true,
+      "vendor.subscription.isWhatsAppNotificationEnabled": true,
+      "customer.notification.isEmailNotificationEnabled": true,
+      "customer.notification.isPushNotificationEnabled": true,
+      "customer.notification.isWhatsAppNotificationEnabled": true,
+      "admin.notification.isEmailNotificationEnabled": true,
+      "admin.notification.isPushNotificationEnabled": true,
+      "admin.notification.isWhatsAppNotificationEnabled": true,
     },
-    { upsert: true, new: true },
-  );
+  });
 
 /** One notification, with all three channels asked for. */
 const send = (u, extra = {}) =>
@@ -449,11 +472,9 @@ describe("notify honours the recipient's own toggles", () => {
 
   it("a platform switch beats a person who wants it", async () => {
     const u = await user({ notificationPreferences: { email: true } });
-    await Setting.findOneAndUpdate(
-      {},
-      { $set: { "vendor.subscription.isEmailNotificationEnabled": false } },
-      { upsert: true },
-    );
+    await writeSetting({
+      $set: { "vendor.subscription.isEmailNotificationEnabled": false },
+    });
 
     await send(u);
 

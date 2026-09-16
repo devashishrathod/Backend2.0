@@ -42,13 +42,27 @@
 const mongoose = require("mongoose");
 
 // ── seams ──────────────────────────────────────────────────────────────────
+/**
+ * ⚠️ `requireActual` first, then replace **only** the three seams.
+ *
+ * 🔴 These factories used to list their exports exhaustively, and that is a
+ * mock that goes stale the day the module gains one. It did: M-3 added
+ * `toAdminBannerShape` / `toAdminTickerShape`, the services started calling
+ * them, and every create test here died on `toAdminBannerShape is not a
+ * function` — a failure about the mock, not about the code.
+ *
+ * Spreading the real module means only what is deliberately replaced is fake.
+ * A pure shaper has no reason to be stubbed anyway; the network calls do.
+ */
 jest.mock("../../helpers/banners", () => ({
+  ...jest.requireActual("../../helpers/banners"),
   uploadBannerMedia: jest.fn(),
   deleteBannerMedia: jest.fn(),
   assertActiveBannerCapacity: jest.fn(),
 }));
 
 jest.mock("../../helpers/promotionalTickers", () => ({
+  ...jest.requireActual("../../helpers/promotionalTickers"),
   uploadTickerIcon: jest.fn(),
   deleteTickerIcon: jest.fn(),
 }));
@@ -80,7 +94,20 @@ const { createTicker } = require("../../services/promotionalTickers/createTicker
 const { deleteTicker } = require("../../services/promotionalTickers/deleteTicker");
 
 const USER = new mongoose.Types.ObjectId();
-const UPLOADED = { url: "https://res.cloudinary.com/x/image/upload/a.png", publicId: "a" };
+
+/**
+ * ⚠️ What the uploaders return is a `mediaSchema` value now (M-3), not a loose
+ * `{ url, publicId }` pair — `kind` and the `storage` object are part of it.
+ * The fixture says so, because a stand-in that no longer describes the thing it
+ * stands for is how two of these suites went quietly stale.
+ */
+const UPLOADED = {
+  url: "https://res.cloudinary.com/x/image/upload/a.png",
+  kind: "IMAGE",
+  mimeType: "image/png",
+  sizeBytes: 67,
+  storage: { provider: "CLOUDINARY", publicId: "a", bucket: null, key: null },
+};
 
 // `mimetype` is not checked here — both uploaders are mocked, and the real mime
 // allow-list lives inside them. It is set anyway so the fixture describes a file
@@ -102,27 +129,32 @@ beforeEach(() => {
   deleteTickerIcon.mockResolvedValue(undefined);
 });
 
-describe("createBanner — the file is required, and named by the type", () => {
+describe("createBanner — one file field, and the id that ties row to object", () => {
   /**
-   * ⚠️ The field name is derived from `type`, so a VIDEO banner carrying an
-   * `image` file is refused. Getting this wrong would accept the upload and
-   * store it under a key the reader never looks at — the banner would exist and
-   * render blank.
+   * 🔴 This block used to assert the opposite, and it went stale in M-3.
+   *
+   * There were three cases here — `IMAGE` looks for `image`, `VIDEO` for
+   * `video`, `GIF` for `gif` — plus one proving a `type: "VIDEO"` with an
+   * `image` file was refused. **None of that exists any more.** The body no
+   * longer carries a `type`, the file always arrives as `media`, and what the
+   * file *is* comes from its verified mime type inside `uploadBannerMedia`. A
+   * `type` that disagrees with the bytes is not refused now; it is unsayable.
    */
-  test.each([
-    ["IMAGE", "image"],
-    ["VIDEO", "video"],
-    ["GIF", "gif"],
-  ])("%s looks for the `%s` file", async (type, field) => {
-    await createBanner(USER, { title: "t", type }, { [field]: file() });
+  test("the file comes from `media`, whatever kind it turns out to be", async () => {
+    Banner.create.mockResolvedValue({ _id: new mongoose.Types.ObjectId() });
 
-    const [calledType, calledFile, calledId] = uploadBannerMedia.mock.calls[0];
-    expect(calledType).toBe(type);
-    expect(calledFile).toEqual(expect.any(Object));
+    await createBanner(USER, { title: "t" }, { media: file() });
+
+    const [calledFile, calledId, calledPoster] = uploadBannerMedia.mock.calls[0];
+    expect(calledFile).toEqual(expect.objectContaining({ name: "a.png" }));
+    expect(calledPoster).toBeUndefined();
 
     expect(Banner.create).toHaveBeenCalledWith(
-      expect.objectContaining({ [field]: UPLOADED, type }),
+      expect.objectContaining({ media: UPLOADED }),
     );
+    // 🔴 And no `type` beside it — that was a second source of truth that could
+    // disagree with the file it described.
+    expect(Banner.create.mock.calls[0][0]).not.toHaveProperty("type");
 
     /**
      * ⚠️ The id the object key is built from has to be the id the row gets.
@@ -136,29 +168,43 @@ describe("createBanner — the file is required, and named by the type", () => {
     expect(String(calledId)).toBe(String(created._id));
   });
 
-  test("a VIDEO banner will not accept an image file", async () => {
-    await expect(
-      createBanner(USER, { title: "t", type: "VIDEO" }, { image: file() }),
-    ).rejects.toMatchObject({ statusCode: 422 });
+  test("a video's poster travels with it", async () => {
+    Banner.create.mockResolvedValue({ _id: new mongoose.Types.ObjectId() });
 
-    // The upload must not have been attempted — paying for a file that is
-    // about to be rejected is the wrong order.
-    expect(uploadBannerMedia).not.toHaveBeenCalled();
+    await createBanner(USER, { title: "t" }, { media: file(), poster: file() });
+
+    const [, , calledPoster] = uploadBannerMedia.mock.calls[0];
+    expect(calledPoster).toEqual(expect.objectContaining({ name: "a.png" }));
   });
 
-  test("no file at all is a 422 that names the field", async () => {
-    await expect(
-      createBanner(USER, { title: "t", type: "IMAGE" }, {}),
-    ).rejects.toMatchObject({
+  /**
+   * ⚠️ The missing-file refusal moved into `uploadBannerMedia` along with the
+   * kind detection — the service hands `files?.media` straight over, exactly as
+   * the ticker has always done. That is asserted here so the two endpoints
+   * cannot drift apart again without somebody noticing.
+   */
+  test("a missing file is refused by the uploader, not by the service", async () => {
+    uploadBannerMedia.mockRejectedValue(
+      Object.assign(new Error('Please attach the banner file as "media".'), {
+        statusCode: 422,
+      }),
+    );
+
+    await expect(createBanner(USER, { title: "t" }, {})).rejects.toMatchObject({
       statusCode: 422,
-      message: expect.stringContaining("image"),
     });
-    expect(uploadBannerMedia).not.toHaveBeenCalled();
+
+    expect(uploadBannerMedia).toHaveBeenCalledWith(
+      undefined,
+      expect.anything(),
+      undefined,
+    );
+    expect(Banner.create).not.toHaveBeenCalled();
   });
 
   /**
    * The capacity guard runs **before** the upload, deliberately: a full home
-   * screen is a refusal, and paying Cloudinary for a file that is about to be
+   * screen is a refusal, and paying the provider for a file that is about to be
    * refused is money spent on nothing.
    */
   test("a banner over the active limit is refused before anything uploads", async () => {
@@ -167,7 +213,7 @@ describe("createBanner — the file is required, and named by the type", () => {
     );
 
     await expect(
-      createBanner(USER, { title: "t", type: "IMAGE" }, { image: file() }),
+      createBanner(USER, { title: "t" }, { media: file() }),
     ).rejects.toMatchObject({ statusCode: 409 });
 
     expect(uploadBannerMedia).not.toHaveBeenCalled();
@@ -179,12 +225,17 @@ describe("createBanner — a failed insert must not strand the upload", () => {
     Banner.create.mockRejectedValue(new Error("E11000 duplicate key"));
 
     await expect(
-      createBanner(USER, { title: "t", type: "IMAGE" }, { image: file() }),
+      createBanner(USER, { title: "t" }, { media: file() }),
     ).rejects.toThrow(/E11000/);
 
-    // ⚠️ The whole point. Without this line the asset lives in Cloudinary for
+    // ⚠️ The whole point. Without this line the asset lives in storage for
     // ever, referenced by nothing and findable by nobody.
-    expect(deleteBannerMedia).toHaveBeenCalledWith("IMAGE", UPLOADED);
+    //
+    // 🔴 One argument now, not two. `deleteBannerMedia` used to take the banner
+    // `type` alongside the media so a GIF was not destroyed as a plain image —
+    // the media carries its own `kind`, so the second argument had nothing left
+    // to say. A video's poster goes with it in the same call.
+    expect(deleteBannerMedia).toHaveBeenCalledWith(UPLOADED);
   });
 
   test("the original error still surfaces — the rollback does not swallow it", async () => {
@@ -193,14 +244,14 @@ describe("createBanner — a failed insert must not strand the upload", () => {
     );
 
     await expect(
-      createBanner(USER, { title: "", type: "IMAGE" }, { image: file() }),
+      createBanner(USER, { title: "" }, { media: file() }),
     ).rejects.toMatchObject({ statusCode: 422, message: "Title is required" });
   });
 
   test("nothing is deleted when the insert succeeds", async () => {
     Banner.create.mockResolvedValue({ _id: new mongoose.Types.ObjectId() });
 
-    await createBanner(USER, { title: "t", type: "IMAGE" }, { image: file() });
+    await createBanner(USER, { title: "t" }, { media: file() });
 
     expect(deleteBannerMedia).not.toHaveBeenCalled();
   });
@@ -265,39 +316,43 @@ describe("createTicker — same shape, same rollback", () => {
  * change weekly), which is exactly why these two were the wrong ones to miss.
  */
 describe("deleting a banner or ticker takes its file with it", () => {
-  const savedBanner = (type, field) => {
+  const savedBanner = (kind = "IMAGE") => {
     const doc = {
       _id: new mongoose.Types.ObjectId(),
-      type,
-      [field]: UPLOADED,
+      media: { ...UPLOADED, kind },
       save: jest.fn().mockResolvedValue(undefined),
     };
     Banner.findOne.mockResolvedValue(doc);
     return doc;
   };
 
-  test.each([
-    ["IMAGE", "image"],
-    ["VIDEO", "video"],
-    ["GIF", "gif"],
-  ])("%s banner — the %s file is deleted after the row is saved", async (type, field) => {
-    const doc = savedBanner(type, field);
+  /**
+   * 🔴 One field, one call — this used to be three cases, one per type-named
+   * field, and the delete took the `type` alongside the media "so a GIF is not
+   * destroyed as a plain image".
+   *
+   * The media carries its own `kind` now, so the second argument had nothing
+   * left to say, and there is only one field to read.
+   */
+  test.each(["IMAGE", "VIDEO", "GIF"])(
+    "a %s banner's file is deleted after the row is saved",
+    async (kind) => {
+      const doc = savedBanner(kind);
 
-    await deleteBanner(USER, String(doc._id));
+      await deleteBanner(USER, String(doc._id));
 
-    expect(doc.isDeleted).toBe(true);
-    expect(doc.isActive).toBe(false);
-    expect(doc.save).toHaveBeenCalled();
-    // The type goes along, so a GIF is not destroyed as a plain image —
-    // Cloudinary answers "not found" on the wrong resource_type and keeps it.
-    expect(deleteBannerMedia).toHaveBeenCalledWith(type, UPLOADED);
-  });
+      expect(doc.isDeleted).toBe(true);
+      expect(doc.isActive).toBe(false);
+      expect(doc.save).toHaveBeenCalled();
+      expect(deleteBannerMedia).toHaveBeenCalledWith(doc.media);
+    },
+  );
 
   test("🔴 the row is saved BEFORE the file is destroyed", async () => {
     // If the order ever flips, a failed save leaves a live banner pointing at
     // an asset that is already gone — a blank slot on the home screen.
     const order = [];
-    const doc = savedBanner("IMAGE", "image");
+    const doc = savedBanner();
     doc.save.mockImplementation(async () => order.push("save"));
     deleteBannerMedia.mockImplementation(async () => order.push("delete"));
 
