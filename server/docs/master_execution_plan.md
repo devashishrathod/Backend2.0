@@ -712,6 +712,12 @@ expire hone ke baad delete ho jayega."*
 | **X-3** | Panel + app migration (doosri team) |
 | **X-4** | Multipart + `express-fileupload` sunset (U ship + 6 hafte) |
 
+## Block O — OTP throttle (media migration se bahar)
+
+| Phase | Kaam |
+|---|---|
+| **O-1** | 🔴 **OTP throttle burst me khul jaata hai** — claim ki pehchaan timestamp se hoti hai, jo ek-saath aaye callers me ek jaisa hota hai |
+
 ---
 
 # Part 4B — Har phase ka kaam, poori list
@@ -1101,16 +1107,84 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 > sach me lagta hai aur asli regression phir bhi fail karega. Teen baar poori
 > suite clean chali.
 
-## M-5 · Voucher media → `mediaSchema`
-`models/VoucherVersion.js` · `models/Voucher.js` · voucher services
-- [ ] `VoucherVersion.images[]` → `mediaSchema`
-- [ ] `Voucher.banner` → naya shape (`current` / `pending` / `status`)
-- [ ] 🔴 **`pickVoucherBanner` me `bannerThumbnail`** — VIDEO banner ka poster customer tak jaaye (M-3a ka locked rule)
-- [ ] `sortOrder max: 5` **hatao** (P4)
-- [ ] Dead `require("joi")` hatao (P10) · hardcoded provider enum hatao (P11)
-- [ ] **Proof:** money suite
+## M-5 · Voucher media → `mediaSchema` — ✅ **DONE** (uncommitted)
+`models/{Voucher,VoucherVersion}.js` · `helpers/vouchers/{voucherBannerMedia,pickVoucherBanner,orphanImages,validateImagesFiles,customerListing}.js` · `services/vouchers/{createVoucher,updateVoucher,setVoucherBanner}.js` · `controllers/vouchers/setBanner.js` · docs · postman
+- [x] `VoucherVersion.images[]` → **`{ media: mediaSchema, sortOrder }`**
+- [x] `Voucher.banner.{image,video,gif}` → **`mediaSchema`**; VIDEO par poster mandatory
+- [x] 🔴 **`pickVoucherBanner` me `bannerThumbnail`** — M-3a ka locked rule apni aakhri surface par
+- [x] `sortOrder max: 5` **hata** (P4) — asli ceiling `VOUCHER_OFFER_LIMITS.MAX_IMAGES` hai
+- [x] Dead `require("joi")` **hata** (P10) · hardcoded provider enum **hata** (P11)
+- [x] `default: () => ({})` **hata** (P9) — har voucher par teen khaali object nahi
+
+> ⚠️ **`banner` ka `current`/`pending`/`status` shape yahan nahi kiya — wo V-4 me
+> hai.** Plan me wo line dono jagah likhi thi. Agar shape ab bana dete to har
+> banner `pending` me atka rehta, kyunki approve karne wala endpoint V-4 tak
+> banta hi nahi — aur customer ko tab tak `images[0]` fallback dikhta. M-block
+> media unification hai; workflow V-block ka hai. (Aapka faisla.)
+
+> 🔴 **Banner ka type↔file rule ab `required` function hai, hook nahi — aur ye
+> teesri baar hai jab ye trap-family mehnga pada.**
+> Purana hook `throw new Error(...)` karta tha, jo bina status ke escape hota hai
+> — yaani galat type bhejne par **500**, 422 nahi. `this.invalidate()` se status
+> theek hua par reach nahi: Mongoose `pre("validate")` **sirf async path** par
+> chalata hai, to `validateSync()` document ko bilkul saaf batata tha (measured).
+> `required` function dono par chalta hai — aur yahi ek cheez `type` aur uske
+> file ke beech khadi hai.
+>
+> Pehle do baar: `this.invalidate()` nested sub-document hook me **kuch karta hi
+> nahi** (F-3 poster, M-2 locatable), aur `validateSync()` ne showcase ka
+> clips-flag rule bhi chhupa liya tha.
+
+> ⚠️ **`orphanImages` dono shape padhta hai.** Wo tay karta hai ki file
+> **delete** hogi ya nahi — ek taraf galti se paid-for file strand hoti hai,
+> doosri taraf live voucher ki tasveer delete ho jaati hai. Pre-migration row
+> (`url` + `storage` seedhe image par) aur current row (`media` ke andar) dono
+> ka jawab dena zaroori hai.
 
 ---
+
+## O-1 · OTP throttle — claim ki pehchaan timestamp se nahi ho sakti
+
+`helpers/otps/claimOtpSend.js` · `helpers/otps/releaseOtpSend.js` · `models/OtpThrottle.js`
+
+> 🔴 **Throttle burst me poora khul jaata hai.** Verdict ye hai:
+>
+> ```js
+> const allowed = sends.includes(now.getTime());
+> ```
+>
+> Yaani "mera timestamp array me bacha ya nahi". Jab N caller **ek hi
+> millisecond** me `new Date()` lete hain, sabka `now.getTime()` ek jaisa hota
+> hai — pehla use append karta hai, aur baaki saare wahi value dekh kar
+> `allowed: true` laut aate hain **bina kuch likhe**.
+>
+> Nateeja: "resend" ke N ek-saath taps par N message chale jaate hain. Throttle
+> theek us waqt fail hota hai jab uski sabse zyada zarurat hai — aur chup-chaap.
+>
+> ⚠️ File ka apna comment ye takraav pehle se jaanta tha: *"Releasing by a time
+> range would pull entries claimed by other callers in the same second."* —
+> release path ke liye socha gaya, identity check ke liye nahi.
+
+**Pakda kaise gaya:** `__tests__/money/otpThrottle.test.js` → *"two requests at
+the same moment › lets exactly one through"*. 8 concurrent claims, saare 8
+`allowed`, teenon ka `at` byte-identical. Ye test **sach bata raha hai** — isse
+skip nahi karna, fix karna hai.
+
+⚠️ Pehla andaza ye tha ki `OtpThrottle` ka unique index build nahi hua. **Wo
+galat tha** — index maujood hai (`scripts/showTestIndexes.js OtpThrottle` se
+dekha). Index ke rehte hue bhi ye bug hai, kyunki race document ke andar hai,
+document banane me nahi.
+
+- [ ] `sends: [Date]` → per-call nonce ke saath (`{ at, claim }` ya samanantar array)
+- [ ] `claimOtpSend` verdict apne **nonce** se, timestamp se nahi
+- [ ] `releaseOtpSend` bhi nonce se — abhi value se hataata hai, wahi collision
+- [ ] Window pruning (`$filter` on `$$this`), `$max`/`$size` checks naye shape par
+- [ ] `updatedAt` TTL index jaisa hai waisa
+- [ ] Purani rows: pre-launch hai, migration nahi (M-5 ka locked faisla)
+- [ ] **Proof:** wahi money test, plus mutation — nonce hatao to 8/8 pass ho jayein
+
+> ⚠️ **Media migration se bilkul alag.** Security code hai, stored shape badalta
+> hai, aur M-block/V-block me se kisi par depend nahi karta — isliye apna phase.
 
 ## S-1 … S-5 · Showcase
 Detail: [showcase_rules_and_upload_plan.md](./showcase_rules_and_upload_plan.md) §SC-1…SC-5
