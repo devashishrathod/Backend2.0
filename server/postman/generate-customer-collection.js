@@ -1206,6 +1206,7 @@ const voucherFolder = folder(
             name: "string",
             bannerType: "null-or-string",
             bannerUrl: "null-or-string",
+            bannerThumbnail: "null-or-string",
             isSuggested: "boolean",
             outletCount: "number",
             offerCount: "number",
@@ -1222,11 +1223,28 @@ const voucherFolder = folder(
           `  pm.expect(v.nearestOutlet.distance, "distance").to.be.an("object");`,
           `});`,
         ]),
-        ...A.custom("bannerType aur bannerUrl hamesha saath chalte hain", [
+        ...A.custom("banner ke teeno field hamesha saath chalte hain", [
           `pm.response.json().data.data.forEach(function (v) {`,
-          `  const bothNull = v.bannerType === null && v.bannerUrl === null;`,
-          `  const bothSet = !!v.bannerType && !!v.bannerUrl;`,
-          `  pm.expect(bothNull || bothSet, "banner pair for " + v.name).to.eql(true);`,
+          `  const allNull = v.bannerType === null && v.bannerUrl === null && v.bannerThumbnail === null;`,
+          `  const allSet = !!v.bannerType && !!v.bannerUrl && !!v.bannerThumbnail;`,
+          `  pm.expect(allNull || allSet, "banner trio for " + v.name).to.eql(true);`,
+          `});`,
+        ]),
+        /**
+         * 🔴 A video banner's poster has to reach the app.
+         *
+         * It is mandatory at upload, and storing it without sending it makes the
+         * requirement pointless — the app still shows a blank rectangle until
+         * the .mp4 has buffered a frame. A still is its own thumbnail.
+         */
+        ...A.custom("video banner ka thumbnail .mp4 nahi hota", [
+          `pm.response.json().data.data.forEach(function (v) {`,
+          `  if (!v.bannerType) return;`,
+          `  if (v.bannerType === "VIDEO") {`,
+          `    pm.expect(v.bannerThumbnail, "poster for " + v.name).to.not.eql(v.bannerUrl);`,
+          `  } else {`,
+          `    pm.expect(v.bannerThumbnail, "still is its own thumbnail").to.eql(v.bannerUrl);`,
+          `  }`,
           `});`,
         ]),
         ...A.custom(`bannerType enum me se hai (${list(VOUCHER_BANNER_TYPE)})`, [
@@ -1381,6 +1399,7 @@ const voucherFolder = folder(
                 isSuggested: true,
                 bannerType: null,
                 bannerUrl: null,
+                bannerThumbnail: null,
                 nearestOutlet: {
                   distance: {
                     meters: 1753000,

@@ -130,7 +130,7 @@ Ye **live verification round** tha. Teen jagah doc code se match nahi kar raha t
 | Change | Detail |
 |---|---|
 | **Naya brand list endpoint** | `GET /brands/customer/get-all` — directory + "Top Brands" tab, geo optional ([#18a](#18a-get-brandscustomerget-all-)) |
-| **Voucher banner fields** | `bannerType` + `bannerUrl` list aur detail dono me. Banner na ho to dono `null` ([#15](#15-get-voucherscustomerget-all), [#16](#16-get-voucherscustomergetvoucherid)) |
+| **Voucher banner fields** | `bannerType` + `bannerUrl` + 🆕 `bannerThumbnail`, list aur detail dono me. Banner na ho to teeno `null` ([#15](#15-get-voucherscustomerget-all), [#16](#16-get-voucherscustomergetvoucherid)) |
 | **Suggestions tab** | `?suggestedOnly=true` — admin ke pin kiye vouchers. Bina param ke wahi list, pinned upar ([#15](#15-get-voucherscustomerget-all)) |
 | **Convenience fee** | Har ₹500 pe ₹5, original bill pe. Naya `pricing` block ([#17](#17-post-voucherscustomervoucherpreview)) |
 | **No-offer ab error nahi** ✅ | Bill kisi offer ke minimum se kam ho to `200` + `offerApplied: false` — customer sirf bill pay karega. Do error messages hat gaye |
@@ -582,6 +582,20 @@ Saare enum values **UPPERCASE** hain (payment ke alawa).
 
 > Voucher list aur detail me `bannerType` field pe aata hai. Banner na ho to `null`.
 > ⚠️ Note: showcase media `PHOTO`/`VIDEO` use karta hai, banner `IMAGE`/`VIDEO`/`GIF` — dono alag enums hain, mix mat karein.
+>
+> ### 🆕 `bannerThumbnail` — naya, aur additive
+>
+> **VIDEO banner par ye poster frame hai** — wo tasveer jo player kholne se
+> pehle dikhni chahiye. Poster upload par **mandatory** hai (M-5), par pehle
+> sirf store hota tha aur bheja nahi jaata tha.
+>
+> **IMAGE aur GIF par ye banner ka apna URL hai**, `null` nahi — taaki app
+> `<img src={bannerThumbnail}>` ek baar likhe, `bannerType` par branch kiye
+> bina. Yahi contract home banner (`thumbnail`) aur showcase media ka pehle se
+> hai.
+>
+> Banner na ho to teeno (`bannerType`, `bannerUrl`, `bannerThumbnail`) `null`.
+> Purane app builds par koi asar nahi — naya key unhe dikhega hi nahi.
 
 ### VOUCHER_USAGE_TYPE
 `ONCE_PER_USER` · `MULTIPLE`
@@ -2596,6 +2610,7 @@ Har row pe `isSuggested` boolean aata hai — usse badge/highlight kar sakte hai
         "createdAt": "2026-08-10T06:00:00.000Z",
         "bannerType": "IMAGE",
         "bannerUrl": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-mocha.jpg",
+        "bannerThumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-mocha.jpg",
         "isSuggested": true,
         "brand": {
           "id": "68f1a2b3c4d5e6f7a8b9c3a1",
@@ -2805,6 +2820,7 @@ GET /vouchers/customer/get/68f1a2b3c4d5e6f7a8b9c2a1?latitude=22.7533&longitude=7
     "subCategoryId": "68f1a2b3c4d5e6f7a8b9c0f1",
     "bannerType": "VIDEO",
     "bannerUrl": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/vouchers/banner-mocha.mp4",
+    "bannerThumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-mocha-cover.jpg",
     "brand": {
       "id": "68f1a2b3c4d5e6f7a8b9c3a1",
       "brandName": "cafe mocha",

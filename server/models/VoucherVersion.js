@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { STORAGE_PROVIDER } = require("../constants/storage");
+const { mediaSchema } = require("./mediaSchema");
 const { isValidateVoucherVersionCode } = require("../validator/common");
 const { userField, brandField } = require("./validObjectId");
 const {
@@ -9,7 +9,10 @@ const {
   VOUCHER_USAGE_TYPE,
   DISCOUNT_APPLICABLE_ON,
 } = require("../constants/voucher");
-const { required } = require("joi");
+// 🔴 `const { required } = require("joi")` used to sit here (P10). Nothing in
+// this file ever used it — a model has no business importing a request
+// validator, and the name it pulled in shadows nothing, so it was dead weight
+// that made the dependency graph read as though Mongoose and Joi were coupled.
 
 const voucherVersionOfferSchema = new mongoose.Schema(
   {
@@ -62,28 +65,36 @@ const voucherVersionOfferSchema = new mongoose.Schema(
   { _id: true, versionKey: false },
 );
 
+/**
+ * One picture in a voucher's gallery.
+ *
+ * ### 🔴 What this replaces
+ *
+ * `url` + an inline `storage` object that wrote the provider enum out by hand —
+ * one of **five** such copies across the models, which is why `STORAGE_PROVIDER`
+ * looked like a single source without being one (P11). Renaming `S3` to `AWS_S3`
+ * would have left these documents validating against a value nothing else used.
+ *
+ * The file now sits in `media`, exactly the `mediaSchema` every other surface
+ * uses, and the gallery's own field — `sortOrder` — sits beside it.
+ */
 const voucherImageSchema = new mongoose.Schema(
   {
-    url: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    storage: {
-      provider: {
-        type: String,
-        enum: Object.values(STORAGE_PROVIDER),
-        default: "CLOUDINARY",
-      },
-      publicId: { type: String },
-      bucket: { type: String },
-      key: { type: String },
-    },
+    media: { type: mediaSchema, required: [true, "An image file is required."] },
+    /**
+     * ⚠️ No `max` any more (P4).
+     *
+     * It was `max: 5`, hard-coded, while the actual ceiling lives in
+     * `VOUCHER_OFFER_LIMITS.MAX_IMAGES` and is heading for the Setting (V-1).
+     * The two could disagree the moment either moved, and the model's copy would
+     * win — refusing a sixth image with a schema error that named no limit the
+     * vendor had ever been shown. The array validators below hold the count; a
+     * position just has to be a position.
+     */
     sortOrder: {
       type: Number,
       required: true,
       min: 1,
-      max: 5,
     },
   },
   { _id: true, versionKey: false },

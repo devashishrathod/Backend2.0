@@ -169,7 +169,13 @@ exports.createVoucher = async (actor, payload, files = {}) => {
           tags,
           categoryId,
           subCategoryId,
-          images: uploadedImages || [],
+          // ⚠️ Positions are assigned here, not by the uploader. `sortOrder` is
+          // where a picture sits in the gallery; the uploader only knows what
+          // the file is.
+          images: (uploadedImages || []).map((media, index) => ({
+            media,
+            sortOrder: index + 1,
+          })),
           offers,
           startAt,
           endAt,

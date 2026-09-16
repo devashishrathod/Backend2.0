@@ -1311,9 +1311,16 @@ exports.mapCustomerVoucherOutlet = (outlet) => {
  * `version.images` straight through. Both read this function now, so the two
  * cannot drift again — which is the only reason one of them was wrong.
  */
+/**
+ * ⚠️ Same three keys as before — `url` just reads one level deeper now.
+ *
+ * The file moved into `media` in M-5; the customer's view of it did not move at
+ * all. A voucher image is always a still (video is refused at upload), so there
+ * is no poster to report here.
+ */
 const toCustomerImage = (image) => ({
   _id: image._id,
-  url: image.url,
+  url: image.media?.url ?? image.url ?? null,
   sortOrder: image.sortOrder,
 });
 
@@ -1379,7 +1386,10 @@ const NARROW_VERSION_IMAGES = {
         as: "i",
         in: {
           _id: "$$i._id",
-          url: "$$i.url",
+          // ⚠️ `media.url` only. Naming `media` whole would carry `storage`
+          // across the wire again, which is the exact thing this stage exists
+          // to stop.
+          url: "$$i.media.url",
           sortOrder: "$$i.sortOrder",
         },
       },

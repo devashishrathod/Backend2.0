@@ -93,15 +93,14 @@ const mergeImages = (
     removeSet.has(String(image._id)),
   );
 
+  // ⚠️ The whole `mediaSchema` value carries over as one field. It used to be
+  // unpacked into `url` + `storage`, which is how the third thing — the kind,
+  // the size, a video's poster — was forgotten every time one was added.
   const keptImages = kept.map((image) => ({
     _id: image._id,
-    url: image.url,
-    storage: image.storage,
+    media: image.media,
   }));
-  const addedImages = (uploadedImages || []).map((image) => ({
-    url: image.url,
-    storage: image.storage,
-  }));
+  const addedImages = (uploadedImages || []).map((media) => ({ media }));
 
   const combined = [...keptImages, ...addedImages];
   if (!combined.length) {

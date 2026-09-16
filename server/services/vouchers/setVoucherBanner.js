@@ -10,7 +10,13 @@ const {
 // Adds or replaces the voucher's independent promo banner. Never touches
 // status/approval/versions — works regardless of the voucher's current
 // version state.
-exports.setVoucherBanner = async (actor, voucherId, bannerType, file) => {
+exports.setVoucherBanner = async (
+  actor,
+  voucherId,
+  bannerType,
+  file,
+  posterFile,
+) => {
   const userId = actor.userId;
   const voucher = await Voucher.findOne({ _id: voucherId, isDeleted: false });
   if (!voucher) throwError(404, "Voucher not found.");
@@ -37,8 +43,11 @@ exports.setVoucherBanner = async (actor, voucherId, bannerType, file) => {
     bannerType,
     file,
     voucher._id,
+    posterFile,
   );
 
+  // ⚠️ The whole banner is replaced, so the two fields the previous type may
+  // have used are cleared rather than left behind pointing at a deleted file.
   voucher.banner = { type: bannerType, [field]: newMedia };
   voucher.updatedBy = userId;
 

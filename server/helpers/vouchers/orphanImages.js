@@ -34,9 +34,17 @@ const VoucherVersion = require("../../models/VoucherVersion");
  * rewrites `sortOrder` on the way through.
  */
 
-/** What names this file, whoever is storing it. */
-const identityOf = (image) =>
-  image?.storage?.key || image?.storage?.publicId || image?.url || null;
+/**
+ * What names this file, whoever is storing it.
+ *
+ * ⚠️ Reads the media on either shape. A row written before M-5 kept `url` and
+ * `storage` directly on the image; a current one keeps them inside `media`.
+ * Both have to answer, because this decides whether a file is deleted.
+ */
+const identityOf = (image) => {
+  const media = image?.media ?? image;
+  return media?.storage?.key || media?.storage?.publicId || media?.url || null;
+};
 
 /**
  * @param {Array}  images     the images a vendor removed
@@ -56,7 +64,8 @@ exports.pickOrphanImages = async (images = [], voucherId) => {
    */
   const survivors = await VoucherVersion.find(
     { voucherId, isDeleted: false },
-    { "images.url": 1, "images.storage": 1 },
+    // Both shapes, for the same reason `identityOf` reads both.
+    { "images.media": 1, "images.url": 1, "images.storage": 1 },
   ).lean();
 
   const stillReferenced = new Set();

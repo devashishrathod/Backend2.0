@@ -4998,17 +4998,36 @@ Voucher ka independent promo banner set/replace karta hai. **Multipart.**
 |---|---|---|---|
 | `bannerType` | string | ✅ | `IMAGE` \| `VIDEO` \| `GIF` |
 | `bannerImage` / `bannerVideo` / `bannerGif` | file | ✅ | **`bannerType` ke hisaab se sahi field name** |
+| `bannerThumbnail` | file | ⚠️ | 🆕 **`VIDEO` par required** — poster image |
 
-| `bannerType` | File field | Allowed MIME |
-|---|---|---|
-| `IMAGE` | `bannerImage` | jpeg, jpg, png, webp |
-| `VIDEO` | `bannerVideo` | mp4, webm, quicktime |
-| `GIF` | `bannerGif` | gif |
+| `bannerType` | File field | Allowed MIME | Poster? |
+|---|---|---|---|
+| `IMAGE` | `bannerImage` | jpeg, jpg, png, webp | ❌ |
+| `VIDEO` | `bannerVideo` | mp4, webm, quicktime | ✅ `bannerThumbnail` |
+| `GIF` | `bannerGif` | gif | ❌ |
 
 ```
 bannerType:  IMAGE
 bannerImage: <file>
 ```
+
+Video ke liye:
+
+```
+bannerType:       VIDEO
+bannerVideo:      <teaser.mp4>
+bannerThumbnail:  <teaser-cover.jpg>
+```
+
+> ### 🔴 Video banner par poster ab mandatory hai
+>
+> Poster kabhi derive nahi hota. Cloudinary ka `getOptimizedImageUrl(publicId)`
+> `/image/upload/` ka path banata hai ek aise asset ke liye jo `/video/upload/`
+> me rehta hai — wo URL **404** deta tha; S3 poster banata hi nahi. Isliye app ko
+> video banner par dikhane ko kuch hota hi nahi tha jab tak `.mp4` buffer na ho.
+>
+> Check **upload se pehle** chalta hai — poster na ho to `422`, aur video ki
+> bytes chadhti hi nahi.
 
 ### Success — `200`
 ```json
@@ -5021,6 +5040,12 @@ bannerImage: <file>
       "type": "IMAGE",
       "image": {
         "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg",
+        "kind": "IMAGE",
+        "mimeType": "image/jpeg",
+        "sizeBytes": 184320,
+        "width": null,
+        "height": null,
+        "originalName": "banner.jpg",
         "storage": { "provider": "CLOUDINARY", "publicId": "vouchers/banner-451" }
       }
     }
@@ -5028,11 +5053,24 @@ bannerImage: <file>
 }
 ```
 
+> ⚠️ **Banner ab poora `mediaSchema` hai** (M-5) — `kind`, `mimeType`,
+> `sizeBytes`, dimensions, aur VIDEO par `poster`. Pehle sirf `url` + `storage`
+> tha, aur provider enum model me haath se likha tha (P11).
+>
+> 🔴 Ye **vendor ka apna** write response hai, isliye `storage` abhi bhi aata
+> hai. Customer ke response me wo kabhi nahi jaata — wahan `bannerType`,
+> `bannerUrl` aur naya `bannerThumbnail` hi jaate hain.
+>
+> ⚠️ Banner-less voucher par ab `image: {}`, `video: {}`, `gif: {}` **nahi** aate.
+> Pehle teeno khaali object har voucher par likhe jaate the (P9).
+
 ### Errors
 | Status | Message | Kab |
 |---|---|---|
 | `404` | `Voucher not found.` | |
 | `422` | `Please upload a image file for the voucher banner.` | File field missing/galat naam |
+| `422` | `A video banner needs a poster image. Attach one as "bannerThumbnail".` | 🆕 Video bheja, poster nahi |
+| `422` | `The poster has to be a still image — "<mime>" is not one.` | 🆕 Poster ki jagah video/gif |
 | `422` | `Banner type is required.` | |
 | `422` | `Banner type must be one of: IMAGE, VIDEO, GIF.` | |
 | `403` | `Forbidden: You do not have permission to perform this action on this brand.` | |

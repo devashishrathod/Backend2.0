@@ -1,7 +1,7 @@
 const { throwError } = require("../../utils");
 const storage = require("../../services/storage");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
-const { assertImageFile } = require("../media");
+const { assertImageFile, toMediaDocument } = require("../media");
 
 exports.normalizeVoucherImages = (files) => {
   if (!files) return [];
@@ -35,22 +35,27 @@ exports.validateVoucherImages = (files, maxImages = 5) => {
   return images;
 };
 
-/** @param voucherId  goes into the object key. */
+/**
+ * @param voucherId  goes into the object key.
+ * @returns {Promise<Array>} `mediaSchema` values, in the order the files came
+ *
+ * ⚠️ No `sortOrder` here any more. It used to be stamped onto the upload result,
+ * which mixed "what this file is" with "where it sits in the gallery" — the two
+ * things M-5 pulled apart. The caller assigns positions when it builds the
+ * image rows, and it is the only place that knows about the images already
+ * there.
+ */
 exports.uploadVoucherImages = async (files, voucherId) => {
   const uploaded = [];
   try {
-    for (let index = 0; index < files.length; index++) {
-      const file = files[index];
+    for (const file of files) {
       const uploadedImage = await storage.uploadFromPath({
         filePath: file.tempFilePath,
         originalFile: file,
         purpose: UPLOAD_PURPOSE.VOUCHER_IMAGE,
         entityId: voucherId,
       });
-      uploaded.push({
-        ...uploadedImage,
-        sortOrder: index + 1,
-      });
+      uploaded.push(toMediaDocument(uploadedImage));
     }
     return uploaded;
   } catch (error) {

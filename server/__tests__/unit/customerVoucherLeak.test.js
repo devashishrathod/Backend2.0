@@ -20,16 +20,28 @@ const {
  * far: two endpoints reading one document, one of them remembering the rule.
  */
 
-/** A stored image, with everything the model really holds. */
+/**
+ * A stored image, with everything the model really holds.
+ *
+ * ⚠️ The file sits inside `media` since M-5 — the same `mediaSchema` every other
+ * surface uses. The customer's three keys did not move; only the place the URL
+ * is read from did.
+ */
 const storedImage = (sortOrder) => ({
   _id: `img${sortOrder}`,
-  url: `https://cdn.example.com/${sortOrder}.webp`,
   sortOrder,
-  storage: {
-    provider: "AWS_S3",
-    publicId: null,
-    bucket: "trydood-nonprod-public",
-    key: `dev/images/vouchers/v1/${sortOrder}.webp`,
+  media: {
+    url: `https://cdn.example.com/${sortOrder}.webp`,
+    kind: "IMAGE",
+    mimeType: "image/webp",
+    sizeBytes: 2048,
+    originalName: `shot-${sortOrder}.webp`,
+    storage: {
+      provider: "AWS_S3",
+      publicId: null,
+      bucket: "trydood-nonprod-public",
+      key: `dev/images/vouchers/v1/${sortOrder}.webp`,
+    },
   },
 });
 
@@ -125,6 +137,15 @@ describe("🔴 storage internals never reach a customer", () => {
     ]) {
       const projected = stageOf(pipeline)?.$addFields["version.images"].$map.in;
       expect(Object.keys(projected).sort()).toEqual(["_id", "sortOrder", "url"]);
+      /**
+       * ⚠️ The **value**, not just the key.
+       *
+       * Checking the key set alone passes `url: "$$i.media"` — three keys,
+       * correct names, and the whole media object (storage included) riding out
+       * under one of them. That is exactly the leak this stage exists to stop,
+       * and it would have looked clean.
+       */
+      expect(projected.url).toBe("$$i.media.url");
     }
   });
 });

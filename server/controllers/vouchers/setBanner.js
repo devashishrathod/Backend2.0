@@ -10,6 +10,8 @@ exports.setBanner = asyncWrapper(async (req, res) => {
     voucherId,
     bannerType,
     file,
+    // ⚠️ Required when the banner is a video — nothing derives a poster.
+    req.files?.bannerThumbnail,
   );
   return sendSuccess(res, 200, "Voucher banner saved successfully.", result);
 });
