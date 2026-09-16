@@ -6799,7 +6799,7 @@ Platform-wide configuration. **Ek singleton document.**
   "data": {
     "_id": "68f1a2b3c4d5e6f7a8b9s001",
     "vendor": {
-      "voucher": { "maxOffers": 10, "maxImages": 5, "maxDistanceKm": 25 },
+      "voucher": { "maxOffers": 10, "maxImages": 5, "minImages": 3, "maxDistanceKm": 25 },
       "showcase": {
         "maxItemsPerSection": 15,
         "maxImagesPerSection": 15,
@@ -7019,7 +7019,7 @@ ka banner, generated invoice, sab.
 ### Body — **partial merge**, kam se kam ek field
 | Block | Fields |
 |---|---|
-| `vendor.voucher` | `maxOffers` (1–100) · `maxImages` (≥1) · `maxDistanceKm` (≥1) |
+| `vendor.voucher` | `maxOffers` (1–100) · `maxImages` (≥1) · 🆕 `minImages` (≥1, **≤ `maxImages`**) · `maxDistanceKm` (≥1) |
 | `vendor.showcase` | `maxItemsPerSection` · `maxImagesPerSection` · `maxVideosPerSection` · 🆕 `minItemsPerSection` · 🆕 `minSectionsPerBrand` · `maxImageSizeMB` · 🆕 `maxGifSizeMB` · `maxVideoSizeMB` (sab ≥1) · `allowedImages[]` · `allowedVideos[]` (min 1 item) · `isActive` (showcase **edit** ka kill switch — neeche) |
 | `vendor.subscription` | Niche full table |
 | `customer` | Niche full table — **naya**, pehle pahunch me hi nahi tha |
@@ -7058,6 +7058,24 @@ ka banner, generated invoice, sab.
 > karne ke liye bahut bhara** bana deti — vendor ke paas koi raasta nahi bachta.
 > Check dono taraf hai: ek hi request me dono number aayein to Joi rokta hai, aur
 > alag-alag request me aayein to merge ke baad wala check.
+
+> ### 🆕 `vendor.voucher.minImages` — showcase floor jaisa **nahi** hai
+>
+> Voucher ka image floor bhi ceiling se upar nahi ja sakta (wahi `422`, wahi
+> dono-taraf check), par **badhane ka asar bilkul ulta hai**:
+>
+> | | `showcase.minItemsPerSection` | `voucher.minImages` |
+> |---|---|---|
+> | Badhane par | Chhote sections **turant** customer se gayab | Published vouchers **chalte rehte hain** |
+> | Kab padha jaata hai | Customer read par, har baar | Sirf write par — create, image edit, submit-for-review |
+>
+> Wajah: published voucher ek waada hai jo customer ne shayad claim bhi kar liya
+> ho. Use peeche se retire karna order aur claim dono ko todta. Section sirf
+> dikhna band karta hai — koi kisi ne use "khareeda" nahi hota.
+>
+> Iska matlab: `minImages` badhane par aapko purane vouchers ki chinta nahi
+> karni. Vendor ko agli baar us voucher ko edit karte waqt naya floor poora
+> karna padega.
 
 > ### 🆕 GIF ab showcase me chalta hai
 >
@@ -7503,6 +7521,7 @@ Dono taraf se block hota hai:
 |---|---|
 | `voucher.maxDistanceKm` | Customer listing radius — **turant** |
 | `voucher.maxOffers`/`maxImages` | Naye vouchers pe — turant |
+| 🆕 `voucher.minImages` | **Sirf naye aur edit hone wale vouchers pe** — jo pehle se published hain wo chalte rehte hain |
 | `showcase.*` | Naye media uploads pe — turant |
 | `subscription.gstPercentage` | Naye orders pe — purane invoices unaffected |
 | `expiryJobIntervalMinutes` | ⚠️ **Server restart ke baad** — jobs boot pe schedule hote hain |

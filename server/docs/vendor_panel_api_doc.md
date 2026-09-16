@@ -4782,6 +4782,7 @@ bannerImage:  <file>
 | `400` | `Voucher name is required.` | Trim ke baad khali |
 | `409` | `Voucher with this name already exists for this brand.` | Duplicate name |
 | `422` | `At least one voucher image is required.` | `images` file nahi |
+| `400` | 🆕 `<file> exceeds maximum image size of 10 MB.` | Voucher images par **pehle koi size check tha hi nahi** — P12. Limit `Setting.storage.limits.maxImageSizeMB` se aati hai |
 | `422` | `At least one offer is required.` | |
 | `422` | `Offer 1: "title" is required` | Offer ke andar ka error — `Offer <n>:` prefix ke saath |
 | `422` | `Invalid offer JSON at index 0.` | JSON string malformed |
@@ -4911,6 +4912,7 @@ Voucher edit — **naya version banata hai**. Multipart.
 | `400` | `At least one offer is required.` | Sab offers hata diye |
 | `400` | `At least one voucher image is required.` | Sab images hata di |
 | `400` | `Maximum 5 voucher images are allowed.` | Limit cross |
+| `400` | 🆕 `<file> exceeds maximum image size of 10 MB.` | Voucher images par **pehle koi size check tha hi nahi** — P12. Limit `Setting.storage.limits.maxImageSizeMB` se aati hai |
 | `400` | `At least one SubBrand is required.` | Sab outlets hata diye |
 | `403` | `Forbidden: You do not have permission to perform this action on this brand.` | |
 

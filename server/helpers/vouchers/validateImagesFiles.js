@@ -1,6 +1,6 @@
 const { throwError } = require("../../utils");
 const storage = require("../../services/storage");
-const { UPLOAD_PURPOSE } = require("../../constants/storage");
+const { UPLOAD_PURPOSE, MEDIA_KIND } = require("../../constants/storage");
 const { assertImageFile, toMediaDocument } = require("../media");
 
 exports.normalizeVoucherImages = (files) => {
@@ -11,7 +11,20 @@ exports.normalizeVoucherImages = (files) => {
   return images.filter(Boolean);
 };
 
-exports.validateVoucherImages = (files, maxImages = 5) => {
+/**
+ * What a voucher's uploaded images have to satisfy before anything is stored.
+ *
+ * ⚠️ Takes the whole `getVoucherConfig()` result rather than a bare number. It
+ * used to take `maxImages` alone, which is exactly why there was nowhere to put
+ * a size limit — see below.
+ *
+ * @param {object|number} config  the voucher config; a bare number is still
+ *        accepted so a caller mid-refactor cannot silently lose the count check
+ */
+exports.validateVoucherImages = (files, config = {}) => {
+  const { maxImages = 5, maxBytes, maxSizeMB } =
+    typeof config === "number" ? { maxImages: config } : config;
+
   const images = exports.normalizeVoucherImages(files);
   if (images.length > maxImages) {
     throwError(400, `Maximum ${maxImages} voucher images are allowed.`);
@@ -27,12 +40,40 @@ exports.validateVoucherImages = (files, maxImages = 5) => {
    */
   for (const file of images) {
     assertImageFile(file, "Voucher image");
+    assertVoucherImageSize(file, { maxBytes, maxSizeMB });
   }
-  // const sortOrders = images.map((item) => item.sortOrder);
-  // if (new Set(sortOrders).size !== sortOrders.length) {
-  //   throwError(400, "Duplicate image sort order is not allowed.");
-  // }
   return images;
+};
+
+/**
+ * 🔴 P12 — voucher images had **no size check at all**.
+ *
+ * Mime type was checked, the count was checked, and then a 200 MB JPEG went
+ * through: uploaded, paid for, and served to every customer whose listing
+ * included that voucher. Every other media surface on the platform has had a
+ * ceiling for months; this one was simply missed.
+ *
+ * ⚠️ The limit is the **global** one from `Setting.storage.limits`, not a
+ * voucher-specific field. There is nothing about a voucher image that needs a
+ * different ceiling from every other image, and a second number answering the
+ * same question is only safe when it is written down which one wins.
+ *
+ * Silent when the config carries no limits, so a caller that has not been
+ * updated keeps its old behaviour instead of refusing every upload — the count
+ * and mime checks above still run either way.
+ */
+const assertVoucherImageSize = (file, { maxBytes, maxSizeMB }) => {
+  const limit = maxBytes?.[MEDIA_KIND.IMAGE];
+  if (!Number.isFinite(limit)) return;
+
+  const size = Number(file?.size);
+  if (!Number.isFinite(size) || size <= limit) return;
+
+  const capMB = maxSizeMB?.[MEDIA_KIND.IMAGE] ?? Math.round(limit / (1024 * 1024));
+  throwError(
+    400,
+    `${file.name || "Voucher image"} exceeds maximum image size of ${capMB} MB.`,
+  );
 };
 
 /**

@@ -5,6 +5,7 @@ const {
   assertReserveRateRule,
   assertStorageLimitRule,
   assertShowcaseFloorRule,
+  assertVoucherFloorRule,
 } = require("../../helpers/settings");
 const {
   checkS3Ready,
@@ -267,6 +268,8 @@ exports.updateSetting = async (userId, payload = {}) => {
   // Same reasoning, different pair: a section's floor and its ceiling can also
   // arrive in separate requests.
   assertShowcaseFloorRule(setting);
+  // And a voucher's image floor against its own ceiling (V-1).
+  assertVoucherFloorRule(setting);
 
   setting.updatedBy = userId;
 

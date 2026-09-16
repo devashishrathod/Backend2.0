@@ -18,8 +18,36 @@ const { SEARCH_LIMITS } = require("../constants/search");
 const voucherSettingSchema = Joi.object({
   maxOffers: Joi.number().integer().min(1).max(100).optional(),
   maxImages: Joi.number().integer().min(1).optional(),
+  /**
+   * ⚠️ Unlike the showcase floor, raising this does **not** change anything a
+   * customer can already see. A published voucher may have been claimed, so the
+   * floor is checked on the way in — create, image edit, submit — never on the
+   * way out. Vouchers already live stay live.
+   */
+  minImages: Joi.number().integer().min(1).optional(),
   maxDistanceKm: Joi.number().integer().min(1).optional(),
-});
+})
+  /**
+   * 🔴 The floor cannot climb above the ceiling.
+   *
+   * `minImages: 6` with `maxImages: 5` leaves a voucher at once too empty to
+   * publish and too full to fix — submit refuses it for too few, the upload that
+   * would rescue it is refused for too many.
+   *
+   * ⚠️ This only catches a payload carrying **both** numbers. One field at a
+   * time gives Joi nothing to compare against, which is what
+   * `assertVoucherFloorRule` covers on the merged document — the same split the
+   * showcase floor and the storage limits use.
+   */
+  .custom((value, helpers) => {
+    const { minImages: floor, maxImages: ceiling } = value;
+    if (Number.isFinite(floor) && Number.isFinite(ceiling) && floor > ceiling) {
+      return helpers.message(
+        `minImages (${floor}) cannot be more than maxImages (${ceiling}).`,
+      );
+    }
+    return value;
+  });
 
 // ⚠️ No `maxSections` — the plan's `showcase` entitlement meters section count,
 // not this block. See the note on `showcaseSettingSchema` in models/Setting.js.

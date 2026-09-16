@@ -109,7 +109,10 @@ exports.createVoucher = async (actor, payload, files = {}) => {
       session,
     );
 
-    const { maxOffers, maxImages } = await getVoucherConfig();
+    // The whole config, not two numbers off it — `validateVoucherImages` needs
+    // the size ceilings too, which is what P12 was missing.
+    const voucherConfig = await getVoucherConfig();
+    const { maxOffers } = voucherConfig;
     validateVoucherOffers(offers, maxOffers);
     offers = normalizeVoucherOffers(offers);
 
@@ -119,7 +122,7 @@ exports.createVoucher = async (actor, payload, files = {}) => {
     if (!voucherFiles.length) {
       throwError(422, "At least one voucher image is required.");
     }
-    validateVoucherImages(voucherFiles, maxImages);
+    validateVoucherImages(voucherFiles, voucherConfig);
 
     // The images' object keys carry the voucher id, and they go up before the
     // row is inserted — so the id is minted here. Mongo generates ids

@@ -39,6 +39,27 @@ const voucherSettingSchema = new mongoose.Schema(
       default: 5,
       min: 1,
     },
+    /**
+     * How many images a voucher must carry before it can go live (V-1).
+     *
+     * 🔴 A floor, not a ceiling — the first one this block has had. A voucher
+     * with one photograph reaches a customer as a card with nothing to look at,
+     * and the customer listing has no way to tell that apart from a voucher
+     * whose images simply have not uploaded yet.
+     *
+     * ⚠️ Raising this does **not** retire vouchers that are already published,
+     * the way `minItemsPerSection` hides sections the moment it saves. The
+     * difference is deliberate: a published voucher is a commitment a customer
+     * may already have claimed, so the floor is checked on the way **in** —
+     * create, image edit, and submit-for-review — and never on the way out.
+     * V-2 is what reads it.
+     */
+    minImages: {
+      type: Number,
+      required: true,
+      default: 3,
+      min: 1,
+    },
     maxDistanceKm: {
       type: Number,
       default: 25,
@@ -47,6 +68,24 @@ const voucherSettingSchema = new mongoose.Schema(
   },
   { _id: false },
 );
+
+/**
+ * 🔴 The floor cannot climb above the ceiling.
+ *
+ * `minImages: 6` beside `maxImages: 5` makes every voucher at once too empty to
+ * publish and too full to fix: submit refuses it for having too few images, and
+ * the upload that would carry it over the line is refused for exceeding the
+ * maximum. There is no request a vendor can make that escapes.
+ *
+ * ⚠️ A path validator, not a `pre("validate")` hook. A hook does not run on
+ * `validateSync()`, so a document built that way would validate perfectly clean
+ * — a trap this migration has now walked into four times.
+ */
+voucherSettingSchema.path("minImages").validate(function (value) {
+  const ceiling = this.maxImages;
+  if (!Number.isFinite(value) || !Number.isFinite(ceiling)) return true;
+  return value <= ceiling;
+}, "minImages cannot be more than maxImages.");
 
 /**
  * ⚠️ No `maxSections` here, deliberately.

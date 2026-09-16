@@ -9,19 +9,24 @@
       "voucher": {
         "maxOffers": 10,
         "maxImages": 5,
+        "minImages": 3,
         "maxDistanceKm": 25
       },
       "showcase": {
         "maxItemsPerSection": 15,
         "maxImagesPerSection": 15,
         "maxVideosPerSection": 5,
+        "minItemsPerSection": 3,
+        "minSectionsPerBrand": 1,
         "maxImageSizeMB": 10,
+        "maxGifSizeMB": 15,
         "maxVideoSizeMB": 50,
         "allowedImages": [
           "image/jpeg",
           "image/jpg",
           "image/png",
-          "image/webp"
+          "image/webp",
+          "image/gif"
         ],
         "allowedVideos": [
           "video/mp4",

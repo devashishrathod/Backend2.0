@@ -21,6 +21,7 @@ const {
   STORAGE_LIMIT_RULES,
 } = require("./assertStorageLimitRule");
 const { assertShowcaseFloorRule } = require("./assertShowcaseFloorRule");
+const { assertVoucherFloorRule } = require("./assertVoucherFloorRule");
 
 module.exports = {
   getSetting,
@@ -47,4 +48,5 @@ module.exports = {
   assertStorageLimitRule,
   STORAGE_LIMIT_RULES,
   assertShowcaseFloorRule,
+  assertVoucherFloorRule,
 };

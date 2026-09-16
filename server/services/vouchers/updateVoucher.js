@@ -210,7 +210,10 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
 
     if (!currentVersion) throwError(404, "Voucher current version not found.");
 
-    const { maxOffers, maxImages } = await getVoucherConfig();
+    // The whole config, not two numbers off it — `validateVoucherImages` needs
+    // the size ceilings too, which is what P12 was missing.
+    const voucherConfig = await getVoucherConfig();
+    const { maxOffers, maxImages } = voucherConfig;
 
     if (currentVersion.status === VOUCHER_STATUSES.UNDER_REVIEW) {
       throwError(409, "Voucher is under review and cannot be edited.");
@@ -306,7 +309,7 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
     );
 
     const voucherFiles = normalizeVoucherImages(images);
-    validateVoucherImages(voucherFiles, maxImages);
+    validateVoucherImages(voucherFiles, voucherConfig);
     if (voucherFiles.length) {
       uploadedImages = await uploadVoucherImages(voucherFiles, voucher._id);
     }
