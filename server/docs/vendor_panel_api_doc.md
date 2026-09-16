@@ -4654,6 +4654,32 @@ job use `ARCHIVED → EXPIRED` kar degi.
 Dono customer listing se bahar hain (wo sirf `PUBLISHED` dikhati hai) aur dono
 plan ka voucher slot chhod dete hain.
 
+### 🆕 Images ka floor — ek rule, ek jawab
+
+Voucher ko ab kam se kam **`Setting.vendor.voucher.minImages`** (default **3**) images chahiye. Teen jagah lagta hai, teeno par **ek hi message aur ek hi status**:
+
+| Endpoint | Kis par ginti hoti hai |
+|---|---|
+| #54 create | Is request me aayi files — **upload shuru hone se pehle** |
+| #55 update | Jo edit ke **baad bachta** hai (rakhi + nayi − hatayi) |
+| #56 submit-review | Version me stored images, chahe wo kitni requests me bani hon |
+
+```
+422  A voucher needs at least 3 images — this one has 2. Add 1 more.
+```
+
+**Message agla kadam batata hai, sirf rule nahi.** Purana message *"At least one voucher image is required"* ye batata tha ki platform kya chahta hai aur vendor ko khud hisaab lagane chhod deta tha — jo floor `1` par theek tha aur `3` par nahi, kyunki number vendor ki screen par hai hi nahi. Ab dono ginti aur baaki kitni chahiye, sab message me hai.
+
+> ### ⚠️ Contract change — do cheezein badli hain
+>
+> **1. Message badla hai** teeno endpoints par. Agar aap **text par match** kar rahe the, wo tootega — status code aur `success: false` par match karein.
+>
+> **2. #55 ka status `400` → `422` ho gaya.** Ek hi rule ke do alag status code the: create `422` deta tha, update `400`. Do me se koi bhi client galat nahi tha — bas jis endpoint par gaya uspar depend karta tha. Ab teeno `422` hain.
+
+**Kyun ye zaroori tha:** yahi sawal paanch jagah pucha jaata tha aur **paanch alag jawab** milte the — do status code, teen alag wording, aur **koi bhi `minImages` padhta nahi tha**. To platform 3 par set hota aur ek-image wala voucher paanchon jagah se nikal jaata.
+
+> **#57 approve par ye floor nahi lagta** — wahan sirf structural check hai (0 images = corrupt). Admin `minImages` badha de vendor ke submit ke **baad**, to queue me pade vouchers approve na ho paate aur vendor unhe theek bhi nahi kar sakta (wo bhej chuka hai). Wo voucher ko peeche se retire karna hota — bilkul wahi cheez jise `minImages` ka design rokta hai.
+
 ---
 
 ## 54. POST /vouchers/create
@@ -4781,7 +4807,7 @@ bannerImage:  <file>
 | `400` | `Brand not found` | |
 | `400` | `Voucher name is required.` | Trim ke baad khali |
 | `409` | `Voucher with this name already exists for this brand.` | Duplicate name |
-| `422` | `At least one voucher image is required.` | `images` file nahi |
+| `422` | 🆕 `A voucher needs at least 3 images — this one has 2. Add 1 more.` | Itni images nahi bheji. Number `Setting.vendor.voucher.minImages` se aata hai — neeche note dekhein |
 | `400` | 🆕 `<file> exceeds maximum image size of 10 MB.` | Voucher images par **pehle koi size check tha hi nahi** — P12. Limit `Setting.storage.limits.maxImageSizeMB` se aati hai |
 | `422` | `At least one offer is required.` | |
 | `422` | `Offer 1: "title" is required` | Offer ke andar ka error — `Offer <n>:` prefix ke saath |
@@ -4910,7 +4936,7 @@ Voucher edit — **naya version banata hai**. Multipart.
 | `409` | `Voucher with this name already exists for this brand.` | Naya naam duplicate |
 | `400` | `Voucher name cannot be empty.` | |
 | `400` | `At least one offer is required.` | Sab offers hata diye |
-| `400` | `At least one voucher image is required.` | Sab images hata di |
+| ~~`400`~~ → `422` | 🆕 `A voucher needs at least 3 images — this one has 2. Add 1 more.` | ⚠️ **Status badla** (`400` → `422`). Ginti us par hai jo edit ke **baad bachta** hai, upload par nahi |
 | `400` | `Maximum 5 voucher images are allowed.` | Limit cross |
 | `400` | 🆕 `<file> exceeds maximum image size of 10 MB.` | Voucher images par **pehle koi size check tha hi nahi** — P12. Limit `Setting.storage.limits.maxImageSizeMB` se aati hai |
 | `400` | `At least one SubBrand is required.` | Sab outlets hata diye |
@@ -4971,7 +4997,8 @@ Koi nahi.
 | `400` | `Published voucher cannot be submitted directly. Create a new version first.` | Already published version submit karne ki koshish |
 | `409` | `Voucher status changed. Please refresh and try again.` | Concurrent modification |
 | `409` | `Voucher version status changed. Please refresh and try again.` | Version race |
-| `400` | *(validation)* | Offers/images/dates adhoore |
+| `422` | 🆕 `A voucher needs at least 3 images — this one has 2. Add 1 more.` | ⚠️ **Naya** — pehle yahan `400 "At least one image is required"` tha, jo `minImages` padhta hi nahi tha. Upar ka [images floor block](#🆕-images-ka-floor--ek-rule-ek-jawab) dekhein |
+| `400` | *(validation)* | Offers/dates adhoore |
 
 ### ⚠️ Notes
 

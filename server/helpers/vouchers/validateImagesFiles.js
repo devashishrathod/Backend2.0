@@ -3,11 +3,37 @@ const storage = require("../../services/storage");
 const { UPLOAD_PURPOSE, MEDIA_KIND } = require("../../constants/storage");
 const { assertImageFile, toMediaDocument } = require("../media");
 
+/**
+ * The uploaded images as a flat array, whatever shape the middleware gave them.
+ *
+ * `express-fileupload` hands over a single file as an object and several as an
+ * array, and some callers pass the whole `req.files` bag — so all three arrive
+ * here and all three have to come out the same.
+ *
+ * ### ⚠️ An object that is not a file is not a file
+ *
+ * `{}` used to come out as `[{}]` — one phantom image, with no name, no mime
+ * type and no path. Nothing downstream could tell it from a real upload until
+ * `assertImageFile` refused it with *"Received 'no content type'"*, which reads
+ * like the vendor sent something broken rather than nothing at all.
+ *
+ * Today's controllers pass `req.files?.newImages` and `req.files`, both of which
+ * are `undefined` when nothing was attached, so this was never reachable from
+ * the API — it was reachable from a test, and it cost one. A file has at least
+ * one of the three markers below; an empty bag has none.
+ */
+const looksLikeFile = (value) =>
+  Boolean(value) &&
+  (value.tempFilePath !== undefined ||
+    value.name !== undefined ||
+    value.mimetype !== undefined ||
+    value.data !== undefined);
+
 exports.normalizeVoucherImages = (files) => {
   if (!files) return [];
   let images = files;
   if (files.files !== undefined) images = files.files;
-  if (!Array.isArray(images)) images = [images];
+  if (!Array.isArray(images)) images = looksLikeFile(images) ? [images] : [];
   return images.filter(Boolean);
 };
 

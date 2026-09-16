@@ -14,6 +14,7 @@ const {
   validateVoucherValidityPeriod,
   normalizeVoucherImages,
   validateVoucherImages,
+  assertVoucherImageFloor,
   uploadVoucherImages,
   rollbackVoucherImages,
   generateVoucherCode,
@@ -119,9 +120,14 @@ exports.createVoucher = async (actor, payload, files = {}) => {
     const validity = validateVoucherValidityPeriod(startAt, endAt);
 
     const voucherFiles = normalizeVoucherImages(images);
-    if (!voucherFiles.length) {
-      throwError(422, "At least one voucher image is required.");
-    }
+    /**
+     * The floor, before a single byte is uploaded — a vendor who is three images
+     * short should be told so while they still have the picker open, not after
+     * waiting out five uploads.
+     *
+     * `voucherConfig` is passed so this request reads the settings cache once.
+     */
+    await assertVoucherImageFloor(voucherFiles.length, voucherConfig);
     validateVoucherImages(voucherFiles, voucherConfig);
 
     // The images' object keys carry the voucher id, and they go up before the

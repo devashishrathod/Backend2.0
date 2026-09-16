@@ -2939,6 +2939,16 @@ Vendor: DRAFT → submit-review → UNDER_REVIEW
 
 **Access:** Intended: ADMIN · Enforced: **ADMIN**
 
+> ### 🆕 `vendor.voucher.minImages` yahan **nahi** lagta — aur ye jaanboojh kar hai
+>
+> Vendor side par naya floor teen jagah lagta hai: voucher banate waqt, images edit karte waqt, aur submit-for-review par. Yahan **nahi**. Approve par sirf structural check hai — 0 images corrupt hai, wo phir bhi rukta hai.
+>
+> Wajah: aap `minImages` 3 se 5 kar dein, aur queue me pade wo vouchers jo 3 ke saath **sahi tareeke se submit** hue the, approve hone band ho jaate. Vendor unhe theek bhi nahi kar sakta — wo bhej chuka hai, ab uske paas koi request bachi hi nahi jo images jode. Na aap approve kar sakte, na wo sudhaar sakta.
+>
+> Isliye floor **andar aane ke raaste par** hai, bahar jaane ke par nahi. `minImages` badhane ka asar agli baar dikhega jab vendor us voucher ko chhuega.
+>
+> Yahi soch `minImages` ke poore design me hai — published voucher bhi peeche se retire nahi hota. Poora explanation [Settings block](#19--platform-settings) me.
+
 ### Path Params
 | Param | Type | Required | Notes |
 |---|---|---|---|

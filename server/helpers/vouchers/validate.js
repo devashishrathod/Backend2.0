@@ -1,5 +1,8 @@
 const { throwError } = require("../../utils");
 const { normalizedNameKey } = require("../common");
+// ⚠️ Straight from the module, not through `./index` — the barrel requires this
+// file, so going back through it would be a cycle.
+const { assertVoucherImageFloor } = require("./assertImageFloor");
 const Brand = require("../../models/Brand");
 const SubBrand = require("../../models/SubBrand");
 const Category = require("../../models/Category");
@@ -170,7 +173,7 @@ exports.validateVoucherDates = (startAt, endAt, options = {}) => {
 exports.validateVoucherBeforeSubmit = async (
   voucher,
   version,
-  { maxOffers, maxImages },
+  { maxOffers, maxImages, minImages },
   session,
 ) => {
   if (
@@ -214,7 +217,17 @@ exports.validateVoucherBeforeSubmit = async (
   if (imageCount > maxImages) {
     throwError(400, `Maximum ${maxImages} voucher images are allowed.`);
   }
-  if (imageCount === 0) throwError(400, "At least one image is required");
+  /**
+   * The last gate before a voucher goes to an admin, and the one that matters
+   * most: create and the image edit each see one request, but a voucher can
+   * reach here having been built across several.
+   *
+   * ⚠️ This line used to read `if (imageCount === 0) throwError(400, "At least
+   * one image is required")` — a third wording, a second status code, and
+   * blind to `minImages` entirely, so a platform configured for three would
+   * happily send a one-image voucher to review.
+   */
+  await assertVoucherImageFloor(imageCount, { minImages });
 
   const subBrandCount = await VoucherSubBrand.countDocuments({
     voucherVersionId: version._id,
@@ -279,6 +292,22 @@ exports.validateVoucherForApproval = async (
   const sortedOffers = normalizeVoucherOffers(offers);
 
   const imageCount = Array.isArray(version.images) ? version.images.length : 0;
+  /**
+   * ⚠️ The **structural** floor, not the configurable one — and that is the
+   * whole point.
+   *
+   * This runs when an admin approves a voucher the vendor already submitted. If
+   * it read `minImages`, an admin raising the floor between submit and approval
+   * would find their queue full of vouchers they cannot approve and the vendor
+   * cannot fix — a voucher retired from behind, which is exactly what
+   * `minImages` is shaped to avoid (see the note on the schema field).
+   *
+   * The floor belongs on the way in: create, image edit, submit. By the time a
+   * voucher is here it has already cleared whichever floor was live when the
+   * vendor sent it, and moving that line under them afterwards is not a rule,
+   * it is a trap. Zero images is different — that is corruption, not a policy
+   * change.
+   */
   if (imageCount === 0) {
     throwError(400, "At least one voucher image is required.");
   }

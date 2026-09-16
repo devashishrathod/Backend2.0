@@ -11,6 +11,7 @@ const {
   validateVoucherSubBrands,
   normalizeVoucherImages,
   validateVoucherImages,
+  voucherImageFloorMessage,
   uploadVoucherImages,
   rollbackVoucherImages,
   pickOrphanImages,
@@ -79,11 +80,18 @@ const mergeOffers = (
     .map((offer, index) => ({ ...offer, sortOrder: index + 1 }));
 };
 
+/**
+ * ⚠️ `minImages` is passed in rather than read here, because this function is
+ * synchronous and `getVoucherConfig()` is not. The caller already holds the
+ * config, so nothing is lost — and making this async would mean every future
+ * change to it has to think about a settings read in the middle of a merge.
+ */
 const mergeImages = (
   existingImages = [],
   uploadedImages = [],
   removeImageIds = [],
   maxImages,
+  minImages,
 ) => {
   const removeSet = new Set((removeImageIds || []).map(String));
   const kept = (existingImages || []).filter(
@@ -103,8 +111,17 @@ const mergeImages = (
   const addedImages = (uploadedImages || []).map((media) => ({ media }));
 
   const combined = [...keptImages, ...addedImages];
-  if (!combined.length) {
-    throwError(400, "At least one voucher image is required.");
+  /**
+   * The floor on what the edit **leaves behind**, not on what was uploaded — a
+   * vendor removing three of four images has to be stopped even though they
+   * uploaded nothing at all.
+   *
+   * ⚠️ 422 now, where this used to answer 400. One rule answering with two
+   * different status codes was half of what made P13 hard to see; the message
+   * and the code are both shared with create and submit now.
+   */
+  if (combined.length < minImages) {
+    throwError(422, voucherImageFloorMessage(combined.length, minImages));
   }
   if (combined.length > maxImages) {
     throwError(400, `Maximum ${maxImages} voucher images are allowed.`);
@@ -213,7 +230,7 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
     // The whole config, not two numbers off it — `validateVoucherImages` needs
     // the size ceilings too, which is what P12 was missing.
     const voucherConfig = await getVoucherConfig();
-    const { maxOffers, maxImages } = voucherConfig;
+    const { maxOffers, maxImages, minImages } = voucherConfig;
 
     if (currentVersion.status === VOUCHER_STATUSES.UNDER_REVIEW) {
       throwError(409, "Voucher is under review and cannot be edited.");
@@ -319,6 +336,7 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
       uploadedImages,
       payload.removeImageIds,
       maxImages,
+      minImages,
     );
 
     const existingSubBrandDocs = await VoucherSubBrand.find({

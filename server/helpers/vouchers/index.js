@@ -1,4 +1,8 @@
 const {
+  assertVoucherImageFloor,
+  voucherImageFloorMessage,
+} = require("./assertImageFloor");
+const {
   calculateVoucherPricing,
   computeOfferDiscount,
 } = require("./calculateVoucherPricing");
@@ -90,4 +94,6 @@ module.exports = {
   // One builder for preview AND order creation, so the price shown is the price
   // charged. `strictPromo` is the only difference between the two.
   buildClaimPreview,
+  assertVoucherImageFloor,
+  voucherImageFloorMessage,
 };

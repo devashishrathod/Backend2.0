@@ -52,12 +52,12 @@ exports.submitVoucherForReview = async (userId, voucherId) => {
       );
     }
 
-    const { maxOffers, maxImages } = await getVoucherConfig();
+    const { maxOffers, maxImages, minImages } = await getVoucherConfig();
 
     const validation = await validateVoucherBeforeSubmit(
       voucher,
       version,
-      { maxOffers, maxImages },
+      { maxOffers, maxImages, minImages },
       session,
     );
 
