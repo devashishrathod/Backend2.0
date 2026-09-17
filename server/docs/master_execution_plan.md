@@ -9,8 +9,9 @@
 > **Block V ka V-6 bhi ship ho chuka** — teen commit me: `verifyApiCoverage` ka
 > fix, `WriteConflict` → 409, aur delete khud.
 >
-> **Agla: V-6c** (claim snapshot me banner + pehli image). **V-6b** ka kaam poora
-> hai par abhi commit nahi hua.
+> **Agla: V-6c** (claim snapshot me banner + pehli image), phir **V-7**, phir
+> **Block U**. Storage ka final faisla §0.5 me locked hai — prod S3-only, client
+> sirf presigned, koi dual mode nahi, aur **X-4 phase hi khatam**.
 >
 > **O-1** (OTP throttle) aur **O-2** (poori money suite ek saath green nahi
 > rehti) dono jaanboojh kar khule hain — likh diye gaye hain, fix nahi kiye. **Block U** (presigned upload) aur **Block X** (infra) abhi baaki hain.
@@ -80,6 +81,87 @@ E2 purpose mismatch → 422 · E5 upload transaction ke bahar · pehli surface =
 > ⚠️ Purana "thumbnail mandatory = option C (abhi optional, flag se mandatory)"
 > **superseded** hai — M-7 ke baad poster VIDEO par schema-level mandatory hai,
 > pehle din se, bina kisi flag ke. Dekhein §1.5.
+
+---
+
+## 0.5 Storage ka final faisla — locked 2026-09-18
+
+> **Kuch bhi live nahi hai** — na app, na vendor panel, na admin panel. Ye ek
+> aisi khidki hai jo dobara nahi milegi, aur ye saare faisle usi par tike hain.
+> Jis din koi client live hua, inme se aadhe palatne mehenge ho jayenge.
+
+| Cheez | Faisla |
+|---|---|
+| **Production ka storage** | **S3-only**, din ek se |
+| **Cloudinary** | Code me rahega — `url` + `remove` ke liye. `upload` U-5 tak |
+| **Dev / stage** | S3 par, `dev/` aur `staging/` prefix ke saath |
+| **Stage ka purana data** | **Jaisa hai waisa** — 211 Cloudinary rows, migrate nahi karenge |
+| **Provider switch** | **Dynamic rahega** — `providerFor(asset)` har row ka apna provider padhta hai |
+| **Client ka upload** | **Sirf presigned.** Multipart kabhi ship nahi hoga |
+| **Dual mode (transport)** | **Nahi chahiye** — koi purana client version hai hi nahi |
+| **X-4 (multipart sunset)** | **Phase khatam** — multipart U-5 ke ant me seedha delete |
+| **Order** | V-6c → V-7 → U-1…U-5 → X-1/X-2 |
+
+### Prod S3-only kyun — suvidha nahi, ek gap
+
+Cloudinary par **private documents ka short-lived link ban hi nahi sakta**.
+`services/storage/index.js` ka `documentUrl` khud kehta hai: Cloudinary ki
+delivery URL hi ekmatra URL hai — permanent aur public. Invoice PDF par
+customer ka naam, pata, GSTIN aur amount hota hai. Wo finding **S3 par hi band
+hoti hai**, kyunki `signedGetUrl` sirf S3 provider ke paas hai.
+
+### ⚠️ Cloudinary ka `upload` U-5 ke baad pahunch se bahar ho jayega
+
+Ye **maan kar** liya gaya hai, bhoola nahi gaya:
+
+```
+provider.upload()  ←  sirf uploadFromPath() bulata hai
+uploadFromPath()   ←  sirf 19 call-sites bulate hain
+wo 19 call-sites   ←  sirf multipart se file paate hain
+koi script/seeder upload nahi karta — check kiya, zero
+```
+
+Multipart hatte hi Cloudinary ka `upload` kisi ke haath nahi aayega, kyunki
+`presign.js` `@aws-sdk/s3-presigned-post` par bana hai aur Cloudinary ke paas
+is shape ka kuch nahi hai.
+
+**Prod me iska farak zero hai** — prod waise bhi S3-only hai. Uske liye ek
+doosra upload raasta zinda rakhna wo keemat hai jiska koi kharidar nahi.
+
+### 🔮 Future: dono provider, zero client change
+
+Agar kal Cloudinary par naye uploads chahiye hue, to raasta likha hua hai —
+**Cloudinary ka signed direct upload** (`presign`/`confirm` ka Cloudinary
+version), taaki facade dono par chale. Andaza **~6-8 ghante + tests**.
+
+🔴 **Client me tab bhi kuch nahi badlega.** Wo already sabit hai:
+
+- `toMediaResponse` ek **whitelist** hai — default me sirf URL string, `withMeta`
+  par `url,kind,width,height`. `provider` sirf admin ko, aur `bucket`/`key`/
+  `publicId` kabhi kisi ko nahi
+- `providerFor(asset)` har row ka apna provider padhta hai, aaj ka setting nahi
+
+**2026-09-18 ko stage par naapa gaya:** 211 asli media rows, sab Cloudinary —
+`url()` me **0 fail**, asli fetch **5/5 → HTTP 200**. Usi process me ek
+synthetic `AWS_S3` row ne `https://cdn.trydood.com/images/…` lautaya. Ek hi
+setting, do alag jawab, row ke hisaab se. **Mixed database sach me chalta hai.**
+
+### Stage migrate kyun nahi kar rahe
+
+Wahi mixed state prod me kabhi nahi hogi (prod fresh hai) — par stage par usi
+se roz sabit hota rehta hai ki migration path zinda hai. Migrate kar dete to ye
+ek kaam karta hua raasta apne aap test hona band ho jaata.
+
+### Jo blocker nahi hain
+
+- **X-1 (CloudFront)** — `preflight.js` khud kehta hai ki uske bina S3 poora
+  chalta hai: upload, delete, delivery sab. Sirf **resize** nahi hota, yaani
+  bhaari original phone par jaata hai. Isi liye wo **warning hai, refusal nahi**
+- **X-2 (metadata Lambda)** — sirf S3 par chahiye. Cloudinary upload par hi
+  `width`/`height` laut deta hai (18 Sept ke probe me dikha); S3 kuch nahi
+  batata, isliye `mediaSchema` me wo `null` default hain
+- **"6 hafte"** — wo window sirf purane app versions ke liye tha. Koi purana
+  version hai hi nahi, to X-4 ke saath wo bhi khatam
 
 ---
 
@@ -711,10 +793,10 @@ expire hone ke baad delete ho jayega."*
 | Phase | Kaam | Size |
 |---|---|---|
 | **U-1** | `/uploads/presign` + `/uploads/confirm` wiring; TTL config se | ~4 h · 2 commit |
-| **U-2** | Pehli surface — category (pilot, dual mode) | ~2 h · 1 commit |
+| **U-2** | Pehli surface — category (pilot) | ~1.5 h · 1 commit |
 | **U-3** | Showcase surface — multi-file + thumbnail pairing | ~4 h · 2 commit |
 | **U-4** | Voucher surface — images + banner + poster | ~3 h · 2 commit |
-| **U-5** | Baaki surfaces — brand, subBrand, category, ticker, avatar, features | ~5 h · 6 commit |
+| **U-5** | Baaki surfaces — brand, subBrand, category, ticker, avatar, features **+ multipart delete** | ~4 h · 6 commit |
 
 ## Block X — Infra
 
@@ -723,7 +805,7 @@ expire hone ke baad delete ho jayega."*
 | **X-1** | CloudFront + resize Lambda (widths `160/400/800/1600`, `gifs/` bahar) |
 | **X-2** | Metadata Lambda (video duration/dimensions) + retry sweep |
 | **X-3** | Panel + app migration (doosri team) |
-| **X-4** | Multipart + `express-fileupload` sunset (U ship + 6 hafte) |
+| ~~**X-4**~~ | ~~Multipart + `express-fileupload` sunset (U ship + 6 hafte)~~ — 🔴 **phase khatam** (§0.5). Koi client live nahi hua, to multipart kabhi ship hi nahi hoga; wo **U-5 ke ant me seedha delete** hota hai. 6-hafte ka window sirf purane app versions ke liye tha |
 
 ## Block O — OTP throttle (media migration se bahar)
 
@@ -1499,7 +1581,7 @@ Detail: [showcase_rules_and_upload_plan.md](./showcase_rules_and_upload_plan.md)
 
 ## U-1 … U-5 · Upload
 - **U-1** `/uploads/presign` + `/uploads/confirm` — facade `acceptUpload` · `acceptUploads` middleware · route/controller/validator · TTL config se · teen-docs rule
-- **U-2** Category pilot (dual mode, sabse chhoti surface)
+- **U-2** Category pilot (sabse chhoti surface). ⚠️ **Dual mode nahi** — §0.5
 - **U-3** Showcase surface — multi-file + poster pairing
 - **U-4** Voucher surface — images + banner + poster
 - **U-5** Baaki surfaces — brand, subBrand, ticker, avatar, features (6 commit)
