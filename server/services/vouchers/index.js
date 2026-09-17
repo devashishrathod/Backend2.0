@@ -3,6 +3,7 @@ const { updateVoucher } = require("./updateVoucher");
 const { submitVoucherForReview } = require("./submitVoucherForReview");
 const { reviewVoucher } = require("./reviewVoucher");
 const { publishVoucher } = require("./publishVoucher");
+const { deleteVoucher } = require("./deleteVoucher");
 const {
   pauseVoucher,
   resumeVoucher,
@@ -25,6 +26,7 @@ module.exports = {
   submitVoucherForReview,
   reviewVoucher,
   publishVoucher,
+  deleteVoucher,
   pauseVoucher,
   resumeVoucher,
   getAllVoucherVersions,

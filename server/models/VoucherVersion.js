@@ -261,6 +261,29 @@ const voucherVersionSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    /**
+     * 🔴 Kaun, kab, aur kyun (V-6).
+     *
+     * `isDeleted` akela ye nahi bata sakta ki voucher gaya kahan. Admin panel ko
+     * deleted vouchers dikhane ka matlab hi tab hai jab ye teen saath hon —
+     * warna wo ek aisi list hai jisme har row par ek hi jawab hai: "gayab".
+     *
+     * ⚠️ Teeno `voucherDeletionFields()` se hi likhe jaate hain, usi `$set` me
+     * jo `isDeleted` aur `status: DELETED` set karta hai.
+     */
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    deletedBy: {
+      ...userField,
+    },
+    deleteReason: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: null,
+    },
     isActive: {
       type: Boolean,
       default: true,

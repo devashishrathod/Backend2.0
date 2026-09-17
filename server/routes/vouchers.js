@@ -15,6 +15,7 @@ const {
   publish,
   pause,
   resume,
+  remove,
   getAllVersions,
   getAllCustomerVouchers,
   getCustomerVoucher,
@@ -32,6 +33,7 @@ const {
   validatePublishVoucher,
   validatePauseVoucher,
   validateResumeVoucher,
+  validateDeleteVoucher,
   validateGetAllVoucherVersions,
   validateCustomerGetAllVouchers,
   validateCustomerGetVoucher,
@@ -97,6 +99,24 @@ router.post(
   isVendorOrAdmin,
   validateSchema(validateResumeVoucher),
   resume,
+);
+/**
+ * 🔴 The "D" of CRUD, which this router did not have (V-6).
+ *
+ * Takes the **voucher** id, not a version — a delete is not a per-version act,
+ * and the service takes every version down with it.
+ *
+ * ⚠️ `/:voucherId` is a one-segment wildcard, and it is the only `DELETE` on
+ * this router, so nothing above it can be swallowed. If a literal `DELETE`
+ * path is ever added here — `/vouchers/admin/…` — it has to be declared
+ * **above** this line, or `admin` will be read as a voucher id. That is the
+ * same trap `/admin/suggestions/:voucherId` already carries a note about.
+ */
+router.delete(
+  "/:voucherId",
+  isVendorOrAdmin,
+  validateSchema(validateDeleteVoucher),
+  remove,
 );
 router.get(
   "/versions/get-all",

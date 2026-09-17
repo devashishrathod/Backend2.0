@@ -4,12 +4,15 @@
 >
 > **Ship ho chuka:** Block A (A-1 · A-2 · A-2b · A-3) · Block F (F-1…F-4) ·
 > Block M (M-1 · M-1a′ · M-1a″ · M-1b · M-2 · M-3 · M-3a · M-4 · M-5) ·
-> **Block S poora** (S-1…S-5) · **Block V ka V-1…V-4**.
+> **Block S poora** (S-1…S-5) · **Block V ka V-1…V-5**.
 >
-> **Agla: V-5** (pause / resume + unique-index trap ka 409).
+> **V-6** (delete) ka kaam poora hai par **abhi commit nahi hua** — teen commit
+> taiyar hain: `verifyApiCoverage` ka fix, `WriteConflict` → 409, aur delete khud.
 >
-> **O-1** (OTP throttle) jaanboojh kar khula hai — likh diya gaya hai, fix nahi
-> kiya. **Block U** (presigned upload) aur **Block X** (infra) abhi baaki hain.
+> **Agla: V-6b** (admin ko deleted vouchers dikhana — `includeDeleted`, ADMIN-only).
+>
+> **O-1** (OTP throttle) aur **O-2** (poori money suite ek saath green nahi
+> rehti) dono jaanboojh kar khule hain — likh diye gaye hain, fix nahi kiye. **Block U** (presigned upload) aur **Block X** (infra) abhi baaki hain.
 >
 > Har phase ka detail aur uska commit hash Part 4B me. Part 4 ka table sirf
 > **estimate** hai — jo actually laga wo detail section me likha hai.
@@ -1152,6 +1155,45 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 
 ---
 
+## O-2 · Poori money suite ek saath chalane par green nahi rehti
+
+`__tests__/money/*` — 91 files, ek hi `Trydood2_test` database par
+
+> 🔴 **Ye pehli baar 2026-09-18 ko naapa gaya, V-6 ke dauraan.** Poori suite:
+> **2 suite fail, 4 test fail, 1802 pass**. Wahi suites akele chalane par
+> **34/34 pass** karti hain.
+>
+> `moneyInvariants` ka fail ek settlement total par hai — `488.7` expect,
+> `1273.7` mila. Farq ka aakaar batata hai ki jod me aisi rows aa rahi hain jo
+> us test ne banayi hi nahi. Doosra `vendorDebt` ka "a debt we decide not to
+> chase" hai.
+>
+> ⚠️ **Wajah suite ka design hai, kisi ek test ka bug nahi.** Har suite apne
+> `beforeEach` me apni collections clear karti hai, par `moneyInvariants` jaisi
+> suite **poore collection par total ginti hai** — uske liye "meri rows saaf
+> hain" kaafi nahi, use ye chahiye ki us waqt aur kisi ki rows bhi na hon.
+> `--runInBand` par 91 suites ek hi DB baantti hain, to jo suite pehle chali
+> uski bachi hui row agle ke jod me aa jaati hai.
+>
+> **V-6 ne ye nahi todha, aur wo saboot ke saath hai:** `moneyInvariants`
+> **#7** par chalti hai jabki V-6 ka pehla suite **#22** par — uske fail hone
+> tak V-6 ki ek bhi row DB me nahi aati. `vendorDebt` **#24** par hai aur
+> `voucherDelete` **#22** par, to wo jodi usi kram me alag chalayi gayi:
+> **46/46 pass**. V-6 ki saari 10 voucher suites un dono ke saath: **195/195**.
+>
+> ⚠️ **Iska koi baseline nahi hai** — 91 files ek saath is repo me aaj se
+> pehle kabhi chalayi hi nahi gayi thin, isliye ye nahi kaha ja sakta ki ye kab
+> se hai.
+>
+> Theek karne ke do raste: har aisi suite ko apna scope dena (marker field ya
+> apna database), ya `moneyInvariants` jaise totals ko poore collection ke
+> bajaye us test ki apni rows par ginana. Doosra sasta hai, pehla pakka.
+>
+> Tab tak: **money suites blocks me chalayein** (jaise `--runInBand
+> __tests__/money/voucher`), poori suite ko ek gate ki tarah na maanein.
+
+---
+
 ## O-1 · OTP throttle — claim ki pehchaan timestamp se nahi ho sakti
 
 `helpers/otps/claimOtpSend.js` · `helpers/otps/releaseOtpSend.js` · `models/OtpThrottle.js`
@@ -1356,11 +1398,68 @@ Detail: [showcase_rules_and_upload_plan.md](./showcase_rules_and_upload_plan.md)
 > chalta ki backfill chal chuki hai** — `pickVoucherBanner` khali banner par bhi
 > `images[0]` par gir jaata hai.
 
-## V-5 · Pause / resume
-- [ ] `PUBLISHED → PAUSED` aur ulta
-- [ ] 🔴 **Resume se pehle check** — koi aur `PUBLISHED` version to nahi (partial unique index `{voucherId, status}`); ho to **saaf 409**, `E11000` nahi
-- [ ] Customer reads par kuch nahi karna — `status: "PUBLISHED"` filter pehle se hai
-- [ ] **Proof:** pause → naya version publish → resume par 409 (500/E11000 nahi)
+## V-5 · Pause / resume — ✅ **DONE** (`245ae13`, `2780dfc`)
+`services/vouchers/{pauseResumeVoucher,publishVoucher,expireVouchers}.js` · `constants/voucher.js` · `models/VoucherVersion.js` · routes · validator · docs · postman
+- [x] `PUBLISHED → PAUSED` aur ulta — `POST /vouchers/{pause,resume}/:versionId`
+- [x] 🔴 **Resume se pehle check** — koi aur `PUBLISHED` version to nahi; ho to **saaf 409** jo batata hai kaunsa live hai aur ab kya karna hai, `E11000` nahi
+- [x] Nikal chuki validity par bhi resume 409 — warna expired offer customer ke saamne jaata aur agle ghante ki sweep use utaar deti
+- [x] Customer reads par kuch nahi kiya — `customerListing` version ke `status: "PUBLISHED"` par match karti hai, paused turant gir jaata hai
+- [x] `pausedAt`/`pausedBy`/`pauseReason` — **resume par clear**, `archivedAt`/`expiredAt` ke ulat
+- [x] **Proof:** money `voucherPauseResume` (18) · mutation **11/11**, jisme **M1 (pre-check hata do) ne 18 me se 17 test girae** — yaani index sach me firing karta hai
+
+> 🔴 **Ye do commit me hua, aur pehla commit V-5 ka scope hi nahi tha.**
+> `expireVouchers` master vouchers ko `{ endAt: { $lte: now } }` se dhundhti thi
+> aur **`Voucher` me `endAt` field hai hi nahi** — stage par 18 me se 0 ke paas.
+> Yaani wo query har run par khali lauti, masters kabhi `EXPIRED` nahi hue, aur
+> brand ki list bhi unhi rows se banti thi — to **`recountBrandUsage` us job se
+> kabhi pukara hi nahi gaya**, yaani expire hone par slot kabhi release nahi
+> hua. Master ab versions se derive hota hai (mirror nahi — wo ek date do jagah
+> sach bana deta), **survivor rule** ke saath: master tabhi expire hota hai jab
+> us voucher ka kuch bhi in play na bache.
+
+> ⚠️ `publishVoucher` master ko ab `PUBLISHED` bolta hai — pehle `APPROVED` pada
+> reh jaata tha, isliye `PAUSED` ke paas utarne ki seedhi hi nahi thi (**P7**).
+> `VOUCHER_IN_PLAY_STATUSES` ek list hai do naam ke saath;
+> `VOUCHER_SLOT_CONSUMING_STATUSES` uska alias hai, dusri copy nahi.
+
+> ⚠️ Mutation **M7** (`$ne: EXPIRED` guard hata do) **zinda bacha aur kill nahi
+> gina** — us row tak pahunchne ke liye pehle se `EXPIRED` master chahiye jiski
+> koi version abhi due padi ho, par sweep ek hi pass me saari due versions
+> nipta deti hai. Guard rakha hai, par wo aaj ke data me pahunch se bahar hai.
+
+> ⚠️ Pause master ko tabhi chhuta hai jab wo isi version ki baat kar raha ho.
+> `updateVoucher` fork par master ko `DRAFT` kar deta hai, to voucher v1 par live
+> ho sakta hai jabki master `DRAFT` padha hai. History me `masterFollowed: false`
+> darj hota hai, warna wo row aadhi-likhi lagti.
+
+## V-6 · Delete — ✅ **DONE** (uncommitted — teen commit taiyar)
+`services/vouchers/deleteVoucher.js` · `helpers/vouchers/{assertNoLiveClaims,markDeleted}.js` · `middlewares/errorHandler.js` · `scripts/verifyApiCoverage.js` · models · routes · validator · docs · postman
+- [x] `VOUCHER_STATUSES.DELETED` enum me (aur `VOUCHER_APPROVAL_ACTION.DELETED`)
+- [x] Soft delete + `status: DELETED` + `deletedAt` + `deletedBy` + `deleteReason` — **`voucherDeletionFields()` se, ek hi `$set` me**
+- [x] Saari versions saath — warna ek deleted voucher ki `PUBLISHED` version reh jaati jise customer listing serve karti rehti
+- [x] `releaseSlot(brandId, VOUCHERS)` — **commit ke baad**, kyunki wo `Brand` par likhta hai aur jaan-bujh kar kabhi throw nahi karta
+- [x] **Live-claim guard** — `PENDING`/`PAID` par 409, **ADMIN par bhi**; `liveClaims` + `breakdown` + `suggestedAction`
+- [x] **Proof:** money `voucherDelete` (23) · poori voucher money suite **161/161** · mutation **13/14**
+
+> ⚠️ **M7/M8 dono marte hain** — `status: DELETED` hatane par 8 test girte hain,
+> `isDeleted` hatane par 4. Yaani V-11 ka "dono hamesha saath" sirf comment nahi.
+> **M2** (`toId()` hata do) 6 test girata hai: aggregation ka `$match` cast
+> **nahi** karta, aur jo guard chupke se kuch match na kare wo hamesha pass karta hai.
+
+> ⚠️ **M12 zinda hai aur kill nahi gina.** Usne teen cheezein kholin: (1)
+> concurrency ka test tha hi nahi — purana "double delete" sequential tha aur
+> load ke 404 par ruk jaata tha; (2) do ek-saath delete par haarne wale ko
+> **`WriteConflict` ka 500** milta tha (ab `errorHandler` me 409, har
+> transactional service ke liye); (3) **mera apna comment jhooth bol raha tha** —
+> wo filter double click nahi rokta, Mongo rokta hai. Filter beech ki patli
+> khidki dekhta hai (doosre ka `findOne` pehle ke commit se pehle, write baad me),
+> jo bahar se deterministically banayi nahi ja sakti.
+
+> 🔴 **`verifyApiCoverage` me do hole mile** — `:param` ka pattern **koi bhi
+> segment** match karta tha (to `DELETE /vouchers/:voucherId` ko
+> `POST /vouchers/create` "documented" bana deta tha), aur lookahead me `/` nahi
+> tha (to chhota path lambe par free-ride kar leta). Tighten karne par 226 me se
+> **theek ek** route pass se fail hua — wahi jiska sach me kuch likha nahi tha.
 
 ## V-6 · Delete
 - [ ] `VOUCHER_STATUSES.DELETED` enum me

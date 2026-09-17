@@ -341,6 +341,26 @@ exports.validateResumeVoucher = {
   },
 };
 
+exports.validateDeleteVoucher = {
+  params: {
+    voucherId: objectId().required().messages({
+      "any.required": "Voucher ID is required.",
+      "any.invalid": "Invalid voucher ID.",
+    }),
+  },
+  /**
+   * ⚠️ Optional, like pause's. A vendor deleting their own voucher owes nobody
+   * an explanation — the field is there because `deleteReason` is what makes the
+   * admin's deleted-voucher list readable later, not because a delete has to be
+   * justified before it is allowed.
+   */
+  body: Joi.object({
+    reason: Joi.string().trim().max(500).optional().messages({
+      "string.max": "The reason cannot exceed 500 characters.",
+    }),
+  }),
+};
+
 exports.validateGetAllVoucherVersions = {
   query: Joi.object({
     page: Joi.number().integer().min(1).optional(),

@@ -5213,6 +5213,82 @@ Koi nahi.
 
 ---
 
+## 57c. DELETE /vouchers/:voucherId
+
+🆕 Voucher delete karta hai — **soft**, aur plan ka slot wapas de deta hai.
+
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · vendor sirf apne brand ka
+
+### Path Params
+| Param | Type | Required | Notes |
+|---|---|---|---|
+| `voucherId` | ObjectId | ✅ | ⚠️ **Voucher ka id**, version ka nahi — delete poore voucher par hota hai |
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `reason` | String | ❌ | Max 500. Admin ki deleted-list me yahi padha jaata hai |
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Voucher deleted.",
+  "data": {
+    "voucherId": "68f1a2b3c4d5e6f7a8b9c2a1",
+    "voucherCode": "VCH-10000042",
+    "status": "DELETED",
+    "deletedAt": "2026-09-17T10:15:00.000Z",
+    "deletedBy": "68f1a2b3c4d5e6f7a8b9c0a1",
+    "deleteReason": "Galti se bana diya tha",
+    "versionsDeleted": 2,
+    "previousStatus": "DRAFT"
+  }
+}
+```
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `401` | `User authentication is required.` | |
+| `403` | `Forbidden: You do not have permission to perform this action on this brand.` | Voucher kisi aur brand ka |
+| `400` | `Invalid voucher ID.` | Format |
+| `404` | `Voucher not found.` | Hai hi nahi, ya pehle se deleted |
+| `400` | `The reason cannot exceed 500 characters.` | |
+| `409` | 🔴 `2 customers are holding this voucher right now (1 already paid, 1 still checking out), so it cannot be deleted.` | **Live claim** — neeche dekhein |
+| `409` | `Voucher was already deleted. Please refresh.` | Do delete ek saath aaye |
+
+#### 🔴 `409` ke saath `details` bhi aata hai
+```json
+{
+  "success": false,
+  "message": "2 customers are holding this voucher right now (1 already paid, 1 still checking out), so it cannot be deleted.",
+  "details": {
+    "liveClaims": 2,
+    "breakdown": { "PAID": 1, "PENDING": 1 },
+    "suggestedAction": "Pause it instead — that takes it off the customer app immediately and leaves these claims intact. You can delete it once they are settled."
+  }
+}
+```
+
+### ⚠️ Notes
+
+**1. Soft delete hai — row rehti hai.** `VoucherClaim` apne saath offer, voucher, brand aur outlet ke snapshot rakhta hai, isliye customer ki order history is document ko padhti hi nahi aur delete ke baad bhi poori rehti hai. Par claim `voucherId` par point karta hai — hard delete un sabko khali jagah par chhod deta.
+
+**2. `status: DELETED` aur `isDeleted: true` hamesha saath likhe jaate hain.** Ek jagah se (`voucherDeletionFields`). `isDeleted` wo hai jis par har query filter karti hai; `DELETED` wo hai jo panel dikha sakta hai — boolean kisi ko dikhaya nahi ja sakta.
+
+**3. Saari versions bhi jaati hain.** Voucher ki version ki apni koi zindagi nahi hai. Chhod dete to ek deleted voucher ki `PUBLISHED` version reh jaati, jise customer listing `voucherMappings` se join karke khushi se serve karti rehti.
+
+**4. 🔴 Live claim par delete rukta hai — admin ke liye bhi.** `PENDING` matlab customer abhi checkout par khada hai; `PAID` uss se bhi bhaari — paisa ja chuka hai aur discount abhi mila nahi. Baaki saare states (`REDEEMED`, `FAILED`, `CANCELLED`, `EXPIRED`, `REFUNDED`) khatam ho chuke hain, un par nahi rukta.
+
+Is codebase ke har doosre guard me ADMIN ko chhoot hai, kyunki admin ka kaam hi vendor ke rule ke upar jaana hai. Ye wala alag hai: jise ye bachata hai wo in dono me se koi nahi. Jis customer ne paisa de diya hai use wo discount milna hi chahiye, aur delete dabane wale admin ko pata bhi nahi chalta ki wo kisi ko beech raaste chhod raha hai.
+
+**5. Slot turant wapas milta hai.** Delete ke baad brand ka `vouchersUsed` ek kam ho jaata hai, to naya voucher usi waqt banaya ja sakta hai.
+
+**6. `PAUSED` aur `DELETED` alag cheezein hain.** Pause wapas aa sakta hai (#57b), delete nahi. Agar aap sirf isliye hata rahe hain ki abhi customer ko na dikhe, to pause chahiye.
+
+---
+
 ## 58. GET /vouchers/versions/get-all
 
 Voucher versions ki paginated list — vendor ka voucher dashboard.

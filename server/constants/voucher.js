@@ -24,6 +24,7 @@ const VOUCHER_APPROVAL_ACTION = Object.freeze({
   ARCHIVED: "ARCHIVED",
   EXPIRED: "EXPIRED",
   PUBLISHED: "PUBLISHED",
+  DELETED: "DELETED",
 });
 
 const VOUCHER_STATUSES = Object.freeze({
@@ -35,6 +36,22 @@ const VOUCHER_STATUSES = Object.freeze({
   EXPIRED: "EXPIRED",
   PAUSED: "PAUSED",
   ARCHIVED: "ARCHIVED",
+  /**
+   * 🔴 `DELETED` is the **display** half of a delete; `isDeleted` is the
+   * operational half, and the two are always written together (V-6, V-11).
+   *
+   * `isDeleted` is what every query filters on and it has to stay — changing
+   * that would mean revisiting every read in the codebase. But a boolean cannot
+   * be shown to anybody: a panel listing a voucher had no word for what happened
+   * to it, so a deleted voucher and a live one differed only by a field the
+   * client was never given.
+   *
+   * ⚠️ Nothing writes one without the other. `voucherDeletionFields()` is the
+   * single place that builds both, precisely so the two can never disagree —
+   * and a voucher that says `DELETED` while `isDeleted: false` would be visible
+   * everywhere while claiming to be gone.
+   */
+  DELETED: "DELETED",
 });
 
 const VOUCHER_OFFER_LIMITS = Object.freeze({

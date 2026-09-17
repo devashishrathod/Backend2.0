@@ -10,6 +10,12 @@ const {
   buildVoucherOrderSummary,
 } = require("./buildVoucherOrderSummary");
 const { resolveClaimOffer } = require("./resolveClaimOffer");
+const {
+  assertNoLiveClaims,
+  liveClaimsMessage,
+  LIVE_CLAIM_STATUSES,
+} = require("./assertNoLiveClaims");
+const { voucherDeletionFields } = require("./markDeleted");
 const { buildClaimPreview } = require("./buildClaimPreview");
 const {
   normalizeVoucherName,
@@ -91,6 +97,10 @@ module.exports = {
   buildVoucherOrderSummary,
   // Which offer applies. Ranks with the same computeOfferDiscount that charges.
   resolveClaimOffer,
+  assertNoLiveClaims,
+  liveClaimsMessage,
+  LIVE_CLAIM_STATUSES,
+  voucherDeletionFields,
   // One builder for preview AND order creation, so the price shown is the price
   // charged. `strictPromo` is the only difference between the two.
   buildClaimPreview,

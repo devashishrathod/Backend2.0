@@ -227,7 +227,8 @@ if (role === ROLES.ADMIN) {
 |---|---|
 | `POST /vouchers/create` | Body (already required) |
 | `PUT /vouchers/update/:voucherId` | Voucher se resolve |
-| `POST\|DELETE /vouchers/:voucherId/banner` | Voucher se resolve |
+| `POST /vouchers/:voucherId/banner` | Voucher se resolve |
+| `DELETE /vouchers/:voucherId` | Voucher se resolve — 🆕 aur live claim ho to ADMIN bhi nahi |
 | `POST /transactions/subscribe/preview` | **Body — admin ke liye required** |
 | `POST /transactions/subscribe/create-order` | **Body — admin ke liye required** |
 | `GET /subscribeds/get` | **Query — admin ke liye required** |
@@ -3134,9 +3135,9 @@ agla banner bhejta hai.
 
 ---
 
-## 39–46. Vendor Toolkit (admin bhi use kar sakta hai)
+## 39–47. Vendor Toolkit (admin bhi use kar sakta hai)
 
-Ye 8 endpoints vendor ke liye banaye gaye hain, par admin bhi chala sakta hai — **`resolveActorBrand` admin ko koi bhi brand chunne deta hai** (aur `brandId` mandatory kar deta hai).
+Ye 9 endpoints vendor ke liye banaye gaye hain, par admin bhi chala sakta hai — **`resolveActorBrand` admin ko koi bhi brand chunne deta hai** (aur `brandId` mandatory kar deta hai).
 
 | # | Method | Endpoint | Admin ke liye khaas |
 |---|---|---|---|
@@ -3148,13 +3149,22 @@ Ye 8 endpoints vendor ke liye banaye gaye hain, par admin bhi chala sakta hai �
 | 44 | POST | `/vouchers/:voucherId/banner` | Featured/promoted vouchers ke liye. Faisla #38a par |
 | 45 | POST | `/vouchers/pause/:versionId` | 🆕 Live voucher feed se hataana, bina khatam kiye |
 | 46 | POST | `/vouchers/resume/:versionId` | 🆕 Wapas live karna |
+| 47 | DELETE | `/vouchers/:voucherId` | 🆕 Soft delete + slot wapas. 🔴 **Live claim par ADMIN bhi block** |
 
 > 🔴 **`DELETE /vouchers/:voucherId/banner` yahan se hata diya gaya** — wo endpoint
 > ab maujood hi nahi hai. Banner ka slot kabhi khali nahi hota: approved banner na
 > ho to customer ko voucher ki pehli image dikhti hai, isliye "banner hata do" ek
 > state hi nahi rahi. Badalna ho to #44 se naya bhej dijiye.
 
-**Access (39, 40, 41, 42, 44, 45, 46):** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** (39/40/44/45/46 pe **+ ownership**)
+**Access (39, 40, 41, 42, 44, 45, 46, 47):** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** (39/40/44/45/46/47 pe **+ ownership**)
+
+> 🔴 **47 ek apwaad hai: ADMIN ko chhoot nahi milti.** Har doosre guard me
+> admin vendor ke rule ke upar ja sakta hai — wahi to admin hona hai. Yahan jise
+> bachaya ja raha hai wo in dono me se koi nahi: jis customer ne paisa de diya
+> hai (`PAID`) ya jo abhi checkout par khada hai (`PENDING`), use wo discount
+> milna hi chahiye. Refusal ke saath `liveClaims`, `breakdown` aur
+> `suggestedAction` aata hai — aur suggestion pause hai (45), jo turant customer
+> se hata deta hai par claims ko chhoota nahi.
 **Access (43):** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
 
 ### 43. GET /vouchers/versions/get-all — approval queue
@@ -3248,8 +3258,9 @@ Poori request/response detail vendor doc me hai (identical behaviour); admin ke 
 | `POST /vouchers/:voucherId/banner` | `media` (file) + `poster` (video par mandatory) | 🆕 Version/approval flow ko touch nahi karta, par banner ka **apna** review hai (#38a) |
 | `POST /vouchers/pause/:versionId` | `reason` (optional, max 1000) | 🆕 Sirf `PUBLISHED` version. Customer se turant gayab, version jaisa ka waisa |
 | `POST /vouchers/resume/:versionId` | — | 🆕 Beech me doosra version live ho gaya to **saaf 409**, `E11000` nahi. Validity nikal chuki ho to bhi 409 |
+| `DELETE /vouchers/:voucherId` | `reason` (optional, max 500) | 🆕 Soft — `status: DELETED` + `isDeleted` saath, saari versions bhi, slot wapas. 🔴 Live claim par 409, admin par bhi |
 
-**Common errors (39–46):**
+**Common errors (39–47):**
 | Status | Message |
 |---|---|
 | `403` | `Access denied. This feature requires an active subscription. …` *(create)* |

@@ -10078,6 +10078,120 @@
           ]
         },
         {
+          "name": "Delete a voucher",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Galti se bana diya tha\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/vouchers/{{voucher_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "{{voucher_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `isVendorOrAdmin` + ownership — vendor sirf apne brand ka\n\n🆕 Soft delete. Row rehti hai — `VoucherClaim` apne saath snapshots rakhta hai, to customer ki order history poori rehti hai, par claim `voucherId` par point karta hai aur hard delete un sabko khali jagah par chhod deta.\n\n`status: DELETED` aur `isDeleted: true` hamesha ek saath likhe jaate hain, ek hi jagah se. Saari versions bhi deleted hoti hain — warna ek deleted voucher ki `PUBLISHED` version reh jaati jise customer listing serve karti rehti.\n\n⚠️ **Voucher ka id, version ka nahi.**\n\n🔴 **Live claim par 409 — admin ke liye bhi.** `PENDING` (customer checkout par khada hai) ya `PAID` (paisa gaya, discount abhi mila nahi) ho to delete nahi hota. Har doosre guard me admin ko chhoot hai; yahan jise bachaya ja raha hai wo in dono me se koi nahi. Refusal ke saath `liveClaims`, `breakdown` aur `suggestedAction` aata hai.\n\nSlot turant wapas milta hai — brand ka `vouchersUsed` ek kam."
+          },
+          "response": [
+            {
+              "name": "200 · Delete a voucher",
+              "originalRequest": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/6aa6ddb76fd8c36058cfc8a4",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "6aa6ddb76fd8c36058cfc8a4"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Voucher deleted.\",\n  \"data\": {\n    \"voucherId\": \"{{voucher_id}}\",\n    \"voucherCode\": \"VCH-10000042\",\n    \"status\": \"DELETED\",\n    \"deletedAt\": \"2026-09-17T10:15:00.000Z\",\n    \"deletedBy\": \"{{vendor_user_id}}\",\n    \"deleteReason\": \"Galti se bana diya tha\",\n    \"versionsDeleted\": 2,\n    \"previousStatus\": \"DRAFT\"\n  }\n}"
+            },
+            {
+              "name": "409 · Delete a voucher",
+              "originalRequest": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/6aa6ddb76fd8c36058cfc8a4",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "6aa6ddb76fd8c36058cfc8a4"
+                  ]
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"2 customers are holding this voucher right now (1 already paid, 1 still checking out), so it cannot be deleted.\",\n  \"details\": {\n    \"liveClaims\": 2,\n    \"breakdown\": {\n      \"PAID\": 1,\n      \"PENDING\": 1\n    },\n    \"suggestedAction\": \"Pause it instead — that takes it off the customer app immediately and leaves these claims intact. You can delete it once they are settled.\"\n  }\n}"
+            }
+          ]
+        },
+        {
           "name": "Submit voucher banner for review (file)",
           "request": {
             "method": "POST",
