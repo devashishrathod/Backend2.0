@@ -50,19 +50,33 @@ const VOUCHER_DISCOUNT_TYPES = Object.freeze({
 });
 
 /**
- * Statuses that count against the plan's voucher limit.
+ * A voucher that is still going somewhere — being written, waiting on an admin,
+ * cleared to go live, live, or held back by its own vendor.
  *
- * A voucher that has run its course — expired, archived, or rejected — releases
- * its slot, so a vendor does not have to delete history to create something new.
- * Everything still in play (drafts, in review, approved, live, paused) holds one.
+ * The opposite is a voucher that has run its course: expired, archived, or
+ * rejected. Those are endings; nothing further happens to them without the
+ * vendor starting a new version.
  */
-const VOUCHER_SLOT_CONSUMING_STATUSES = Object.freeze([
+const VOUCHER_IN_PLAY_STATUSES = Object.freeze([
   VOUCHER_STATUSES.DRAFT,
   VOUCHER_STATUSES.UNDER_REVIEW,
   VOUCHER_STATUSES.APPROVED,
   VOUCHER_STATUSES.PUBLISHED,
   VOUCHER_STATUSES.PAUSED,
 ]);
+
+/**
+ * Statuses that count against the plan's voucher limit — **the same list**, and
+ * deliberately the same object rather than a second copy of it.
+ *
+ * A voucher holds a slot for exactly as long as it is in play, so these are one
+ * rule with two names, each reading correctly where it is used: the brand
+ * recount asks "does this consume a slot", the expiry sweep asks "is anything of
+ * this voucher still going". Writing the list twice would let the two answers
+ * drift, and the day they disagreed a vendor would either lose a slot they were
+ * using or get one they were not.
+ */
+const VOUCHER_SLOT_CONSUMING_STATUSES = VOUCHER_IN_PLAY_STATUSES;
 
 /**
  * The rows a voucher-claim checkout renders, top to bottom.
@@ -111,6 +125,7 @@ module.exports = {
   OFFER_REJECTION,
   offerBelowMinimum,
   VOUCHER_SUMMARY_ROWS,
+  VOUCHER_IN_PLAY_STATUSES,
   VOUCHER_SLOT_CONSUMING_STATUSES,
   VOUCHER_USAGE_TYPE,
   DISCOUNT_APPLICABLE_ON,
