@@ -1450,7 +1450,9 @@ exports.mapCustomerVoucherListItem = (item) => {
     categoryId: item.categoryId,
     subCategoryId: item.subCategoryId,
     createdAt: item.createdAt,
-    ...pickVoucherBanner(item.banner),
+    // The version's images come along so the banner slot can fall back to the
+    // first one when there is no approved banner (V-4a).
+    ...pickVoucherBanner(item.banner, version.images),
     brand: exports.mapCustomerBrandBlock(item.brand),
     version: {
       id: version._id,
@@ -1503,7 +1505,8 @@ exports.mapCustomerVoucherDetail = (data) => {
     name: data.name,
     categoryId: data.categoryId,
     subCategoryId: data.subCategoryId,
-    ...pickVoucherBanner(data.banner),
+    // Same fallback as the list row — see `pickVoucherBanner`.
+    ...pickVoucherBanner(data.banner, data.version?.images),
     // Same shape as a list row's, so one brand card renders on both screens.
     brand: exports.mapCustomerBrandBlock(data.brand),
     version: data.version

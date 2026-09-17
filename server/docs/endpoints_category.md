@@ -11,7 +11,7 @@
 **Framework:** Express.js (CommonJS) · **DB:** MongoDB (Mongoose)
 **Route mounting:** `routes/index.js` auto-mounts har file ko uske filename se → `routes/subBrands.js` = `/trydood/v1/subBrands` (camelCase preserved). Do file `routePrefix` override karti hain — `voucherClaims.js` → `/voucher-claims`, `customerBankAccounts.js` → `/bank-accounts`.
 
-**Scanned:** 2026-09-11 · **Total endpoints: 220** (+3 utility/non-versioned)
+**Scanned:** 2026-09-11 · **Total endpoints: 219** (+3 utility/non-versioned)
 
 > ### ⚠️ Ye ginti pichhli baar 53 endpoint peeche reh gayi thi
 >
@@ -114,7 +114,7 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 
 ---
 
-## Summary — 220 endpoints
+## Summary — 219 endpoints
 
 | # | Module | Base path | Total | 🟠 | 🟢 | 🔵 | 🟣 | ⚪ | 🤖 |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
@@ -130,7 +130,7 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | 10 | Locations | `/locations` | 6 | – | 1 | – | – | 5 | – |
 | 11 | Showcase | `/showcase` | 13 | 2 | – | – | – | 11 | – |
 | 12 | Brand Features | `/brandFeatures` | 5 | 2 | – | – | – | 3 | – |
-| 13 | Vouchers | `/vouchers` | 13 | 3\* | 3\* | – | 3 | 7 | – |
+| 13 | Vouchers | `/vouchers` | 12 | 3\* | 3\* | – | 3 | 6 | – |
 | 14 | Banners (App-level) | `/banners` | 6 | 1 | – | – | 5 | – | – |
 | 15 | Promotional Tickers | `/promotionalTickers` | 6 | 1 | – | – | 5 | – | – |
 | 16 | Categories | `/categories` | 5 | 2 | – | – | 3 | – | – |
@@ -152,12 +152,12 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | 32 | Privacy & Policies | `/privacy-and-policies` | 5 | 2 | – | – | 3 | – | – |
 | 33 | App Config | `/app-config` | 1 | 1 | – | – | – | – | – |
 | 34 | Documents 🆕 | `/documents` | 1 | – | – | – | – | – | 1 |
-| | **TOTAL** | | **220** | **22** | **17** | **15** | **85** | **78** | **3** |
+| | **TOTAL** | | **219** | **22** | **17** | **15** | **85** | **77** | **3** |
 
 > \* **4 endpoints do category me hain** (`optionalAuth`) — teen `/vouchers/customer/*`
 > aur `GET /search`. Wo 🟠 aur 🟢 dono column me ginne gaye hain, isliye
-> `22 + 17 + 15 + 85 + 78 + 3 = 220` **tabhi** milta hai jab un chaar ko ek baar
-> hi gina jaaye: distinct = `18 (pure guest) + 4 (dual) + 17 (customer) + 15 + 85 + 78 + 3 = 220` ✓
+> `22 + 17 + 15 + 85 + 77 + 3 = 219` **tabhi** milta hai jab un chaar ko ek baar
+> hi gina jaaye: distinct = `18 (pure guest) + 4 (dual) + 17 (customer) + 15 + 85 + 77 + 3 = 219` ✓
 >
 > **Round 6 me kya juda:** `/auth` me do (email verification, ⚪ — har role),
 > naya `/app-config` (🟠 public), aur `/notifications` ke do endpoints ab customer
@@ -172,7 +172,7 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | 🏪 `vendor_panel_api_doc.md` | **101** | 15 exclusive + 74 shared global + 10 guest reads + 2 🤖 links | ⚠️ v1.2.1 me 78 the — 19 naye jodne hain |
 | 🛡️ `super_admin_panel_api_doc.md` | **175** | 83 exclusive + 74 shared global + 14 guest reads + 4 🤖 reference | ⬜ Baaki |
 
-> Sum > 220 kyunki shared endpoints kai docs me aate hain.
+> Sum > 219 kyunki shared endpoints kai docs me aate hain.
 >
 > **Cross-check:** har endpoint kam se kam ek doc me hai —
 > 🟠 21 (customer doc me saare 21) · 🟢 17 (customer) · 🔵 15 (vendor) ·
@@ -670,7 +670,6 @@ Brand ke highlight points. Max **10 active** per brand.
 | 81 | PUT | `/vouchers/admin/suggestions/:voucherId` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Suggested voucher add / remove / reorder — ek hi endpoint dono taraf. ⚠️ `/:voucherId/banner` se **pehle** declare, warna `admin` voucher id padha jaata |
 | 82 | GET | `/vouchers/admin/suggestions` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Admin view — **expired/unpublished pins bhi** dikhte hain taaki unpin ho sakein |
 | 83 | POST | `/vouchers/:voucherId/banner` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | Master-level banner, version/approval flow se independent |
-| 84 | DELETE | `/vouchers/:voucherId/banner` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | |
 | 85 | GET | `/vouchers/customer/get-all` | Intended: Guest + Customer · Enforced: **optionalAuth** | 🟠 🟢 | Geo listing · `suggestedOnly` tab · `bannerType`/`bannerUrl`/`isSuggested`/`isOutOfRange`. `categoryId`/`subCategoryId` filter kaam karta hai. Search offer ka title bhi match karti hai aur term escape hoti hai. **Guest ko `latitude` + `longitude` khud dena padta hai** |
 | 86 | GET | `/vouchers/customer/get/:voucherId` | Intended: Guest + Customer · Enforced: **optionalAuth** | 🟠 🟢 | `bannerType`/`bannerUrl` |
 | 87 | POST | `/vouchers/customer/voucher/preview` | Intended: Guest + Customer · Enforced: **optionalAuth** | 🟠 🟢 | Discount + convenience fee + promo. `offerApplied` · `pricing.convenienceFee` · `pricing.promoDiscount`. Koi offer valid na ho to **error nahi** — plain bill. **Guest ko daam milta hai, order nahi** (order `/voucher-claims/create-order` par `isCustomer` hai) |
@@ -1572,7 +1571,7 @@ koi error nahi hota.
 
 | Doc | Endpoints | Status |
 |---|---:|---|
-| `endpoints_category.md` | **220** | ✅ **Round 6 — ye file.** Live routers ke against introspection se verify. `scripts/verifyApiCoverage.js` isi ko enforce karta hai |
+| `endpoints_category.md` | **219** | ✅ **Round 6 — ye file.** Live routers ke against introspection se verify. `scripts/verifyApiCoverage.js` isi ko enforce karta hai |
 | 🟠 Guest surface | 21 | 🆕 Round 5 — naya category, poori list is file me |
 | `customer_mobile_api_doc.md` | 66 | ✅ **v1.7.0** — live verified, 135 requests · 473 assertions · 0 failed · 198 captured examples (135/135 requests) |
 | `vendor_panel_api_doc.md` | 101 | ⚠️ **v1.2.1 me 78 hain** — 19 jodne hain (voucher claims reads, refunds, disputes, settlements, legacy mounts) |

@@ -9868,7 +9868,7 @@
           ]
         },
         {
-          "name": "Set voucher banner (file)",
+          "name": "Submit voucher banner for review (file)",
           "request": {
             "method": "POST",
             "header": [],
@@ -9876,16 +9876,17 @@
               "mode": "formdata",
               "formdata": [
                 {
-                  "key": "bannerType",
-                  "type": "text",
-                  "value": "IMAGE"
-                },
-                {
-                  "key": "bannerImage",
+                  "key": "media",
                   "type": "file",
                   "src": [],
-                  "description": "Field name bannerType pe depend karta hai — neeche table dekhein",
-                  "disabled": true
+                  "description": "The banner — image, GIF or video. Its kind comes from the file itself."
+                },
+                {
+                  "key": "poster",
+                  "type": "file",
+                  "src": [],
+                  "disabled": true,
+                  "description": "Required only when the banner is a video."
                 }
               ]
             },
@@ -10017,111 +10018,6 @@
                   "    ).to.eql(true);",
                   "    console.log(\"ℹ️  no file attached — enable the file field to exercise the success path\");",
                   "  }",
-                  "});",
-                  ""
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Delete voucher banner",
-          "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/vouchers/{{voucher_id}}/banner",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "vouchers",
-                "{{voucher_id}}",
-                "banner"
-              ]
-            },
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{vendor_token}}",
-                  "type": "string"
-                }
-              ]
-            },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\nBanner hata deta hai. Customer response me `bannerType` aur `bannerUrl` dono `null` ho jaate hain — keys gayab nahi hoti."
-          },
-          "response": [
-            {
-              "name": "404 · Delete voucher banner",
-              "originalRequest": {
-                "method": "DELETE",
-                "header": [
-                  {
-                    "key": "User-Agent",
-                    "value": "PostmanRuntime/7.39.1"
-                  },
-                  {
-                    "key": "Accept",
-                    "value": "*/*"
-                  },
-                  {
-                    "key": "Cache-Control",
-                    "value": "no-cache"
-                  },
-                  {
-                    "key": "Postman-Token",
-                    "value": "e589e227-b0b6-47cb-84d9-c2888008c3c3"
-                  },
-                  {
-                    "key": "Host",
-                    "value": "localhost:8080"
-                  },
-                  {
-                    "key": "Accept-Encoding",
-                    "value": "gzip, deflate, br"
-                  },
-                  {
-                    "key": "Connection",
-                    "value": "keep-alive"
-                  }
-                ],
-                "url": {
-                  "raw": "http://localhost:8080/trydood/v1/vouchers/6aa6ddb76fd8c36058cfc89e/banner",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "trydood",
-                    "v1",
-                    "vouchers",
-                    "6aa6ddb76fd8c36058cfc89e",
-                    "banner"
-                  ]
-                }
-              },
-              "status": "Not Found",
-              "code": 404,
-              "_postman_previewlanguage": "json",
-              "header": [
-                {
-                  "key": "Content-Type",
-                  "value": "application/json"
-                }
-              ],
-              "cookie": [],
-              "body": "{\n  \"success\": false,\n  \"message\": \"This voucher has no banner to delete.\"\n}"
-            }
-          ],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"200 ya 404 (banner tha hi nahi)\", function () {",
-                  "  pm.expect([200, 400, 404]).to.include(pm.response.code);",
                   "});",
                   ""
                 ]

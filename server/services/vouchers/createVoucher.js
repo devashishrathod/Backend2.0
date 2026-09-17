@@ -29,8 +29,9 @@ const {
 } = require("../../helpers/voucherOffers");
 const { VOUCHER_STATUSES } = require("../../constants/voucher");
 const {
-  VOUCHER_BANNER_MEDIA_FIELD,
+  VOUCHER_BANNER_STATUS,
   VOUCHER_BANNER_FILE_FIELD,
+  VOUCHER_BANNER_POSTER_FIELD,
 } = require("../../constants/voucherBanner");
 const { getVoucherConfig } = require("../../helpers/settings");
 const { assertActiveSubscription } = require("../../helpers/subscribeds");
@@ -77,7 +78,6 @@ exports.createVoucher = async (actor, payload, files = {}) => {
       offers,
       subBrandIds,
       isActive,
-      bannerType,
     } = payload;
 
     /**
@@ -163,12 +163,12 @@ exports.createVoucher = async (actor, payload, files = {}) => {
      * `Voucher.create`, purely because it wanted the id; the id is minted above,
      * so nothing required that.
      */
-    const bannerField = bannerType ? VOUCHER_BANNER_MEDIA_FIELD[bannerType] : null;
-    if (bannerType) {
+    const bannerFile = files?.[VOUCHER_BANNER_FILE_FIELD];
+    if (bannerFile) {
       uploadedBanner = await uploadVoucherBannerMedia(
-        bannerType,
-        files?.[VOUCHER_BANNER_FILE_FIELD[bannerType]],
+        bannerFile,
         voucherId,
+        files?.[VOUCHER_BANNER_POSTER_FIELD],
       );
     }
 
@@ -236,8 +236,17 @@ exports.createVoucher = async (actor, payload, files = {}) => {
     );
 
     // Already uploaded above; this only attaches what came back.
-    if (bannerType) {
-      voucher.banner = { type: bannerType, [bannerField]: uploadedBanner };
+    /**
+     * ⚠️ Into `pending`, never `current` — a banner reaches customers only
+     * after an admin approves it (V-4). A voucher created with one is published
+     * on the `images[0]` fallback until then, which is exactly what keeps a
+     * review queue from holding up a live offer.
+     */
+    if (uploadedBanner) {
+      voucher.banner = {
+        pending: uploadedBanner,
+        status: VOUCHER_BANNER_STATUS.PENDING,
+      };
     }
 
     voucher.currentVersionId = version._id;
@@ -282,7 +291,7 @@ exports.createVoucher = async (actor, payload, files = {}) => {
     await releaseSlot(payload.brandId, ENTITLEMENT_BUCKETS.VOUCHERS);
     if (uploadedImages.length) await rollbackVoucherImages(uploadedImages);
     if (uploadedBanner) {
-      await deleteVoucherBannerMedia(payload.bannerType, uploadedBanner);
+      await deleteVoucherBannerMedia(uploadedBanner);
     }
     if (error?.code === 11000) {
       throwError(

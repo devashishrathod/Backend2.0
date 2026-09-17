@@ -5195,7 +5195,7 @@ GET /vouchers/versions/get-all?brandId=68f1a2b3c4d5e6f7a8b9c3a1&status=DRAFT&lim
 
 ## 59. POST /vouchers/:voucherId/banner
 
-Voucher ka independent promo banner set/replace karta hai. **Multipart.**
+Voucher ka promo banner **review ke liye bhejta** hai. **Multipart.**
 
 **Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership**
 
@@ -5207,30 +5207,49 @@ Voucher ka independent promo banner set/replace karta hai. **Multipart.**
 ### Body (multipart)
 | Field | Type | Required | Validation |
 |---|---|---|---|
-| `bannerType` | string | ✅ | `IMAGE` \| `VIDEO` \| `GIF` |
-| `bannerImage` / `bannerVideo` / `bannerGif` | file | ✅ | **`bannerType` ke hisaab se sahi field name** |
-| `bannerThumbnail` | file | ⚠️ | 🆕 **`VIDEO` par required** — poster image |
-
-| `bannerType` | File field | Allowed MIME | Poster? |
-|---|---|---|---|
-| `IMAGE` | `bannerImage` | jpeg, jpg, png, webp | ❌ |
-| `VIDEO` | `bannerVideo` | mp4, webm, quicktime | ✅ `bannerThumbnail` |
-| `GIF` | `bannerGif` | gif | ❌ |
+| `media` | file | ✅ | 🆕 **Ek hi field name**, chahe image ho, GIF ho ya video. Allowed types aur size cap `Setting.storage` se |
+| `poster` | file | ⚠️ | 🆕 **Video par required** — poster image. Baaki par bhejna mana hai nahi, par zarurat bhi nahi |
 
 ```
-bannerType:  IMAGE
-bannerImage: <file>
+media: <banner.jpg>
 ```
 
 Video ke liye:
 
 ```
-bannerType:       VIDEO
-bannerVideo:      <teaser.mp4>
-bannerThumbnail:  <teaser-cover.jpg>
+media:  <teaser.mp4>
+poster: <teaser-cover.jpg>
 ```
 
-> ### 🔴 Video banner par poster ab mandatory hai
+> ### 🔴 `bannerType` ab nahi bhejna — aur teen file field bhi gaye
+>
+> Pehle payload me `bannerType` jaata tha aur file `bannerImage` / `bannerVideo` /
+> `bannerGif` me se kisi ek field me. Yaani client batata tha ki file kya hai, aur
+> server jaanchta tha ki dono baatein milti hain ya nahi — **ek sawal ke do jawab**,
+> aur stored wala jeet sakta tha. Yahi bug home banner mahino tak rakhta raha.
+>
+> Ab file `media` me aati hai aur wo kya hai ye uski apni bytes se tay hota hai
+> (`media.kind`). GIF isi wajah se `gifs/` prefix me jaata hai, us resize step se
+> door jo uski animation flatten kar deta.
+>
+> **Aapko kya badalna hai:** `bannerType` field hata dijiye, aur teeno file field
+> ki jagah `media` use kijiye. Video par poster ab `bannerThumbnail` nahi, `poster`
+> hai.
+
+> ### 🆕 Banner ab **seedha live nahi hota** — pehle review hota hai
+>
+> Ye endpoint banner ko `pending` me daalta hai aur `bannerStatus: PENDING` set
+> karta hai. Customer ko wo **tab tak nahi dikhta** jab tak admin approve na kare.
+>
+> **Purana banner is beech live rehta hai.** Replace karne par jo abhi approved hai
+> wo hilta hi nahi — warna vendor ka apna artwork tweak karna uske live offer ka
+> banner utaar deta, review queue jitni lambi ho utni der ke liye. Aur us beech
+> customer ko ek aisi image dikhti jise kisi ne dekha hi nahi.
+>
+> Pehli baar banner bhejne par (koi approved banner hai hi nahi) customer ko
+> voucher ki **pehli image** dikhti hai — neeche fallback wala note dekhein.
+
+> ### 🔴 Video banner par poster mandatory hai
 >
 > Poster kabhi derive nahi hota. Cloudinary ka `getOptimizedImageUrl(publicId)`
 > `/image/upload/` ka path banata hai ek aise asset ke liye jo `/video/upload/`
@@ -5240,101 +5259,74 @@ bannerThumbnail:  <teaser-cover.jpg>
 > Check **upload se pehle** chalta hai — poster na ho to `422`, aur video ki
 > bytes chadhti hi nahi.
 
+> ### 🆕 Size cap ab lagta hai
+>
+> Banner par **koi size check tha hi nahi** — sirf mime dekha jaata tha, aur 300 MB
+> ka `.mp4` seedha nikal jaata tha: upload, storage ka paisa, aur voucher card ke
+> sabse upar. Ab global limits lagti hain (`Setting.storage.limits`) — image 10 MB,
+> GIF 15 MB, video 50 MB (defaults).
+
 ### Success — `200`
 ```json
 {
   "success": true,
-  "message": "Voucher banner saved successfully.",
+  "message": "Voucher banner submitted for review.",
   "data": {
     "voucherId": "68f1a2b3c4d5e6f7a8b9c2a1",
     "banner": {
-      "type": "IMAGE",
-      "image": {
+      "pending": {
         "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg",
         "kind": "IMAGE",
         "mimeType": "image/jpeg",
         "sizeBytes": 184320,
-        "width": null,
-        "height": null,
         "originalName": "banner.jpg",
         "storage": { "provider": "CLOUDINARY", "publicId": "vouchers/banner-451" }
-      }
+      },
+      "status": "PENDING",
+      "rejectionReason": null,
+      "reviewedBy": null,
+      "reviewedAt": null
     }
   }
 }
 ```
 
-> ⚠️ **Banner ab poora `mediaSchema` hai** (M-5) — `kind`, `mimeType`,
-> `sizeBytes`, dimensions, aur VIDEO par `poster`. Pehle sirf `url` + `storage`
-> tha, aur provider enum model me haath se likha tha (P11).
+> ⚠️ **`banner` ka shape poora badal gaya hai.** Pehle `{ type, image, video, gif }`
+> tha; ab `{ current, pending, status, rejectionReason, reviewedBy, reviewedAt }`.
+> `current` wahi hai jo customer ko dikhta hai (hamesha approved), `pending` wo jo
+> review me hai.
 >
-> 🔴 Ye **vendor ka apna** write response hai, isliye `storage` abhi bhi aata
-> hai. Customer ke response me wo kabhi nahi jaata — wahan `bannerType`,
-> `bannerUrl` aur naya `bannerThumbnail` hi jaate hain.
+> 🔴 Ye **vendor ka apna** write response hai, isliye `storage` aata hai. Customer
+> ke response me wo kabhi nahi jaata.
 >
-> ⚠️ Banner-less voucher par ab `image: {}`, `video: {}`, `gif: {}` **nahi** aate.
-> Pehle teeno khaali object har voucher par likhe jaate the (P9).
+> ⚠️ Banner-less voucher par ab `image: {}`, `video: {}`, `gif: {}` **nahi** aate —
+> pehle teeno khaali object har voucher par likhe jaate the (P9).
 
 ### Errors
 | Status | Message | Kab |
 |---|---|---|
 | `404` | `Voucher not found.` | |
-| `422` | `Please upload a image file for the voucher banner.` | File field missing/galat naam |
-| `422` | `A video banner needs a poster image. Attach one as "bannerThumbnail".` | 🆕 Video bheja, poster nahi |
-| `422` | `The poster has to be a still image — "<mime>" is not one.` | 🆕 Poster ki jagah video/gif |
-| `422` | `Banner type is required.` | |
-| `422` | `Banner type must be one of: IMAGE, VIDEO, GIF.` | |
+| `422` | 🆕 `Please attach the banner file as "media".` | File hi nahi aayi |
+| `422` | 🆕 `A voucher banner has to be an image, a GIF or a video — "<mime>" is none of those.` | PDF wagairah |
+| `422` | 🆕 `<file> is not a supported format — expected one of: …` | Mime allow-list me nahi |
+| `422` | 🆕 `<file> exceeds the maximum size of 50 MB.` | Size cap — pehle koi cap tha hi nahi |
+| `422` | `A video banner needs a poster image. Attach one as "poster".` | Video bheja, poster nahi |
+| `422` | `The poster has to be a still image — "<mime>" is not one.` | Poster ki jagah video/gif |
 | `403` | `Forbidden: You do not have permission to perform this action on this brand.` | |
 
 ### ⚠️ Notes
 
-**1. Approval flow se bilkul independent hai.** Code comment: *"Never touches status/approval/versions — works regardless of the voucher's current version state."* Matlab published voucher ka banner bhi kabhi bhi badal sakte hain, bina naya version banaye.
+**1. Version/approval flow se alag hai** — ye master-level banner hai, voucher ke version se koi lena-dena nahi. Published voucher ka banner bhi kabhi bhi bheja ja sakta hai, bina naya version banaye. Par ab uska **apna** review hai.
 
-**2. Purana banner auto-delete hota hai** — naya upload succeed hone ke baad Cloudinary se hat jaata hai.
+**2. 🆕 Purana banner tabhi delete hota hai jab wo bhi pending tha.** Do baar bina review ke bhejein to pehli file kisi ne dekhi hi nahi aur koi use point nahi karta, to wo hat jaati hai. **`current` kabhi nahi chhua jaata** — jo live hai wo live rehta hai.
 
-**3. File field ka naam `bannerType` se match karna chahiye** — `bannerType: "VIDEO"` ke saath `bannerImage` bhejoge to `422` aayega.
+**3. 🔴 `DELETE /vouchers/:voucherId/banner` hata diya gaya hai.** Banner ka slot ab kabhi khali nahi hota: approved banner na ho to customer ko voucher ki pehli image dikhti hai. "Mera banner hata do" ab ek state hi nahi hai — badalna ho to naya bhej dijiye.
 
-**4. Ye voucher ke `images` se alag hai** — `images` version ka hissa hain (approval flow me), banner master-level hai.
+**4. Reject hone par kya hota hai** — voucher **PUBLISHED hi rehta hai**. Customer ko pehli image dikhti hai, aur aapko `bannerStatus: REJECTED` ke saath `rejectionReason` milta hai. Naya banner bhejte hi wo reason clear ho jaata hai — purana faisla nayi file par nahi chipkta.
 
----
-
-## 60. DELETE /vouchers/:voucherId/banner
-
-**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership**
-
-### Path Params
-| Param | Type | Required |
-|---|---|---|
-| `voucherId` | ObjectId | ✅ |
-
-### Success — `200`
-```json
-{ "success": true, "message": "Voucher banner deleted successfully.", "data": {} }
-```
-
-> Note: `data` khali hai — controller `sendSuccess(res, 200, "…")` bina data ke call karta hai.
-
-### Errors
-| Status | Message |
-|---|---|
-| `404` | `Voucher not found.` |
-| `422` | `Voucher ID is required.` / `Invalid voucher ID.` |
-| `403` | `Forbidden: You do not have permission to perform this action on this brand.` |
-
-### ⚠️ Note
-Cloudinary se file bhi delete hoti hai. Banner na ho tab bhi `200` aata hai (idempotent).
+**5. Ye voucher ke `images` se alag hai** — `images` version ka hissa hain (approval flow me), banner master-level hai.
 
 ---
-
-# Brand Feature APIs
-
-Brand ke USP / highlight points — icon + title + description. Customer ko brand profile pe dikhte hain.
-
-**Max 10 active features per brand.** Plan se metered **nahi** hain.
-
-Writes (`add` / `update` / `delete`) par `isVendorOrAdmin`, aur us ke baad service me
-`resolveActorBrand` — vendor sirf **apna** brand, admin koi bhi (par `brandId` dena
-hoga). Reads par koi gate nahi: customer app brand profile par ye dikhati hai.
 
 ## 61. POST /brandFeatures/add
 

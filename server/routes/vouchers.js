@@ -18,7 +18,6 @@ const {
   getCustomerVoucher,
   previewCustomerVoucher,
   setBanner,
-  deleteBanner,
   reviewSuggestion,
   getSuggestions,
 } = require("../controllers/vouchers");
@@ -33,7 +32,6 @@ const {
   validateCustomerGetVoucher,
   validateCustomerVoucherPreview,
   validateSetVoucherBanner,
-  validateDeleteVoucherBanner,
   validateReviewVoucherSuggestion,
   validateGetSuggestedVouchers,
 } = require("../validator/vouchers");
@@ -105,12 +103,6 @@ router.post(
   isVendorOrAdmin,
   validateSchema(validateSetVoucherBanner),
   setBanner,
-);
-router.delete(
-  "/:voucherId/banner",
-  isVendorOrAdmin,
-  validateSchema(validateDeleteVoucherBanner),
-  deleteBanner,
 );
 
 // ---------------------------------------------------------------------------

@@ -9,7 +9,6 @@ const {
   VOUCHER_STATUSES,
   VOUCHER_SORT_BY,
 } = require("../constants/voucher");
-const { VOUCHER_BANNER_TYPE } = require("../constants/voucherBanner");
 
 const offerSchema = Joi.object({
   title: Joi.string().required(),
@@ -103,12 +102,11 @@ exports.validateCreateVoucher = {
       .min(1)
       .required(),
     isSaveAsDraft: Joi.boolean().optional().default(true),
-    // Optional — the voucher's own independent promo banner, unrelated to
-    // the version/approval flow. If provided, a matching file must be sent
-    // under bannerImage/bannerVideo/bannerGif.
-    bannerType: Joi.string()
-      .valid(...Object.values(VOUCHER_BANNER_TYPE))
-      .optional(),
+    /**
+     * ⚠️ No bannerType any more (V-4). The banner file arrives as "media" and
+     * what it is comes from the bytes, so a payload field naming the type was a
+     * second answer to a question the file already answers.
+     */
   }),
 };
 
@@ -119,25 +117,10 @@ exports.validateSetVoucherBanner = {
       "any.invalid": "Invalid voucher ID.",
     }),
   },
-  body: Joi.object({
-    bannerType: Joi.string()
-      .valid(...Object.values(VOUCHER_BANNER_TYPE))
-      .required()
-      .messages({
-        "any.required": "Banner type is required.",
-        "any.only": `Banner type must be one of: ${Object.values(VOUCHER_BANNER_TYPE).join(", ")}.`,
-      }),
-  }),
+  // No body — the file is the request. Its kind comes from the bytes (V-4).
+  body: Joi.object({}),
 };
 
-exports.validateDeleteVoucherBanner = {
-  params: {
-    voucherId: objectId().required().messages({
-      "any.required": "Voucher ID is required.",
-      "any.invalid": "Invalid voucher ID.",
-    }),
-  },
-};
 
 const jsonTolerantArray = (itemSchema, { label = "Item" } = {}) =>
   Joi.any().custom((value, helpers) => {

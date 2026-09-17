@@ -2,62 +2,30 @@ const mongoose = require("mongoose");
 const { mediaSchema } = require("./mediaSchema");
 const { userField, brandField } = require("./validObjectId");
 const { VOUCHER_STATUSES } = require("../constants/voucher");
-const {
-  VOUCHER_BANNER_TYPE,
-  VOUCHER_BANNER_MEDIA_FIELD,
-} = require("../constants/voucherBanner");
+const { VOUCHER_BANNER_STATUS } = require("../constants/voucherBanner");
 const { isValidateVoucherCode } = require("../validator/common");
 
 /**
- * 🔴 `voucherBannerMediaSchema` used to be defined here.
+ * 🔴 Two things used to live here, and both are gone.
  *
- * It was `url` plus an inline `storage` object with the provider enum written
- * out by hand — one of five such copies (P11). Every one of them now reads
- * `mediaSchema`, so a banner also carries what the file **is** (`kind`), how big
- * it is, and, on a video, its poster.
+ * `voucherBannerMediaSchema` was `url` plus an inline `storage` object with the
+ * provider enum written out by hand — one of five such copies (P11). Every one
+ * of them reads `mediaSchema` now, so a banner also carries what the file
+ * **is** (`kind`), how big it is, and, on a video, its poster.
  *
- * ⚠️ The `type` + three-field shape below is **still here on purpose**. V-4
- * collapses it into a single `{ current, pending, status }` slot as part of the
- * banner approval flow; doing the collapse here would leave every banner sitting
- * in `pending` with no endpoint able to approve it, and customers seeing the
- * `images[0]` fallback in the meantime. The media unification is this phase; the
- * workflow is that one.
+ * `requiredForType` enforced "a banner that names this type must carry this
+ * file" across `banner.image` / `.video` / `.gif`. V-4 removed the type and the
+ * three slots together — see the `banner` field below — so there is no longer a
+ * label that could disagree with a file. The question it answered does not
+ * exist any more.
+ *
+ * ⚠️ Why it was shaped the way it was is worth keeping, because the trap is
+ * still live elsewhere: it was a conditional `required` rather than a
+ * `pre("validate")` hook, because Mongoose runs those hooks **only on the async
+ * path** — so `validateSync()` reported a document with a missing file as
+ * perfectly clean. That family of trap has cost this migration four separate
+ * findings.
  */
-
-/**
- * "A banner that names this type must carry this file."
- *
- * ### 🔴 Why this is a `required` function and not a `pre("validate")` hook
- *
- * It **was** a hook, and the hook did `throw new Error(...)`. Throwing from
- * inside validation escapes as a plain Error with no status, so a request that
- * simply named the wrong type came back as a **500** rather than a 422 naming
- * the missing field.
- *
- * ⚠️ Rewriting it as `this.invalidate()` fixed the status but not the reach:
- * Mongoose runs `pre("validate")` middleware **only on the async path**, so
- * `validateSync()` reported a perfectly clean document — measured. A `required`
- * function runs on both, which matters because this is the only thing standing
- * between a `type` and the file it claims to have.
- *
- * This is the third time this family of trap has cost something in this
- * migration: `this.invalidate()` inside a *nested sub-document* hook does
- * nothing at all (F-3's poster, M-2's locatable check), and `validateSync()`
- * skipping hooks hid the showcase clips rule too. Conditional `required` has
- * neither problem.
- *
- * `this` is the root document here — `banner` is a plain object path, not a
- * sub-document — so `this.banner.type` is the question being asked.
- */
-const requiredForType = (type) => ({
-  required: [
-    function () {
-      return this.banner?.type === type;
-    },
-    `A ${type} banner needs a ${VOUCHER_BANNER_MEDIA_FIELD[type]} file.`,
-  ],
-});
-
 const voucherSchema = new mongoose.Schema(
   {
     createdBy: {
@@ -181,28 +149,57 @@ const voucherSchema = new mongoose.Schema(
     },
     suggestedBy: userField,
 
-    // Independent of the version/approval flow entirely — a single "current
-    // banner" slot on the master voucher for brand offer promotion. Adding,
-    // replacing, or removing it never touches status/approval/versions.
+    /**
+     * The voucher's master banner — one slot, reviewed on its own (V-4).
+     *
+     * ### 🔴 What this replaces, and why the old shape could not stay
+     *
+     * It was `{ type, image, video, gif }`: a stored label beside three slots,
+     * one of which was meant to be filled. That is a second source of truth —
+     * `type` could disagree with the file beside it and nothing reconciled them,
+     * which is the exact bug the home banner carried for months. `media.kind`
+     * answers the same question from the bytes, so the label is gone.
+     *
+     * It also stamped **three empty objects onto every voucher** (P9), because
+     * all three defaulted to `{}`. With `mediaSchema` that is not merely untidy:
+     * `{}` has no `kind` and no locator, so every banner-less voucher carried
+     * three invalid media values.
+     *
+     * ### Two slots, because a replacement must not take the live one down
+     *
+     * `current` is what customers see and is always APPROVED. `pending` is what
+     * an admin has yet to look at. A vendor replacing their banner keeps serving
+     * the old one until the new one is approved (V-5) — the alternative is a
+     * blank tile on a live offer for however long the review queue takes.
+     *
+     * ### ⚠️ An empty banner slot is a normal state, not a broken one
+     *
+     * A rejected banner, or one still pending, leaves `current` absent. The
+     * customer read falls back to the voucher's first image (V-4a), so the
+     * voucher stays published and the slot is never empty on screen. Nothing
+     * here should ever be read as "this voucher has no banner, hide it".
+     */
     banner: {
-      type: {
+      /** Live, approved, customer-visible. Absent until an admin approves one. */
+      current: { type: mediaSchema, default: undefined },
+      /** Uploaded and waiting. Never customer-visible. */
+      pending: { type: mediaSchema, default: undefined },
+      /**
+       * Where the **pending** one stands. `null` when there is nothing in
+       * review — which is the ordinary state of a voucher whose banner is live.
+       */
+      status: {
         type: String,
-        enum: Object.values(VOUCHER_BANNER_TYPE),
+        enum: Object.values(VOUCHER_BANNER_STATUS),
         default: null,
       },
       /**
-       * ⚠️ `default: undefined`, not `default: () => ({})`.
-       *
-       * 🔴 The old default stamped **three empty objects onto every voucher**
-       * (P9) — a banner-less voucher still carried `image: {}`, `video: {}` and
-       * `gif: {}`. With `mediaSchema` that is worse than untidy: `{}` has no
-       * `kind` and no locator, so it is an invalid media that would fail
-       * validation on a document nobody ever gave a banner to. Absent means
-       * absent.
+       * Why an admin refused it. The vendor sees this, so it is the whole point
+       * of a rejection — "REJECTED" on its own tells them nothing to act on.
        */
-      image: { type: mediaSchema, default: undefined, ...requiredForType("IMAGE") },
-      video: { type: mediaSchema, default: undefined, ...requiredForType("VIDEO") },
-      gif: { type: mediaSchema, default: undefined, ...requiredForType("GIF") },
+      rejectionReason: { type: String, trim: true, default: null },
+      reviewedBy: { type: mongoose.Schema.Types.ObjectId, default: null },
+      reviewedAt: { type: Date, default: null },
     },
   },
   {
@@ -210,9 +207,6 @@ const voucherSchema = new mongoose.Schema(
     versionKey: false,
   },
 );
-
-// The banner's "type names a file that must exist" rule lives on the fields
-// themselves — see `requiredForType` above for why it is not a hook.
 
 voucherSchema.index(
   {

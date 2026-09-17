@@ -130,7 +130,7 @@ Ye **live verification round** tha. Teen jagah doc code se match nahi kar raha t
 | Change | Detail |
 |---|---|
 | **Naya brand list endpoint** | `GET /brands/customer/get-all` — directory + "Top Brands" tab, geo optional ([#18a](#18a-get-brandscustomerget-all-)) |
-| **Voucher banner fields** | `bannerType` + `bannerUrl` + 🆕 `bannerThumbnail`, list aur detail dono me. Banner na ho to teeno `null` ([#15](#15-get-voucherscustomerget-all), [#16](#16-get-voucherscustomergetvoucherid)) |
+| **Voucher banner fields** | `bannerType` + `bannerUrl` + `bannerThumbnail` + 🆕 `bannerStatus` + 🆕 `bannerIsFallback`, list aur detail dono me. Approved banner na ho to slot me voucher ki **pehli image** aati hai ([#15](#15-get-voucherscustomerget-all), [#16](#16-get-voucherscustomergetvoucherid)) |
 | **Suggestions tab** | `?suggestedOnly=true` — admin ke pin kiye vouchers. Bina param ke wahi list, pinned upar ([#15](#15-get-voucherscustomerget-all)) |
 | **Convenience fee** | Har ₹500 pe ₹5, original bill pe. Naya `pricing` block ([#17](#17-post-voucherscustomervoucherpreview)) |
 | **No-offer ab error nahi** ✅ | Bill kisi offer ke minimum se kam ho to `200` + `offerApplied: false` — customer sirf bill pay karega. Do error messages hat gaye |
@@ -594,8 +594,30 @@ Saare enum values **UPPERCASE** hain (payment ke alawa).
 > bina. Yahi contract home banner (`thumbnail`) aur showcase media ka pehle se
 > hai.
 >
-> Banner na ho to teeno (`bannerType`, `bannerUrl`, `bannerThumbnail`) `null`.
-> Purane app builds par koi asar nahi — naya key unhe dikhega hi nahi.
+> ### 🆕 Banner ka slot ab **kabhi khali nahi** hota
+>
+> Voucher ka banner ab admin review se guzarta hai. Jab tak koi banner approved
+> na ho — wo review me ho, reject ho gaya ho, ya vendor ne bheja hi na ho —
+> banner ke slot me voucher ki **pehli image** aa jaati hai.
+>
+> Iska matlab: `bannerUrl` un vouchers par bhi mil jayega jinka apna banner abhi
+> nahi hai. Voucher chhupta nahi, aur aapko khali rectangle render nahi karna
+> padta.
+>
+> Do naye field isi ke saath aate hain, dono **additive**:
+>
+> | Field | Matlab |
+> |---|---|
+> | `bannerIsFallback` | `true` = ye voucher ki pehli image hai, asli banner nahi |
+> | `bannerStatus` | `APPROVED` (asli banner live hai) · `PENDING` (unka banner review me hai) · `REJECTED` · `null` (bheja hi nahi) |
+>
+> Zyadatar apps ko in dono ki zarurat nahi — `bannerUrl` render kar dijiye aur
+> baat khatam. Ye un screens ke liye hain jo vendor ko unka apna voucher dikhati
+> hain, jahan "aapka banner review me hai" batana kaam ka hai.
+>
+> Banner **aur** images dono na hon (sirf draft par mumkin) to `bannerType`,
+> `bannerUrl`, `bannerThumbnail` teeno `null`. Purane app builds par koi asar
+> nahi — naye key unhe dikhenge hi nahi.
 
 ### VOUCHER_USAGE_TYPE
 `ONCE_PER_USER` · `MULTIPLE`

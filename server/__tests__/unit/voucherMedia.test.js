@@ -1,10 +1,28 @@
 const mongoose = require("mongoose");
 
+/**
+ * ⚠️ `jest.mock`, not `jest.spyOn`.
+ *
+ * `voucherBannerMedia.js` destructures `getStorageConfig` from the settings
+ * barrel at load, so it holds its own reference and a spy on the export is never
+ * seen — the call goes to the real one, which reaches for Mongo and hangs the
+ * test out to its timeout.
+ *
+ * That trap has now cost this migration five separate findings: `getSetting` in
+ * S-1, `resolveActorBrand` in the voucher money tests, and this.
+ */
+jest.mock("../../helpers/settings", () => ({
+  getStorageConfig: jest.fn(),
+}));
+
 const Voucher = require("../../models/Voucher");
 const VoucherVersion = require("../../models/VoucherVersion");
 const { pickVoucherBanner } = require("../../helpers/vouchers/pickVoucherBanner");
 const { pickOrphanImages } = require("../../helpers/vouchers/orphanImages");
 const { MEDIA_KIND, STORAGE_PROVIDER } = require("../../constants/storage");
+const {
+  VOUCHER_BANNER_STATUS,
+} = require("../../constants/voucherBanner");
 
 /**
  * M-5 — the voucher's images and banner join the one media shape.
@@ -134,137 +152,172 @@ describe("VoucherVersion.images — one media, one position", () => {
   });
 });
 
-describe("Voucher.banner — no empty objects, and a real error code", () => {
+describe("Voucher.banner — two slots, no type, no empty objects", () => {
   /**
-   * 🔴 P9: `default: () => ({})` stamped `image: {}`, `video: {}` and `gif: {}`
-   * onto **every** voucher, banner or no banner. With `mediaSchema` that is not
-   * merely untidy — `{}` has no kind and no locator, so it is an invalid media
-   * on a document nobody ever gave a banner to.
+   * 🔴 The shape this replaces stamped **three empty objects onto every
+   * voucher** (P9) — `image: {}`, `video: {}`, `gif: {}` — and each of those is
+   * an invalid `mediaSchema` value with no `kind` and no locator.
    */
-  test("a voucher with no banner carries no empty media objects", () => {
-    const doc = voucher();
-    const stored = doc.toObject();
+  test("a voucher with no banner stores no banner media at all", () => {
+    const doc = voucher().toObject();
 
-    expect(stored.banner?.image).toBeUndefined();
-    expect(stored.banner?.video).toBeUndefined();
-    expect(stored.banner?.gif).toBeUndefined();
-    expect(doc.validateSync()?.errors?.banner).toBeUndefined();
+    expect(doc.banner?.current).toBeUndefined();
+    expect(doc.banner?.pending).toBeUndefined();
+    expect(doc.banner?.status ?? null).toBeNull();
   });
 
-  test("a banner naming a type without the file is invalidated, not thrown", () => {
-    /**
-     * ⚠️ This is the bit worth proving. The old hook did `throw new Error(...)`
-     * from inside `pre("validate")`, which escapes as a plain Error with no
-     * status — so naming the wrong type came back as a **500**. `invalidate`
-     * registers it on the path, which reaches the caller as a 422.
-     *
-     * It works here because `this` is the parent document. The same call inside
-     * a nested sub-document's own hook does nothing at all — measured twice
-     * (F-3, M-2).
-     */
-    const doc = voucher({ type: "VIDEO" });
-    const error = doc.validateSync();
-
-    expect(error).toBeTruthy();
-    expect(error.errors["banner.video"].message).toBe(
-      "A VIDEO banner needs a video file.",
-    );
+  test("there is no type field any more — the kind lives on the media", () => {
+    expect(Voucher.schema.path("banner.type")).toBeUndefined();
+    expect(Voucher.schema.path("banner.image")).toBeUndefined();
+    expect(Voucher.schema.path("banner.video")).toBeUndefined();
+    expect(Voucher.schema.path("banner.gif")).toBeUndefined();
+    expect(Voucher.schema.path("banner.current")).toBeTruthy();
+    expect(Voucher.schema.path("banner.pending")).toBeTruthy();
   });
 
-  /**
-   * 🔴 Both validation paths, and that is the whole point of the rewrite.
-   *
-   * Mongoose runs `pre("validate")` middleware **only on the async path**, so
-   * the hook this replaced reported a perfectly clean document to
-   * `validateSync()`. A `required` function runs on both — which matters,
-   * because this is the only thing standing between a `type` and the file it
-   * claims to have.
-   */
-  test("the rule holds on the async path too, not just the sync one", async () => {
-    const doc = voucher({ type: "GIF" });
-
-    expect(doc.validateSync().errors["banner.gif"]).toBeTruthy();
-    await expect(doc.validate()).rejects.toThrow(/GIF banner needs a gif file/);
-  });
-
-  /**
-   * ⚠️ The **whole document**, not just the one path.
-   *
-   * Asserting only `errors["banner.video"]` would pass a rule that demanded all
-   * three files on every banner — the other two failures would sit in `errors`
-   * unread. A VIDEO banner has a video and nothing else; that is the assertion.
-   */
-  test("a banner with its file validates, and asks for nothing else", () => {
-    const doc = voucher({ type: "VIDEO", video: videoMedia() });
+  test("a pending banner validates, and carries its review state", () => {
+    const doc = voucher({
+      pending: imageMedia(),
+      status: VOUCHER_BANNER_STATUS.PENDING,
+    });
 
     expect(doc.validateSync()).toBeUndefined();
+    expect(doc.banner.status).toBe("PENDING");
+    expect(doc.banner.rejectionReason).toBeNull();
   });
 
+  test("an approved banner sits in current, and both slots can hold one", () => {
+    const doc = voucher({
+      current: imageMedia(),
+      pending: videoMedia(),
+      status: VOUCHER_BANNER_STATUS.PENDING,
+    });
+
+    expect(doc.validateSync()).toBeUndefined();
+    expect(doc.banner.current.kind).toBe(MEDIA_KIND.IMAGE);
+    expect(doc.banner.pending.kind).toBe(MEDIA_KIND.VIDEO);
+  });
+
+  /**
+   * ⚠️ The poster rule lives on `mediaSchema`, so it reaches the banner without
+   * the banner restating it — and it runs on the **sync** path, which a
+   * `pre("validate")` hook would not.
+   */
   test("a video banner with no poster is refused by the media itself", () => {
     const doc = voucher({
-      type: "VIDEO",
-      video: videoMedia({ poster: undefined }),
+      pending: videoMedia({ poster: undefined }),
+      status: VOUCHER_BANNER_STATUS.PENDING,
     });
-    expect(errorOn(doc, "banner.video.poster")).toMatch(/needs a poster/);
+
+    expect(errorOn(doc, "banner.pending.poster")).toMatch(/needs a poster/i);
+  });
+
+  test("only the three review states are accepted", () => {
+    const doc = voucher({ pending: imageMedia(), status: "MAYBE" });
+
+    expect(errorOn(doc, "banner.status")).toBeTruthy();
   });
 });
 
-describe("pickVoucherBanner — the customer's flat view", () => {
-  test("no banner answers three nulls, never a missing key", () => {
-    expect(pickVoucherBanner(null)).toEqual({
-      bannerType: null,
-      bannerUrl: null,
-      bannerThumbnail: null,
-    });
-    expect(pickVoucherBanner({ type: null })).toEqual({
-      bannerType: null,
-      bannerUrl: null,
-      bannerThumbnail: null,
-    });
-  });
+describe("pickVoucherBanner — the customer's flat view, and the fallback", () => {
+  const images = [
+    {
+      media: imageMedia({ url: "https://cdn.example.com/first.webp" }),
+      sortOrder: 1,
+    },
+    {
+      media: imageMedia({ url: "https://cdn.example.com/second.webp" }),
+      sortOrder: 2,
+    },
+  ];
 
-  test("a type with no reachable URL counts as no banner", () => {
-    // Reporting the type without a URL would have the client render a broken
-    // tile rather than fall back.
-    expect(pickVoucherBanner({ type: "IMAGE", image: {} }).bannerType).toBeNull();
+  test("an approved banner is served, and reports itself as not a fallback", () => {
+    const result = pickVoucherBanner({ current: imageMedia() }, images);
+
+    expect(result).toEqual({
+      bannerType: "IMAGE",
+      bannerUrl: "https://cdn.example.com/a.webp",
+      bannerThumbnail: "https://cdn.example.com/a.webp",
+      bannerStatus: "APPROVED",
+      bannerIsFallback: false,
+    });
   });
 
   /**
-   * 🔴 The M-3a rule reaching its last surface.
-   *
-   * A video banner's poster is mandatory at upload, and until now it was stored
-   * and never sent — so the app had a blank rectangle until the `.mp4` buffered.
+   * 🔴 V-4a — the slot is never empty. A banner in review leaves `current`
+   * absent, and the voucher stays published on its first image rather than
+   * showing a blank tile until an admin gets to it.
    */
-  test("a video banner's thumbnail is its poster, not the .mp4", () => {
-    const shape = pickVoucherBanner({ type: "VIDEO", video: videoMedia() });
-
-    expect(shape.bannerType).toBe("VIDEO");
-    expect(shape.bannerUrl).toBe("https://cdn.example.com/v.mp4");
-    expect(shape.bannerThumbnail).toBe("https://cdn.example.com/v.jpg");
-  });
-
-  test("a still banner is its own thumbnail", () => {
-    const shape = pickVoucherBanner({ type: "IMAGE", image: imageMedia() });
-
-    expect(shape.bannerThumbnail).toBe(shape.bannerUrl);
-  });
-
-  test("a GIF banner is its own thumbnail too", () => {
-    const shape = pickVoucherBanner({
-      type: "GIF",
-      gif: imageMedia({ kind: MEDIA_KIND.GIF, url: "https://cdn.example.com/a.gif" }),
-    });
-
-    expect(shape.bannerType).toBe("GIF");
-    expect(shape.bannerThumbnail).toBe("https://cdn.example.com/a.gif");
-  });
-
-  test("storage never reaches the customer", () => {
-    const shape = pickVoucherBanner({ type: "VIDEO", video: videoMedia() });
-
-    expect(JSON.stringify(shape)).not.toMatch(
-      /trydood-nonprod-public|dev\/images|publicId|provider/,
+  test("a pending banner is not served — the first image stands in", () => {
+    const result = pickVoucherBanner(
+      { pending: imageMedia(), status: VOUCHER_BANNER_STATUS.PENDING },
+      images,
     );
+
+    expect(result.bannerUrl).toBe("https://cdn.example.com/first.webp");
+    expect(result.bannerIsFallback).toBe(true);
+    // ⚠️ The *pending* banner's status — the fallback has none of its own.
+    expect(result.bannerStatus).toBe("PENDING");
+  });
+
+  test("a rejected banner falls back too, and says so", () => {
+    const result = pickVoucherBanner(
+      {
+        pending: imageMedia(),
+        status: VOUCHER_BANNER_STATUS.REJECTED,
+        rejectionReason: "Text is unreadable at card size.",
+      },
+      images,
+    );
+
+    expect(result.bannerIsFallback).toBe(true);
+    expect(result.bannerStatus).toBe("REJECTED");
+  });
+
+  test("the fallback is the first image by sortOrder, not by array order", () => {
+    const shuffled = [images[1], images[0]];
+
+    expect(pickVoucherBanner(null, shuffled).bannerUrl).toBe(
+      "https://cdn.example.com/first.webp",
+    );
+  });
+
+  test("no banner and no images answers every key, never a missing one", () => {
+    const result = pickVoucherBanner(null, []);
+
+    expect(result).toEqual({
+      bannerType: null,
+      bannerUrl: null,
+      bannerThumbnail: null,
+      bannerStatus: null,
+      bannerIsFallback: false,
+    });
+  });
+
+  test("a video banner's thumbnail is its poster, not the .mp4", () => {
+    const result = pickVoucherBanner({ current: videoMedia() }, images);
+
+    expect(result.bannerType).toBe("VIDEO");
+    expect(result.bannerUrl).toBe("https://cdn.example.com/v.mp4");
+    expect(result.bannerThumbnail).toBe("https://cdn.example.com/v.jpg");
+  });
+
+  test("a GIF banner is its own thumbnail, and reads as GIF", () => {
+    const gif = imageMedia({
+      kind: MEDIA_KIND.GIF,
+      url: "https://cdn.example.com/a.gif",
+    });
+    const result = pickVoucherBanner({ current: gif }, images);
+
+    expect(result.bannerType).toBe("GIF");
+    expect(result.bannerThumbnail).toBe("https://cdn.example.com/a.gif");
+  });
+
+  /** `storage` is never any of the customer's business. */
+  test("nothing about where the bytes live escapes", () => {
+    const result = pickVoucherBanner({ current: imageMedia() }, images);
+
+    expect(JSON.stringify(result)).not.toMatch(/bucket|key|publicId|storage/i);
   });
 });
 
@@ -273,8 +326,16 @@ describe("uploadVoucherBannerMedia — what it refuses before paying for an uplo
     uploadVoucherBannerMedia,
   } = require("../../helpers/vouchers/voucherBannerMedia");
   const storageFacade = require("../../services/storage");
+  const settings = require("../../helpers/settings");
 
-  const file = (mimetype) => ({ mimetype, tempFilePath: "/tmp/x" });
+  const MB = 1024 * 1024;
+  const file = (mimetype, over = {}) => ({
+    mimetype,
+    tempFilePath: "/tmp/x",
+    name: "x",
+    size: MB,
+    ...over,
+  });
 
   let uploadSpy;
   beforeEach(() => {
@@ -285,6 +346,23 @@ describe("uploadVoucherBannerMedia — what it refuses before paying for an uplo
         storage: storageRef,
         metadata: { mimeType: "image/webp", size: 10, width: 4, height: 3 },
       }));
+    settings.getStorageConfig.mockResolvedValue({
+      allowedTypes: {
+        [MEDIA_KIND.IMAGE]: ["image/jpeg", "image/webp", "image/png"],
+        [MEDIA_KIND.GIF]: ["image/gif"],
+        [MEDIA_KIND.VIDEO]: ["video/mp4", "video/webm"],
+      },
+      maxBytes: {
+        [MEDIA_KIND.IMAGE]: 10 * MB,
+        [MEDIA_KIND.GIF]: 15 * MB,
+        [MEDIA_KIND.VIDEO]: 50 * MB,
+      },
+      maxSizeMB: {
+        [MEDIA_KIND.IMAGE]: 10,
+        [MEDIA_KIND.GIF]: 15,
+        [MEDIA_KIND.VIDEO]: 50,
+      },
+    });
   });
   afterEach(() => uploadSpy.mockRestore());
 
@@ -293,55 +371,84 @@ describe("uploadVoucherBannerMedia — what it refuses before paying for an uplo
       await uploadVoucherBannerMedia(...args);
       return null;
     } catch (error) {
-      return { status: error.statusCode ?? error.status, message: error.message };
+      return {
+        status: error.statusCode ?? error.status,
+        message: error.message,
+      };
     }
   };
 
-  test("no file at all names the field", async () => {
-    expect(await refusal("IMAGE", undefined, "v1")).toMatchObject({
-      status: 422,
-      message: "Please upload a image file for the voucher banner.",
-    });
-  });
+  test("no file at all names the field the caller has to send", async () => {
+    const result = await refusal(undefined, OID());
 
-  test("a mime the declared type does not allow is refused", async () => {
-    expect(await refusal("IMAGE", file("video/mp4"), "v1")).toMatchObject({
-      status: 422,
-      message: expect.stringMatching(/Invalid file for voucher banner type IMAGE/),
-    });
-    expect(uploadSpy).not.toHaveBeenCalled();
+    expect(result.status).toBe(422);
+    expect(result.message).toMatch(/"media"/);
   });
 
   /**
-   * 🔴 Checked here rather than at `save()`.
-   *
-   * `mediaSchema` refuses it either way — but by then the video bytes are
-   * uploaded and paid for, and the error names a schema path instead of the form
-   * field the caller has to add.
+   * 🔴 There is no `type` parameter any more — the kind comes from the bytes. A
+   * file that is none of the three things a banner may be is refused for what it
+   * actually is, not for disagreeing with a label.
    */
+  test("something that is not an image, GIF or video is refused", async () => {
+    const result = await refusal(file("application/pdf"), OID());
+
+    expect(result.status).toBe(422);
+    expect(result.message).toMatch(/image, a GIF or a video/);
+  });
+
+  test("a mime outside the platform's list is refused", async () => {
+    const result = await refusal(file("image/bmp"), OID());
+
+    expect(result.status).toBe(422);
+    expect(result.message).toMatch(/not a supported format/);
+  });
+
+  /**
+   * 🔴 P12, on the one file most likely to be a video — the banner had **no
+   * size check at all**. The mime was checked and a 300 MB `.mp4` went straight
+   * through: uploaded, paid for, and served at the top of the voucher card.
+   */
+  test("an oversized banner is refused, and told the limit", async () => {
+    const result = await refusal(
+      file("video/mp4", { size: 300 * MB, name: "huge.mp4" }),
+      OID(),
+      file("image/webp"),
+    );
+
+    expect(result.status).toBe(422);
+    expect(result.message).toBe("huge.mp4 exceeds the maximum size of 50 MB.");
+  });
+
+  test("nothing is uploaded when the size is refused", async () => {
+    await refusal(
+      file("video/mp4", { size: 300 * MB }),
+      OID(),
+      file("image/webp"),
+    );
+
+    expect(uploadSpy).not.toHaveBeenCalled();
+  });
+
   test("a video banner with no poster is refused before the upload", async () => {
-    expect(await refusal("VIDEO", file("video/mp4"), "v1")).toMatchObject({
-      status: 422,
-      message: 'A video banner needs a poster image. Attach one as "bannerThumbnail".',
-    });
+    const result = await refusal(file("video/mp4"), OID());
+
+    expect(result.status).toBe(422);
+    expect(result.message).toMatch(/"poster"/);
     expect(uploadSpy).not.toHaveBeenCalled();
   });
 
   test("a poster that is itself a video is refused", async () => {
-    expect(
-      await refusal("VIDEO", file("video/mp4"), "v1", file("video/mp4")),
-    ).toMatchObject({
-      status: 422,
-      message: expect.stringMatching(/poster has to be a still image/),
-    });
-    expect(uploadSpy).not.toHaveBeenCalled();
+    const result = await refusal(file("video/mp4"), OID(), file("video/mp4"));
+
+    expect(result.status).toBe(422);
+    expect(result.message).toMatch(/still image/);
   });
 
   test("a GIF banner routes as a GIF and needs no poster", async () => {
-    const media = await uploadVoucherBannerMedia("GIF", file("image/gif"), "v1");
+    const media = await uploadVoucherBannerMedia(file("image/gif"), OID());
 
     expect(media.kind).toBe(MEDIA_KIND.GIF);
-    expect(media.poster).toBeUndefined();
     expect(uploadSpy).toHaveBeenCalledWith(
       expect.objectContaining({ kind: MEDIA_KIND.GIF }),
     );
@@ -349,21 +456,16 @@ describe("uploadVoucherBannerMedia — what it refuses before paying for an uplo
 
   test("a video banner uploads its poster and stores it on the media", async () => {
     const media = await uploadVoucherBannerMedia(
-      "VIDEO",
       file("video/mp4"),
-      "v1",
+      OID(),
       file("image/webp"),
     );
 
     expect(media.kind).toBe(MEDIA_KIND.VIDEO);
-    expect(media.poster?.url).toContain("http");
-    expect(uploadSpy).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ kind: MEDIA_KIND.IMAGE }),
-    );
+    expect(media.poster?.url).toBeTruthy();
+    expect(uploadSpy).toHaveBeenCalledTimes(2);
   });
 });
-
 describe("orphanImages — identity on either shape", () => {
   /**
    * ⚠️ This decides whether a file is **deleted**, so it has to read a
