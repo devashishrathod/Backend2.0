@@ -117,7 +117,23 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
  * ⚠️ Matched as a **pattern**, not a string. The same route is written three
  * ways across the docs — `:brandId`, `{{brand_id}}`, and a literal id in a
  * captured example — and a plain `includes()` reports every parameterised route
- * as undocumented. Each parameter segment therefore matches any single segment.
+ * as undocumented.
+ *
+ * ### 🔴 A parameter matches a placeholder, not any word (V-6)
+ *
+ * It used to be `[^/\s`)\]]+` — **any** single segment. That let every
+ * parameterised route free-ride on any sibling: `DELETE /vouchers/:voucherId`
+ * counted as documented because `POST /vouchers/create` appeared somewhere, and
+ * an image URL like `/v1/vouchers/banner-451.jpg` matched it too. The check
+ * passed for a route that had no row, no section and no request.
+ *
+ * Now a parameter has to look like a parameter: `:name`, `<name>`, `{{var}}`, or
+ * a real 24-character id. Tightening it moved exactly one route from pass to
+ * fail across all 226 — the one that genuinely had nothing written about it.
+ *
+ * ⚠️ The trailing lookahead refuses `/` as well, so a short path can no longer
+ * be satisfied by a longer one: `/vouchers/:voucherId` is not documented by
+ * `/vouchers/:voucherId/banner`.
  */
 const mentionRegex = (routePath) => {
   const body = routePath
@@ -125,11 +141,11 @@ const mentionRegex = (routePath) => {
     .filter(Boolean)
     .map((s) =>
       s.startsWith(":")
-        ? "(?::[A-Za-z_]+|\\{\\{[^}]+\\}\\}|[^/\\s`)\\]]+)"
+        ? "(?::[A-Za-z_]+|<[A-Za-z_]+>|\\{\\{[^}]+\\}\\}|[0-9a-fA-F]{24})"
         : s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
     )
     .join("/");
-  return new RegExp(`/${body}(?![A-Za-z0-9_-])`);
+  return new RegExp(`/${body}(?![A-Za-z0-9_/-])`);
 };
 
 /** Every method+path a collection actually requests, and whether it has an example. */
