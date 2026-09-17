@@ -5309,6 +5309,7 @@ Voucher versions ki paginated list — vendor ka voucher dashboard.
 | `versionNumber` | number | ❌ | – | |
 | `versionCode` | string | ❌ | – | |
 | `isImmutable` · `isActive` | boolean | ❌ | – | |
+| `includeDeleted` | boolean | ❌ | `false` | 🆕 **Sirf ADMIN.** Deleted versions bhi list me le aata hai. Vendor ke bhejne par **403** — chupke se ignore nahi hota |
 | `fromDate` · `toDate` | ISO date | ❌ | – | |
 | `sortBy` | string | ❌ | `NEWEST` | `DISTANCE` \| `NEWEST` \| `EXPIRING_SOON` \| `RELEVANCE` |
 | `sortOrder` | string | ❌ | – | `asc` \| `desc` |

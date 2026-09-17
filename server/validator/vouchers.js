@@ -401,6 +401,14 @@ exports.validateGetAllVoucherVersions = {
       .optional(),
     isImmutable: Joi.alternatives().try(Joi.string(), Joi.boolean()).optional(),
     isActive: Joi.alternatives().try(Joi.string(), Joi.boolean()).optional(),
+    /**
+     * 🆕 ADMIN-only, and enforced in the service rather than here (V-6b) —
+     * Joi sees the query, not who sent it. A vendor passing it gets a 403 that
+     * says so, instead of a list that quietly pretends nothing was deleted.
+     */
+    includeDeleted: Joi.alternatives()
+      .try(Joi.string(), Joi.boolean())
+      .optional(),
     fromDate: Joi.date().iso().optional(),
     toDate: Joi.date().iso().optional(),
     sortBy: Joi.string()

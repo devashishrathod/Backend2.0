@@ -9121,6 +9121,12 @@
                   "value": "",
                   "disabled": true,
                   "description": "DRAFT | UNDER_REVIEW | APPROVED | PUBLISHED | REJECTED | EXPIRED | PAUSED | ARCHIVED"
+                },
+                {
+                  "key": "includeDeleted",
+                  "value": "true",
+                  "disabled": true,
+                  "description": "🆕 ADMIN-only. Deleted versions bhi list me le aata hai (deletedAt / deletedBy / deleteReason ke saath). Vendor token se bhejne par 403 — flag chupke se ignore nahi hota. Ye request vendor_token par chalti hai, to ise chalane ke liye admin token chahiye; details admin doc #43 me."
                 }
               ]
             },
@@ -9134,7 +9140,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n✅ Ab gated hai. ⚠️ Phir bhi **`brandId` hamesha bhejein** — endpoint khud scope\nnahi karta, bina uske platform ke saare vouchers aa jaate hain.\n\n`status`: DRAFT | UNDER_REVIEW | APPROVED | PUBLISHED | REJECTED | EXPIRED | PAUSED | ARCHIVED"
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n✅ Ab gated hai. ⚠️ Phir bhi **`brandId` hamesha bhejein** — endpoint khud scope\nnahi karta, bina uske platform ke saare vouchers aa jaate hain.\n\n`status`: DRAFT | UNDER_REVIEW | APPROVED | PUBLISHED | REJECTED | EXPIRED | PAUSED | ARCHIVED\n\n🆕 **includeDeleted (ADMIN-only).** Default off — deleted rows aam listing me aane se approval queue me retire ho chuke vouchers ghus jaate. Wo list ko **chauda** karta hai, badalta nahi: live rows saath hi rehte hain. Vendor ke bhejne par **403**, kyunki flag ko chupke se gira dena us vendor ko \"koi deleted nahi hai\" jawab dena hota jise ye sawaal poochhne hi nahi diya."
           },
           "response": [
             {

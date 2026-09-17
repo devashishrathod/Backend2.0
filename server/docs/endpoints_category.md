@@ -691,7 +691,7 @@ Brand ke highlight points. Max **10 active** per brand.
 | 210 | POST | `/vouchers/pause/:versionId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | 🆕 Live voucher ko customer feed se hataye bina khatam kiye. Sirf `PUBLISHED` version. `reason` optional |
 | 212 | DELETE | `/vouchers/:voucherId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | 🆕 Soft delete — `status: DELETED` + `isDeleted` saath me, saari versions bhi, aur plan slot wapas. 🔴 **Live claim (PENDING/PAID) ho to 409 — ADMIN par bhi** |
 | 211 | POST | `/vouchers/resume/:versionId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | 🆕 Wapas live. ⚠️ Beech me koi aur version publish ho gaya to **saaf 409** (partial unique index ka `E11000` nahi), aur validity nikal chuki ho to bhi 409 |
-| 80 | GET | `/vouchers/versions/get-all` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | |
+| 80 | GET | `/vouchers/versions/get-all` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | 🆕 `includeDeleted` — **ADMIN-only**, default off. Vendor bheje to 403, chup-chaap ignore nahi |
 | 81 | PUT | `/vouchers/admin/suggestions/:voucherId` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Suggested voucher add / remove / reorder — ek hi endpoint dono taraf. ⚠️ `/:voucherId/banner` se **pehle** declare, warna `admin` voucher id padha jaata |
 | 82 | GET | `/vouchers/admin/suggestions` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Admin view — **expired/unpublished pins bhi** dikhte hain taaki unpin ho sakein |
 | 83 | POST | `/vouchers/:voucherId/banner` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | Master-level banner, version/approval flow se independent |

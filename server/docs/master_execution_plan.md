@@ -4,12 +4,13 @@
 >
 > **Ship ho chuka:** Block A (A-1 · A-2 · A-2b · A-3) · Block F (F-1…F-4) ·
 > Block M (M-1 · M-1a′ · M-1a″ · M-1b · M-2 · M-3 · M-3a · M-4 · M-5) ·
-> **Block S poora** (S-1…S-5) · **Block V ka V-1…V-5**.
+> **Block S poora** (S-1…S-5) · **Block V ka V-1…V-6**.
 >
-> **V-6** (delete) ka kaam poora hai par **abhi commit nahi hua** — teen commit
-> taiyar hain: `verifyApiCoverage` ka fix, `WriteConflict` → 409, aur delete khud.
+> **Block V ka V-6 bhi ship ho chuka** — teen commit me: `verifyApiCoverage` ka
+> fix, `WriteConflict` → 409, aur delete khud.
 >
-> **Agla: V-6b** (admin ko deleted vouchers dikhana — `includeDeleted`, ADMIN-only).
+> **Agla: V-6c** (claim snapshot me banner + pehli image). **V-6b** ka kaam poora
+> hai par abhi commit nahi hua.
 >
 > **O-1** (OTP throttle) aur **O-2** (poori money suite ek saath green nahi
 > rehti) dono jaanboojh kar khule hain — likh diye gaye hain, fix nahi kiye. **Block U** (presigned upload) aur **Block X** (infra) abhi baaki hain.
@@ -1432,7 +1433,7 @@ Detail: [showcase_rules_and_upload_plan.md](./showcase_rules_and_upload_plan.md)
 > ho sakta hai jabki master `DRAFT` padha hai. History me `masterFollowed: false`
 > darj hota hai, warna wo row aadhi-likhi lagti.
 
-## V-6 · Delete — ✅ **DONE** (uncommitted — teen commit taiyar)
+## V-6 · Delete — ✅ **DONE** (`f869beb`, `a3ec6d5`, `5dbde70`)
 `services/vouchers/deleteVoucher.js` · `helpers/vouchers/{assertNoLiveClaims,markDeleted}.js` · `middlewares/errorHandler.js` · `scripts/verifyApiCoverage.js` · models · routes · validator · docs · postman
 - [x] `VOUCHER_STATUSES.DELETED` enum me (aur `VOUCHER_APPROVAL_ACTION.DELETED`)
 - [x] Soft delete + `status: DELETED` + `deletedAt` + `deletedBy` + `deleteReason` — **`voucherDeletionFields()` se, ek hi `$set` me**
@@ -1461,17 +1462,28 @@ Detail: [showcase_rules_and_upload_plan.md](./showcase_rules_and_upload_plan.md)
 > tha (to chhota path lambe par free-ride kar leta). Tighten karne par 226 me se
 > **theek ek** route pass se fail hua — wahi jiska sach me kuch likha nahi tha.
 
-## V-6 · Delete
-- [ ] `VOUCHER_STATUSES.DELETED` enum me
-- [ ] Soft delete + `status: DELETED` + `deletedAt` + `deletedBy` + `deleteReason` — **ek hi jagah se, saath me**
-- [ ] `releaseSlot(brandId, VOUCHERS)`
-- [ ] **Live-claim guard** — `PENDING`/`PAID` par block, **ADMIN par bhi**; response me `liveClaims` + `breakdown` + `suggestedAction`
-- [ ] **Proof:** claim history na tootey (snapshot-based, verified) · dobara claim block (pehle se) · money suite
+## V-6b · Admin ko deleted dikhana — ✅ **DONE** (uncommitted)
+`services/vouchers/getAllVoucherVersions.js` · `validator/vouchers.js` · docs · postman
+- [x] `getAllVoucherVersions` ka `isDeleted: false` **admin ke liye bhi hardcoded** tha — ab `?includeDeleted=true`, **ADMIN-only**, default off
+- [x] Vendor/sub-vendor ke bhejne par **403**, chup-chaap ignore nahi — aur refusal **brand scoping se pehle**
+- [x] `deletedAt` · `deletedBy` · `deleteReason` response me — projection `{ $project: { __v: 0 } }` exclusion hai, to teeno pehle se aa rahe the
+- [x] Docs (3) + postman (disabled query param, kyunki flag ADMIN-only hai aur vendor env me `admin_token` nahi hai)
+- [x] **Proof:** money `voucherDeletedListing` (14) · mutation **6 mare, 1 equivalent**
 
-## V-6b · Admin ko deleted dikhana
-- [ ] `getAllVoucherVersions` me `isDeleted: false` **hardcoded hai admin ke liye bhi** — `includeDeleted` filter (ADMIN-only)
-- [ ] `deletedAt` · `deletedBy` · `deleteReason` response me
-- [ ] Docs + postman
+> ⚠️ **M7 zinda hai aur kill nahi gina — par wo equivalent hai.** Wo mutant
+> `scopeToActor` ko skip karta hai jab `wantsDeleted` sach ho. Us line tak
+> `wantsDeleted === true` leke **sirf ADMIN** pahunch sakta hai (403 guard), aur
+> `scopeToActor` ADMIN ke liye pehli hi line par `return match` karta hai —
+> yaani wo waise bhi no-op hai.
+
+> ⚠️ **Teen test pehli baar galat likhe the.** Wo ek hi voucher bana kar use
+> delete karte the, aur `pagination()` khali page par **404 "No any
+> voucherversion found"** phenkta hai — khali list nahi. To wo us behaviour ko
+> naap rahe the, is wale ko nahi. Ab teeno me ek live voucher bhi hai.
+>
+> Khali listing ka 404 hona theek nahi lagta (filter kuch match na kare to wo
+> "not found" nahi hai), par wo **pehle se hai aur poore codebase me ek jaisa**,
+> isliye V-6b me chheda nahi gaya.
 
 ## V-6c · Claim snapshot bharna
 - [ ] `voucherSnapshot` me `bannerUrl` + pehli image bhi (aaj sirf `{name, categoryId, subCategoryId}`)

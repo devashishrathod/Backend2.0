@@ -3182,6 +3182,7 @@ Admin ke liye ye sabse important hai.
 | `versionNumber` | number | ❌ | – | |
 | `versionCode` | string | ❌ | – | |
 | `isImmutable` · `isActive` | boolean | ❌ | – | |
+| `includeDeleted` | boolean | ❌ | `false` | 🆕 **Sirf aapke liye.** Deleted versions bhi dikhne lagti hain, apne `deletedAt`/`deletedBy`/`deleteReason` ke saath. Vendor bheje to **403** |
 | `fromDate` · `toDate` | ISO date | ❌ | – | |
 | `sortBy` | string | ❌ | `NEWEST` | `DISTANCE` \| `NEWEST` \| `EXPIRING_SOON` \| `RELEVANCE` |
 | `sortOrder` | string | ❌ | – | `asc` \| `desc` |
@@ -3190,6 +3191,21 @@ Admin ke liye ye sabse important hai.
 ```http
 GET /vouchers/versions/get-all?status=UNDER_REVIEW&sortBy=NEWEST&limit=50
 ```
+
+**🆕 Jo voucher delete ho chuke hain:**
+```http
+GET /vouchers/versions/get-all?includeDeleted=true&status=DELETED
+```
+
+> ⚠️ **Default off hai, aur ye jaan-bujh kar hai.** Deleted rows aam listing
+> me aane se aapki approval queue me retire ho chuke vouchers ghus jaate.
+> `includeDeleted=true` list ko **chauda** karta hai, badalta nahi — live rows
+> saath hi rehte hain. Sirf deleted chahiye to `status=DELETED` bhi lagayein.
+
+> 🔴 **Vendor ke bhejne par 403 aata hai, flag chupke se gira nahi jaata.**
+> Use ignore karna us vendor ko *"koi deleted nahi hai"* jawab dena hota jise
+> ye sawaal poochhne hi nahi diya — do galat jawabon me se bura, kyunki wo
+> jawab jaisa dikhta hai.
 
 **Ek admin ne kya approve kiya:**
 ```http
