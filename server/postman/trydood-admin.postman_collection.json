@@ -1589,6 +1589,146 @@
               }
             }
           ]
+        },
+        {
+          "name": "Banner approve karo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"APPROVED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/vouchers/{{voucher_id}}/banner/review",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "{{voucher_id}}",
+                "banner",
+                "review"
+              ]
+            },
+            "description": "Voucher ka BANNER approve/reject — voucher ke version review (upar) se alag hai. Reject par voucher PUBLISHED hi rehta hai aur customer ko uski pehli image dikhti hai."
+          },
+          "response": [
+            {
+              "name": "200 · Banner approved",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"action\": \"APPROVED\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/vouchers/{{voucher_id}}/banner/review",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "vouchers",
+                    "{{voucher_id}}",
+                    "banner",
+                    "review"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Voucher banner approved.\",\n  \"data\": {\n    \"voucherId\": \"{{voucher_id}}\",\n    \"banner\": {\n      \"current\": {\n        \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n        \"kind\": \"IMAGE\",\n        \"mimeType\": \"image/jpeg\",\n        \"sizeBytes\": 184320,\n        \"storage\": {\n          \"provider\": \"CLOUDINARY\",\n          \"publicId\": \"vouchers/banner-451\"\n        }\n      },\n      \"status\": null,\n      \"rejectionReason\": null,\n      \"reviewedBy\": \"{{admin_user_id}}\",\n      \"reviewedAt\": \"2026-09-17T10:15:00.000Z\"\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Banner reject karo (reason ke saath)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"REJECTED\",\n  \"rejectionReason\": \"Text card size par padha nahi ja raha.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/vouchers/{{voucher_id}}/banner/review",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "{{voucher_id}}",
+                "banner",
+                "review"
+              ]
+            },
+            "description": "Voucher ka BANNER approve/reject — voucher ke version review (upar) se alag hai. Reject par voucher PUBLISHED hi rehta hai aur customer ko uski pehli image dikhti hai."
+          },
+          "response": [
+            {
+              "name": "200 · Banner rejected",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"action\": \"REJECTED\",\n  \"rejectionReason\": \"Text card size par padha nahi ja raha.\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/vouchers/{{voucher_id}}/banner/review",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "vouchers",
+                    "{{voucher_id}}",
+                    "banner",
+                    "review"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Voucher banner rejected.\",\n  \"data\": {\n    \"voucherId\": \"{{voucher_id}}\",\n    \"banner\": {\n      \"pending\": {\n        \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n        \"kind\": \"IMAGE\",\n        \"mimeType\": \"image/jpeg\",\n        \"sizeBytes\": 184320,\n        \"storage\": {\n          \"provider\": \"CLOUDINARY\",\n          \"publicId\": \"vouchers/banner-451\"\n        }\n      },\n      \"status\": \"REJECTED\",\n      \"rejectionReason\": \"Text card size par padha nahi ja raha.\",\n      \"reviewedBy\": \"{{admin_user_id}}\",\n      \"reviewedAt\": \"2026-09-17T10:15:00.000Z\"\n    }\n  }\n}"
+            }
+          ]
         }
       ]
     },

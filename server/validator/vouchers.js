@@ -1,5 +1,6 @@
 const Joi = require("joi");
 const { PROMO_CODE_LIMITS } = require("../constants/promoCode");
+const { VOUCHER_BANNER_STATUS } = require("../constants/voucherBanner");
 const objectId = require("./validJoiObjectId");
 const {
   VOUCHER_DISCOUNT_TYPES,
@@ -210,6 +211,55 @@ exports.validateSubmitVoucherForReview = {
       "any.invalid": "Invalid voucher ID.",
     }),
   },
+};
+
+/**
+ * The **banner's** review, which is separate from the voucher's (V-4).
+ *
+ * ⚠️ Keyed on `voucherId`, not a version — a banner belongs to the master
+ * voucher and survives every version of it.
+ */
+exports.validateReviewVoucherBanner = {
+  params: {
+    voucherId: objectId().required().messages({
+      "any.required": "Voucher ID is required.",
+      "any.invalid": "Invalid voucher ID.",
+    }),
+  },
+  body: Joi.object({
+    action: Joi.string()
+      .valid(
+        VOUCHER_BANNER_STATUS.APPROVED,
+        VOUCHER_BANNER_STATUS.REJECTED,
+      )
+      .required()
+      .messages({
+        "any.only": "Action must be either APPROVED or REJECTED.",
+        "any.required": "Review action is required.",
+        "string.empty": "Review action cannot be empty.",
+      }),
+    /**
+     * Required on a rejection and forbidden on an approval — a reason beside an
+     * approval would be stored and then shown to a vendor as though they had
+     * been refused.
+     */
+    rejectionReason: Joi.string()
+      .trim()
+      .max(1000)
+      .when("action", {
+        is: VOUCHER_BANNER_STATUS.REJECTED,
+        then: Joi.required().messages({
+          "any.required": "A reason is required when rejecting a banner.",
+          "string.empty": "A reason is required when rejecting a banner.",
+        }),
+        otherwise: Joi.forbidden().messages({
+          "any.unknown": "A reason is not allowed when approving a banner.",
+        }),
+      })
+      .messages({
+        "string.max": "The reason cannot exceed 1000 characters.",
+      }),
+  }),
 };
 
 exports.validateReviewVoucher = {

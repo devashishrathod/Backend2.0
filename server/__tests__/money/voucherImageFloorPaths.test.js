@@ -153,6 +153,20 @@ const draftVoucher = async (imageCount) => {
     normalizedName: "floor voucher",
     voucherCode,
     status: VOUCHER_STATUSES.DRAFT,
+    /**
+     * ⚠️ A banner, because submit-for-review now requires one (V-2). Without it
+     * these fixtures fail on the banner rule — which is a real rule, but not the
+     * one these tests are about, and a test that fails for the wrong reason
+     * sends the next person after images.
+     */
+    banner: {
+      pending: {
+        url: "https://example.test/banner.webp",
+        kind: "IMAGE",
+        mimeType: "image/webp",
+      },
+      status: "PENDING",
+    },
   });
 
   const version = await VoucherVersion.create({

@@ -5019,6 +5019,7 @@ Koi nahi.
 | `409` | `Voucher status changed. Please refresh and try again.` | Concurrent modification |
 | `409` | `Voucher version status changed. Please refresh and try again.` | Version race |
 | `422` | 🆕 `A voucher needs at least 3 images — this one has 2. Add 1 more.` | ⚠️ **Naya** — pehle yahan `400 "At least one image is required"` tha, jo `minImages` padhta hi nahi tha. Upar ka [images floor block](#🆕-images-ka-floor--ek-rule-ek-jawab) dekhein |
+| `422` | 🆕 `A voucher needs a banner before it can be submitted. Upload one as "media" on the banner endpoint.` | ⚠️ **Naya** — banner ab submit ke liye zaruri hai (#59). Pending, approved ya rejected — teeno chalte hain, bas kuch to bheja ho |
 | `400` | *(validation)* | Offers/dates adhoore |
 
 ### ⚠️ Notes
@@ -5322,9 +5323,19 @@ poster: <teaser-cover.jpg>
 
 **3. 🔴 `DELETE /vouchers/:voucherId/banner` hata diya gaya hai.** Banner ka slot ab kabhi khali nahi hota: approved banner na ho to customer ko voucher ki pehli image dikhti hai. "Mera banner hata do" ab ek state hi nahi hai — badalna ho to naya bhej dijiye.
 
+**3a. 🆕 Banner ab submit-for-review ke liye zaruri hai (#56).** Bina banner ke voucher submit nahi hota. Publish par ye rok **nahi** hai — banner submit ke baad reject bhi ho sakta hai, aur ek poore approved voucher ko uske artwork ke faisle par rokna galat hoga. Fallback isiliye hai.
+
 **4. Reject hone par kya hota hai** — voucher **PUBLISHED hi rehta hai**. Customer ko pehli image dikhti hai, aur aapko `bannerStatus: REJECTED` ke saath `rejectionReason` milta hai. Naya banner bhejte hi wo reason clear ho jaata hai — purana faisla nayi file par nahi chipkta.
 
 **5. Ye voucher ke `images` se alag hai** — `images` version ka hissa hain (approval flow me), banner master-level hai.
+
+---
+
+## ~~60. DELETE /vouchers/:voucherId/banner~~ — 🔴 hata diya gaya
+
+Ye endpoint ab maujood nahi hai. Number jaan-bujh kar khali chhoda hai taaki 61 se aage ke saare section numbers wahi rahein jo purane links aur tickets me likhe hain.
+
+Banner "hatane" ka koi matlab nahi raha: slot kabhi khali nahi hota, approved banner na ho to customer ko voucher ki pehli image dikh jaati hai (#59). Badalna ho to naya bhej dijiye — wo purane ko khud replace kar dega.
 
 ---
 

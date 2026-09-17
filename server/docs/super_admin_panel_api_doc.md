@@ -3032,6 +3032,108 @@ GET /vouchers/versions/get-all?status=UNDER_REVIEW&sortBy=NEWEST
 
 ---
 
+## 38a. POST /vouchers/:voucherId/banner/review 🆕
+
+🔴 **Admin-exclusive.** Voucher ka **banner** approve ya reject.
+
+**Access:** Intended: ADMIN · Enforced: **ADMIN**
+
+> ### ⚠️ Ye #38 se alag review hai
+>
+> #38 voucher ke **version** ko approve karta hai. Ye uske **banner** ko. Dono ek
+> doosre se swatantra hain aur alag-alag ho sakte hain: ek PUBLISHED voucher ka
+> banner REJECTED ho sakta hai, aur ye galat state nahi hai — bilkul normal hai.
+>
+> Isliye banner reject karne se **voucher ka status nahi badalta**. Wo published
+> rehta hai aur customer ko uski pehli image banner ki jagah dikhti hai.
+
+### Path Params
+| Param | Type | Required | Notes |
+|---|---|---|---|
+| `voucherId` | ObjectId | ✅ | ⚠️ **Voucher ka id**, version ka nahi — banner master-level hai |
+
+### Body
+| Field | Type | Required | Validation |
+|---|---|---|---|
+| `action` | string | ✅ | `APPROVED` \| `REJECTED` |
+| `rejectionReason` | string | reject par ✅ | Max 1000 chars. **Approve par bhejna mana hai** |
+
+```json
+{ "action": "REJECTED", "rejectionReason": "Text card size par padha nahi ja raha." }
+```
+
+> Reason approve ke saath bhejenge to `422` — wo store ho jaata aur vendor ko aisa
+> dikhta jaise use mana kiya gaya ho.
+
+### Approve par kya hota hai
+
+```
+pending  →  current      naya banner live
+purana current → delete  ab use koi point nahi karta
+status   →  null         review me ab kuch nahi hai
+```
+
+> ⚠️ Purani file **save ke baad** delete hoti hai, pehle nahi. Ulta karte aur save
+> fail ho jaata, to voucher ek aise object par point karta jo ab hai hi nahi —
+> yaani ek live banner ek failed write se broken image ban jaata.
+
+### Reject par kya hota hai
+
+File `pending` me hi rehti hai, reason ke saath. Vendor use apne reason ke bagal me
+dekhega — delete kar dete to use *"aapka banner reject hua kyunki text padha nahi
+ja raha"* ke saath dikhane ko kuch bhi nahi hota. Wo file tab hatti hai jab vendor
+agla banner bhejta hai.
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Voucher banner approved.",
+  "data": {
+    "voucherId": "68f1a2b3c4d5e6f7a8b9c2a1",
+    "banner": {
+      "current": {
+        "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg",
+        "kind": "IMAGE",
+        "mimeType": "image/jpeg",
+        "sizeBytes": 184320,
+        "storage": { "provider": "CLOUDINARY", "publicId": "vouchers/banner-451" }
+      },
+      "status": null,
+      "rejectionReason": null,
+      "reviewedBy": "68f1a2b3c4d5e6f7a8b9c001",
+      "reviewedAt": "2026-09-17T10:15:00.000Z"
+    }
+  }
+}
+```
+
+> ⚠️ Approve ke baad `status` **`null`** hota hai, `APPROVED` nahi. `status` ye
+> batata hai ki **review me kya hai** — approve ke baad review me kuch hai hi
+> nahi. Customer ko `bannerStatus: "APPROVED"` phir bhi milta hai, wo `current`
+> ke hone se derive hota hai.
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `404` | `Voucher not found.` | |
+| `409` | `This voucher has no banner waiting for review.` | `pending` khali hai |
+| `409` | `This banner has already been reviewed — it is REJECTED.` | Stale queue row par click |
+| `400` | `A reason is required when rejecting a banner.` | |
+| `400` | `The reason cannot exceed 1000 characters.` | |
+| `422` | `A reason is not allowed when approving a banner.` | |
+| `422` | `Action must be either APPROVED or REJECTED.` | |
+
+### ⚠️ Notes
+
+**1. Queue kahan se milegi** — abhi banner ke liye alag listing endpoint nahi hai. `GET /vouchers/versions/get-all` voucher versions deta hai, banner nahi. Filhaal banner wahan se dikhta hai jahan voucher khula ho.
+
+**2. Reject karna vendor ko rokta nahi** — wo turant naya banner bhej sakta hai (#59). Naya aate hi reason clear ho jaata hai, kyunki purana faisla nayi file par nahi chipakna chahiye.
+
+**3. Customer par asar** — approve karte hi naya banner dikhne lagta hai. Reject par kuch nahi badalta: customer ko pehle bhi voucher ki pehli image dikh rahi thi, wahi dikhti rahegi.
+
+---
+
 ## 39–45. Vendor Toolkit (admin bhi use kar sakta hai)
 
 Ye 7 endpoints vendor ke liye banaye gaye hain, par admin bhi chala sakta hai — **`resolveActorBrand` admin ko koi bhi brand chunne deta hai** (aur `brandId` mandatory kar deta hai).

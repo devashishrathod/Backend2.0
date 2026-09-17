@@ -229,6 +229,29 @@ exports.validateVoucherBeforeSubmit = async (
    */
   await assertVoucherImageFloor(imageCount, { minImages });
 
+  /**
+   * 🔴 V-2 — a banner is required to submit, and **not** to publish.
+   *
+   * This is the one moment a vendor is deliberately handing their voucher over,
+   * so it is where "you have not given us a banner" is useful rather than
+   * obstructive. `current` counts as much as `pending`: a voucher whose banner
+   * is already approved does not have to send it again.
+   *
+   * ⚠️ Publishing is deliberately **not** gated on this. A banner can be
+   * rejected after submission, and blocking publish on that would take a
+   * finished, approved voucher hostage to a decision about its artwork — the
+   * `images[0]` fallback exists precisely so it does not have to.
+   */
+  const hasBanner = Boolean(
+    voucher.banner?.current?.url || voucher.banner?.pending?.url,
+  );
+  if (!hasBanner) {
+    throwError(
+      422,
+      'A voucher needs a banner before it can be submitted. Upload one as "media" on the banner endpoint.',
+    );
+  }
+
   const subBrandCount = await VoucherSubBrand.countDocuments({
     voucherVersionId: version._id,
     isActive: true,

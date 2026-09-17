@@ -18,6 +18,7 @@ const {
   getCustomerVoucher,
   previewCustomerVoucher,
   setBanner,
+  reviewBanner,
   reviewSuggestion,
   getSuggestions,
 } = require("../controllers/vouchers");
@@ -32,6 +33,7 @@ const {
   validateCustomerGetVoucher,
   validateCustomerVoucherPreview,
   validateSetVoucherBanner,
+  validateReviewVoucherBanner,
   validateReviewVoucherSuggestion,
   validateGetSuggestedVouchers,
 } = require("../validator/vouchers");
@@ -97,12 +99,26 @@ router.get(
   getSuggestions,
 );
 
-// Voucher banner (master-level, independent of version/approval flow)
+// Voucher banner (master-level, independent of the version/approval flow —
+// though it has a review of its own).
 router.post(
   "/:voucherId/banner",
   isVendorOrAdmin,
   validateSchema(validateSetVoucherBanner),
   setBanner,
+);
+/**
+ * 🔴 Admin-only, and that is the point of the whole slot: a vendor uploads into
+ * `pending`, an admin decides whether it reaches customers.
+ *
+ * Declared after the POST above so `/:voucherId/banner` cannot swallow it —
+ * `banner/review` is a longer path, but Express matches in declaration order.
+ */
+router.post(
+  "/:voucherId/banner/review",
+  isAdmin,
+  validateSchema(validateReviewVoucherBanner),
+  reviewBanner,
 );
 
 // ---------------------------------------------------------------------------
