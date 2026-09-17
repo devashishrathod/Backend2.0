@@ -230,6 +230,33 @@ const voucherVersionSchema = new mongoose.Schema(
     archivedAt: {
       type: Date,
     },
+    /**
+     * When the vendor took this version out of the feed, and why (V-5).
+     *
+     * ⚠️ Cleared on resume, unlike `archivedAt` and `expiredAt`. Those two
+     * record something that happened and stays happened; a pause is a state the
+     * version is *in*, and it ends. Leaving the stamp behind would tell a report
+     * a live voucher is paused, and leave the reason sitting beside a voucher
+     * that is back up.
+     *
+     * The reason is the vendor's own note — "out of stock until Monday" — not a
+     * moderation verdict. `rejectionReason` is the other kind and is deliberately
+     * a different field: one is something they chose, the other something that
+     * was done to them, and collapsing the two would show an admin's refusal in
+     * the place a vendor expects to see their own words.
+     */
+    pausedAt: {
+      type: Date,
+      default: null,
+    },
+    pausedBy: {
+      ...userField,
+    },
+    pauseReason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     isImmutable: {
       type: Boolean,
       default: false,

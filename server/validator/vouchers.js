@@ -312,6 +312,35 @@ exports.validatePublishVoucher = {
   },
 };
 
+exports.validatePauseVoucher = {
+  params: {
+    versionId: objectId().required().messages({
+      "any.required": "Voucher version ID is required.",
+      "any.invalid": "Invalid voucher version ID.",
+    }),
+  },
+  /**
+   * The reason is optional, and deliberately so. Pausing is the vendor's own
+   * decision about their own voucher — demanding a justification for it would be
+   * asking them to explain themselves to nobody. It is offered because it is
+   * useful to them later ("why is this down?"), not required because it is owed.
+   */
+  body: Joi.object({
+    reason: Joi.string().trim().max(1000).optional().messages({
+      "string.max": "The reason cannot exceed 1000 characters.",
+    }),
+  }),
+};
+
+exports.validateResumeVoucher = {
+  params: {
+    versionId: objectId().required().messages({
+      "any.required": "Voucher version ID is required.",
+      "any.invalid": "Invalid voucher version ID.",
+    }),
+  },
+};
+
 exports.validateGetAllVoucherVersions = {
   query: Joi.object({
     page: Joi.number().integer().min(1).optional(),

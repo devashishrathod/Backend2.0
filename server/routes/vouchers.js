@@ -13,6 +13,8 @@ const {
   submitForReview,
   review,
   publish,
+  pause,
+  resume,
   getAllVersions,
   getAllCustomerVouchers,
   getCustomerVoucher,
@@ -28,6 +30,8 @@ const {
   validateSubmitVoucherForReview,
   validateReviewVoucher,
   validatePublishVoucher,
+  validatePauseVoucher,
+  validateResumeVoucher,
   validateGetAllVoucherVersions,
   validateCustomerGetAllVouchers,
   validateCustomerGetVoucher,
@@ -73,6 +77,26 @@ router.post(
   isVendorOrAdmin,
   validateSchema(validatePublishVoucher),
   publish,
+);
+/**
+ * Pause / resume — the vendor's own switch on a live voucher (V-5).
+ *
+ * ⚠️ `isVendorOrAdmin`, same as publish, and ownership is checked again inside
+ * the service. Taking a voucher off the customer app is the same size of action
+ * as putting one on it, so it gets the same gate — the route only establishes
+ * that the caller is *a* vendor.
+ */
+router.post(
+  "/pause/:versionId",
+  isVendorOrAdmin,
+  validateSchema(validatePauseVoucher),
+  pause,
+);
+router.post(
+  "/resume/:versionId",
+  isVendorOrAdmin,
+  validateSchema(validateResumeVoucher),
+  resume,
 );
 router.get(
   "/versions/get-all",

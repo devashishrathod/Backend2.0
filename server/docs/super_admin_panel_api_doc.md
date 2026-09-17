@@ -3134,9 +3134,9 @@ agla banner bhejta hai.
 
 ---
 
-## 39–45. Vendor Toolkit (admin bhi use kar sakta hai)
+## 39–46. Vendor Toolkit (admin bhi use kar sakta hai)
 
-Ye 7 endpoints vendor ke liye banaye gaye hain, par admin bhi chala sakta hai — **`resolveActorBrand` admin ko koi bhi brand chunne deta hai** (aur `brandId` mandatory kar deta hai).
+Ye 8 endpoints vendor ke liye banaye gaye hain, par admin bhi chala sakta hai — **`resolveActorBrand` admin ko koi bhi brand chunne deta hai** (aur `brandId` mandatory kar deta hai).
 
 | # | Method | Endpoint | Admin ke liye khaas |
 |---|---|---|---|
@@ -3145,10 +3145,16 @@ Ye 7 endpoints vendor ke liye banaye gaye hain, par admin bhi chala sakta hai �
 | 41 | POST | `/vouchers/submit-review/:voucherId` | ⚠️ Admin apna hi voucher submit karke khud approve kar sakta hai |
 | 42 | POST | `/vouchers/publish/:versionId` | Approved version live karna |
 | 43 | GET | `/vouchers/versions/get-all` | **Approval queue** — `?status=UNDER_REVIEW` |
-| 44 | POST | `/vouchers/:voucherId/banner` | Featured/promoted vouchers ke liye |
-| 45 | DELETE | `/vouchers/:voucherId/banner` | |
+| 44 | POST | `/vouchers/:voucherId/banner` | Featured/promoted vouchers ke liye. Faisla #38a par |
+| 45 | POST | `/vouchers/pause/:versionId` | 🆕 Live voucher feed se hataana, bina khatam kiye |
+| 46 | POST | `/vouchers/resume/:versionId` | 🆕 Wapas live karna |
 
-**Access (39, 40, 41, 42, 44, 45):** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** (39/40/44/45 pe **+ ownership**)
+> 🔴 **`DELETE /vouchers/:voucherId/banner` yahan se hata diya gaya** — wo endpoint
+> ab maujood hi nahi hai. Banner ka slot kabhi khali nahi hota: approved banner na
+> ho to customer ko voucher ki pehli image dikhti hai, isliye "banner hata do" ek
+> state hi nahi rahi. Badalna ho to #44 se naya bhej dijiye.
+
+**Access (39, 40, 41, 42, 44, 45, 46):** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** (39/40/44/45/46 pe **+ ownership**)
 **Access (43):** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
 
 ### 43. GET /vouchers/versions/get-all — approval queue
@@ -3238,11 +3244,12 @@ Poori request/response detail vendor doc me hai (identical behaviour); admin ke 
 | `POST /vouchers/create` | `brandId` ✅, `name`, `startAt`, `endAt`, `offers[]`, `subBrandIds[]`, `images` (multipart) | ⚠️ Brand ka subscription gate lagta hai — bina plan ke voucher nahi banega |
 | `PUT /vouchers/update/:voucherId` | Delta-based: `newOffers`/`removedOfferIds`/`newTags`/`removedTags`/`newImages` | Status-wise editability lagti hai |
 | `POST /vouchers/submit-review/:voucherId` | — | ⚠️ Self-approval possible — audit trail me dono actions dikhenge |
-| `POST /vouchers/publish/:versionId` | — | Sirf `APPROVED` version; publish pe `isImmutable: true` |
-| `POST /vouchers/:voucherId/banner` | `bannerType` + matching file (`bannerImage`/`bannerVideo`/`bannerGif`) | Approval flow ko touch nahi karta |
-| `DELETE /vouchers/:voucherId/banner` | — | Idempotent |
+| `POST /vouchers/publish/:versionId` | — | Sirf `APPROVED` version; publish pe `isImmutable: true`. 🆕 Master ab `PUBLISHED` bolta hai |
+| `POST /vouchers/:voucherId/banner` | `media` (file) + `poster` (video par mandatory) | 🆕 Version/approval flow ko touch nahi karta, par banner ka **apna** review hai (#38a) |
+| `POST /vouchers/pause/:versionId` | `reason` (optional, max 1000) | 🆕 Sirf `PUBLISHED` version. Customer se turant gayab, version jaisa ka waisa |
+| `POST /vouchers/resume/:versionId` | — | 🆕 Beech me doosra version live ho gaya to **saaf 409**, `E11000` nahi. Validity nikal chuki ho to bhi 409 |
 
-**Common errors (39–45):**
+**Common errors (39–46):**
 | Status | Message |
 |---|---|
 | `403` | `Access denied. This feature requires an active subscription. …` *(create)* |

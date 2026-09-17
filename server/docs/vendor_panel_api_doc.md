@@ -5094,17 +5094,122 @@ Koi nahi.
 
 🔴 Publish sirf status nahi badalta — wo **jo version live hai use ARCHIVE** kar deta hai. To koi bhi vendor doosre brand ka **chalta hua voucher hata kar** dusra live kar sakta tha, aur approval history me **uska apna naam** darj hota — ek aise brand par jisse uska koi rishta nahi.
 
-**3. Publish karte hi version `isImmutable: true` ho jaata hai** — ab wo kabhi edit nahi ho sakta. Change chahiye to naya version.
+**4. Publish karte hi version `isImmutable: true` ho jaata hai** — ab wo kabhi edit nahi ho sakta. Change chahiye to naya version.
 
-**4. Expired voucher publish nahi hota** — `endAt` future me honi chahiye.
+**5. Expired voucher publish nahi hota** — `endAt` future me honi chahiye.
 
-**5. Publish ke baad customer ko dikhne lagta hai** — `GET /vouchers/customer/get-all` me, agar outlet radius me ho aur `startAt <= now < endAt`.
+**6. Publish ke baad customer ko dikhne lagta hai** — `GET /vouchers/customer/get-all` me, agar outlet radius me ho aur `startAt <= now < endAt`.
 
-**6. ✅ Ownership ab check hoti hai** — service voucher load karke uske `brandId`
-ke against `resolveActorBrand` chalati hai. Ye sabse mehenga hole tha: publish
-sirf status nahi badalta, wo **jo version live hai use archive** kar deta hai —
-yaani koi bhi vendor doosre brand ka chalta hua voucher hata sakta tha, aur
-approval history me uska apna naam darj hota.
+**7. 🆕 Master voucher ab `PUBLISHED` bolta hai.** Pehle wo `APPROVED` par hi pada reh jaata tha. Isse `PAUSED` ke paas utarne ki seedhi ban gayi (#57a) aur expiry sweep master tak pahunchne lagi.
+
+---
+
+## 57a. POST /vouchers/pause/:versionId
+
+🆕 Live voucher ko customer feed se hataata hai, **bina khatam kiye**.
+
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · vendor sirf apne brand ka
+
+### Path Params
+| Param | Type | Required | Notes |
+|---|---|---|---|
+| `versionId` | ObjectId | ✅ | ⚠️ **Version ka id**, voucher ka nahi |
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `reason` | String | ❌ | Max 1000. Aapka apna note — *"stock khatam, Monday tak"*. Customer ko nahi dikhta |
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Voucher paused. Customers will not see it until you resume it.",
+  "data": {
+    "voucherId": "68f1a2b3c4d5e6f7a8b9c2a1",
+    "versionId": "68f1a2b3c4d5e6f7a8b9c2b1",
+    "voucherCode": "VCH-10000042",
+    "versionCode": "VCH-10000042-V1",
+    "versionNo": 1,
+    "action": "PAUSED",
+    "voucherStatus": "PAUSED",
+    "versionStatus": "PAUSED",
+    "pausedAt": "2026-09-17T10:15:00.000Z",
+    "reason": "Stock khatam, Monday tak"
+  }
+}
+```
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `401` | `User authentication is required.` | Token se `userId` nahi mila |
+| `403` | `Forbidden: You do not have permission to perform this action on this brand.` | Voucher kisi aur brand ka |
+| `400` | `Invalid voucher version ID.` | Format |
+| `404` | `Voucher version not found.` / `Voucher not found.` | |
+| `409` | `Only a published voucher can be paused — this one is APPROVED.` | Wo version live hai hi nahi |
+| `400` | `The reason cannot exceed 1000 characters.` | |
+| `409` | `Voucher version status changed. Please refresh and try again.` | Beech me kisi aur ne badal diya |
+
+---
+
+## 57b. POST /vouchers/resume/:versionId
+
+🆕 Paused voucher ko wapas customer feed me laata hai.
+
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · vendor sirf apne brand ka
+
+### Path Params
+| Param | Type | Required | Notes |
+|---|---|---|---|
+| `versionId` | ObjectId | ✅ | |
+
+### Body
+Koi nahi.
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Voucher is live again.",
+  "data": {
+    "voucherId": "68f1a2b3c4d5e6f7a8b9c2a1",
+    "versionId": "68f1a2b3c4d5e6f7a8b9c2b1",
+    "voucherCode": "VCH-10000042",
+    "versionCode": "VCH-10000042-V1",
+    "versionNo": 1,
+    "action": "RESUMED",
+    "voucherStatus": "PUBLISHED",
+    "versionStatus": "PUBLISHED",
+    "pausedAt": null,
+    "reason": null
+  }
+}
+```
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `401` | `User authentication is required.` | |
+| `403` | `Forbidden: You do not have permission to perform this action on this brand.` | |
+| `404` | `Voucher version not found.` / `Voucher not found.` | |
+| `409` | `Only a paused voucher can be resumed — this one is PUBLISHED.` | Wo paused hai hi nahi |
+| `409` | 🔴 `Version 2 went live while this one was paused, and a voucher can only have one live version. Pause version 2 first, or leave this one paused.` | Beech me doosra version publish ho gaya |
+| `409` | `This voucher's validity ran out while it was paused. Create a new version with new dates.` | `endAt` nikal chuki |
+
+### ⚠️ Notes
+
+**1. Pause khatam karna nahi hai.** Version jaisa tha waisa hi rehta hai — dates, offers, images, sab. Resume karte hi wapas wahi voucher live ho jaata hai. Ye publish-over-karne ya expire hone se alag hai, wo dono wapas nahi aate.
+
+**2. Customer ke liye wo turant gayab ho jaata hai.** Listing `status: "PUBLISHED"` par match karti hai, to paused version kisi feed me nahi aata — aur resume par wapas aa jaata hai. Iske liye customer side par kuch naya nahi jodna pada.
+
+**3. 🔴 Paused rehte hue aap doosra version publish kar sakte hain — par phir purana wapas nahi aayega.** Ek voucher par ek hi live version ho sakta hai (partial unique index). Pause karne se wo slot khali ho jaata hai, to v2 publish ho sakta hai; uske baad v1 ko resume karne par **saaf 409** milta hai jisme likha hota hai ki kaunsa version live hai aur ab kya karna hai. Pehle ye `E11000` database error banke **500** girta.
+
+**4. Ghadi nahi rukti.** Paused voucher ki `endAt` waise hi aati hai. Nikal gayi to hourly sweep use `EXPIRED` kar deti hai aur resume par 409 milta hai — naya version banana padega.
+
+**5. `reason` sirf aapke liye hai.** Approval history me darj hota hai. Customer ko kabhi nahi dikhta, aur admin ke `rejectionReason` se alag field hai — ek wo hai jo aapne chuna, dusra wo jo aap par hua.
+
+**6. Master status tabhi badalta hai jab wo isi version ki baat kar raha ho.** Agar aapne naya version banana shuru kar diya hai to master `DRAFT` par hai (wo aapka chalu kaam track kar raha hai), aur pause use nahi chhuta — `versionStatus` phir bhi `PAUSED` ho jaata hai, aur customer ke liye wahi maayne rakhta hai.
 
 ---
 

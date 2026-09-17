@@ -11,7 +11,7 @@
 **Framework:** Express.js (CommonJS) · **DB:** MongoDB (Mongoose)
 **Route mounting:** `routes/index.js` auto-mounts har file ko uske filename se → `routes/subBrands.js` = `/trydood/v1/subBrands` (camelCase preserved). Do file `routePrefix` override karti hain — `voucherClaims.js` → `/voucher-claims`, `customerBankAccounts.js` → `/bank-accounts`.
 
-**Scanned:** 2026-09-11 · **Total endpoints: 220** (+3 utility/non-versioned)
+**Scanned:** 2026-09-11 · **Total endpoints: 222** (+3 utility/non-versioned)
 
 > ### ⚠️ Ye ginti pichhli baar 53 endpoint peeche reh gayi thi
 >
@@ -114,7 +114,18 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 
 ---
 
-## Summary — 220 endpoints
+## Summary — 222 endpoints
+
+> ⚠️ **`#` ek sthir id hai, position nahi.** Usme gaps hain (33, 34, 166,
+> 172–175, 182, 187) — wo hataye gaye endpoints ki jagah hai — aur naye endpoints
+> apne module ke saath baithte hain par **agla khali number** lete hain, isliye
+> kabhi-kabhi kram tootta dikhta hai (jaise `/vouchers` me 79 ke baad 210, 211).
+>
+> Ye jaan-bujh kar hai. Beech me daal kar sabko renumber karna is file ke
+> vendor/admin section tables ko tod deta hai — wo har section ke saamne endpoint
+> numbers likhte hain (`3–8, 12` jaise), 207 tak. Neeche ka Guest Surface table
+> bhi inhi ids ko bina kram ke dohrata hai. `verifyApiCoverage.js` number padhta
+> hi nahi — wo path se match karta hai.
 
 | # | Module | Base path | Total | 🟠 | 🟢 | 🔵 | 🟣 | ⚪ | 🤖 |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
@@ -130,7 +141,7 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | 10 | Locations | `/locations` | 6 | – | 1 | – | – | 5 | – |
 | 11 | Showcase | `/showcase` | 13 | 2 | – | – | – | 11 | – |
 | 12 | Brand Features | `/brandFeatures` | 5 | 2 | – | – | – | 3 | – |
-| 13 | Vouchers | `/vouchers` | 13 | 3\* | 3\* | – | 4 | 6 | – |
+| 13 | Vouchers | `/vouchers` | 15 | 3\* | 3\* | – | 4 | 8 | – |
 | 14 | Banners (App-level) | `/banners` | 6 | 1 | – | – | 5 | – | – |
 | 15 | Promotional Tickers | `/promotionalTickers` | 6 | 1 | – | – | 5 | – | – |
 | 16 | Categories | `/categories` | 5 | 2 | – | – | 3 | – | – |
@@ -152,12 +163,12 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | 32 | Privacy & Policies | `/privacy-and-policies` | 5 | 2 | – | – | 3 | – | – |
 | 33 | App Config | `/app-config` | 1 | 1 | – | – | – | – | – |
 | 34 | Documents 🆕 | `/documents` | 1 | – | – | – | – | – | 1 |
-| | **TOTAL** | | **220** | **22** | **17** | **15** | **86** | **77** | **3** |
+| | **TOTAL** | | **222** | **22** | **17** | **15** | **86** | **79** | **3** |
 
 > \* **4 endpoints do category me hain** (`optionalAuth`) — teen `/vouchers/customer/*`
 > aur `GET /search`. Wo 🟠 aur 🟢 dono column me ginne gaye hain, isliye
-> `22 + 17 + 15 + 86 + 77 + 3 = 220` **tabhi** milta hai jab un chaar ko ek baar
-> hi gina jaaye: distinct = `18 (pure guest) + 4 (dual) + 17 (customer) + 15 + 86 + 77 + 3 = 220` ✓
+> `22 + 17 + 15 + 86 + 79 + 3 = 222` **tabhi** milta hai jab un chaar ko ek baar
+> hi gina jaaye: distinct = `18 (pure guest) + 4 (dual) + 17 (customer) + 15 + 86 + 79 + 3 = 222` ✓
 >
 > **Round 6 me kya juda:** `/auth` me do (email verification, ⚪ — har role),
 > naya `/app-config` (🟠 public), aur `/notifications` ke do endpoints ab customer
@@ -172,7 +183,7 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | 🏪 `vendor_panel_api_doc.md` | **101** | 15 exclusive + 74 shared global + 10 guest reads + 2 🤖 links | ⚠️ v1.2.1 me 78 the — 19 naye jodne hain |
 | 🛡️ `super_admin_panel_api_doc.md` | **175** | 83 exclusive + 74 shared global + 14 guest reads + 4 🤖 reference | ⬜ Baaki |
 
-> Sum > 220 kyunki shared endpoints kai docs me aate hain.
+> Sum > 222 kyunki shared endpoints kai docs me aate hain.
 >
 > **Cross-check:** har endpoint kam se kam ek doc me hai —
 > 🟠 21 (customer doc me saare 21) · 🟢 17 (customer) · 🔵 15 (vendor) ·
@@ -666,6 +677,8 @@ Brand ke highlight points. Max **10 active** per brand.
 | 77 | POST | `/vouchers/submit-review/:voucherId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | |
 | 78 | POST | `/vouchers/review/:versionId` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Approval ka faisla admin ka hai, vendor ka nahi. `APPROVED` \| `REJECTED` |
 | 79 | POST | `/vouchers/publish/:versionId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | Sirf `APPROVED` version |
+| 210 | POST | `/vouchers/pause/:versionId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | 🆕 Live voucher ko customer feed se hataye bina khatam kiye. Sirf `PUBLISHED` version. `reason` optional |
+| 211 | POST | `/vouchers/resume/:versionId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | 🆕 Wapas live. ⚠️ Beech me koi aur version publish ho gaya to **saaf 409** (partial unique index ka `E11000` nahi), aur validity nikal chuki ho to bhi 409 |
 | 80 | GET | `/vouchers/versions/get-all` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | |
 | 81 | PUT | `/vouchers/admin/suggestions/:voucherId` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Suggested voucher add / remove / reorder — ek hi endpoint dono taraf. ⚠️ `/:voucherId/banner` se **pehle** declare, warna `admin` voucher id padha jaata |
 | 82 | GET | `/vouchers/admin/suggestions` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Admin view — **expired/unpublished pins bhi** dikhte hain taaki unpin ho sakein |
@@ -1572,7 +1585,7 @@ koi error nahi hota.
 
 | Doc | Endpoints | Status |
 |---|---:|---|
-| `endpoints_category.md` | **220** | ✅ **Round 6 — ye file.** Live routers ke against introspection se verify. `scripts/verifyApiCoverage.js` isi ko enforce karta hai |
+| `endpoints_category.md` | **222** | ✅ **Round 6 — ye file.** Live routers ke against introspection se verify. `scripts/verifyApiCoverage.js` isi ko enforce karta hai |
 | 🟠 Guest surface | 21 | 🆕 Round 5 — naya category, poori list is file me |
 | `customer_mobile_api_doc.md` | 66 | ✅ **v1.7.0** — live verified, 135 requests · 473 assertions · 0 failed · 198 captured examples (135/135 requests) |
 | `vendor_panel_api_doc.md` | 101 | ⚠️ **v1.2.1 me 78 hain** — 19 jodne hain (voucher claims reads, refunds, disputes, settlements, legacy mounts) |

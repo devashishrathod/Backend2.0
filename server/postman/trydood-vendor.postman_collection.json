@@ -9781,7 +9781,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n⚠️ **Ye `versionId` leta hai, `voucherId` nahi.** Sabse common galti yahi hai.\n\nSirf `APPROVED` version publish ho sakta hai. Seeder ek aisa version banata hai (`approved_version_id`).\n\n🔴 **Ownership check nahi hai** — koi bhi vendor kisi bhi brand ka approved\nversion publish kar sakta hai. Ye abhi khuli hui gap hai."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n⚠️ **Ye `versionId` leta hai, `voucherId` nahi.** Sabse common galti yahi hai.\n\nSirf `APPROVED` version publish ho sakta hai. Seeder ek aisa version banata hai (`approved_version_id`).\n\n✅ **Ownership ab check hoti hai** — service voucher ka `brandId` load karke\n`resolveActorBrand` chalati hai. Ye zaruri tha: publish sirf status nahi badalta,\nwo **jo version live hai use archive** kar deta hai — yaani koi bhi vendor doosre\nbrand ka chalta hua voucher hata sakta tha, aur approval history me uska apna\nnaam darj hota.\n\n🆕 Publish ab master `Voucher.status` ko bhi `PUBLISHED` kar deta hai (pehle wo\n`APPROVED` par pada reh jaata tha)."
           },
           "response": [
             {
@@ -9864,6 +9864,216 @@
                   ""
                 ]
               }
+            }
+          ]
+        },
+        {
+          "name": "Pause a live voucher",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Stock khatam, Monday tak\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/vouchers/pause/{{published_version_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "pause",
+                "{{published_version_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `isVendorOrAdmin` + ownership — vendor sirf apne brand ka\n\n🆕 Live voucher ko customer feed se hataata hai **bina khatam kiye**. Version jaisa tha waisa hi rehta hai — dates, offers, images sab — aur resume karte hi wahi voucher wapas live ho jaata hai.\n\n⚠️ **Ye `versionId` leta hai, `voucherId` nahi.**\n\nSirf `PUBLISHED` version pause ho sakta hai. `reason` optional hai aur customer ko kabhi nahi dikhta — wo aapka apna note hai, approval history me darj hota hai.\n\n🔴 Pause karne se published slot khali ho jaata hai, to aap paused rehte hue doosra version publish kar sakte hain — par phir purana wapas nahi aayega (resume par 409)."
+          },
+          "response": [
+            {
+              "name": "200 · Pause a live voucher",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/pause/6aa6ddb76fd8c36058cfc8a4",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "pause",
+                    "6aa6ddb76fd8c36058cfc8a4"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Voucher paused. Customers will not see it until you resume it.\",\n  \"data\": {\n    \"voucherId\": \"{{voucher_id}}\",\n    \"versionId\": \"{{published_version_id}}\",\n    \"voucherCode\": \"VCH-10000042\",\n    \"versionCode\": \"VCH-10000042-V1\",\n    \"versionNo\": 1,\n    \"action\": \"PAUSED\",\n    \"voucherStatus\": \"PAUSED\",\n    \"versionStatus\": \"PAUSED\",\n    \"pausedAt\": \"2026-09-17T10:15:00.000Z\",\n    \"reason\": \"Stock khatam, Monday tak\"\n  }\n}"
+            },
+            {
+              "name": "409 · Pause a live voucher",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/pause/6aa6ddb76fd8c36058cfc8a4",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "pause",
+                    "6aa6ddb76fd8c36058cfc8a4"
+                  ]
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Only a published voucher can be paused — this one is APPROVED.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Resume a paused voucher",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/vouchers/resume/{{published_version_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "resume",
+                "{{published_version_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `isVendorOrAdmin` + ownership — vendor sirf apne brand ka\n\n🆕 Paused voucher ko wapas customer feed me laata hai.\n\n🔴 **Sabse zaruri error yahan hai.** Ek voucher par ek hi live version ho sakta hai (partial unique index `{voucherId, status: PUBLISHED}`). Agar aapne pause ke dauraan doosra version publish kar diya, to resume par **saaf 409** milta hai jisme likha hota hai kaunsa version live hai aur ab kya karna hai. Pehle ye `E11000 dup key` banke **500** girta — ek aise index ka naam leta hua jo vendor ne kabhi dekha hi nahi.\n\n⚠️ Paused rehne se ghadi nahi rukti. `endAt` nikal gayi to resume nahi hoga — naya version banana padega."
+          },
+          "response": [
+            {
+              "name": "200 · Resume a paused voucher",
+              "originalRequest": {
+                "method": "POST",
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/resume/6aa6ddb76fd8c36058cfc8a4",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "resume",
+                    "6aa6ddb76fd8c36058cfc8a4"
+                  ]
+                },
+                "header": []
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Voucher is live again.\",\n  \"data\": {\n    \"voucherId\": \"{{voucher_id}}\",\n    \"versionId\": \"{{published_version_id}}\",\n    \"voucherCode\": \"VCH-10000042\",\n    \"versionCode\": \"VCH-10000042-V1\",\n    \"versionNo\": 1,\n    \"action\": \"RESUMED\",\n    \"voucherStatus\": \"PUBLISHED\",\n    \"versionStatus\": \"PUBLISHED\",\n    \"pausedAt\": null,\n    \"reason\": null\n  }\n}"
+            },
+            {
+              "name": "409 · Resume a paused voucher",
+              "originalRequest": {
+                "method": "POST",
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/resume/6aa6ddb76fd8c36058cfc8a4",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "resume",
+                    "6aa6ddb76fd8c36058cfc8a4"
+                  ]
+                },
+                "header": []
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Version 2 went live while this one was paused, and a voucher can only have one live version. Pause version 2 first, or leave this one paused.\"\n}"
             }
           ]
         },
