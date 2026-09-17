@@ -1,9 +1,18 @@
 # Trydood 2.0 — Master Execution Plan
 
-> **Status:** design **approved aur locked**. Block A (A-1 · A-2 · A-2b · A-3)
-> **ship ho chuka** — teenon leak band, 36 naye test, 22/22 mutant. Agla: **F-1**.
+> **Status:** design **approved aur locked**.
 >
-> Progress Part 4 ke table me, aur har phase ka detail Part 4B me.
+> **Ship ho chuka:** Block A (A-1 · A-2 · A-2b · A-3) · Block F (F-1…F-4) ·
+> Block M (M-1 · M-1a′ · M-1a″ · M-1b · M-2 · M-3 · M-3a · M-4 · M-5) ·
+> **Block S poora** (S-1…S-5) · **Block V ka V-1…V-4**.
+>
+> **Agla: V-5** (pause / resume + unique-index trap ka 409).
+>
+> **O-1** (OTP throttle) jaanboojh kar khula hai — likh diya gaya hai, fix nahi
+> kiya. **Block U** (presigned upload) aur **Block X** (infra) abhi baaki hain.
+>
+> Har phase ka detail aur uska commit hash Part 4B me. Part 4 ka table sirf
+> **estimate** hai — jo actually laga wo detail section me likha hai.
 >
 > Ye doc poore bache hue kaam ka single source hai — storage, media, showcase,
 > voucher, upload, infra. Showcase ka detailed design
@@ -757,7 +766,7 @@ naya `helpers/vouchers/orphanImages.js` · `services/vouchers/updateVoucher.js` 
 > aata). Fixtures se `url` hataya taaki har identity path akela exercise ho, aur
 > ek ulta-direction test joda. Tab 7/7.
 
-## A-2b · Ek stale test theek kiya (A-1/A-2 ke dauraan mila)
+## A-2b · Ek stale test theek kiya (A-1/A-2 ke dauraan mila) — ✅ **DONE** (`14475e5`)
 `__tests__/unit/storage.test.js`
 - [x] `buildDocumentKey` ka test **purana signature** bhej raha tha — object `{year, series, documentNumber}`, jabki production (`services/uploads/index.js`) **string** bhejta hai
 - [x] `keys.js` sahi tha, test stale tha — suite me ek permanent red
@@ -948,7 +957,7 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 > `{ userData, customerData }` lautati hai. Ab sach likha hai. Postman ka captured
 > example sahi tha (asli API se capture hua tha).
 
-## M-2 · Documents → `mediaSchema` — ✅ **DONE** (uncommitted)
+## M-2 · Documents → `mediaSchema` — ✅ **DONE** (`6fabc53`)
 `models/{Dispute,RefundRequest,Settlement,Transaction}.js` · `services/documents/getDocumentByToken.js` · `services/transactions/regenerateInvoice.js` · `services/storage/providers/s3.js` · `models/mediaSchema.js` · doc
 - [x] `documentStorage: storageSchema` → **`documentMedia: mediaSchema`**, `kind: DOCUMENT` — chaaron models
 - [x] `getDocumentByToken` ab `documentMedia.storage` se link mint karta hai; URL-only legacy rows waise hi chalti hain
@@ -1054,7 +1063,7 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 > mandatory ho jayega, aur tab `pickVoucherBanner` ko `bannerType` + `bannerUrl`
 > ke saath **`bannerThumbnail`** bhi dena hoga. Ye chhootna nahi chahiye.
 
-## M-4 · Showcase media → `mediaSchema` — ✅ **DONE** (uncommitted)
+## M-4 · Showcase media → `mediaSchema` — ✅ **DONE** (`7964b37`)
 `models/ShowcaseSection.js` · `constants/showcase.js` · `helpers/showcases/{upload,validateMedia,projections,index}.js` · showcase services ×7 · `controllers/showcases/replaceMedia.js` · docs · postman
 - [x] `medias[]` ka item ab **`{ media: mediaSchema, title, altText, sortOrder, … }`** — file aur gallery-entry alag
 - [x] `thumbnail` + `thumbnailStorage` → **`media.poster`** (VIDEO par mandatory)
@@ -1107,7 +1116,7 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 > sach me lagta hai aur asli regression phir bhi fail karega. Teen baar poori
 > suite clean chali.
 
-## M-5 · Voucher media → `mediaSchema` — ✅ **DONE** (uncommitted)
+## M-5 · Voucher media → `mediaSchema` — ✅ **DONE** (`00fdf82`)
 `models/{Voucher,VoucherVersion}.js` · `helpers/vouchers/{voucherBannerMedia,pickVoucherBanner,orphanImages,validateImagesFiles,customerListing}.js` · `services/vouchers/{createVoucher,updateVoucher,setVoucherBanner}.js` · `controllers/vouchers/setBanner.js` · docs · postman
 - [x] `VoucherVersion.images[]` → **`{ media: mediaSchema, sortOrder }`**
 - [x] `Voucher.banner.{image,video,gif}` → **`mediaSchema`**; VIDEO par poster mandatory
@@ -1189,7 +1198,7 @@ document banane me nahi.
 ## S-1 … S-5 · Showcase
 Detail: [showcase_rules_and_upload_plan.md](./showcase_rules_and_upload_plan.md) §SC-1…SC-5
 
-### S-1 — ✅ **DONE** (uncommitted)
+### S-1 — ✅ **DONE** (`56ac077`)
 `models/Setting.js` · `constants/showcase.js` · `helpers/settings/{getShowcaseConfig,assertShowcaseFloorRule,index}.js` · `validator/settings.js` · `services/settings/updateSetting.js` · `helpers/showcases/validateMedia.js` · docs · postman
 
 - [x] `minItemsPerSection` (3) · `minSectionsPerBrand` (1) · `maxGifSizeMB` (15) schema par
@@ -1220,48 +1229,132 @@ Detail: [showcase_rules_and_upload_plan.md](./showcase_rules_and_upload_plan.md)
 > ⚠️ `minItems`/`minSections` abhi **koi nahi padhta** — write guards **S-3** me
 > hain, customer filter **S-4** me. S-1 sirf unhe rakhta aur pehra lagata hai.
 
-- **S-2** `sortOrder` auto-manage (media + section) · `versionKey` on · `VersionError` → **409** (aaj 500 girta hai) · `reorderSectionMedia` ka scope non-deleted sab · create/update se `sortOrder` hatao
-- **S-3** Write guards — `assertMediaFloor` · `assertSectionFloor` · ADMIN exempt
-- **S-4** Customer reads — `$expr` min filter · **re-sequencing (1,3 → 1,2)** · clips se incomplete sections exclude · clips 404 → empty list
-- **S-5** `customerVisibility { isLive, reasons[], minItemsRequired }` managed reads par
+### S-2 — ✅ **DONE** (`a4539c7`, `aa9c322`, `f361092`)
+`models/ShowcaseSection.js` · `middlewares/errorHandler.js` · `helpers/showcases/{resolveSectionForActor,validateMedia,resequenceSections}.js` · services · validator · docs · postman
+
+- [x] `versionKey: false` hataya **aur** `optimisticConcurrency: true` lagaya — default versioning `__v` ko filter me sirf positionally-unsafe ops (`$pop`/`$pull`) par daalti hai, positional `$set` par nahi
+- [x] `VersionError` → **409** ek padhne layak message ke saath (pehle 500 girta tha)
+- [x] `resolveSectionForActor` ki **har** projection me `__v` — warna save ke paas compare karne ko kuch hota hi nahi
+- [x] Media `sortOrder` server ginta hai (non-deleted ka count + 1); delete par `resequenceMedias` dense 1..n
+- [x] Section `sortOrder` brand-level dense — `resequenceSections`, **delete aur create dono** se
+- [x] `create`/`update` payload se `sortOrder`/`position` hata di — wo ek request ki cheez nahi hai
+- [x] **Proof:** money `showcaseVersionLock` + `showcaseSortOrderScope` · mutation clean
+
+> ⚠️ Do baatein jo maine comment me likhi thi aur mere apne test ne galat sabit
+> kar di: "dusra save poori array replace kar deta hai" (nahi — Mongo field-by-field
+> merge karta hai aur sirf *badle hue* path bhejta hai) aur "`versionKey` akela
+> kaafi hai" (nahi — isi liye `optimisticConcurrency`). Dono comment sudhaar diye.
+
+> ⚠️ Section drift ki kahani bhi galat likhi thi — "deleted sections number
+> badha dete the". `git show HEAD:...createVoucher.js` ne dikhaya ki purani query
+> pehle se `isDeleted: false` filter karti thi. Ek mutant ne pakda. `create` par
+> resequence isliye chahiye ki **drifted data** par `count+1` galat jagah daal deta hai.
+
+### S-3 — ✅ **DONE** (`85c8edf`)
+`helpers/showcases/guards.js` (naya) · services · docs · postman
+
+- [x] `assertSectionKeepsItsFloor` · `assertBrandKeepsASection` · `assertBrandKeepsAVisibleSection`
+- [x] ADMIN teeno se exempt
+- [x] **Carve-out:** pehle se floor ke neeche ho to rokna kuch nahi bachata — `if (before < minItems) return`
+- [x] **Proof:** money `showcaseFloors` · mutation clean
+
+### S-4 — ✅ **DONE** (`98d5258`)
+`helpers/showcases/projections.js` · customer services · docs
+
+- [x] `customerSectionMatch(brandObjectId, { minItems })` me `$expr` — **visible** media ginta hai
+- [x] `applyDisplayPositions(sections, { startAt, mediaKey })` — **1,3 → 1,2**
+- [x] `customerMediaFields({ withSortOrder })`; clips se incomplete sections bahar
+- [x] **Proof:** money `showcaseCustomerReads` · mutation, jisme **M13** ne ek asli gap pakda (brand-profile ka floor test hi nahi tha)
+
+> ⚠️ M12 par maine comment me likha tha ki `$sort` ka tiebreaker hatane se feed
+> reshuffle ho jayegi — 10 run ne dikhaya ki **nahi hoti**. Comment aur test dono
+> sudhaar diye: wo ek *documented freedom* ki pehredari karta hai jise engine aaj
+> istemal nahi karta.
+
+### S-5 — ✅ **DONE** (`8fd2401`)
+`helpers/showcases/customerVisibility.js` (naya) · `constants/showcase.js` · managed reads · docs
+
+- [x] `isVisibleMedia` · `countVisibleMedia` (ab `guards.js` bhi yahi se leta hai) · `describeCustomerVisibility` · `attachCustomerVisibility`
+- [x] `SHOWCASE_VISIBILITY_REASON = { HIDDEN, INACTIVE, NOT_ENOUGH_MEDIA }` — `DELETED` nahi, wo pahunch me hi nahi aata
+- [x] **Har** failing reason lautata hai, pehla nahi — vendor ko ek-ek karke theek karwana ek hi baat teen baar kehna hai
+- [x] **Proof:** money `showcaseVisibilityReport` · mutation clean
+
+> 🔴 Is phase me mutation runner ne **poore jhoothe result** diye: M4 ki jest ne
+> money run-lock le liya aur mar gayi, phir har agla run `globalSetup` me fail
+> hokar MARA gina gaya. Runner theek kiya — `Tests:` line na mile to **NAAKAAM**,
+> ek green baseline lazmi, aur `execSync` → `spawnSync` kyunki **jest apni summary
+> stderr par likhta hai**.
 
 ---
 
-## V-1 · Voucher Setting + model limits
-- [ ] `Setting.vendor.voucher.minImages` (default **3**, `min: 1`, **≤ maxImages**)
-- [ ] Per-kind size cap global se (P12 — aaj voucher images par **koi size check nahi**)
-- [ ] `getVoucherConfig()` naye fields expose kare
-- [ ] Docs + postman
+## V-1 · Voucher Setting + model limits — ✅ **DONE** (`a4f211a`)
+- [x] `Setting.vendor.voucher.minImages` (default **3**, `min: 1`, **≤ maxImages**) — path validator ke saath
+- [x] Per-kind size cap global se (P12 — pehle voucher images par **koi size check nahi** tha)
+- [x] `getVoucherConfig()` ab `minImages` · `maxBytes` · `maxSizeMB` · `allowedImageTypes` deta hai
+- [x] `helpers/settings/assertVoucherFloorRule.js` — merged document par, `assertShowcaseFloorRule` jaisa
+- [x] Docs + postman
 
-## V-2 · Min 3 images
-- [ ] Ek helper, **teen** jagah — `createVoucher` · `mergeImages` · `validateVoucherBeforeSubmit`
-- [ ] Model par `>= 1` structural floor rahega (model async config nahi padh sakta)
-- [ ] **Ek message**, aur usme agla kadam — *"kam se kam 3 chahiye, abhi 2 hain, 1 aur add karein"* (P13: aaj 4 jagah 4 alag message)
-- [ ] **Proof:** teenon raaste par test · mutation: har jagah alag-alag hatao
+> 🔴 Yahan poochhne par pata chala ki `docs/setting_default_response.json` aur
+> `docs/setting_fields_reference.json` **S-1 se stale** the (`git show --stat 56ac077`
+> se confirm). Dono theek kiye aur `settingReferenceDocs.test.js` likha taaki
+> dobara chupke se na bigdein. Us test ka ek assertion bhi narm karna pada — teen
+> cross-field entry advisory hain, validation nahi, to unka `failsWith` hota hi nahi.
 
-## V-3 · Uploads transaction ke bahar
+> ⚠️ Mutation **M4** ne ek asli gap pakda: floor == ceiling ki boundary par koi
+> test nahi tha.
+
+## V-2 · Min 3 images — ✅ **DONE** (`966d113`)
+- [x] Ek helper, **teen** jagah — `createVoucher` · `mergeImages` · `validateVoucherBeforeSubmit`
+- [x] Model par `>= 1` structural floor rahega (model async config nahi padh sakta)
+- [x] **Ek message**, aur usme agla kadam — `helpers/vouchers/assertImageFloor.js` (P13: pehle 4 jagah 4 alag message the)
+- [x] `validateVoucherImages(files, config)` ab poora config leta hai aur **size** bhi enforce karta hai (P12)
+- [x] `normalizeVoucherImages` me `looksLikeFile()` — `{}` ab phantom `[{}]` nahi banata
+- [x] **Proof:** money `voucherImageFloorPaths` (teenon raaste) · mutation: har jagah alag-alag hataya
+
+> ⚠️ `validateVoucherForApproval` jaanboojh kar **structural** `imageCount === 0`
+> hi rakhta hai, configurable floor nahi. Warna admin ka floor badalna un vouchers
+> ko phansa deta jo vendor pehle hi bhej chuka hai — peechhe se retire kiya hua
+> voucher, jo `minImages` ko rokna hi tha.
+
+## V-3 · Uploads transaction ke bahar — ✅ **DONE** (`8f811b5`)
 `services/vouchers/{createVoucher,updateVoucher}.js`
-- [ ] `createVoucher`: images (`:125`) + banner (`:184`) upload **transaction shuru hone se pehle**
-- [ ] `updateVoucher`: images (`:305`) transaction ke bahar
-- [ ] Fail par rollback pehle jaisa hi kaam kare
-- [ ] **Proof:** 5 image + video banner par transaction 60s limit na chhue · rollback test
-- [ ] 🔴 **A-2 ka bacha hua integration test yahan** — `updateVoucher` ko koi test service
+- [x] `createVoucher`: images + banner upload **transaction shuru hone se pehle**
+- [x] `updateVoucher`: images transaction ke bahar
+- [x] Fail par rollback pehle jaisa hi kaam karta hai
+- [x] **Proof:** money `voucherUploadOutsideTransaction` · rollback test
+- [x] 🔴 **A-2 ka bacha hua integration test yahan** — `updateVoucher` ko koi test service
       level par exercise nahi karta, isliye "orphan check bypass" wala mutant unit
       level par pakda nahi jaata. Yahan `updateVoucher` waise bhi chhu rahe hain, to
       voucher + fork + update ka setup share ho jayega: v1 PUBLISHED → fork v2 → v2 se
       image remove → **v1 ka file zinda** rehna chahiye (aapka faisla)
 
-## V-4 · Banner ka naya shape + approval + fallback
-`models/Voucher.js` · `services/vouchers/{setVoucherBanner,publishVoucher,submitVoucherForReview}.js` · naya review service · routes · docs · postman
-- [ ] `banner: { current, pending, status, rejectionReason, reviewedBy, reviewedAt }`
-- [ ] `VOUCHER_BANNER_*` constants **hatao** — `media.kind` se
-- [ ] **Replace par `current` live rehta hai**, naya `pending` me
-- [ ] **`DELETE` endpoint hatao** (V-3)
-- [ ] Admin banner review endpoint (approve / reject + reason)
-- [ ] **Fallback:** `banner.current ?? images[0]` — `bannerIsFallback` flag response me
-- [ ] `submit-for-review` par banner **mandatory**; publish **block nahi**
-- [ ] VIDEO banner par poster mandatory
-- [ ] **Proof:** reject ke baad voucher PUBLISHED rahe aur pehli image dikhe · replace ke dauraan purana live rahe · money suite
+## V-4 · Banner ka naya shape + approval + fallback — ✅ **DONE** (`fda516d`, `7400909`)
+`models/Voucher.js` · `services/vouchers/{setVoucherBanner,reviewVoucherBanner,publishVoucher,submitVoucherForReview}.js` · routes · docs · postman
+- [x] `banner: { current, pending, status, rejectionReason, reviewedBy, reviewedAt }`
+- [x] `VOUCHER_BANNER_TYPE` / `MEDIA_FIELD` / `FILE_FIELD` map / `ALLOWED_MIME_TYPES` **hata diye** — `media.kind` se
+- [x] **Replace par `current` live rehta hai**, naya `pending` me
+- [x] **`DELETE` endpoint hata diya** (V-3 rule)
+- [x] Admin banner review endpoint — `POST /vouchers/:voucherId/banner/review`, approve / reject + reason
+- [x] **Fallback:** `banner.current ?? images[0]` — `bannerIsFallback` + `bannerStatus` response me
+- [x] `submit-for-review` par banner **mandatory** (`current` ya `pending`); publish **block nahi**
+- [x] VIDEO banner par poster mandatory — aur banner par pehli baar **size check** (P12)
+- [x] **Proof:** money `voucherBannerReview` (18) · reject ke baad voucher PUBLISHED aur pehli image dikhti hai · replace ke dauraan purana live rehta hai · mutation 11/11
+
+> ⚠️ **Do commit me hua, teen me nahi.** Plan ne ~5 h · 3 commit rakha tha; c1 me
+> shape + fallback + DELETE hatana + poster mandatory sab aa gaya, c2 me review
+> endpoint + submit gate. Teesre commit ke liye checklist par kuch bacha hi nahi.
+
+> ⚠️ Mutation **M1** pehle zinda bacha aur wo **asli gap** tha: replace wale test
+> me delete to check kiya tha, par ye nahi ki `current` ab **naya** banner hai.
+> Test sakht karne par mar gaya.
+
+> 🔴 **Stage par backfill chali, prod par nahi chalegi.** `scripts/backfillVoucherBanners.js`
+> purane `{type, image|video|gif}` ko `{current, status: APPROVED}` me le jaati hai —
+> **database ke naam** par guard karti hai (`NODE_ENV` par nahi), `--dry`/`--force`
+> leti hai, aur dobara chalne par kuch nahi karti. Stage par 10 move hue, dusre run
+> par 0. Prod DB fresh hoga, isliye **application code kahin bhi ye maan kar nahi
+> chalta ki backfill chal chuki hai** — `pickVoucherBanner` khali banner par bhi
+> `images[0]` par gir jaata hai.
 
 ## V-5 · Pause / resume
 - [ ] `PUBLISHED → PAUSED` aur ulta
