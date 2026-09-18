@@ -9,8 +9,8 @@
 > **Block V ka V-6 bhi ship ho chuka** — teen commit me: `verifyApiCoverage` ka
 > fix, `WriteConflict` → 409, aur delete khud.
 >
-> **Agla: V-6c** (claim snapshot me banner + pehli image), phir **V-7**, phir
-> **Block U**. Storage ka final faisla §0.5 me locked hai — prod S3-only, client
+> **Agla: V-7** (voucher image reorder), phir **Block U**. **V-6c** ka kaam poora
+> hai par abhi commit nahi hua. Storage ka final faisla §0.5 me locked hai — prod S3-only, client
 > sirf presigned, koi dual mode nahi, aur **X-4 phase hi khatam**.
 >
 > **O-1** (OTP throttle) aur **O-2** (poori money suite ek saath green nahi
@@ -1567,10 +1567,34 @@ Detail: [showcase_rules_and_upload_plan.md](./showcase_rules_and_upload_plan.md)
 > "not found" nahi hai), par wo **pehle se hai aur poore codebase me ek jaisa**,
 > isliye V-6b me chheda nahi gaya.
 
-## V-6c · Claim snapshot bharna
-- [ ] `voucherSnapshot` me `bannerUrl` + pehli image bhi (aaj sirf `{name, categoryId, subCategoryId}`)
-- [ ] Purane claims me field nahi → `?? null`, client ko saaf "no image"
-- [ ] **Proof:** naya claim → history me image · purana claim → blank nahi, null
+## V-6c · Claim snapshot bharna — ✅ **DONE** (uncommitted)
+`helpers/vouchers/buildVoucherSnapshot.js` (naya) · `buildClaimPreview.js` · `createVoucherClaimOrder.js` · docs · postman
+- [x] `voucherSnapshot` me ab `bannerUrl` · `bannerThumbnail` · `bannerType` · `imageUrl` bhi
+- [x] Banner **`pickVoucherBanner` se resolve** hokar — yaani wahi tasveer jo customer ne dekhi thi, raw `banner.current` nahi
+- [x] Pehli image **`sortOrder` se**, array position se nahi
+- [x] Purane claims me field nahi → `?? null`
+- [x] Schema aur projection **kuch nahi badla** — `claimSnapshotSchema` `strict: false` hai aur `claimRecordProjection` me `voucherSnapshot: 1`
+- [x] **Proof:** unit `voucherSnapshot` (13) · money `voucherClaimSnapshot` (9) · mutation **8 mare, 1 dead code**
+
+> 🔴 **M1 pehli baar zinda bacha, aur wo asli gap tha.** Mera test apna khud ka
+> `select` string likhta tha — yaani wo sabit karta tha ki *main string likh sakta
+> hoon*, na ki ye ki service field bhoolti nahi. Ab test asli `buildClaimPreview`
+> se guzarta hai (PUBLISHED version window me, asli outlet, mapping), aur M1 marta hai.
+
+> ⚠️ **M4 ne meri apni galti pakdi.** Maine `[...images]` likha tha aur comment me
+> daawa kiya tha ki wo caller ki array bachata hai. Wo **jhooth** tha — `.filter()`
+> pehle hi nayi array de deta hai, to `.sort()` original tak pahunchta hi nahi.
+> Spread dead code tha; hata diya aur comment sach kar diya.
+
+> ⚠️ Money test pehli baar 2 fail hui — **V-6 ke apne live-claim guard se**.
+> Seeded claim default `PENDING` par banta hai aur wahi delete rokta hai. Guard
+> sahi tha, fixture galat: ab `REDEEMED`, jo asli scenario bhi hai (kharida,
+> istemal kiya, baad me vendor ne voucher hataya).
+
+> 🔴 **Ye is baat par tika hai ki `deleteVoucher` storage se kuch nahi hataata.**
+> Isi se ye URL freeze karna imaandari hai, jhootha vaada nahi. Money test me wo
+> pin bhi hai — kal koi "files bhi delete karo" jode to har purana claim tootega,
+> aur is file ko chhue bina.
 
 ## V-7 · Voucher image reorder
 - [ ] Naya endpoint, showcase jaisa — poori list, 1..n

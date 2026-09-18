@@ -3579,6 +3579,39 @@ se alag URL nahi chunna:
 September ki claim March me bhi sahi padhti hai — voucher republish ho chuka ho aur outlet
 ka naam badal chuka ho, tab bhi. Jo dikhaya gaya tha wahi dikhta rahega.
 
+#### 🆕 `voucherSnapshot` me ab tasveer bhi hai
+
+Pehle usme sirf `{ name, categoryId, subCategoryId }` tha — teen field, jinme se koi
+aisi cheez nahi jise aadmi pehchaanta ho. *"Maine September me kya khareeda"* kholne par
+voucher ki apni tile ki jagah text ki ek line milti thi.
+
+```json
+"voucherSnapshot": {
+  "name": "Pizza Friday",
+  "categoryId": "68f1a2b3c4d5e6f7a8b9c101",
+  "subCategoryId": "68f1a2b3c4d5e6f7a8b9c202",
+  "bannerUrl": "https://cdn.trydood.com/images/vouchers/.../banner.webp",
+  "bannerThumbnail": "https://cdn.trydood.com/images/vouchers/.../banner.webp",
+  "bannerType": "IMAGE",
+  "imageUrl": "https://cdn.trydood.com/images/vouchers/.../first.webp"
+}
+```
+
+| Field | Kya hai |
+|---|---|
+| `bannerUrl` | **Jo customer ne dekha tha** — approved banner, ya uski jagah pehli image (fallback). Raw banner field nahi |
+| `bannerThumbnail` | VIDEO banner ka poster. IMAGE/GIF par wahi URL — kabhi `null` nahi jab banner ho |
+| `bannerType` | `IMAGE` \| `VIDEO` \| `GIF` — video ko poster ke bina paint nahi kiya ja sakta |
+| `imageUrl` | Voucher ki **pehli image** (`sortOrder`), banner ke **saath** — uski jagah nahi |
+
+> ⚠️ **Purane claims me ye chaar field nahi honge.** Har jagah `?? null` se padhein —
+> blank tile ki jagah "no image" dikhayein, code na phate.
+
+> 🔴 **Voucher delete ho jaane par bhi ye zinda rehte hain.** Delete soft hai aur
+> storage se kuch nahi hatata, isliye ye URL baad me bhi khulte hain. Yahi is
+> snapshot ka poora maqsad hai — claim hi wo aakhri cheez hai jise yaad hai ki
+> kya khareeda gaya tha.
+
 ### 🆕 `brand` — snapshot ke **saath**, uski jagah nahi
 
 Har row me ab ek **live** `brand` block bhi aata hai:

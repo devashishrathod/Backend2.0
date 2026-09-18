@@ -16,6 +16,7 @@ const {
   LIVE_CLAIM_STATUSES,
 } = require("./assertNoLiveClaims");
 const { voucherDeletionFields } = require("./markDeleted");
+const { buildVoucherSnapshot } = require("./buildVoucherSnapshot");
 const { buildClaimPreview } = require("./buildClaimPreview");
 const {
   normalizeVoucherName,
@@ -101,6 +102,7 @@ module.exports = {
   liveClaimsMessage,
   LIVE_CLAIM_STATUSES,
   voucherDeletionFields,
+  buildVoucherSnapshot,
   // One builder for preview AND order creation, so the price shown is the price
   // charged. `strictPromo` is the only difference between the two.
   buildClaimPreview,
