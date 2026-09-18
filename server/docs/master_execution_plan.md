@@ -9,8 +9,8 @@
 > **Block V ka V-6 bhi ship ho chuka** — teen commit me: `verifyApiCoverage` ka
 > fix, `WriteConflict` → 409, aur delete khud.
 >
-> **Block V poora ho gaya** (V-1…V-7). **Agla: Block U** — presigned direct-to-S3.
-> **V-7** ka kaam poora hai par abhi commit nahi hua. Storage ka final faisla §0.5 me locked hai — prod S3-only, client
+> **Block V poora** (V-1…V-7) aur **U-1 bhi**. **Agla: U-2** — pehli surface
+> (category pilot). U-1 ka doosra commit abhi uncommitted hai. Storage ka final faisla §0.5 me locked hai — prod S3-only, client
 > sirf presigned, koi dual mode nahi, aur **X-4 phase hi khatam**.
 >
 > **O-1** (OTP throttle) aur **O-2** (poori money suite ek saath green nahi
@@ -792,7 +792,7 @@ expire hone ke baad delete ho jayega."*
 
 | Phase | Kaam | Size |
 |---|---|---|
-| **U-1** | `/uploads/presign` + `/uploads/confirm` wiring; TTL config se | ~4 h · 2 commit |
+| **U-1** ✅ | `/uploads/presign` + `/uploads/confirm` wiring + `acceptUpload` facade | ~4 h · 2 commit |
 | **U-2** | Pehli surface — category (pilot) | ~1.5 h · 1 commit |
 | **U-3** | Showcase surface — multi-file + thumbnail pairing | ~4 h · 2 commit |
 | **U-4** | Voucher surface — images + banner + poster | ~3 h · 2 commit |
@@ -1631,7 +1631,35 @@ Detail: [showcase_rules_and_upload_plan.md](./showcase_rules_and_upload_plan.md)
 ---
 
 ## U-1 … U-5 · Upload
-- **U-1** `/uploads/presign` + `/uploads/confirm` — facade `acceptUpload` · `acceptUploads` middleware · route/controller/validator · TTL config se · teen-docs rule
+### U-1 — ✅ **DONE** (`f14f7bb` + commit 2 uncommitted)
+`routes/uploads.js` · `controllers/uploads/*` · `validator/uploads.js` · `services/storage/{presign,confirm,inspect,accept}.js` · `models/Upload.js`
+
+- [x] `POST /uploads/presign` — presigned **POST**, policy S3 enforce karta hai
+- [x] `POST /uploads/confirm` — magic bytes se asli pehchaan, `staging/` se asli key par move
+- [x] Facade `acceptUpload` / `acceptUploads` — ek darwaza, dono raaste
+- [x] **E1** file+uploadId dono → **422**, aur upload consume nahi hota
+- [x] **E2** purpose mismatch → **422**, aur **confirm se pehle** — upload jalta nahi
+- [x] Teen-docs rule: vendor doc #94/#95, endpoints_category, postman "12 — Uploads"
+- [x] **Proof:** money `uploadPresignConfirm` (17) + `uploadAccept` (16), **asli bucket ke against** · unit `inspect` (26) · mutation **11/11**
+
+> 🔴 **Test mock par nahi likhe.** Is raaste ka poora daawa yahi hai ki policy
+> **S3 enforce karta hai, hum nahi** — aur mock wahi enforce karta jo use bataya
+> jaye, yaani wo teen cheezein maan leta jo test ko sabit karni hain: size cap,
+> pinned content-type, aur exact key. S3 preflight `ok` tha, to test asli likhe.
+
+> ⚠️ **Facade ka asli kaam translation hai, aur wo chhupa hua tha.**
+> `confirmUpload` `{ contentType, sizeBytes }` deta hai aur `url` bilkul nahi;
+> `toMediaDocument` `{ mimeType, size }` padhta hai. Bina translate kiye har
+> surface ek aisi media row likhti jisme **mime `null` aur size `0`** hota — aur
+> **kahin koi error nahi aata**. Mutation M6 ne wahi pin kiya.
+
+> 🔴 **Ek security gap mutation se mila (M4).** Facade ke lookup se `userId`
+> hataane par mere saare test pass rahe, kyunki sab matching purpose bhejte the
+> aur `confirmUpload` ke apne owner check par 404 ho jaate the. Par kisi aur ka
+> id **galat purpose** ke saath alag raasta leta hai: intent mil jaata, purpose
+> check chalta, aur **422** aata jo batata ki wo upload kis surface ka tha —
+> yaani prober ko id ka asli hona **aur** uska surface dono muft. Ab uska apna
+> test hai.
 - **U-2** Category pilot (sabse chhoti surface). ⚠️ **Dual mode nahi** — §0.5
 - **U-3** Showcase surface — multi-file + poster pairing
 - **U-4** Voucher surface — images + banner + poster

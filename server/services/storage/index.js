@@ -285,3 +285,12 @@ const { confirmUpload } = require("./confirm");
 exports.createUploadIntent = createUploadIntent;
 exports.confirmUpload = confirmUpload;
 exports.PRESIGN_TTL_SECONDS = PRESIGN_TTL_SECONDS;
+
+/**
+ * The door every surface knocks on — one file or a list, multipart or
+ * presigned, and the same shape back either way (U-1).
+ */
+const { acceptUpload, acceptUploads } = require("./accept");
+
+exports.acceptUpload = acceptUpload;
+exports.acceptUploads = acceptUploads;
