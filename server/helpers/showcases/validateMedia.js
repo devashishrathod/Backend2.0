@@ -233,38 +233,6 @@ exports.resequenceMedias = (medias = []) => {
   return moved;
 };
 
-exports.normalizeSortOrder = (items = []) => {
-  return [...items]
-    .sort((a, b) => a.sortOrder - b.sortOrder)
-    .map((item, index) => ({
-      ...item,
-      sortOrder: index + 1,
-    }));
-};
-
-// `id` is what the validators accept and what the docs publish. The default
-// used to be `sectionId`, a key no payload ever carries, so any caller that
-// forgot to pass the key dereferenced `undefined` and answered 500.
-exports.validateUniqueIds = (items = [], key = "id") => {
-  const ids = new Set();
-  for (const item of items) {
-    const value = item[key].toString();
-    if (ids.has(value)) {
-      throwError(400, `Duplicate ${key} found.`);
-    }
-    ids.add(value);
-  }
-};
-
-exports.validateUniqueSortOrders = (items = [], key = "sortOrder") => {
-  const values = new Set();
-  for (const item of items) {
-    if (values.has(item[key])) {
-      throwError(400, "Duplicate sort order found.");
-    }
-    values.add(item[key]);
-  }
-};
 
 /**
  * The displayable image for one gallery item.

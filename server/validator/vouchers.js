@@ -341,6 +341,41 @@ exports.validateResumeVoucher = {
   },
 };
 
+exports.validateReorderVoucherImages = {
+  params: {
+    versionId: objectId().required().messages({
+      "any.required": "Voucher version ID is required.",
+      "any.invalid": "Invalid voucher version ID.",
+    }),
+  },
+  body: Joi.object({
+    /**
+     * ⚠️ The **complete** list. Positions are renumbered 1..n, so a partial
+     * one would collide with whatever was left out of it — the service says so
+     * with the counts, this just makes sure something arrived.
+     */
+    images: Joi.array()
+      .min(1)
+      .items(
+        Joi.object({
+          id: objectId().required().messages({
+            "any.required": "Each image needs its id.",
+            "any.invalid": "Invalid image id.",
+          }),
+          sortOrder: Joi.number().integer().min(1).required().messages({
+            "any.required": "Each image needs a sortOrder.",
+            "number.min": "sortOrder starts at 1.",
+          }),
+        }),
+      )
+      .required()
+      .messages({
+        "array.min": "Send at least one image.",
+        "any.required": "Image list is required.",
+      }),
+  }),
+};
+
 exports.validateDeleteVoucher = {
   params: {
     voucherId: objectId().required().messages({

@@ -11,6 +11,7 @@ const { setBanner } = require("./setBanner");
 const { reviewBanner } = require("./reviewBanner");
 const { pause, resume } = require("./pauseResume");
 const { remove } = require("./remove");
+const { reorderImages } = require("./reorderImages");
 const { reviewSuggestion } = require("./reviewSuggestion");
 const { getSuggestions } = require("./getSuggestions");
 
@@ -29,6 +30,7 @@ module.exports = {
   pause,
   resume,
   remove,
+  reorderImages,
   reviewSuggestion,
   getSuggestions,
 };

@@ -4,13 +4,13 @@
 >
 > **Ship ho chuka:** Block A (A-1 · A-2 · A-2b · A-3) · Block F (F-1…F-4) ·
 > Block M (M-1 · M-1a′ · M-1a″ · M-1b · M-2 · M-3 · M-3a · M-4 · M-5) ·
-> **Block S poora** (S-1…S-5) · **Block V ka V-1…V-6**.
+> **Block S poora** (S-1…S-5) · **Block V poora** (V-1…V-7).
 >
 > **Block V ka V-6 bhi ship ho chuka** — teen commit me: `verifyApiCoverage` ka
 > fix, `WriteConflict` → 409, aur delete khud.
 >
-> **Agla: V-7** (voucher image reorder), phir **Block U**. **V-6c** ka kaam poora
-> hai par abhi commit nahi hua. Storage ka final faisla §0.5 me locked hai — prod S3-only, client
+> **Block V poora ho gaya** (V-1…V-7). **Agla: Block U** — presigned direct-to-S3.
+> **V-7** ka kaam poora hai par abhi commit nahi hua. Storage ka final faisla §0.5 me locked hai — prod S3-only, client
 > sirf presigned, koi dual mode nahi, aur **X-4 phase hi khatam**.
 >
 > **O-1** (OTP throttle) aur **O-2** (poori money suite ek saath green nahi
@@ -1596,10 +1596,37 @@ Detail: [showcase_rules_and_upload_plan.md](./showcase_rules_and_upload_plan.md)
 > pin bhi hai — kal koi "files bhi delete karo" jode to har purana claim tootega,
 > aur is file ko chhue bina.
 
-## V-7 · Voucher image reorder
-- [ ] Naya endpoint, showcase jaisa — poori list, 1..n
-- [ ] Pehli image hi banner fallback hai, to iska seedha asar dikhega
-- [ ] Docs + postman
+## V-7 · Voucher image reorder — ✅ **DONE** (uncommitted)
+`services/vouchers/reorderVoucherImages.js` (naya) · `helpers/common/ordering.js` (naya) · routes · validator · docs · postman
+- [x] `PUT /vouchers/versions/:versionId/images/reorder` — poori list, 1..n, showcase jaisa
+- [x] Bheje gaye number sirf **kram** batate hain — `10, 20, 30` → `1, 2, 3`
+- [x] 🔴 **Sirf `DRAFT`/`REJECTED`** — published `isImmutable` hai. **Fork nahi hota**: ek drag-and-drop jo chupke se version bana kar approval queue me daal de wo vendor ne maanga hi nahi tha. Saaf **409** jo batata hai ki naya version banaiye
+- [x] Pehli image hi banner fallback hai (V-4a) aur claim snapshot usi ko freeze karta hai (V-6c) — ek test seedha yahi naapta hai
+- [x] Response me sirf `{ id, sortOrder, url }` — `media` ka baaki hissa storage locator hai
+- [x] Docs (3) + postman (3 saved example)
+- [x] **Proof:** money `voucherImageReorder` (19) · mutation **14/14**
+
+> ⚠️ **Teen helper `helpers/showcases` se `helpers/common/ordering.js` me shift kiye**
+> — `normalizeSortOrder`, `validateUniqueIds`, `validateUniqueSortOrders`. Teeno
+> poori tarah generic hain (list, key, number — section ka naam tak nahi). Voucher
+> service se `helpers/showcases` import karna ek aisi dependency hoti jiska koi
+> matlab nahi, aur copy banana do jagah ek rule ka drift. Sirf **2 call sites**
+> the, dono showcase reorder services — showcase money suites **80/80** unke baad bhi.
+
+> 🔴 **Do mutant zinda bache the, aur dono meri apni andhi jagah thi.**
+>
+> **M14** (`normalizeSortOrder` ka `.sort()` hata do) — mere saare test aisi list
+> bhejte the jiska array-kram aur `sortOrder` pehle se ek tha, to wo sort un sab me
+> no-op tha. Bina uske renumbering **array position** se hoti, `sortOrder` se nahi.
+> Naya test dono ko jaan-bujh kar alag rakhta hai.
+>
+> **M3** (`|| version.isImmutable` hata do) — mera fixture `isImmutable` ko status se
+> hi derive karta tha, to DRAFT+immutable ka combination banta hi nahi tha. Aaj ke
+> flows me wo pahunch se bahar hai, par pin kiya: us field ka matlab hi hai "ise
+> dobara kabhi edit mat karo", aur agar wo sirf status ke raaste pahunchti hai to ek
+> naya flow uske galat hone ke liye kaafi hai.
+>
+> Dono ke liye test jodne ke baad **dono marte hain**.
 
 ---
 

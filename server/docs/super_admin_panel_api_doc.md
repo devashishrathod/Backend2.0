@@ -3135,9 +3135,9 @@ agla banner bhejta hai.
 
 ---
 
-## 39–47. Vendor Toolkit (admin bhi use kar sakta hai)
+## 39–48. Vendor Toolkit (admin bhi use kar sakta hai)
 
-Ye 9 endpoints vendor ke liye banaye gaye hain, par admin bhi chala sakta hai — **`resolveActorBrand` admin ko koi bhi brand chunne deta hai** (aur `brandId` mandatory kar deta hai).
+Ye 10 endpoints vendor ke liye banaye gaye hain, par admin bhi chala sakta hai — **`resolveActorBrand` admin ko koi bhi brand chunne deta hai** (aur `brandId` mandatory kar deta hai).
 
 | # | Method | Endpoint | Admin ke liye khaas |
 |---|---|---|---|
@@ -3150,13 +3150,14 @@ Ye 9 endpoints vendor ke liye banaye gaye hain, par admin bhi chala sakta hai �
 | 45 | POST | `/vouchers/pause/:versionId` | 🆕 Live voucher feed se hataana, bina khatam kiye |
 | 46 | POST | `/vouchers/resume/:versionId` | 🆕 Wapas live karna |
 | 47 | DELETE | `/vouchers/:voucherId` | 🆕 Soft delete + slot wapas. 🔴 **Live claim par ADMIN bhi block** |
+| 48 | PUT | `/vouchers/versions/:versionId/images/reorder` | 🆕 Images ka kram. 🔴 Pehli image hi banner fallback hai. Sirf `DRAFT`/`REJECTED` — published par 409 |
 
 > 🔴 **`DELETE /vouchers/:voucherId/banner` yahan se hata diya gaya** — wo endpoint
 > ab maujood hi nahi hai. Banner ka slot kabhi khali nahi hota: approved banner na
 > ho to customer ko voucher ki pehli image dikhti hai, isliye "banner hata do" ek
 > state hi nahi rahi. Badalna ho to #44 se naya bhej dijiye.
 
-**Access (39, 40, 41, 42, 44, 45, 46, 47):** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** (39/40/44/45/46/47 pe **+ ownership**)
+**Access (39, 40, 41, 42, 44, 45, 46, 47, 48):** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** (39/40/44/45/46/47/48 pe **+ ownership**)
 
 > 🔴 **47 ek apwaad hai: ADMIN ko chhoot nahi milti.** Har doosre guard me
 > admin vendor ke rule ke upar ja sakta hai — wahi to admin hona hai. Yahan jise
@@ -3274,9 +3275,10 @@ Poori request/response detail vendor doc me hai (identical behaviour); admin ke 
 | `POST /vouchers/:voucherId/banner` | `media` (file) + `poster` (video par mandatory) | 🆕 Version/approval flow ko touch nahi karta, par banner ka **apna** review hai (#38a) |
 | `POST /vouchers/pause/:versionId` | `reason` (optional, max 1000) | 🆕 Sirf `PUBLISHED` version. Customer se turant gayab, version jaisa ka waisa |
 | `POST /vouchers/resume/:versionId` | — | 🆕 Beech me doosra version live ho gaya to **saaf 409**, `E11000` nahi. Validity nikal chuki ho to bhi 409 |
+| `PUT /vouchers/versions/:versionId/images/reorder` | `images[]` — **poori list**, har item `{ id, sortOrder }` | 🆕 Sirf `DRAFT`/`REJECTED`. Published par **409**, naya version apne aap nahi banta. 🔴 Pehli image hi banner fallback hai |
 | `DELETE /vouchers/:voucherId` | `reason` (optional, max 500) | 🆕 Soft — `status: DELETED` + `isDeleted` saath, saari versions bhi, slot wapas. 🔴 Live claim par 409, admin par bhi |
 
-**Common errors (39–47):**
+**Common errors (39–48):**
 | Status | Message |
 |---|---|
 | `403` | `Access denied. This feature requires an active subscription. …` *(create)* |

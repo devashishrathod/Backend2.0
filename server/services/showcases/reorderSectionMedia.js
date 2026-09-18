@@ -1,11 +1,13 @@
 const { throwError } = require("../../utils");
 const {
   resolveSectionForActor,
+  syncSectionCoverImage,
+} = require("../../helpers/showcases");
+const {
   normalizeSortOrder,
   validateUniqueIds,
   validateUniqueSortOrders,
-  syncSectionCoverImage,
-} = require("../../helpers/showcases");
+} = require("../../helpers/common");
 
 /**
  * Re-number one section's media from a full ordered list.

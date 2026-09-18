@@ -5289,6 +5289,82 @@ Is codebase ke har doosre guard me ADMIN ko chhoot hai, kyunki admin ka kaam hi 
 
 ---
 
+## 57d. PUT /vouchers/versions/:versionId/images/reorder
+
+🆕 Voucher ki images ka kram badalta hai — **poori list bhejni hoti hai**.
+
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · vendor sirf apne brand ka
+
+### Path Params
+| Param | Type | Required | Notes |
+|---|---|---|---|
+| `versionId` | ObjectId | ✅ | ⚠️ **Version ka id** — images version ki hoti hain, voucher ki nahi |
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `images` | Array | ✅ | **Poori list.** Har item: `{ id, sortOrder }` |
+| `images[].id` | ObjectId | ✅ | Image entry ka `_id` |
+| `images[].sortOrder` | Number ≥ 1 | ✅ | Sirf **kram** tay karta hai — server 1..n me dobara number karta hai |
+
+```json
+{
+  "images": [
+    { "id": "68f1a2b3c4d5e6f7a8b9d003", "sortOrder": 1 },
+    { "id": "68f1a2b3c4d5e6f7a8b9d001", "sortOrder": 2 },
+    { "id": "68f1a2b3c4d5e6f7a8b9d002", "sortOrder": 3 }
+  ]
+}
+```
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Voucher images reordered.",
+  "data": {
+    "versionId": "68f1a2b3c4d5e6f7a8b9c2b1",
+    "voucherCode": "VCH-10000042",
+    "updated": 3,
+    "images": [
+      { "id": "68f1a2b3c4d5e6f7a8b9d003", "sortOrder": 1, "url": "https://cdn.trydood.com/images/vouchers/.../three.webp" },
+      { "id": "68f1a2b3c4d5e6f7a8b9d001", "sortOrder": 2, "url": "https://cdn.trydood.com/images/vouchers/.../one.webp" },
+      { "id": "68f1a2b3c4d5e6f7a8b9d002", "sortOrder": 3, "url": "https://cdn.trydood.com/images/vouchers/.../two.webp" }
+    ]
+  }
+}
+```
+
+Kram pehle se wahi ho to `updated: 0` aur `message: "Images already in this order."` — koi write nahi hoti.
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `401` | `User authentication is required.` | |
+| `403` | `Forbidden: You do not have permission to perform this action on this brand.` | Voucher kisi aur brand ka |
+| `400` | `Invalid voucher version ID.` | Format |
+| `404` | `Voucher version not found.` / `Voucher not found.` | |
+| `409` | 🔴 `A published version cannot be reordered — its images are part of what was approved. Create a new version to change the order.` | `PUBLISHED` ya `APPROVED` version |
+| `400` | `Please send the complete image order — 3 images expected, 2 received.` | Adhoori list |
+| `400` | `Invalid image id : <id>` | Aisa id jo is version ka nahi |
+| `400` | `Duplicate id found.` | Ek hi image do baar |
+| `400` | `Duplicate sort order found.` | Do image ek hi position par |
+| `400` | `Image list is required.` | Khali list |
+
+### ⚠️ Notes
+
+**1. 🔴 Pehli image hi banner ka fallback hai.** Approved banner na ho to customer ko voucher ke upar **`sortOrder: 1` wali image** dikhti hai (#59 · V-4a), aur claim ka snapshot bhi wahi freeze karta hai. Yaani ye endpoint list ki safai nahi hai — ye wo cheez badalta hai jo customer sabse pehle dekhta hai.
+
+**2. Poori list bhejni zaruri hai.** Position 1..n me dobara number hoti hain, to adhoori list unse takrati jo bheji hi nahi gayi. Error me dono ginti aati hain, taaki pata chale kitni chhoot rahi hain.
+
+**3. Aapke bheje number sirf kram batate hain.** `10, 20, 30` bhejein to `1, 2, 3` ban jaate hain. Gaps ka kabhi koi matlab tha hi nahi, aur unhe rakhne ka matlab hota ki agli image daalte waqt server andaza lagaye ki aapne un gaps se kya kehna chaha tha.
+
+**4. 🔴 Sirf `DRAFT` ya `REJECTED` version.** Published version `isImmutable` hoti hai — uski images us cheez ka hissa hain jo admin ne approve ki thi. Yahan **naya version apne aap nahi banta**: ek drag-and-drop jo chupke se version bana kar approval queue me daal de, wo aapne maanga hi nahi tha. Kram badalna ho to pehle naya version banaiye (`PUT /vouchers/update/:voucherId`), phir usme reorder karein.
+
+**5. `REJECTED` version me chalta hai** — wo aapka hi theek karne ko bacha hua kaam hai.
+
+---
+
 ## 58. GET /vouchers/versions/get-all
 
 Voucher versions ki paginated list — vendor ka voucher dashboard.

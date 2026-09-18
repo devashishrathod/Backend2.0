@@ -10198,6 +10198,167 @@
           ]
         },
         {
+          "name": "Reorder a version's images",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"images\": [\n    {\n      \"id\": \"68f1a2b3c4d5e6f7a8b9d003\",\n      \"sortOrder\": 1\n    },\n    {\n      \"id\": \"68f1a2b3c4d5e6f7a8b9d001\",\n      \"sortOrder\": 2\n    },\n    {\n      \"id\": \"68f1a2b3c4d5e6f7a8b9d002\",\n      \"sortOrder\": 3\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/vouchers/versions/{{draft_version_id}}/images/reorder",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "versions",
+                "{{draft_version_id}}",
+                "images",
+                "reorder"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `isVendorOrAdmin` + ownership — vendor sirf apne brand ka\n\n🆕 Images ka kram badalta hai. **Poori list bhejni hoti hai** — positions 1..n me dobara number hoti hain, to adhoori list unse takrati jo bheji hi nahi gayi.\n\nAapke bheje number sirf **kram** batate hain: `10, 20, 30` bhejein to `1, 2, 3` ban jaate hain.\n\n⚠️ **Version ka id**, voucher ka nahi — images version ki hoti hain.\n\n🔴 **Pehli image hi banner ka fallback hai.** Approved banner na ho to customer ko `sortOrder: 1` wali image dikhti hai, aur claim ka snapshot bhi wahi freeze karta hai. Yaani ye list ki safai nahi — ye wo badalta hai jo customer sabse pehle dekhta hai.\n\n🔴 **Sirf `DRAFT` ya `REJECTED` version.** Published `isImmutable` hoti hai, aur yahan naya version **apne aap nahi banta** — ek drag-and-drop jo chupke se approval queue me kuch daal de wo aapne maanga hi nahi tha. Published ka kram badalna ho to pehle naya version banaiye.\n\nKram pehle se wahi ho to `updated: 0` aata hai aur koi write nahi hoti."
+          },
+          "response": [
+            {
+              "name": "200 · Reorder a version's images",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/versions/6aa6ddb76fd8c36058cfc8a4/images/reorder",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "versions",
+                    "6aa6ddb76fd8c36058cfc8a4",
+                    "images",
+                    "reorder"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Voucher images reordered.\",\n  \"data\": {\n    \"versionId\": \"{{draft_version_id}}\",\n    \"voucherCode\": \"VCH-10000042\",\n    \"updated\": 3,\n    \"images\": [\n      {\n        \"id\": \"68f1a2b3c4d5e6f7a8b9d003\",\n        \"sortOrder\": 1,\n        \"url\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/image-3.jpg\"\n      },\n      {\n        \"id\": \"68f1a2b3c4d5e6f7a8b9d001\",\n        \"sortOrder\": 2,\n        \"url\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/image-1.jpg\"\n      },\n      {\n        \"id\": \"68f1a2b3c4d5e6f7a8b9d002\",\n        \"sortOrder\": 3,\n        \"url\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/image-2.jpg\"\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "409 · Reorder a version's images",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/versions/6aa6ddb76fd8c36058cfc8a4/images/reorder",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "versions",
+                    "6aa6ddb76fd8c36058cfc8a4",
+                    "images",
+                    "reorder"
+                  ]
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"A published version cannot be reordered — its images are part of what was approved. Create a new version to change the order.\"\n}"
+            },
+            {
+              "name": "400 · Reorder a version's images",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/versions/6aa6ddb76fd8c36058cfc8a4/images/reorder",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "versions",
+                    "6aa6ddb76fd8c36058cfc8a4",
+                    "images",
+                    "reorder"
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Please send the complete image order — 3 images expected, 2 received.\"\n}"
+            }
+          ]
+        },
+        {
           "name": "Submit voucher banner for review (file)",
           "request": {
             "method": "POST",

@@ -11,7 +11,7 @@
 **Framework:** Express.js (CommonJS) · **DB:** MongoDB (Mongoose)
 **Route mounting:** `routes/index.js` auto-mounts har file ko uske filename se → `routes/subBrands.js` = `/trydood/v1/subBrands` (camelCase preserved). Do file `routePrefix` override karti hain — `voucherClaims.js` → `/voucher-claims`, `customerBankAccounts.js` → `/bank-accounts`.
 
-**Scanned:** 2026-09-11 · **Total endpoints: 223** (+3 utility/non-versioned)
+**Scanned:** 2026-09-11 · **Total endpoints: 224** (+3 utility/non-versioned)
 
 > ### ⚠️ Ye ginti pichhli baar 53 endpoint peeche reh gayi thi
 >
@@ -114,7 +114,7 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 
 ---
 
-## Summary — 223 endpoints
+## Summary — 224 endpoints
 
 > ⚠️ **`#` ek sthir id hai, position nahi.** Usme gaps hain (33, 34, 166,
 > 172–175, 182, 187) — wo hataye gaye endpoints ki jagah hai — aur naye endpoints
@@ -141,7 +141,7 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | 10 | Locations | `/locations` | 6 | – | 1 | – | – | 5 | – |
 | 11 | Showcase | `/showcase` | 13 | 2 | – | – | – | 11 | – |
 | 12 | Brand Features | `/brandFeatures` | 5 | 2 | – | – | – | 3 | – |
-| 13 | Vouchers | `/vouchers` | 16 | 3\* | 3\* | – | 4 | 9 | – |
+| 13 | Vouchers | `/vouchers` | 17 | 3\* | 3\* | – | 4 | 10 | – |
 | 14 | Banners (App-level) | `/banners` | 6 | 1 | – | – | 5 | – | – |
 | 15 | Promotional Tickers | `/promotionalTickers` | 6 | 1 | – | – | 5 | – | – |
 | 16 | Categories | `/categories` | 5 | 2 | – | – | 3 | – | – |
@@ -163,12 +163,12 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | 32 | Privacy & Policies | `/privacy-and-policies` | 5 | 2 | – | – | 3 | – | – |
 | 33 | App Config | `/app-config` | 1 | 1 | – | – | – | – | – |
 | 34 | Documents 🆕 | `/documents` | 1 | – | – | – | – | – | 1 |
-| | **TOTAL** | | **223** | **22** | **17** | **15** | **86** | **80** | **3** |
+| | **TOTAL** | | **224** | **22** | **17** | **15** | **86** | **81** | **3** |
 
 > \* **4 endpoints do category me hain** (`optionalAuth`) — teen `/vouchers/customer/*`
 > aur `GET /search`. Wo 🟠 aur 🟢 dono column me ginne gaye hain, isliye
-> `22 + 17 + 15 + 86 + 80 + 3 = 223` **tabhi** milta hai jab un chaar ko ek baar
-> hi gina jaaye: distinct = `18 (pure guest) + 4 (dual) + 17 (customer) + 15 + 86 + 80 + 3 = 223` ✓
+> `22 + 17 + 15 + 86 + 81 + 3 = 224` **tabhi** milta hai jab un chaar ko ek baar
+> hi gina jaaye: distinct = `18 (pure guest) + 4 (dual) + 17 (customer) + 15 + 86 + 81 + 3 = 224` ✓
 >
 > **Round 6 me kya juda:** `/auth` me do (email verification, ⚪ — har role),
 > naya `/app-config` (🟠 public), aur `/notifications` ke do endpoints ab customer
@@ -180,10 +180,10 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 |---|---:|---|---|
 | 🟠 Guest surface | **21** | Poori list neeche `§ Guest Surface` me | 🆕 Round 5 |
 | 📱 `customer_mobile_api_doc.md` | **66** | 17 exclusive + 22 guest + 26 shared global + 1 🤖 invoice link | ✅ **v1.7.0 — poora.** Live verified: 135 requests · 473 assertions · 0 failed · 198 captured examples |
-| 🏪 `vendor_panel_api_doc.md` | **104** | 15 exclusive + 77 shared global + 10 guest reads + 2 🤖 links | ⚠️ v1.2.1 me 78 the — 19 naye jodne hain |
-| 🛡️ `super_admin_panel_api_doc.md` | **178** | 83 exclusive + 77 shared global + 14 guest reads + 4 🤖 reference | ⬜ Baaki |
+| 🏪 `vendor_panel_api_doc.md` | **105** | 15 exclusive + 77 shared global + 10 guest reads + 2 🤖 links | ⚠️ v1.2.1 me 78 the — 19 naye jodne hain |
+| 🛡️ `super_admin_panel_api_doc.md` | **179** | 83 exclusive + 77 shared global + 14 guest reads + 4 🤖 reference | ⬜ Baaki |
 
-> Sum > 223 kyunki shared endpoints kai docs me aate hain.
+> Sum > 224 kyunki shared endpoints kai docs me aate hain.
 >
 > ⚠️ **Ye per-doc numbers hath se maintain hote hain aur aapas me nahi milte.**
 > Upar ki table vendor **104** kehti hai, neeche ka section heading **100**;
@@ -689,6 +689,7 @@ Brand ke highlight points. Max **10 active** per brand.
 | 78 | POST | `/vouchers/review/:versionId` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Approval ka faisla admin ka hai, vendor ka nahi. `APPROVED` \| `REJECTED` |
 | 79 | POST | `/vouchers/publish/:versionId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | Sirf `APPROVED` version |
 | 210 | POST | `/vouchers/pause/:versionId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | 🆕 Live voucher ko customer feed se hataye bina khatam kiye. Sirf `PUBLISHED` version. `reason` optional |
+| 213 | PUT | `/vouchers/versions/:versionId/images/reorder` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | 🆕 Poori list, 1..n. 🔴 **Pehli image hi banner fallback hai**, to ye customer ko dikhne wali cheez badalta hai. Sirf `DRAFT`/`REJECTED` version — published par **409**, fork nahi |
 | 212 | DELETE | `/vouchers/:voucherId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | 🆕 Soft delete — `status: DELETED` + `isDeleted` saath me, saari versions bhi, aur plan slot wapas. 🔴 **Live claim (PENDING/PAID) ho to 409 — ADMIN par bhi** |
 | 211 | POST | `/vouchers/resume/:versionId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | 🆕 Wapas live. ⚠️ Beech me koi aur version publish ho gaya to **saaf 409** (partial unique index ka `E11000` nahi), aur validity nikal chuki ho to bhi 409 |
 | 80 | GET | `/vouchers/versions/get-all` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | 🆕 `includeDeleted` — **ADMIN-only**, default off. Vendor bheje to 403, chup-chaap ignore nahi |
@@ -1446,7 +1447,7 @@ koi error nahi hota.
 
 ---
 
-# 🏪 Vendor Panel Doc — 100 Endpoints
+# 🏪 Vendor Panel Doc — 101 Endpoints
 
 **15 exclusive + 73 shared global + 10 guest reads + 2 🤖 links**
 
@@ -1526,7 +1527,7 @@ koi error nahi hota.
 
 ---
 
-# 🛡️ Super Admin Panel Doc — 173 Endpoints
+# 🛡️ Super Admin Panel Doc — 174 Endpoints
 
 **82 exclusive + 73 shared global + 14 guest reads + 4 🤖 reference**
 
@@ -1597,7 +1598,7 @@ koi error nahi hota.
 
 | Doc | Endpoints | Status |
 |---|---:|---|
-| `endpoints_category.md` | **223** | ✅ **Round 6 — ye file.** Live routers ke against introspection se verify. `scripts/verifyApiCoverage.js` isi ko enforce karta hai |
+| `endpoints_category.md` | **224** | ✅ **Round 6 — ye file.** Live routers ke against introspection se verify. `scripts/verifyApiCoverage.js` isi ko enforce karta hai |
 | 🟠 Guest surface | 21 | 🆕 Round 5 — naya category, poori list is file me |
 | `customer_mobile_api_doc.md` | 66 | ✅ **v1.7.0** — live verified, 135 requests · 473 assertions · 0 failed · 198 captured examples (135/135 requests) |
 | `vendor_panel_api_doc.md` | 101 | ⚠️ **v1.2.1 me 78 hain** — 19 jodne hain (voucher claims reads, refunds, disputes, settlements, legacy mounts) |

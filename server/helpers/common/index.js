@@ -7,6 +7,11 @@ const {
   istFinancialYear,
 } = require("./istDate");
 const { generateUniqueDisplayId } = require("./generateUniqueDisplayId");
+const {
+  normalizeSortOrder,
+  validateUniqueIds,
+  validateUniqueSortOrders,
+} = require("./ordering");
 
 const {
   sameNameAs,
@@ -27,4 +32,7 @@ module.exports = {
   istDateKey,
   istFinancialYear,
   generateUniqueDisplayId,
+  normalizeSortOrder,
+  validateUniqueIds,
+  validateUniqueSortOrders,
 };

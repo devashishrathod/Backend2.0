@@ -16,6 +16,7 @@ const {
   pause,
   resume,
   remove,
+  reorderImages,
   getAllVersions,
   getAllCustomerVouchers,
   getCustomerVoucher,
@@ -34,6 +35,7 @@ const {
   validatePauseVoucher,
   validateResumeVoucher,
   validateDeleteVoucher,
+  validateReorderVoucherImages,
   validateGetAllVoucherVersions,
   validateCustomerGetAllVouchers,
   validateCustomerGetVoucher,
@@ -99,6 +101,23 @@ router.post(
   isVendorOrAdmin,
   validateSchema(validateResumeVoucher),
   resume,
+);
+/**
+ * 🔴 Images could not be reordered at all (V-7, P8).
+ *
+ * Literal-first path, so it can never be swallowed by the `/:voucherId`
+ * wildcard below — and `PUT`, because it replaces an order rather than
+ * creating anything.
+ *
+ * ⚠️ Takes a **version** id. Images belong to a version, and only an
+ * editable one can be reordered — a published version is `isImmutable`, and
+ * the service says so rather than quietly forking a new one.
+ */
+router.put(
+  "/versions/:versionId/images/reorder",
+  isVendorOrAdmin,
+  validateSchema(validateReorderVoucherImages),
+  reorderImages,
 );
 /**
  * 🔴 The "D" of CRUD, which this router did not have (V-6).

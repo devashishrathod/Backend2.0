@@ -2,10 +2,12 @@ const ShowcaseSection = require("../../models/ShowcaseSection");
 const { throwError } = require("../../utils");
 const { resolveActorBrand } = require("../../helpers/brands");
 const {
+} = require("../../helpers/showcases");
+const {
+  normalizeSortOrder,
   validateUniqueIds,
   validateUniqueSortOrders,
-  normalizeSortOrder,
-} = require("../../helpers/showcases");
+} = require("../../helpers/common");
 
 /**
  * Re-number a brand's sections from a full ordered list.
