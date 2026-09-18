@@ -268,3 +268,20 @@ exports.documentUrl = async (asset) => {
 
 exports.resolveKind = resolveKind;
 exports.activeProvider = activeProvider;
+
+/**
+ * 🔴 Direct-to-S3 upload (U-1) — re-exported here rather than imported from
+ * their own files, so every caller keeps going through one door.
+ *
+ * ⚠️ These two are **S3-only**, unlike everything above them. `presign` is
+ * built on `@aws-sdk/s3-presigned-post` and Cloudinary has no equivalent, so a
+ * platform running on Cloudinary keeps using the multipart path until U-5
+ * retires it. Reads and deletes stay provider-agnostic either way — see §0.5
+ * of the execution plan for why production is S3-only from day one.
+ */
+const { createUploadIntent, PRESIGN_TTL_SECONDS } = require("./presign");
+const { confirmUpload } = require("./confirm");
+
+exports.createUploadIntent = createUploadIntent;
+exports.confirmUpload = confirmUpload;
+exports.PRESIGN_TTL_SECONDS = PRESIGN_TTL_SECONDS;

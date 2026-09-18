@@ -7796,3 +7796,121 @@ aur settlement eligibility teeno saath badalne padenge.
 **Related docs:** [endpoints_category.md](./endpoints_category.md) · [security_findings.md](./security_findings.md) · [brand_verification_api_doc.md](./brand_verification_api_doc.md) · [subscription_lifecycle_design.md](./subscription_lifecycle_design.md) · [brand_rejection_remediation_design.md](./brand_rejection_remediation_design.md) · [customer_mobile_api_doc.md](./customer_mobile_api_doc.md)
 **Pending:** Super admin panel doc (phase 3)
 
+---
+
+## 94. POST /uploads/presign 🆕
+
+File seedha S3 par bhejne ki **ijazat** maangta hai. File is server tak aati hi nahi.
+
+**Access:** koi bhi signed-in caller · **Any auth**
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `purpose` | String | ✅ | Surface — bucket, allowed types aur size cap isi se tay hote hain |
+| `contentType` | String | ✅ | Jo aap bhej rahe hain (`image/png`, `video/mp4`, …) |
+| `sizeBytes` | Number ≥ 1 | ✅ | File ka size. ⚠️ Ye sirf **padhne-layak 413** deta hai — asli limit S3 lagata hai |
+| `fileName` | String | ❌ | Sirf extension ke liye |
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Upload authorised.",
+  "data": {
+    "uploadId": "68f1a2b3c4d5e6f7a8b9e001",
+    "url": "https://trydood-nonprod-public.s3.ap-south-1.amazonaws.com/",
+    "fields": {
+      "key": "staging/68f1.../9f2c....png",
+      "Content-Type": "image/png",
+      "Policy": "eyJ…",
+      "X-Amz-Signature": "…"
+    },
+    "expiresInSeconds": 900,
+    "stagingKey": "staging/68f1.../9f2c....png",
+    "typePrefix": "images"
+  }
+}
+```
+
+### 🔴 Ab client ko kya karna hai
+
+`url` par ek **multipart POST** bhejiye — **`fields` ke saare field pehle, file sabse aakhir me**. S3 file part ke baad kuch nahi padhta, to baad me bheja gaya field laga hi nahi.
+
+```js
+const form = new FormData();
+Object.entries(data.fields).forEach(([k, v]) => form.append(k, v));
+form.append("file", file);            // sabse aakhir me
+await fetch(data.url, { method: "POST", body: form });
+```
+
+S3 seedha `204` deta hai (koi body nahi). Uske baad `/uploads/confirm`.
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `401` | Token nahi / invalid | |
+| `422` | `CATEGORY_IMAGE does not accept video/mp4.` | Surface wo type nahi leta |
+| `413` | `That file is 12 MB. The limit here is 5 MB.` | Surface ke cap se bada |
+| `422` | `Unknown upload purpose. Allowed: …` | Galat purpose |
+
+---
+
+## 95. POST /uploads/confirm 🆕
+
+Upload hui file ko uski asli jagah par le jaata hai, aur batata hai wo **sach me kya hai**.
+
+**Access:** koi bhi signed-in caller · **Any auth**
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `uploadId` | ObjectId | ✅ | Presign se mila |
+| `entityId` | ObjectId | ❌ | Kis row ki file hai. Pata ho to key me ek segment aur jud jaata hai |
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Upload confirmed.",
+  "data": {
+    "storage": {
+      "provider": "AWS_S3",
+      "publicId": null,
+      "bucket": "trydood-nonprod-public",
+      "key": "images/categories/68f1a2b3c4d5e6f7a8b9c101/9f2c....png"
+    },
+    "metadata": {
+      "contentType": "image/png",
+      "kind": "IMAGE",
+      "sizeBytes": 184320,
+      "width": 1200,
+      "height": 800
+    }
+  }
+}
+```
+
+Ye `storage` object wahi hai jo surface endpoint ko `uploadId` ke badle milta hai — aap use seedha kahin bhejte nahi, agla step surface ka apna endpoint hai (U-2 se aage).
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `404` | `That upload was not found.` | Galat id, **ya kisi aur ki id** |
+| `409` | `That upload has already been used.` | Dobara confirm |
+| `400` | `That file was never uploaded, or has already expired.` | S3 par kuch hai hi nahi |
+| `400` | `That file type is not supported.` | Bytes kisi jaani-pehchani file ki nahi |
+| `422` | `USER_AVATAR does not accept MP4 files.` | Bytes surface ke hisaab se galat |
+
+### ⚠️ Notes
+
+**1. 🔴 Yahi ek jagah hai jahan file ki asli pehchaan hoti hai.** Is se pehle har check us `Content-Type` par tha jo **client ne chuna**. Yahan object ke apne pehle bytes padhe jaate hain, aur stored type unse aata hai. PNG ke naam par bheja gaya GIF `gifs/` me landta hai — theek us resize step se bahar jo uski animation khatam kar deta.
+
+**2. Kisi aur ka `uploadId` `404` deta hai, `403` nahi.** Jo id maujood hai uske baare me "ye aapki nahi" keh dena, ye bata dena hai ki wo id asli hai.
+
+**3. Ek upload ek hi baar.** Warna ek hi file do alag rows par lag jaati, aur doosri wo file rakhti jiske liye usne kuch diya hi nahi.
+
+**4. Size ki asli limit S3 lagata hai.** Signed policy me `content-length-range` **surface ke ceiling** se banta hai — aapke bheje `sizeBytes` se nahi. Yaani size chhota bata kar bada file bhejna kaam nahi karega; wo S3 par hi ruk jaayega.
+
+**5. Reject hui file wahin delete ho jaati hai.** Aur jo `staging/` me pada reh gaya, use bucket ka apna lifecycle rule uthata hai.
+

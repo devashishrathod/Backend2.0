@@ -19641,6 +19641,310 @@
           ]
         }
       ]
+    },
+    {
+      "name": "12 — Uploads",
+      "description": "🆕 Presigned direct-to-S3 (U-1). Do chhote JSON request — file in dono me se kisi me nahi jaati, wo seedha S3 par jaati hai.\n\n⚠️ Ye endpoints `verifyJwtToken` par hain, kisi role par nahi: vendor voucher images bhejta hai, customer avatar, admin category picture. Kya bheja ja sakta hai wo **purpose** tay karta hai — uska bucket, uske allowed kinds, uska size cap — caller ka role nahi.",
+      "item": [
+        {
+          "name": "Ijazat maango (presign) ⭐",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purpose\": \"CATEGORY_IMAGE\",\n  \"contentType\": \"image/png\",\n  \"sizeBytes\": 184320,\n  \"fileName\": \"cover.png\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/uploads/presign",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "uploads",
+                "presign"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** koi bhi signed-in caller\n\n🆕 File seedha S3 par bhejne ki **ijazat** maangta hai — file is server tak aati hi nahi.\n\n🔴 **Iske baad kya karna hai:** `url` par ek multipart POST bhejiye, jisme `fields` ke **saare field pehle** aur **file sabse aakhir me** ho. S3 file part ke baad kuch nahi padhta, to baad me bheja gaya field laga hi nahi. S3 seedha `204` deta hai, koi body nahi.\n\n```js\nconst form = new FormData();\nObject.entries(data.fields).forEach(([k, v]) => form.append(k, v));\nform.append(\"file\", file);   // sabse aakhir me\nawait fetch(data.url, { method: \"POST\", body: form });\n```\n\n⚠️ `sizeBytes` sirf ek **padhne-layak 413** deta hai. Asli limit signed policy me hai aur wo **surface ke ceiling** se banti hai — size chhota bata kar bada file bhejna S3 par hi ruk jayega.\n\nPhir `/uploads/confirm`."
+          },
+          "response": [
+            {
+              "name": "200 · Ijazat maango (presign)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/uploads/presign",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "uploads",
+                    "presign"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Upload authorised.\",\n  \"data\": {\n    \"uploadId\": \"68f1a2b3c4d5e6f7a8b9e001\",\n    \"url\": \"https://trydood-nonprod-public.s3.ap-south-1.amazonaws.com/\",\n    \"fields\": {\n      \"key\": \"staging/68f1a2b3c4d5e6f7a8b9c0a1/9f2c6d1e-4b7a-4c2f-9a3d-7e5b1c8f2a4d.png\",\n      \"Content-Type\": \"image/png\",\n      \"bucket\": \"trydood-nonprod-public\",\n      \"Policy\": \"eyJleHBpcmF0aW9uIjoiMjAyNi0wOS0xOFQxMDozMDowMFoiLCJ…\",\n      \"X-Amz-Signature\": \"8f2c1d4b7a9e3f5c2d8b1a6e4f7c9d2b5a8e1f4c7d0b3a6e\"\n    },\n    \"expiresInSeconds\": 900,\n    \"stagingKey\": \"staging/68f1a2b3c4d5e6f7a8b9c0a1/9f2c6d1e-4b7a-4c2f-9a3d-7e5b1c8f2a4d.png\",\n    \"typePrefix\": \"images\"\n  }\n}"
+            },
+            {
+              "name": "413 · Ijazat maango (presign)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/uploads/presign",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "uploads",
+                    "presign"
+                  ]
+                }
+              },
+              "status": "Payload Too Large",
+              "code": 413,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"That file is 12 MB. The limit here is 5 MB.\"\n}"
+            },
+            {
+              "name": "422 · Ijazat maango (presign)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/uploads/presign",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "uploads",
+                    "presign"
+                  ]
+                }
+              },
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"CATEGORY_IMAGE does not accept video/mp4.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Upload confirm karo ⭐",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"uploadId\": \"68f1a2b3c4d5e6f7a8b9e001\",\n  \"entityId\": \"68f1a2b3c4d5e6f7a8b9c101\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/uploads/confirm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "uploads",
+                "confirm"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** koi bhi signed-in caller\n\n🔴 **Yahi ek jagah hai jahan file ki asli pehchaan hoti hai.** Is se pehle har check us `Content-Type` par tha jo client ne chuna. Yahan object ke apne pehle bytes padhe jaate hain, aur stored type unse aata hai — PNG ke naam par bheja gaya GIF `gifs/` me landta hai, theek us resize step se bahar jo uski animation khatam kar deta.\n\n`entityId` optional hai: logo ko apna brand pehle se pata hota hai, par voucher image us version ki hoti hai jo abhi bani hi nahi. Na ho to key me ek segment kam.\n\n⚠️ **Kisi aur ka `uploadId` `404` deta hai, `403` nahi** — jo id maujood hai uske baare me \"ye aapki nahi\" keh dena, ye bata dena hai ki wo id asli hai.\n\n⚠️ **Ek upload ek hi baar.** Warna ek hi file do rows par lag jaati, aur doosri wo file rakhti jiske liye usne kuch diya hi nahi."
+          },
+          "response": [
+            {
+              "name": "200 · Upload confirm karo",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/uploads/confirm",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "uploads",
+                    "confirm"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Upload confirmed.\",\n  \"data\": {\n    \"storage\": {\n      \"provider\": \"AWS_S3\",\n      \"publicId\": null,\n      \"bucket\": \"trydood-nonprod-public\",\n      \"key\": \"images/categories/68f1a2b3c4d5e6f7a8b9c101/9f2c6d1e-4b7a-4c2f-9a3d-7e5b1c8f2a4d.png\"\n    },\n    \"metadata\": {\n      \"contentType\": \"image/png\",\n      \"kind\": \"IMAGE\",\n      \"sizeBytes\": 184320,\n      \"width\": 1200,\n      \"height\": 800\n    }\n  }\n}"
+            },
+            {
+              "name": "409 · Upload confirm karo",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/uploads/confirm",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "uploads",
+                    "confirm"
+                  ]
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"That upload has already been used.\"\n}"
+            },
+            {
+              "name": "400 · Upload confirm karo",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/uploads/confirm",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "uploads",
+                    "confirm"
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"That file was never uploaded, or has already expired.\"\n}"
+            }
+          ]
+        }
+      ]
     }
   ],
   "event": [
