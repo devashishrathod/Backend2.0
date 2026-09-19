@@ -498,10 +498,14 @@ const subCategoryFolder = folder(
  * ⚠️ No create request, and that is not an oversight.
  *
  * `POST /banners/create` takes a **file upload**, not a URL — it answers
- * *"Please upload a…"* for a JSON body — and there is no binary fixture in this
- * repo for newman to attach. Shipping a create request that cannot pass would
- * be worse than naming the gap: it would sit red on every run and train people
- * to ignore the run.
+ * *'Please attach the banner file as "media".'* for a JSON body — and there is
+ * no binary fixture in this repo for newman to attach. Shipping a create request
+ * that cannot pass would be worse than naming the gap: it would sit red on every
+ * run and train people to ignore the run.
+ *
+ * ⚠️ One field, `media`, for every kind. It used to be `image`/`video`/`gif`
+ * picked by a `type` in the body; the server reads the file's mime type now. A
+ * video additionally needs a `poster` file.
  *
  * So the seeder makes one throwaway banner and this folder reads,
  * updates and deletes it. Separate from the home-screen banner the
@@ -557,7 +561,8 @@ const bannerFolder = folder(
       token: ADM,
       body: { title: "postman seed throwaway banner (updated)", isActive: false },
       description: [
-        "Update JSON leta hai — file sirf create par zaroori hai, kyunki tab tak koi image hoti hi nahi.",
+        "Update JSON leta hai. Tasveer badalni ho to multipart me `media` file bhejiye —",
+        "aur sirf file bhejna bhi valid request hai, koi body field zaroori nahi.",
         "",
         `\`isActive: false\` banner ka slot turant free kar deta hai — pool bhara ho to`,
         "delete karne ki jagah yahi sabse aasan tareeka hai.",
@@ -642,11 +647,14 @@ const bannerFolder = folder(
 /**
  * ⚠️ No create request, and that is not an oversight.
  *
- * `POST /promotionalTickers/create` takes a **file upload**, not a URL — it answers
- * *"Please upload a…"* for a JSON body — and there is no binary fixture in this
- * repo for newman to attach. Shipping a create request that cannot pass would
- * be worse than naming the gap: it would sit red on every run and train people
- * to ignore the run.
+ * `POST /promotionalTickers/create` takes a **file upload**, not a URL — it
+ * answers *"Please upload an icon image."* for a JSON body — and there is no
+ * binary fixture in this repo for newman to attach. Shipping a create request
+ * that cannot pass would be worse than naming the gap: it would sit red on every
+ * run and train people to ignore the run.
+ *
+ * ⚠️ The icon is a **still image only** — no video, no animated GIF. The strip
+ * scrolls inline with no player and nothing that paints a poster frame.
  *
  * So the seeder makes one throwaway ticker and this folder reads,
  * updates and deletes it. Separate from the home-screen ticker the

@@ -130,7 +130,7 @@ Ye **live verification round** tha. Teen jagah doc code se match nahi kar raha t
 | Change | Detail |
 |---|---|
 | **Naya brand list endpoint** | `GET /brands/customer/get-all` — directory + "Top Brands" tab, geo optional ([#18a](#18a-get-brandscustomerget-all-)) |
-| **Voucher banner fields** | `bannerType` + `bannerUrl` list aur detail dono me. Banner na ho to dono `null` ([#15](#15-get-voucherscustomerget-all), [#16](#16-get-voucherscustomergetvoucherid)) |
+| **Voucher banner fields** | `bannerType` + `bannerUrl` + `bannerThumbnail` + 🆕 `bannerStatus` + 🆕 `bannerIsFallback`, list aur detail dono me. Approved banner na ho to slot me voucher ki **pehli image** aati hai ([#15](#15-get-voucherscustomerget-all), [#16](#16-get-voucherscustomergetvoucherid)) |
 | **Suggestions tab** | `?suggestedOnly=true` — admin ke pin kiye vouchers. Bina param ke wahi list, pinned upar ([#15](#15-get-voucherscustomerget-all)) |
 | **Convenience fee** | Har ₹500 pe ₹5, original bill pe. Naya `pricing` block ([#17](#17-post-voucherscustomervoucherpreview)) |
 | **No-offer ab error nahi** ✅ | Bill kisi offer ke minimum se kam ho to `200` + `offerApplied: false` — customer sirf bill pay karega. Do error messages hat gaye |
@@ -503,9 +503,27 @@ Ye errors kisi bhi protected endpoint pe aa sakte hain — har endpoint pe repea
 
 ### File upload — `413`
 
-Customer sirf do jagah file bhejta hai: `POST /auth/register` aur
-`PUT /users/update` (profile photo). Dono par platform ka ceiling lagta hai —
-aaj **100 MB**.
+⚠️ **Customer sirf EK jagah file bhejta hai: `PUT /users/update` (profile
+photo).** Pehle yahan `POST /auth/register` bhi likha tha — wo galat hai, wo
+endpoint `isAdmin` ke peeche hai aur customer use kabhi call nahi karta.
+
+Do alag ceiling hain, aur dono alag jagah se aate hain:
+
+| Ceiling | Kitna | Kaun lagata hai |
+|---|---|---|
+| Transport | **100 MB** (`MAX_UPLOAD_SIZE_MB`) | `express-fileupload` — ye disk bachane ke liye hai, kisi ka limit nahi |
+| Avatar ka apna | **5 MB** (`USER_AVATAR`) | **Dono raaste** — multipart par bhi, presigned par bhi |
+
+✅ **Ab dono raaste ek hi jawab dete hain.** Pehle multipart par avatar ka 5 MB
+cap lagta hi nahi tha — sirf 100 MB rukta tha — to ek 8 MB ki photo multipart se
+chadh jaati aur presigned se `413` khaati. Wo **band ho chuka hai** (plan me
+purana **O-4**, ab Block G ka **G1**). Aaj wahi photo dono taraf se `413` degi,
+aur message bhi bilkul ek hi hota hai.
+
+🔴 **Aur ek cheez dono taraf barabar ho gayi:** file ke **bytes** padhe jaate
+hain, `Content-Type` header nahi. Yaani ek video ko `image/jpeg` naam dekar
+bhejne se ab kuch nahi hota — dono raaste use pehchaan kar refuse karte hain,
+aur usi shabd me. Pehle ye sirf presigned raaste par hota tha.
 
 ⚠️ **App ke liye zaroori:** `413` par server connection **turant band** kar deta
 hai, poori file bheji nahi jaati. Upload library ise **network error / abort**
@@ -549,9 +567,14 @@ Saare enum values **UPPERCASE** hain (payment ke alawa).
 ### GENDERS
 `MALE` · `FEMALE` · `OTHER`
 
-### BANNER_TYPE
+### MEDIA_KIND (banner ka `type`)
 `IMAGE` · `VIDEO` · `GIF`
-> `GET /banners/customer/active` (#13) pe `url` **flat** aata hai — `type` sirf ye batata hai ki use image view, video player ya animated view me render karna hai. Voucher banner (`bannerType`/`bannerUrl`) bhi yahi enum use karta hai.
+> `GET /banners/customer/active` (#13) pe `url` **flat** aata hai — `type` sirf ye batata hai ki use image view, video player ya animated view me render karna hai. Voucher banner (`bannerType`/`bannerUrl`) bhi yahi values use karta hai.
+>
+> ⚠️ Pehle ye `BANNER_TYPE` naam ka apna enum tha. Ab ye platform-wide
+> `MEDIA_KIND` hai (jisme `AUDIO` aur `DOCUMENT` bhi hain, par banner un do me se
+> kabhi nahi ho sakta). **App ke liye values bilkul wahi teen hain** — kuch
+> badalna nahi.
 
 ### BANNER_REDIRECT_TYPE / TICKER_REDIRECT_TYPE
 `NONE` · `CATEGORY` · `DEAL` · `BRAND` · `OFFER` · `EXTERNAL_URL`
@@ -577,6 +600,42 @@ Saare enum values **UPPERCASE** hain (payment ke alawa).
 
 > Voucher list aur detail me `bannerType` field pe aata hai. Banner na ho to `null`.
 > ⚠️ Note: showcase media `PHOTO`/`VIDEO` use karta hai, banner `IMAGE`/`VIDEO`/`GIF` — dono alag enums hain, mix mat karein.
+>
+> ### 🆕 `bannerThumbnail` — naya, aur additive
+>
+> **VIDEO banner par ye poster frame hai** — wo tasveer jo player kholne se
+> pehle dikhni chahiye. Poster upload par **mandatory** hai (M-5), par pehle
+> sirf store hota tha aur bheja nahi jaata tha.
+>
+> **IMAGE aur GIF par ye banner ka apna URL hai**, `null` nahi — taaki app
+> `<img src={bannerThumbnail}>` ek baar likhe, `bannerType` par branch kiye
+> bina. Yahi contract home banner (`thumbnail`) aur showcase media ka pehle se
+> hai.
+>
+> ### 🆕 Banner ka slot ab **kabhi khali nahi** hota
+>
+> Voucher ka banner ab admin review se guzarta hai. Jab tak koi banner approved
+> na ho — wo review me ho, reject ho gaya ho, ya vendor ne bheja hi na ho —
+> banner ke slot me voucher ki **pehli image** aa jaati hai.
+>
+> Iska matlab: `bannerUrl` un vouchers par bhi mil jayega jinka apna banner abhi
+> nahi hai. Voucher chhupta nahi, aur aapko khali rectangle render nahi karna
+> padta.
+>
+> Do naye field isi ke saath aate hain, dono **additive**:
+>
+> | Field | Matlab |
+> |---|---|
+> | `bannerIsFallback` | `true` = ye voucher ki pehli image hai, asli banner nahi |
+> | `bannerStatus` | `APPROVED` (asli banner live hai) · `PENDING` (unka banner review me hai) · `REJECTED` · `null` (bheja hi nahi) |
+>
+> Zyadatar apps ko in dono ki zarurat nahi — `bannerUrl` render kar dijiye aur
+> baat khatam. Ye un screens ke liye hain jo vendor ko unka apna voucher dikhati
+> hain, jahan "aapka banner review me hai" batana kaam ka hai.
+>
+> Banner **aur** images dono na hon (sirf draft par mumkin) to `bannerType`,
+> `bannerUrl`, `bannerThumbnail` teeno `null`. Purane app builds par koi asar
+> nahi — naye key unhe dikhenge hi nahi.
 
 ### VOUCHER_USAGE_TYPE
 `ONCE_PER_USER` · `MULTIPLE`
@@ -1162,7 +1221,15 @@ Profile update. JSON ya multipart dono chalta hai (image ke liye multipart).
 | `email` | string | Valid email | Change karne pe `isEmailVerified` reset ho jaata hai |
 | `dob` | string | ISO date (`YYYY-MM-DD`) | Age check commented out hai — 18+ validation abhi nahi lagti |
 | `appliedReferralCode` | string | Max 20 chars, `""` allowed | Kisi ka referral code apply karna |
-| `image` | file | – | **Sirf multipart me.** Field name exactly `image`. Cloudinary pe upload hoga, purani image delete |
+| `image` | file | – | **Sirf multipart me.** Field name exactly `image` |
+| `uploadId` | ObjectId 🆕 | – | Presigned raasta — `/uploads/presign` → S3 → `/uploads/confirm` se mila id. ⚠️ `image` ke saath **nahi**; dono bhejne par `422` |
+
+⚠️ **Purani photo nayi ke save hone ke BAAD delete hoti hai.** Pehle ulta tha —
+ek fail hua save purani photo le jaata aur profile ek dead URL par reh jaata.
+
+⚠️ Kahan upload hoti hai ye `Setting.storage.provider` tay karta hai (aaj **S3**),
+aur purani file hamesha us row ke apne provider se delete hoti hai — to provider
+badalne par purani photos strand nahi hotin.
 
 **JSON example:**
 ```json
@@ -1187,16 +1254,45 @@ image: <file>
   "success": true,
   "message": "User profile updated successfully",
   "data": {
-    "_id": "68f1a2b3c4d5e6f7a8b9c0d1",
-    "name": "rahul sharma",
-    "email": "rahul.new@example.com",
-    "dob": "1998-04-12T00:00:00.000Z",
-    "image": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/profile/xyz.jpg",
-    "isEmailVerified": false,
-    "updatedAt": "2026-08-22T11:30:00.000Z"
+    "userData": {
+      "_id": "68f1a2b3c4d5e6f7a8b9c0d1",
+      "name": "Rahul Sharma",
+      "email": "rahul.new@example.com",
+      "dob": "1998-04-12T00:00:00.000Z",
+      "role": "CUSTOMER",
+      "isEmailVerified": false,
+      "updatedAt": "2026-08-22T11:30:00.000Z"
+    },
+    "customerData": {
+      "_id": "68f1a2b3c4d5e6f7a8b9c0e2",
+      "userId": "68f1a2b3c4d5e6f7a8b9c0d1",
+      "fullName": "Rahul Sharma",
+      "image": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/profile/xyz.jpg",
+      "dob": "1998-04-12T00:00:00.000Z",
+      "isSignUpCompleted": true
+    }
   }
 }
 ```
+
+> #### ⚠️ `data` do hisson me hai — aur photo customer wale me hai
+>
+> Pehle ye doc ek flat object dikhata tha; service hamesha `{ userData,
+> customerData }` lautati thi. Ab sach likha hai.
+>
+> **`customerData` sirf CUSTOMER ke liye hota hai**, baaki har role ke liye
+> `null` — vendor ya admin ka koi `Customer` row hota hi nahi.
+>
+> 🔴 **Customer ki profile photo `customerData.image` me hai**, `userData.image`
+> me nahi — wo customer ke liye khali rehta hai. Pehle dono me thi: upload
+> `User.image` par likhta tha aur phir `Customer` par copy karta tha. Ek field ke
+> do writer wahi cheez hai jisne email address ko dono jagah alag kar diya tha.
+>
+> Vendor, sub-vendor aur admin ke liye photo `userData.image` me hi rehti hai.
+>
+> ⚠️ **`name` ab jaisa dikhna chahiye waisa save hota hai** — "rahul sharma"
+> bhej kar "Rahul Sharma" wapas aata hai. Poora rule aur uske apvaad
+> (KFC, iPhone, 30% OFF chhue nahi jaate) master plan ke M-1a″ me.
 
 ### Errors
 | Status | Message | Kab |
@@ -1817,7 +1913,8 @@ Koi nahi.
       },
       "_id": "68f1a2b3c4d5e6f7a8b9c1a1",
       "type": "IMAGE",
-      "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/monsoon.jpg"
+      "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/monsoon.jpg",
+      "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/monsoon.jpg"
     },
     {
       "redirect": {
@@ -1827,7 +1924,8 @@ Koi nahi.
       },
       "_id": "68f1a2b3c4d5e6f7a8b9c1a2",
       "type": "VIDEO",
-      "url": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/banners/teaser.mp4"
+      "url": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/banners/teaser.mp4",
+      "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/teaser-cover.jpg"
     },
     {
       "redirect": {
@@ -1837,7 +1935,8 @@ Koi nahi.
       },
       "_id": "68f1a2b3c4d5e6f7a8b9c1a3",
       "type": "GIF",
-      "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/flash.gif"
+      "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/flash.gif",
+      "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/flash.gif"
     }
   ]
 }
@@ -1877,18 +1976,43 @@ total 10 pe cut. Yaani:
 ⚠️ Array ki length **10 se kam bhi ho sakti hai** — 2 banners hain to 2 hi
 aayenge. App ko fixed 10 slots assume nahi karne hain.
 
-**2. `url` flat hai — `type` sirf render ke liye hai.** Backend `type` dekh kar
-sahi media field (`image`/`video`/`gif`) khud resolve karta hai aur uska `url`
-bhejta hai. App ko ab field choose nahi karni:
+**2. `url` flat hai — `type` sirf render ke liye hai.** App ko koi field choose
+nahi karni, backend seedha URL bhejta hai:
 
-| `type` | Kaise render karein |
-|---|---|
-| `IMAGE` | image view |
-| `VIDEO` | video player (autoplay/muted) |
-| `GIF` | animated image view |
+| `type` | `url` | `thumbnail` | Kaise render karein |
+|---|---|---|---|
+| `IMAGE` | tasveer | wahi tasveer | image view |
+| `VIDEO` | `.mp4` | **poster frame** | video player (autoplay/muted), poster peeche |
+| `GIF` | gif | wahi gif | animated image view |
 
-⚠️ `url` theoretically `null` ho sakta hai agar banner ka media missing ho —
-render se pehle null-check kar lein, blank slot dikhane se behtar hai skip karna.
+> ### 🆕 `thumbnail` key — naya, aur additive
+>
+> **Video par ye poster frame hai** — wo tasveer jo player kholne se pehle
+> dikhni chahiye. Poster upload par **mandatory** hai, par pehle sirf store hota
+> tha aur bheja nahi jaata tha, jiska matlab tha ki app ko `.mp4` buffer hone
+> tak khali rectangle dikhana padta tha.
+>
+> **Still aur GIF par ye media ka apna URL hai**, `null` nahi — taaki app
+> `<img src={thumbnail}>` ek hi baar likhe, `type` par branch kiye bina. Yahi
+> contract showcase media ka pehle se hai.
+>
+> ⚠️ Purane app builds par koi asar nahi — naya key unhe dikhega hi nahi.
+
+⚠️ **`url`, `type` aur `thumbnail` teenon `null` ho sakte hain** agar banner ka
+media missing ho — render se pehle null-check kar lein, blank slot dikhane se
+behtar hai skip karna.
+
+> ⚠️ **Baaki response me kuch nahi badla, par andar sab badla.**
+>
+> Pehle banner document me `type` field alag hoti thi aur bytes teen field me se
+> ek (`image`/`video`/`gif`) me. Ab ek hi `media` object hai: `type` uske
+> `media.kind` se aata hai, `url` `media.url` se aur `thumbnail` `media.poster.url`
+> se. **`_id`, `type`, `url`, `redirect` — chaaron waise ke waise**, sirf
+> `thumbnail` juda hai.
+>
+> Ek naya case: migration se pehle likhi hui koi row abhi bhi database me ho to
+> uske teeno `null` aayenge. Ye pre-launch data hai, launch pe database khali se
+> shuru hoga.
 
 **3. `redirect` handling:**
 | `redirect.type` | Kya karna |
@@ -1933,38 +2057,39 @@ Koi nahi.
     {
       "_id": "68f1a2b3c4d5e6f7a8b9c1b1",
       "title": "flat 30% off on cafes today",
-      "icon": {
-        "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/tickers/coffee.png",
-        "storage": { "provider": "CLOUDINARY", "publicId": "tickers/coffee" }
-      },
+      "icon": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/tickers/coffee.png",
       "redirect": {
         "type": "CATEGORY",
         "targetId": "68f1a2b3c4d5e6f7a8b9c0e1",
         "url": null
       },
-      "displayOrder": 1,
-      "startDate": "2026-08-01T00:00:00.000Z",
-      "endDate": "2026-08-31T23:59:59.000Z",
-      "isActive": true,
-      "isDeleted": false,
-      "createdBy": "68f1a2b3c4d5e6f7a8b9c000",
-      "createdAt": "2026-07-28T10:00:00.000Z",
-      "updatedAt": "2026-07-28T10:00:00.000Z"
+      "displayOrder": 1
     },
     {
       "_id": "68f1a2b3c4d5e6f7a8b9c1b2",
       "title": "refer & earn 100 tcoins",
-      "icon": { "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/tickers/gift.png" },
+      "icon": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/tickers/gift.png",
       "redirect": { "type": "NONE", "targetId": null, "url": null },
-      "displayOrder": 2,
-      "startDate": null,
-      "endDate": null,
-      "isActive": true,
-      "createdAt": "2026-07-20T10:00:00.000Z"
+      "displayOrder": 2
     }
   ]
 }
 ```
+
+> #### ⚠️ **Contract change** — response ab sirf paanch field deta hai
+>
+> **`icon` ab string hai**, object nahi. Pehle `icon: { url, storage }` aata tha
+> aur uske saath **`storage.publicId` / `bucket` / `key`** bhi — yaani file ka
+> naam aur jagah, ek aise route par jispar koi auth hai hi nahi. Ab sirf URL.
+>
+> Ye bhi hat gaye: `startDate` · `endDate` · `isActive` · `isDeleted` ·
+> `createdBy` · `updatedBy` · `createdAt` · `updatedAt`. Sab admin ke fields the.
+>
+> Schedule server hi decide karta hai — jo ticker aaya hai wo abhi live hai.
+> App ko dates dekh kar dobara faisla karne ki zarurat nahi.
+>
+> Banner endpoint (`/banners/customer/active`) shuru se aise hi kaam karta hai;
+> ab dono ek jaise hain.
 
 ### Success — `200` (koi ticker nahi)
 ```json
@@ -2533,6 +2658,7 @@ Har row pe `isSuggested` boolean aata hai — usse badge/highlight kar sakte hai
         "createdAt": "2026-08-10T06:00:00.000Z",
         "bannerType": "IMAGE",
         "bannerUrl": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-mocha.jpg",
+        "bannerThumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-mocha.jpg",
         "isSuggested": true,
         "brand": {
           "id": "68f1a2b3c4d5e6f7a8b9c3a1",
@@ -2700,7 +2826,17 @@ Aisa isliye hai ki jis sheher me curated brands abhi pahunche hi nahi, wahan tab
 
 ## 16. GET /vouchers/customer/get/:voucherId
 
-Voucher detail screen. Saare offers + saare outlets ke saath.
+Voucher detail screen. Claim ho sakne wale saare offers + saare outlets ke saath.
+
+> **`offers` me wahi aate hain jo customer sach me claim kar sakta hai.** Vendor ne
+> jo offer delete ya band kar diya, wo list me hai hi nahi — pehle poora array
+> bheja jaata tha, to band offer screen par dikhta tha aur tap karne par payment
+> ke waqt refuse hota tha.
+>
+> **`images` aur `offers` dono whitelist hain.** File kahan rakhi hai (Cloudinary
+> `publicId`, ya S3 `bucket`/`key`) wo kabhi nahi jaata — ye route guest ke liye
+> khula hai. `_id` dono me rehta hai: offer ka `_id` wahi hai jo claim banate
+> waqt `offerId` me bhejna hota hai.
 
 **Access:** 🌐 **Guest bhi** (`optionalAuth`) — token bhejo to personalised, na bhejo to anonymous. Galat token phir bhi reject hota hai
 
@@ -2732,6 +2868,7 @@ GET /vouchers/customer/get/68f1a2b3c4d5e6f7a8b9c2a1?latitude=22.7533&longitude=7
     "subCategoryId": "68f1a2b3c4d5e6f7a8b9c0f1",
     "bannerType": "VIDEO",
     "bannerUrl": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/vouchers/banner-mocha.mp4",
+    "bannerThumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-mocha-cover.jpg",
     "brand": {
       "id": "68f1a2b3c4d5e6f7a8b9c3a1",
       "brandName": "cafe mocha",
@@ -2769,8 +2906,7 @@ GET /vouchers/customer/get/68f1a2b3c4d5e6f7a8b9c2a1?latitude=22.7533&longitude=7
           "discountValue": 30,
           "maxDiscountAmount": 300,
           "usageType": "ONCE_PER_USER",
-          "discountApplicableOn": "SUBTOTAL",
-          "isActive": true
+          "discountApplicableOn": "SUBTOTAL"
         },
         {
           "_id": "68f1a2b3c4d5e6f7a8b9c2d2",
@@ -2780,8 +2916,7 @@ GET /vouchers/customer/get/68f1a2b3c4d5e6f7a8b9c2a1?latitude=22.7533&longitude=7
           "discountValue": 150,
           "maxDiscountAmount": null,
           "usageType": "MULTIPLE",
-          "discountApplicableOn": "FINAL_BILL",
-          "isActive": true
+          "discountApplicableOn": "FINAL_BILL"
         }
       ],
       "startAt": "2026-08-10T00:00:00.000Z",
@@ -3469,6 +3604,39 @@ se alag URL nahi chunna:
 `voucherSnapshot`, `brandSnapshot`, `outletSnapshot` claim banate waqt **freeze** hote hain.
 September ki claim March me bhi sahi padhti hai — voucher republish ho chuka ho aur outlet
 ka naam badal chuka ho, tab bhi. Jo dikhaya gaya tha wahi dikhta rahega.
+
+#### 🆕 `voucherSnapshot` me ab tasveer bhi hai
+
+Pehle usme sirf `{ name, categoryId, subCategoryId }` tha — teen field, jinme se koi
+aisi cheez nahi jise aadmi pehchaanta ho. *"Maine September me kya khareeda"* kholne par
+voucher ki apni tile ki jagah text ki ek line milti thi.
+
+```json
+"voucherSnapshot": {
+  "name": "Pizza Friday",
+  "categoryId": "68f1a2b3c4d5e6f7a8b9c101",
+  "subCategoryId": "68f1a2b3c4d5e6f7a8b9c202",
+  "bannerUrl": "https://cdn.trydood.com/images/vouchers/.../banner.webp",
+  "bannerThumbnail": "https://cdn.trydood.com/images/vouchers/.../banner.webp",
+  "bannerType": "IMAGE",
+  "imageUrl": "https://cdn.trydood.com/images/vouchers/.../first.webp"
+}
+```
+
+| Field | Kya hai |
+|---|---|
+| `bannerUrl` | **Jo customer ne dekha tha** — approved banner, ya uski jagah pehli image (fallback). Raw banner field nahi |
+| `bannerThumbnail` | VIDEO banner ka poster. IMAGE/GIF par wahi URL — kabhi `null` nahi jab banner ho |
+| `bannerType` | `IMAGE` \| `VIDEO` \| `GIF` — video ko poster ke bina paint nahi kiya ja sakta |
+| `imageUrl` | Voucher ki **pehli image** (`sortOrder`), banner ke **saath** — uski jagah nahi |
+
+> ⚠️ **Purane claims me ye chaar field nahi honge.** Har jagah `?? null` se padhein —
+> blank tile ki jagah "no image" dikhayein, code na phate.
+
+> 🔴 **Voucher delete ho jaane par bhi ye zinda rehte hain.** Delete soft hai aur
+> storage se kuch nahi hatata, isliye ye URL baad me bhi khulte hain. Yahi is
+> snapshot ka poora maqsad hai — claim hi wo aakhri cheez hai jise yaad hai ki
+> kya khareeda gaya tha.
 
 ### 🆕 `brand` — snapshot ke **saath**, uski jagah nahi
 
@@ -4190,7 +4358,7 @@ Brand profile screen ka **single call** — brand, features, visible showcase pr
               "_id": "…",
               "type": "PHOTO",
               "url": "https://…/amb1.jpg",
-              "thumbnail": null,
+              "thumbnail": "https://…/amb1.jpg",
               "title": "seating area",
               "altText": "cafe seating with wooden tables",
               "sortOrder": 1
@@ -4244,6 +4412,10 @@ Brand profile screen ka **single call** — brand, features, visible showcase pr
 - `mediaPreviewLimit` batata hai cap kitna hai (abhi 6) — hardcode mat karein
 
 **3. Sirf wahi albums aate hain jo vendor ne dikhane chune hain** — `isVisible: true` filter lagta hai. ✅ Ab `/showcase/get-brand-showcase` ([#19](#19-get-showcaseget-brand-showcasebrandid)) bhi yehi filter lagata hai — dono endpoints ek hi shared projection use karte hain, to shape aur rules kabhi alag nahi honge.
+
+🆕 Ismein wo **media floor** bhi shaamil hai: jis section me `minItemsPerSection` (default 3) se kam visible media hain wo yahan bhi nahi aata. Aur `sortOrder` yahan bhi **display position** hai — sections `1, 2, 3…`, aur har section ke preview media `1` se. Poora explanation [#19 note 4a](#19-get-showcaseget-brand-showcasebrandid) me hai.
+
+> ⚠️ Yahan media ek **preview slice** hai (`mediaPreviewLimit`, 6), to media ke number us strip ko ginte hain jo dikh rahi hai. Poora album #19 par hai, jo khud ko usi tarah `1` se ginta hai. `hasMoreMedia` batata hai ki aur bhi hai.
 
 **4. `isVerified` ab sahi aata hai.** Pehle `brand.isApproved` document hota tha jo **hamesha `false`** rehta hai (code me kahin set hi nahi hota). Ab ye `SystemVerify.status === "APPROVED"` se derive hota hai — verified badge ab actually kaam karega.
 
@@ -4504,17 +4676,40 @@ Brand ka photo/video gallery, sections me organized.
 
 Poora filter: section pe `isVisible && isActive && !isDeleted`, media pe `isActive && !isDeleted`.
 
+🆕 **Aur ek chauthi shart:** section ke paas kam se kam `minItemsPerSection` **visible** media honi chahiye (default `3`, admin badal sakta hai). Itni na ho to section is list me aata hi nahi — na khali, na aadha.
+
+- Ginti **visible** media ki hai, stored rows ki nahi. Chhupi ya deleted media ginti me nahi aati, warna 6 chhupi photo wala section list me aakar khali render hota.
+- Ye wahi number hai jo vendor side par delete/hide rokta hai. Naya section hamesha khali banta hai, to vendor ke 3 media add karne tak wo customer ko nahi dikhega — ye expected hai.
+- Yahi shart clips feed (#20) par bhi lagti hai.
+
 **2. `isShowInVideoClips` yahan filter NAHI karta.** Wo sirf reels feed (#20) ka switch hai — jis video ko vendor ne clips se hataya ho, wo apne album me phir bhi dikhega. Ye jaan-boojh kar hai.
 
 **3. Brand check hota hai** (naya) — deleted ya deactivated brand ki gallery ab public nahi rehti, `404` aata hai. Pehle aise brand pe bhi `200` + `sections: []` milta tha.
 
 **4. Sorting handled hai** — sections `sortOrder` ascending, aur har section ke `medias` bhi `sortOrder` ascending. Jo order mile usi me dikhayein.
 
+**4a. 🆕 `sortOrder` ab display position hai — `1, 2, 3`, bina kisi gap ke.**
+
+Pehle stored number aata tha, jo **har non-deleted row** par dense hai — chhupi media bhi ginta hai. To vendor ne doosri photo hide ki, aur customer ko `1, 3` milta tha: list me ya to khaali jagah dikhti, ya app ke sort karne ke tareeke par order nirbhar ho jaata.
+
+Ab number sirf **us cheez par** dense hai jo customer dekh sakta hai:
+
+- Sections: `1, 2, 3…` us list par jo aap ko mili. Beech ka koi section floor se neeche hone par filter ho gaya to number me gap nahi aata.
+- Media: har section ke andar `1` se shuru.
+- **Pagination ke paar continue hota hai** — `page=2&limit=10` par sections `11, 12…` se shuru honge, dobara `1` se nahi. Warna ek hi gallery me do sections ek hi position par aa jaate.
+
+> Ye vendor panel wale number se **alag** hai. Wahan position chhupi media bhi ginti hai, taaki vendor media wapas on kare to wo apni hi jagah par aaye. Dono number ek naam rakhte hain par ek jaisa nahi hai — customer app ko bas jo mila hai wahi dikhana hai.
+
 **5. Response strict whitelist hai** — `storage`, `metadata`, `isActive` aur `isShowInVideoClips` ab response me **nahi** aate (pehle aakhri do aate the). Ye vendor ke internal toggles hain.
 
 **6. `duration` aur `resolution` sirf `VIDEO` rows pe aate hain** (naya) — photo pe ye keys hoti hi nahi. Player ke aspect ratio aur progress bar ke liye use karein; `duration` seconds me.
 
-**7. `thumbnail` hamesha image URL hota hai** — PHOTO ke liye apni hi optimized URL, VIDEO ke liye poster frame.
+**7. `thumbnail` hamesha image URL hota hai** — PHOTO ke liye apni hi URL, VIDEO ke liye **poster frame**.
+
+> ⚠️ VIDEO par poster ab upload ke waqt **mandatory** hai, isliye ye field video
+> par kabhi khali nahi milega. Pehle iska daawa tha ki provider poster bana deta
+> hai; Cloudinary ka bana hua URL 404 deta tha aur S3 banata hi nahi tha.
+> **Response ki keys nahi badli** — sirf value ab sach me kaam karti hai.
 
 **8. Counts pre-calculated hain** (`mediaCount`, `photoCount`, `videoCount`) — tabs/badges me directly use karein.
 
@@ -4569,8 +4764,7 @@ GET /showcase/68f1a2b3c4d5e6f7a8b9c3a1/video-clips?page=1&limit=10
           "altText": "video tour",
           "createdAt": "2026-06-01T10:05:00.000Z",
           "resolution": { "width": 1080, "height": 1920 },
-          "duration": 24,
-          "sortOrder": 2
+          "duration": 24
         }
       }
     ]
@@ -4578,13 +4772,15 @@ GET /showcase/68f1a2b3c4d5e6f7a8b9c3a1/video-clips?page=1&limit=10
 }
 ```
 
+> 🆕 **`video.sortOrder` ab nahi aata.** Wo ek **section ke andar ki position** thi, aur ye feed video ko uske section se bahar nikal leta hai — feed ka teesra clip apne album ka pehla ho sakta hai, to wo number us order se ulta padta jo user scroll kar raha hai. Feed ka apna order hi order hai. Agar aap us field par sort kar rahe the, **hata dein** — response ka order pehle se sahi hai.
+
 > Note: is endpoint ka pagination shape standard `pagination` util se **thoda different** hai — field order alag hai (`page`, `limit`, `total`, `totalPages`, `data`) par same fields hain.
 
 ### Errors
 | Status | Message | Kab |
 |---|---|---|
 | `404` | `Brand not found` | brandId exist nahi karta, ya brand deactivate/delete ho chuka hai |
-| `404` | `No video clips found for this brand` | Koi eligible video nahi — **empty-state dikhayein** |
+| ~~`404`~~ | ~~`No video clips found for this brand`~~ | 🆕 **Ab nahi aata** — neeche note 7 |
 | `422` | *(Joi message)* | `brandId` invalid, ya `limit > 50` |
 
 ### ⚠️ Notes
@@ -4595,17 +4791,38 @@ GET /showcase/68f1a2b3c4d5e6f7a8b9c3a1/video-clips?page=1&limit=10
 
 Iske upar section ka `isVisible: true` bhi chahiye — chhupaya hua section clips me bhi nahi aata.
 
+🆕 Aur section ke paas **kam se kam `minItemsPerSection` visible media** honi chahiye (default 3) — wahi shart jo #19 par lagti hai. Aisa na hota to jo section customer khol hi nahi sakta uske video feed me dikhte, aur tap karne par wo section milta hi nahi — "chhupa hua" ek screen par sach hota aur doosri par jhooth.
+
 Matlab showcase (#19) me video dikhe par clips feed me na aaye — ye normal hai, vendor ne opt-out kiya hoga.
 
 **2. Yahan sirf `type: "VIDEO"` aata hai, hamesha.** `isShowInVideoClips` **sirf video** ka switch hai — photo pe ye flag store hi nahi hota (`false` rehta hai), aur feed type pe bhi filter karta hai. Purane data me kisi photo pe `true` pada ho to bhi wo yahan kabhi nahi aayega.
 
 **3. `resolution` aur `duration` aate hain.** Player aspect ratio aur progress bar ke liye useful. `duration` seconds me, missing ho to `0`.
 
-**4. `thumbnail` ka fallback section ka `coverImage` hai** — video ka apna thumbnail na ho to section cover use hota hai. Isliye ye field practically kabhi `null` nahi hota.
+**4. 🔴 `thumbnail` ab video ka apna poster hai — section `coverImage` ka fallback hata diya gaya.**
 
-**5. Sorting:** section `sortOrder` → media `sortOrder` → `createdAt` descending.
+Pehle `$ifNull: ["$clips.thumbnail", "$coverImage"]` tha, is bharose par ki
+"Cloudinary har video ka poster bana deta hai". Banata nahi tha:
+`getOptimizedImageUrl(publicId)` `/image/upload/` ka path banata hai ek aise asset
+ke liye jo `/video/upload/` me rehta hai — wo URL **404** deta tha; S3 poster
+banata hi nahi tha. Fallback phir chup-chaap **kisi aur clip ki tasveer** is clip
+ke frame ki jagah dikha deta tha, aur kyunki section cover khud pehli media se
+banta hai, video-first section me wo `.mp4` link hota tha.
+
+Poster ab upload ke waqt **mandatory** hai, to fallback ki zarurat hi nahi bachi.
+Field phir bhi practically kabhi `null` nahi hoga — is baar sach me.
+
+**5. Sorting:** section `sortOrder` → media `sortOrder` → `createdAt` descending. Ye teeno server par lagte hain; response ka order hi final order hai (media wala `sortOrder` payload me nahi aata — upar dekhein).
 
 **6. `sectionTitle` context deta hai** — video kis section ka hai, UI pe caption me dikha sakte hain.
+
+**7. 🆕 Khaali feed ab `200` + `data: []` hai, `404` nahi.**
+
+Pehle "No video clips found for this brand" ke saath `404` aata tha, jise app ko catch karke empty state me badalna padta tha. `404` ka matlab hota hai **brand hi nahi mila** — aur wo sawal `assertPublicBrand` pehle hi jawab de deta hai, wo `404` waise hi aata rahega.
+
+Ab ye aur bhi zaroori hai: jis brand ke saare sections floor se neeche hain uska feed khaali hoga, aur wo koi error nahi — bas abhi dikhane ko kuch nahi hai. #19 shuru se aise hi jawab deta hai.
+
+> Agar app `404` par empty state dikhata hai, wo code **abhi bhi chalega** (brand-not-found par). Par khaali feed ka raasta ab `200` se aayega — `data.length === 0` par empty state dikhayein.
 
 ---
 

@@ -89,7 +89,12 @@ const seedVersion = (brandId, name) => {
     createdBy: oid(),
     categoryId: oid(),
     subCategoryId: oid(),
-    images: [{ url: "https://example.test/v.webp", sortOrder: 1 }],
+    // ⚠️ The file sits inside `media` since M-5 — the same `mediaSchema`
+    // every other surface uses. `kind` is derived at upload and required
+    // by the schema, so a fixture without it will not save.
+    images: [
+      { media: { url: "https://example.test/v.webp", kind: "IMAGE" }, sortOrder: 1 },
+    ],
     offers: [
       {
         title: "flat 10%",

@@ -242,6 +242,27 @@ exports.publishVoucher = async (actor, versionId) => {
       },
       {
         $set: {
+          /**
+           * 🔴 The master says `PUBLISHED` — it used to stay `APPROVED` for ever
+           * (V-5, P7).
+           *
+           * Publishing moved the version and left the master behind, so a
+           * voucher that had been live for months still read `APPROVED`. On
+           * stage that was every single one: 11 masters `APPROVED`, none
+           * `PUBLISHED`.
+           *
+           * It mattered in two places. `VOUCHER_SLOT_CONSUMING_STATUSES` lists
+           * `PUBLISHED` and `PAUSED`, and neither was reachable — the plan limit
+           * was being counted off a status that could not occur. And `PAUSED`
+           * has nothing to step down *from* unless the master first says it is
+           * live, which is why pause/resume could not be built on this.
+           *
+           * ⚠️ This is the master's own state, not a copy of the version's. The
+           * version answers "which bytes are in front of customers"; the master
+           * answers "is this voucher in play", which is what the slot count and
+           * the expiry sweep ask.
+           */
+          status: VOUCHER_STATUSES.PUBLISHED,
           publishedVersion: version.versionNumber,
           publishedVersionId: version._id,
           isActive: true,
@@ -273,7 +294,7 @@ exports.publishVoucher = async (actor, versionId) => {
           metadata: {
             previousVoucherStatus: VOUCHER_STATUSES.APPROVED,
             previousVersionStatus: VOUCHER_STATUSES.APPROVED,
-            newVoucherStatus: VOUCHER_STATUSES.APPROVED,
+            newVoucherStatus: VOUCHER_STATUSES.PUBLISHED,
             newVersionStatus: VOUCHER_STATUSES.PUBLISHED,
             publishedVersionId: version._id,
             publishedAt,
@@ -328,7 +349,7 @@ exports.publishVoucher = async (actor, versionId) => {
       versionCode: version.versionCode,
       versionNo: version.versionNumber,
       action: VOUCHER_APPROVAL_ACTION.PUBLISHED,
-      voucherStatus: VOUCHER_STATUSES.APPROVED,
+      voucherStatus: VOUCHER_STATUSES.PUBLISHED,
       versionStatus: VOUCHER_STATUSES.PUBLISHED,
       publishedVersionId: version._id,
       publishedAt,

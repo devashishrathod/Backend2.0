@@ -16,7 +16,6 @@ exports.updatePrivacyAndPolicy = async (id, payload) => {
   if (typeof isActive !== "undefined") result.isActive = isActive;
 
   if (title) {
-    title = title.toLowerCase();
     // Was `result.findOne(...)` — called on a document rather than the model,
     // so any title change threw "result.findOne is not a function".
     const existing = await PrivacyAndPolicy.findOne({

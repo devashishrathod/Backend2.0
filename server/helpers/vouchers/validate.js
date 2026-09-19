@@ -1,4 +1,8 @@
 const { throwError } = require("../../utils");
+const { normalizedNameKey } = require("../common");
+// ⚠️ Straight from the module, not through `./index` — the barrel requires this
+// file, so going back through it would be a cycle.
+const { assertVoucherImageFloor } = require("./assertImageFloor");
 const Brand = require("../../models/Brand");
 const SubBrand = require("../../models/SubBrand");
 const Category = require("../../models/Category");
@@ -16,12 +20,16 @@ exports.removeDuplicateObjectIds = (ids = []) => {
   return [...new Set(ids.map((id) => String(id)))];
 };
 
-exports.normalizeVoucherName = (name) => {
-  return String(name || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .toLowerCase();
-};
+/**
+ * The comparison key behind `{ brandId, normalizedName }`, which is a **unique
+ * index** — so it has to be lowercase.
+ *
+ * 🔴 The voucher's own `name` is stored exactly as the vendor typed it, and
+ * that is what the customer app renders. This is the other half: a key nobody
+ * sees, whose only job is to make "Pizza" and "pizza" the same voucher. Without
+ * the lowercase the index compares bytes, and both get created.
+ */
+exports.normalizeVoucherName = (name) => normalizedNameKey(name);
 
 exports.getUniqueTags = (tags = []) => {
   if (!Array.isArray(tags)) return [];
@@ -30,7 +38,7 @@ exports.getUniqueTags = (tags = []) => {
     if (typeof tag !== "string") return;
     const trimmedTag = tag.trim();
     if (!trimmedTag) return;
-    const key = trimmedTag.toLowerCase();
+    const key = trimmedTag;
     if (!uniqueTags.has(key)) {
       uniqueTags.set(key, trimmedTag);
     }
@@ -165,7 +173,7 @@ exports.validateVoucherDates = (startAt, endAt, options = {}) => {
 exports.validateVoucherBeforeSubmit = async (
   voucher,
   version,
-  { maxOffers, maxImages },
+  { maxOffers, maxImages, minImages },
   session,
 ) => {
   if (
@@ -209,7 +217,40 @@ exports.validateVoucherBeforeSubmit = async (
   if (imageCount > maxImages) {
     throwError(400, `Maximum ${maxImages} voucher images are allowed.`);
   }
-  if (imageCount === 0) throwError(400, "At least one image is required");
+  /**
+   * The last gate before a voucher goes to an admin, and the one that matters
+   * most: create and the image edit each see one request, but a voucher can
+   * reach here having been built across several.
+   *
+   * ⚠️ This line used to read `if (imageCount === 0) throwError(400, "At least
+   * one image is required")` — a third wording, a second status code, and
+   * blind to `minImages` entirely, so a platform configured for three would
+   * happily send a one-image voucher to review.
+   */
+  await assertVoucherImageFloor(imageCount, { minImages });
+
+  /**
+   * 🔴 V-2 — a banner is required to submit, and **not** to publish.
+   *
+   * This is the one moment a vendor is deliberately handing their voucher over,
+   * so it is where "you have not given us a banner" is useful rather than
+   * obstructive. `current` counts as much as `pending`: a voucher whose banner
+   * is already approved does not have to send it again.
+   *
+   * ⚠️ Publishing is deliberately **not** gated on this. A banner can be
+   * rejected after submission, and blocking publish on that would take a
+   * finished, approved voucher hostage to a decision about its artwork — the
+   * `images[0]` fallback exists precisely so it does not have to.
+   */
+  const hasBanner = Boolean(
+    voucher.banner?.current?.url || voucher.banner?.pending?.url,
+  );
+  if (!hasBanner) {
+    throwError(
+      422,
+      'A voucher needs a banner before it can be submitted. Upload one as "media" on the banner endpoint.',
+    );
+  }
 
   const subBrandCount = await VoucherSubBrand.countDocuments({
     voucherVersionId: version._id,
@@ -274,6 +315,22 @@ exports.validateVoucherForApproval = async (
   const sortedOffers = normalizeVoucherOffers(offers);
 
   const imageCount = Array.isArray(version.images) ? version.images.length : 0;
+  /**
+   * ⚠️ The **structural** floor, not the configurable one — and that is the
+   * whole point.
+   *
+   * This runs when an admin approves a voucher the vendor already submitted. If
+   * it read `minImages`, an admin raising the floor between submit and approval
+   * would find their queue full of vouchers they cannot approve and the vendor
+   * cannot fix — a voucher retired from behind, which is exactly what
+   * `minImages` is shaped to avoid (see the note on the schema field).
+   *
+   * The floor belongs on the way in: create, image edit, submit. By the time a
+   * voucher is here it has already cleared whichever floor was live when the
+   * vendor sent it, and moving that line under them afterwards is not a rule,
+   * it is a trap. Zero images is different — that is corruption, not a policy
+   * change.
+   */
   if (imageCount === 0) {
     throwError(400, "At least one voucher image is required.");
   }

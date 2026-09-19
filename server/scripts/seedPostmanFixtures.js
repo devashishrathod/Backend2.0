@@ -40,7 +40,8 @@ const {
 } = require("../constants");
 const { VOUCHER_STATUSES, VOUCHER_DISCOUNT_TYPES } = require("../constants/voucher");
 const { VOUCHER_BANNER_TYPE } = require("../constants/voucherBanner");
-const { BANNER_TYPE, BANNER_REDIRECT_TYPE } = require("../constants/banner");
+const { BANNER_REDIRECT_TYPE } = require("../constants/banner");
+const { MEDIA_KIND } = require("../constants/storage");
 const {
   PROMO_AUDIENCE,
   PROMO_DISCOUNT_TYPES,
@@ -786,21 +787,36 @@ const run = async () => {
   });
 
   step("showcase section with a clips-eligible video", async () => {
-    const media = (i, type) => ({
-      type,
-      url:
-        type === "VIDEO"
-          ? "https://res.cloudinary.com/demo/video/upload/dog.mp4"
-          : `https://res.cloudinary.com/demo/image/upload/sample.jpg#${i}`,
-      thumbnail: "https://res.cloudinary.com/demo/image/upload/sample.jpg",
-      title: `${type.toLowerCase()} ${i}`,
-      altText: `seeded ${type.toLowerCase()} ${i}`,
-      sortOrder: i,
-      isShowInVideoClips: type === "VIDEO",
-      metadata: { width: 1080, height: 1920, duration: type === "VIDEO" ? 24 : 0 },
-      isActive: true,
-      isDeleted: false,
-    });
+    // ⚠️ The file lives inside `media` now, and a VIDEO carries its poster
+    // there — `mediaSchema` makes it mandatory, so a fixture without one would
+    // simply fail to save.
+    const media = (i, type) => {
+      const isVideo = type === "VIDEO";
+      return {
+        media: {
+          url: isVideo
+            ? "https://res.cloudinary.com/demo/video/upload/dog.mp4"
+            : `https://res.cloudinary.com/demo/image/upload/sample.jpg#${i}`,
+          kind: isVideo ? MEDIA_KIND.VIDEO : MEDIA_KIND.IMAGE,
+          width: 1080,
+          height: 1920,
+          duration: isVideo ? 24 : 0,
+          ...(isVideo
+            ? {
+                poster: {
+                  url: "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+                },
+              }
+            : {}),
+        },
+        title: `${type.toLowerCase()} ${i}`,
+        altText: `seeded ${type.toLowerCase()} ${i}`,
+        sortOrder: i,
+        isShowInVideoClips: isVideo,
+        isActive: true,
+        isDeleted: false,
+      };
+    };
 
     // Eight media so the brand-profile preview cap (6) is actually exceeded and
     // `hasMoreMedia` comes back true.
@@ -951,8 +967,10 @@ const run = async () => {
     await Banner.create({
       title: "postman seed banner",
       description: "seeded for the postman collections",
-      type: BANNER_TYPE.IMAGE,
-      image: { url: "https://res.cloudinary.com/demo/image/upload/sample.jpg" },
+      media: {
+        url: "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+        kind: MEDIA_KIND.IMAGE,
+      },
       redirect: { type: BANNER_REDIRECT_TYPE.NONE },
       startDate: null,
       endDate: null,
@@ -976,8 +994,10 @@ const run = async () => {
     await Banner.create({
       title: "postman seed scheduled banner",
       description: "Date window abhi chal rahi hai — customer list me pehle aata hai.",
-      type: BANNER_TYPE.IMAGE,
-      image: { url: "https://res.cloudinary.com/demo/image/upload/sale.jpg" },
+      media: {
+        url: "https://res.cloudinary.com/demo/image/upload/sale.jpg",
+        kind: MEDIA_KIND.IMAGE,
+      },
       redirect: { type: BANNER_REDIRECT_TYPE.CATEGORY, targetId: category._id },
       startDate: new Date(Date.now() - DAY_MS),
       endDate: new Date(Date.now() + 90 * DAY_MS),
@@ -988,14 +1008,20 @@ const run = async () => {
     await PromotionalTicker.insertMany([
       {
         title: "postman seed ticker one",
-        icon: { url: "https://res.cloudinary.com/demo/image/upload/sample.jpg" },
+        icon: {
+          url: "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+          kind: MEDIA_KIND.IMAGE,
+        },
         displayOrder: 1,
         createdBy: admin._id,
         isActive: true,
       },
       {
         title: "postman seed ticker two",
-        icon: { url: "https://res.cloudinary.com/demo/image/upload/sample.jpg" },
+        icon: {
+          url: "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+          kind: MEDIA_KIND.IMAGE,
+        },
         displayOrder: 2,
         createdBy: admin._id,
         isActive: true,
@@ -1008,7 +1034,7 @@ const run = async () => {
      *
      * ⚠️ The collection cannot create these itself. `POST /banners/create` and
      * `POST /promotionalTickers/create` take a **file upload**, not a URL —
-     * `"Please upload a image file for this banner type"` — and there is no
+     * `'Please attach the banner file as "media".'` — and there is no
      * binary fixture in the repo for newman to attach. So create stays
      * uncovered and is named as such in the folder, rather than shipping a
      * request that cannot pass.
@@ -1021,8 +1047,10 @@ const run = async () => {
       banner: await Banner.create({
         title: "postman seed throwaway banner",
         description: "Admin collection isko update aur delete karti hai.",
-        type: BANNER_TYPE.IMAGE,
-        image: { url: "https://res.cloudinary.com/demo/image/upload/sample.jpg" },
+        media: {
+          url: "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+          kind: MEDIA_KIND.IMAGE,
+        },
         redirect: { type: "NONE" },
         startDate: null,
         endDate: null,
@@ -1031,7 +1059,10 @@ const run = async () => {
       }),
       ticker: await PromotionalTicker.create({
         title: "postman seed throwaway ticker",
-        icon: { url: "https://res.cloudinary.com/demo/image/upload/sample.jpg" },
+        icon: {
+          url: "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+          kind: MEDIA_KIND.IMAGE,
+        },
         displayOrder: 99,
         createdBy: admin._id,
         isActive: false,

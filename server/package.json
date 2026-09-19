@@ -7,7 +7,9 @@
     "dev": "nodemon index",
     "start": "node index",
     "test": "jest --runInBand",
-    "test:unit": "jest --config jest.unit.config.js"
+    "test:unit": "jest --config jest.unit.config.js",
+    "verify": "node scripts/verifyImports.js && node scripts/verifyNoUndef.js && node scripts/verifyEnvCoverage.js",
+    "verify:undef": "node scripts/verifyNoUndef.js"
   },
   "keywords": [
     "voucher",
@@ -22,6 +24,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",
+    "@aws-sdk/s3-presigned-post": "^3.1131.0",
     "@aws-sdk/s3-request-presigner": "^3.1131.0",
     "2factor": "^1.0.6",
     "axios": "^1.18.0",

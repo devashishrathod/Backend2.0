@@ -108,6 +108,7 @@ exports.getAllVoucherVersions = async (actor, query) => {
     status,
     isImmutable,
     isActive,
+    includeDeleted,
     fromDate,
     toDate,
     sortBy,
@@ -121,7 +122,34 @@ exports.getAllVoucherVersions = async (actor, query) => {
   page = page ? Number(page) : 1;
   limit = limit ? Number(limit) : 10;
 
-  const match = { isDeleted: false };
+  /**
+   * 🔴 `isDeleted: false` was hardcoded here — **for admins too** (V-6b).
+   *
+   * That was fine while nothing could be deleted. Now that V-6 exists, a
+   * deleted voucher vanishes from the one listing that is supposed to be able
+   * to answer "what happened to it": an admin handling a support ticket about a
+   * voucher a vendor removed had no way to see it, its reason, or who removed
+   * it. The rows carry `deletedAt`, `deletedBy` and `deleteReason` precisely so
+   * somebody can read them.
+   *
+   * ⚠️ ADMIN only, and it stays **off by default**. Deleted rows in an ordinary
+   * listing would quietly change what every existing caller sees — an admin's
+   * approval queue is not the place to discover retired vouchers mixed in.
+   *
+   * ⚠️ A non-admin asking for it is refused rather than ignored. Silently
+   * dropping the flag would answer "there are no deleted ones" to somebody who
+   * asked a question we did not let them ask, which is the worse of the two
+   * wrong answers.
+   */
+  const wantsDeleted = includeDeleted === "true" || includeDeleted === true;
+  if (wantsDeleted && actor?.role !== ROLES.ADMIN) {
+    throwError(
+      403,
+      "Only an admin can list deleted vouchers.",
+    );
+  }
+
+  const match = wantsDeleted ? {} : { isDeleted: false };
 
   if (voucherId) {
     validateObjectId(voucherId, "Voucher Id");

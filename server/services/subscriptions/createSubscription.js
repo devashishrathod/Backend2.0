@@ -1,4 +1,5 @@
 const Subscription = require("../../models/Subscription");
+const { toDisplayName } = require("../../helpers/common");
 const { DURATION_MAP } = require("../../constants");
 const { throwError } = require("../../utils");
 
@@ -13,7 +14,7 @@ exports.createSubscription = async (payload) => {
   if (!payload.type) throwError(400, "Subscription type is required");
   payload.durationInDays = computeDuration(payload?.type);
   const existing = await Subscription.findOne({
-    name: payload?.name,
+    name: toDisplayName(payload?.name),
     type: payload?.type,
     isDeleted: false,
   });

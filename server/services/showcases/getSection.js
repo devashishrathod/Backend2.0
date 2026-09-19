@@ -1,7 +1,12 @@
-const { SHOWCASE_MEDIA_TYPE } = require("../../constants/showcase");
+const {
+  SHOWCASE_MEDIA_TYPE,
+  showcaseTypeOf,
+} = require("../../constants/showcase");
 const {
   resolveSectionForActor,
   formatManagedMedia,
+  countVisibleMedia,
+  attachCustomerVisibility,
 } = require("../../helpers/showcases");
 
 /** Case-insensitive substring test that tolerates a missing field. */
@@ -44,13 +49,14 @@ exports.getSection = async (actor, query) => {
     .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
   const keyword = search?.trim().toLowerCase();
-  const filtered = managed.filter((media) => {
-    if (type && media.type !== type) return false;
-    if (isActive !== undefined && media.isActive !== isActive) return false;
+  const filtered = managed.filter((item) => {
+    // Derived from the file's own kind — there is no stored `type` to read.
+    if (type && showcaseTypeOf(item.media?.kind) !== type) return false;
+    if (isActive !== undefined && item.isActive !== isActive) return false;
     if (
       keyword &&
-      !matchesKeyword(media.title, keyword) &&
-      !matchesKeyword(media.altText, keyword)
+      !matchesKeyword(item.title, keyword) &&
+      !matchesKeyword(item.altText, keyword)
     ) {
       return false;
     }
@@ -58,6 +64,23 @@ exports.getSection = async (actor, query) => {
   });
 
   const data = filtered.slice(skip, skip + limit).map(formatManagedMedia);
+
+  /**
+   * S-5 — whether a customer can see this section, and if not, why.
+   *
+   * ⚠️ Computed from `managed`, which is every non-deleted media — not from
+   * `filtered`, which the caller's `type` / `search` / `isActive` query has
+   * already narrowed. Visibility is a property of the section, not of the page
+   * the vendor happens to be looking at; deriving it from the filtered list
+   * would report a section as invisible because somebody searched for "patio".
+   */
+  const [{ customerVisibility }] = await attachCustomerVisibility([
+    {
+      isActive: section.isActive,
+      isVisible: section.isVisible,
+      visibleMediaCount: countVisibleMedia(managed),
+    },
+  ]);
 
   return {
     _id: section._id,
@@ -72,15 +95,19 @@ exports.getSection = async (actor, query) => {
     isActive: section.isActive,
     isVisible: section.isVisible,
     isShowVideosInClips: section.isShowVideosInClips,
+    // Derived on every read, never stored — see `customerVisibility.js`.
+    customerVisibility,
     createdAt: section.createdAt,
     updatedAt: section.updatedAt,
     // Whole-album counts, as the vendor docs describe — unaffected by the
     // `type` / `search` / `isActive` filters, which only narrow the page below.
     mediaCount: managed.length,
-    photoCount: managed.filter((m) => m.type === SHOWCASE_MEDIA_TYPE.PHOTO)
-      .length,
-    videoCount: managed.filter((m) => m.type === SHOWCASE_MEDIA_TYPE.VIDEO)
-      .length,
+    photoCount: managed.filter(
+      (m) => showcaseTypeOf(m.media?.kind) === SHOWCASE_MEDIA_TYPE.PHOTO,
+    ).length,
+    videoCount: managed.filter(
+      (m) => showcaseTypeOf(m.media?.kind) === SHOWCASE_MEDIA_TYPE.VIDEO,
+    ).length,
     inactiveMediaCount: managed.filter((m) => !m.isActive).length,
     media: {
       page,

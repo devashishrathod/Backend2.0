@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { storageSchema } = require("./storageSchema");
+const { mediaSchema } = require("./mediaSchema");
 const {
   brandField,
   transactionField,
@@ -259,7 +259,7 @@ const settlementSchema = new mongoose.Schema(
      * ⚠️ The `*Url` field above is kept and still read. Rows written before
      * this existed have only that, and they must keep working.
      */
-    documentStorage: { type: storageSchema, default: undefined },
+    documentMedia: { type: mediaSchema, default: undefined },
     /** Everything the statement prints, frozen when the payout was confirmed. */
     documentSnapshot: { type: documentSnapshotSchema },
     /** Unguessable handle for the public document link. One name across all four

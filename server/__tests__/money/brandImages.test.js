@@ -19,17 +19,69 @@
  * outlet counters are exactly the parts that a mock would hide.
  */
 
+/**
+ * ⚠️ `metadata` is part of the contract, not decoration.
+ *
+ * 🔴 This mock used to return `{ url, storage }` only, and it went stale the day
+ * `toMediaDocument` landed (M-1): that helper derives `kind` from
+ * `metadata.mimeType` and **throws** rather than guessing, so every service that
+ * stores a media sibling failed here with "Cannot store media: no kind". The
+ * real facade always fills `metadata` — both providers build it from
+ * `originalFile` — so this was a mock that had stopped describing the thing it
+ * stands in for, and nothing noticed because the money suite is not run per
+ * phase.
+ *
+ * Deriving rather than defaulting is deliberate: a wrong `kind` decides the
+ * object's prefix (`images/` vs `gifs/` vs `videos/`), which decides whether the
+ * resize step flattens an animation, and nothing downstream would question it.
+ */
 jest.mock("../../services/storage", () => {
   let n = 0;
   return {
-    uploadFromPath: jest.fn(async () => {
+    uploadFromPath: jest.fn(async ({ originalFile } = {}) => {
       n += 1;
       return {
         url: `https://cdn.test/uploaded-${n}.webp`,
-        storage: { provider: "S3", bucket: "b", key: `k-${n}` },
+        storage: { provider: "AWS_S3", bucket: "b", key: `k-${n}` },
+        metadata: {
+          originalName: originalFile?.name ?? null,
+          mimeType: originalFile?.mimetype ?? "image/webp",
+          size: 1024,
+          width: null,
+          height: null,
+          duration: 0,
+        },
       };
     }),
     deleteAsset: jest.fn(async () => true),
+    deleteAssets: jest.fn(async () => ({ deleted: 0, failed: 0 })),
+    /**
+     * ⚠️ The **real** facade (U-2), not a stub. Category now asks it for the
+     * file instead of calling `uploadFromPath` itself, and a stub here would
+     * quietly replace the one piece that decides which road a request took.
+     * Its multipart road lands on the mock above, so nothing reaches S3.
+     */
+    ...jest.requireActual("../../services/storage/accept"),
+    /**
+     * ⚠️ The two halves the **presigned** road needs (U-5). The facade is real
+     * here, so without these an `uploadId` would reach an undefined
+     * `confirmUpload` — and the road this file now tests would be untestable in
+     * it.
+     */
+    confirmUpload: jest.fn(async (actor, uploadId) => {
+      n += 1;
+      return {
+        storage: { provider: "AWS_S3", bucket: "b", key: `confirmed-${n}` },
+        metadata: {
+          contentType: "image/png",
+          kind: "IMAGE",
+          sizeBytes: 1024,
+          width: null,
+          height: null,
+        },
+      };
+    }),
+    publicUrl: jest.fn(({ storage } = {}) => `https://cdn.test/${storage?.key}`),
   };
 });
 
@@ -45,11 +97,9 @@ const SubBrand = require("../../models/SubBrand");
 const User = require("../../models/User");
 const ShowcaseSection = require("../../models/ShowcaseSection");
 const Category = require("../../models/Category");
-const { ROLES } = require("../../constants");
-const {
-  SHOWCASE_COVER_IMAGE_MODE,
-  SHOWCASE_MEDIA_TYPE,
-} = require("../../constants/showcase");
+const { ROLES, DEFAULT_IMAGES } = require("../../constants");
+const { SHOWCASE_COVER_IMAGE_MODE } = require("../../constants/showcase");
+const { MEDIA_KIND, UPLOAD_PURPOSE } = require("../../constants/storage");
 const {
   generateBrandMerchantId,
 } = require("../../helpers/brands/generateBrandMerchantId");
@@ -60,19 +110,40 @@ const { updateBrand } = require("../../services/brands");
 const { updateSubBrand } = require("../../services/subBrands");
 const { updateSection } = require("../../services/showcases");
 const {
+  createCategory,
   updateCategoryById,
   deleteCategoryById,
 } = require("../../services/categories");
-const { uploadFromPath, deleteAsset } = require("../../services/storage");
+const {
+  uploadFromPath,
+  confirmUpload,
+  deleteAsset,
+} = require("../../services/storage");
+const SubCategory = require("../../models/SubCategory");
+const Upload = require("../../models/Upload");
+const {
+  updateSubCategoryById,
+} = require("../../services/subCategories/updateSubCategoryById");
+const { localFile, cleanup: cleanupFixtures } = require("../support/localFile");
+
+afterAll(cleanupFixtures);
 
 const { AUTO, MANUAL } = SHOWCASE_COVER_IMAGE_MODE;
 const oid = () => new mongoose.Types.ObjectId();
 
-const image = (name = "pic.png") => ({
-  name,
-  tempFilePath: `/does/not/matter/${name}`,
-  mimetype: "image/png",
-});
+/**
+ * Categories are an admin surface, and the facade loads an upload intent by
+ * id **and** owner — so it needs to know who is asking even on the multipart
+ * road, where the answer happens not to be used.
+ */
+const admin = () => ({ userId: OWNER._id, role: ROLES.ADMIN });
+
+/**
+ * ⚠️ **Real** files now (G2). Both roads read the first kilobyte, so a fixture
+ * has to be what it says it is — a made-up `tempFilePath` used to work only
+ * because nothing on this road ever opened the file, which was the bug.
+ */
+const image = (name = "pic.png") => localFile("png", { name });
 
 let OWNER;
 let BRAND;
@@ -113,7 +184,15 @@ beforeAll(connectTestDb);
 afterAll(disconnectTestDb);
 
 beforeEach(async () => {
-  await clearCollections(Brand, SubBrand, User, ShowcaseSection, Category);
+  await clearCollections(
+    Brand,
+    SubBrand,
+    User,
+    ShowcaseSection,
+    Category,
+    SubCategory,
+    Upload,
+  );
   jest.clearAllMocks();
   OWNER = (await seedOwner())._id;
   BRAND = await seedBrand(OWNER);
@@ -245,9 +324,9 @@ describe("the storage sibling", () => {
     );
 
     const saved = await Brand.findById(BRAND._id);
-    expect(saved.logoStorage.provider).toBe("S3");
-    expect(saved.logoStorage.key).toBeTruthy();
-    expect(saved.coverImageStorage.key).not.toBe(saved.logoStorage.key);
+    expect(saved.logoMedia.storage.provider).toBe("AWS_S3");
+    expect(saved.logoMedia.storage.key).toBeTruthy();
+    expect(saved.coverImageMedia.storage.key).not.toBe(saved.logoMedia.storage.key);
   });
 
   test("🔴 a replace deletes by the OLD storage, not the new one", async () => {
@@ -262,7 +341,7 @@ describe("the storage sibling", () => {
     expect(deleteAsset).toHaveBeenCalledTimes(1);
     const [asset] = deleteAsset.mock.calls[0];
     expect(asset.url).toBe(first.logo);
-    expect(asset.storage.key).toBe(first.logoStorage.key);
+    expect(asset.storage.key).toBe(first.logoMedia.storage.key);
   });
 
   test("⚠️ absent, not `{}`, on a row that never had a picture", async () => {
@@ -271,8 +350,8 @@ describe("the storage sibling", () => {
     // facade refuses with "Unknown storage provider". Absent means "written
     // before this existed, fall back to the URL".
     const saved = await Brand.findById(BRAND._id);
-    expect(saved.logoStorage).toBeUndefined();
-    expect(saved.coverImageStorage).toBeUndefined();
+    expect(saved.logoMedia).toBeUndefined();
+    expect(saved.coverImageMedia).toBeUndefined();
   });
 
   test("a legacy row with a URL and no storage still deletes", async () => {
@@ -322,9 +401,9 @@ describe("outlet logo and cover", () => {
     expect(purposes).toEqual(["SUB_BRAND_LOGO", "SUB_BRAND_COVER"]);
 
     // Each picture's provider and key land beside it, on their own field.
-    expect(saved.logoStorage.key).toBeTruthy();
-    expect(saved.coverImageStorage.key).toBeTruthy();
-    expect(saved.coverImageStorage.key).not.toBe(saved.logoStorage.key);
+    expect(saved.logoMedia.storage.key).toBeTruthy();
+    expect(saved.coverImageMedia.storage.key).toBeTruthy();
+    expect(saved.coverImageMedia.storage.key).not.toBe(saved.logoMedia.storage.key);
   });
 
   test("replacing one deletes what it replaced", async () => {
@@ -345,7 +424,7 @@ describe("outlet logo and cover", () => {
 
     const [asset] = deleteAsset.mock.calls[0];
     expect(asset.url).toBe(first.logo);
-    expect(asset.storage.key).toBe(first.logoStorage.key);
+    expect(asset.storage.key).toBe(first.logoMedia.storage.key);
   });
 
   test("🔴 a vendor cannot put a picture on another brand's outlet", async () => {
@@ -403,39 +482,90 @@ describe("category image", () => {
   const seedCategory = (overrides = {}) =>
     Category.create({ name: `cat-${Date.now()}-${Math.random()}`, ...overrides });
 
+  /**
+   * ⚠️ The multipart road on **create**, which had no test at all before U-2
+   * moved this surface behind `acceptUpload`. Update's road is covered below;
+   * create mints its own `_id` first so the key can carry it, and that is the
+   * part a signature change is most likely to drop.
+   */
+  test("create still takes a multipart file", async () => {
+    const category = await createCategory(
+      admin(),
+      { name: `cat-${Date.now()}-${Math.random()}` },
+      image(),
+    );
+
+    expect(uploadFromPath).toHaveBeenCalledTimes(1);
+    const [{ entityId, purpose }] = uploadFromPath.mock.calls[0];
+    expect(String(entityId)).toBe(String(category._id));
+    expect(purpose).toBe(UPLOAD_PURPOSE.CATEGORY_IMAGE);
+
+    const saved = await Category.findById(category._id);
+    expect(saved.imageMedia.storage.key).toBeTruthy();
+  });
+
+  /**
+   * ⚠️ `assertImageFile` runs **before** the id is spent, on create as well as
+   * on update. It is an exact mime allow-list, which the purpose's `kinds`
+   * deliberately is not — `kindFromMime("image/svg+xml")` answers IMAGE, and an
+   * SVG served from our own CDN is stored XSS.
+   */
+  test("create refuses a file that is not an image", async () => {
+    await expect(
+      createCategory(
+        admin(),
+        { name: `cat-${Date.now()}-${Math.random()}` },
+        localFile("pdf", { name: "b.pdf" }),
+      ),
+    ).rejects.toMatchObject({ statusCode: 422 });
+
+    expect(uploadFromPath).not.toHaveBeenCalled();
+    expect(await Category.countDocuments({ name: /^cat-/ })).toBe(0);
+  });
+
+  test("create without a picture never asks the provider", async () => {
+    const category = await createCategory(admin(), {
+      name: `cat-${Date.now()}-${Math.random()}`,
+    });
+
+    expect(uploadFromPath).not.toHaveBeenCalled();
+    const saved = await Category.findById(category._id);
+    expect(saved.image).toBe(DEFAULT_IMAGES.CATEGORY);
+  });
+
   test("an upload writes the url and its storage", async () => {
     const category = await seedCategory();
 
-    await updateCategoryById(category._id, null, image());
+    await updateCategoryById(admin(), category._id, null, image());
 
     const saved = await Category.findById(category._id);
     expect(typeof saved.image).toBe("string");
-    expect(saved.imageStorage.key).toBeTruthy();
+    expect(saved.imageMedia.storage.key).toBeTruthy();
   });
 
   test("🔴 replacing deletes by the stored sibling, not the URL alone", async () => {
     const category = await seedCategory();
-    await updateCategoryById(category._id, null, image());
+    await updateCategoryById(admin(), category._id, null, image());
     const first = await Category.findById(category._id);
 
     jest.clearAllMocks();
-    await updateCategoryById(category._id, null, image());
+    await updateCategoryById(admin(), category._id, null, image());
 
     const [asset] = deleteAsset.mock.calls[0];
     expect(asset.url).toBe(first.image);
-    expect(asset.storage.key).toBe(first.imageStorage.key);
+    expect(asset.storage.key).toBe(first.imageMedia.storage.key);
   });
 
   test("🔴 deleting a category passes the sibling too", async () => {
     const category = await seedCategory();
-    await updateCategoryById(category._id, null, image());
+    await updateCategoryById(admin(), category._id, null, image());
     const saved = await Category.findById(category._id);
 
     jest.clearAllMocks();
     await deleteCategoryById(category._id);
 
     const [asset] = deleteAsset.mock.calls[0];
-    expect(asset.storage.key).toBe(saved.imageStorage.key);
+    expect(asset.storage.key).toBe(saved.imageMedia.storage.key);
   });
 
   test("⚠️ a category that never had a picture carries the shared default and no storage", async () => {
@@ -445,7 +575,7 @@ describe("category image", () => {
     // The URL is real — it is the placeholder every such category shares — but
     // there is no storage, because we did not put it there.
     expect(saved.image).toBeTruthy();
-    expect(saved.imageStorage).toBeUndefined();
+    expect(saved.imageMedia).toBeUndefined();
   });
 });
 
@@ -458,10 +588,14 @@ describe("pinning a section cover", () => {
       medias,
     });
 
+  /**
+   * ⚠️ The file sits inside `media` now (M-4), and there is no `type` beside it
+   * — `PHOTO` / `VIDEO` is derived from `media.kind` on the way out. A photo is
+   * its own cover, so no poster is needed here; a video would need one, because
+   * `mediaSchema` makes it mandatory.
+   */
   const photo = (sortOrder, url) => ({
-    type: SHOWCASE_MEDIA_TYPE.PHOTO,
-    url,
-    thumbnail: url,
+    media: { url, kind: MEDIA_KIND.IMAGE },
     sortOrder,
   });
 
@@ -555,5 +689,150 @@ describe("pinning a section cover", () => {
         coverMediaId: section.medias[0]._id.toString(),
       }),
     ).rejects.toMatchObject({ statusCode: 403 });
+  });
+});
+
+/**
+ * U-5 — the presigned road, and the three things that only fail here.
+ *
+ * ⚠️ `describeIncoming` is the **real** one (the mock at the top of this file
+ * re-exports `services/storage/accept`), so it reads the intent rows below from
+ * the real collection. Only the upload itself is stubbed.
+ */
+describe("🔴 U-5 — brand slots on the presigned road", () => {
+  const intent = async (userId, purpose) =>
+    String(
+      (
+        await Upload.create({
+          userId,
+          purpose,
+          stagingKey: `staging/${oid()}.png`,
+          declaredContentType: "image/png",
+          declaredSizeBytes: 1024,
+          declaredFileName: "logo.png",
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        })
+      )._id,
+    );
+
+  /**
+   * ⚠️ Each slot carries its **own** `uploadIdField`. Reading the wrong one — or
+   * none — makes the presigned road silently do nothing: the request succeeds,
+   * the brand keeps its old logo, and nobody is told.
+   */
+  test("a named logo reaches the facade as an id", async () => {
+    const uploadId = await intent(OWNER, UPLOAD_PURPOSE.BRAND_LOGO);
+
+    await updateBrand(BRAND._id, { logoUploadId: uploadId }, null, vendorActor(OWNER));
+
+    // ⚠️ `confirmUpload` is the presigned road's own step — reaching it at all
+    // proves the id was read, and its actor proves who it was read for.
+    expect(confirmUpload).toHaveBeenCalledTimes(1);
+    const [actor, calledId] = confirmUpload.mock.calls[0];
+    expect(String(actor.userId)).toBe(String(OWNER));
+    expect(String(calledId)).toBe(uploadId);
+
+    const saved = await Brand.findById(BRAND._id);
+    // ⚠️ `confirmed-` and not `k-`: the multipart stub uses `k-N`, so the prefix
+    // is what says which road actually ran. The number is a shared counter.
+    expect(saved.logoMedia.storage.key).toMatch(/^confirmed-/);
+  });
+
+  /**
+   * 🔴 The brand is checked **before** the upload (E5).
+   *
+   * That check used to come free from the transaction's own read. With the
+   * uploads moved ahead of the session, a bad id would otherwise 404 *after* the
+   * vendor had paid for two uploads — the exact cost the "refuse before paying"
+   * rule exists to avoid.
+   */
+  test("a brand that does not exist costs nothing", async () => {
+    const uploadId = await intent(OWNER, UPLOAD_PURPOSE.BRAND_LOGO);
+
+    await expect(
+      updateBrand(oid(), { logoUploadId: uploadId }, null, vendorActor(OWNER)),
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    expect(confirmUpload).not.toHaveBeenCalled();
+  });
+
+  /**
+   * 🔴 A transaction that fails **before** the assignment loop.
+   *
+   * ⚠️ This is the case the rollback source has to get right. The uploads now
+   * happen before the session, so `replaced` — which is filled inside the loop —
+   * is still empty here, while the object is already in the bucket. Rolling back
+   * from `replaced` would leave it there, paid for and referenced by nothing.
+   *
+   * Deleting the owner is how the transaction is made to fail at that point:
+   * `updateBrand` loads the brand's owner and refuses without one.
+   */
+  test("an upload is cleaned up when the transaction fails before it is used", async () => {
+    const uploadId = await intent(OWNER, UPLOAD_PURPOSE.BRAND_LOGO);
+    await User.deleteOne({ _id: OWNER });
+
+    await expect(
+      updateBrand(BRAND._id, { logoUploadId: uploadId }, null, vendorActor(OWNER)),
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    // The object went up, and then it went again.
+    expect(confirmUpload).toHaveBeenCalledTimes(1);
+    expect(deleteAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storage: expect.objectContaining({
+          key: expect.stringMatching(/^confirmed-/),
+        }),
+      }),
+    );
+  });
+});
+
+/**
+ * 🔴 The third of the three surfaces that deleted before saving.
+ *
+ * `updateCategoryById` was fixed in U-2 and has its own real-bucket test;
+ * `updateUserById` is covered in `unit/customerProfileImage`. This is the
+ * sub-category, and the failure it guards against is the same one: a `save()`
+ * that throws used to leave the bytes gone and the row still pointing at them.
+ */
+describe("🔴 U-5 — a sub-category keeps its picture when the save fails", () => {
+  const seedSubCategory = async () => {
+    const category = await Category.create({ name: `c-${Date.now()}-${Math.random()}` });
+    return SubCategory.create({
+      name: `s-${Date.now()}-${Math.random()}`,
+      categoryId: category._id,
+    });
+  };
+
+  test("nothing is deleted when the save throws", async () => {
+    const subCategory = await seedSubCategory();
+    await updateSubCategoryById(adminActor(), subCategory._id, null, image());
+    const before = await SubCategory.findById(subCategory._id);
+
+    jest.clearAllMocks();
+    jest
+      .spyOn(SubCategory.prototype, "save")
+      .mockRejectedValueOnce(new Error("the write did not land"));
+
+    await expect(
+      updateSubCategoryById(adminActor(), subCategory._id, null, image()),
+    ).rejects.toThrow(/did not land/);
+
+    // 🔴 The row still points at the old picture, so the old picture has to stay.
+    expect(deleteAsset).not.toHaveBeenCalled();
+    const after = await SubCategory.findById(subCategory._id);
+    expect(after.imageMedia.storage.key).toBe(before.imageMedia.storage.key);
+  });
+
+  test("and it is deleted once the save goes through", async () => {
+    const subCategory = await seedSubCategory();
+    await updateSubCategoryById(adminActor(), subCategory._id, null, image());
+    const before = await SubCategory.findById(subCategory._id);
+
+    jest.clearAllMocks();
+    await updateSubCategoryById(adminActor(), subCategory._id, null, image());
+
+    const [asset] = deleteAsset.mock.calls[0];
+    expect(asset.storage.key).toBe(before.imageMedia.storage.key);
   });
 });

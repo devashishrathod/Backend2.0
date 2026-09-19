@@ -2,8 +2,10 @@ const { throwError } = require("../../utils");
 const {
   resolveSectionForActor,
   deleteMedia,
-  deleteCustomThumbnail,
+  resequenceMedias,
   syncSectionCoverImage,
+  countVisibleMedia,
+  assertSectionKeepsItsFloor,
 } = require("../../helpers/showcases");
 
 /**
@@ -27,23 +29,50 @@ exports.deleteSectionMedia = async (actor, payload) => {
     projection: { medias: 1, coverImage: 1, coverImageMode: 1, coverMediaId: 1 },
   });
 
-  const media = section.medias.id(payload.mediaId);
-  if (!media || media.isDeleted || !media.isActive) {
+  const item = section.medias.id(payload.mediaId);
+  if (!item || item.isDeleted || !item.isActive) {
     throwError(404, "Media not found.");
   }
 
-  const liveCount = section.medias.filter(
-    (item) => item.isActive && !item.isDeleted,
-  ).length;
-  if (liveCount <= 1) {
+  /**
+   * A section cannot be emptied from here — use the section delete endpoint.
+   *
+   * ⚠️ Kept alongside the floor below rather than folded into it. The floor is
+   * configurable and only fires on the way past it, so a section already under
+   * `minItems` is free to shrink; this one is the hard bottom, and it is what
+   * keeps that freedom from ending at zero.
+   */
+  if (countVisibleMedia(section.medias) <= 1) {
     throwError(400, "At least one media is required in this section.");
   }
 
-  const removed = media.toObject();
+  // S-3: refuse a delete that would drop a live section off the customer's
+  // profile. Admins are exempt — an admin removing media is moderating.
+  await assertSectionKeepsItsFloor(section, {
+    mediaId: payload.mediaId,
+    actor,
+    statusCode: 400,
+  });
 
-  media.isActive = false;
-  media.isDeleted = true;
-  media.deletedAt = new Date();
+  const removed = item.toObject();
+
+  item.isActive = false;
+  item.isDeleted = true;
+  item.deletedAt = new Date();
+
+  /**
+   * 🔴 The gap is closed here, not left for the next reorder.
+   *
+   * A delete used to leave the removed media's position behind — three photos at
+   * 1, 2, 3, delete the middle one, and the panel showed `1, 3`. The vendor had
+   * no way to fix it except a full drag-and-drop reorder, and `getNextMediaSortOrder`
+   * kept counting from the highest number, so the drift grew with every delete.
+   *
+   * The removed row keeps the number it had (S-5): it is an audit record and is
+   * not counted, and a deleted row at `sortOrder: 0` would sort in front of
+   * everything the moment anybody read the raw array.
+   */
+  resequenceMedias(section.medias);
 
   // Recomputed from what is left, rather than compared field by field. The old
   // code tested `coverImage === media.url`, while the cover had been written
@@ -54,10 +83,11 @@ exports.deleteSectionMedia = async (actor, payload) => {
   await section.save();
 
   try {
-    await deleteCustomThumbnail(removed);
-    await deleteMedia(removed);
+    // Takes the poster with it. This used to need a separate
+    // `deleteCustomThumbnail` call guarded by a check that could not work on S3.
+    await deleteMedia(removed.media);
   } catch (err) {
-    console.error("Cloudinary delete failed:", err.message);
+    console.error("Storage delete failed:", err.message);
   }
 
   return {

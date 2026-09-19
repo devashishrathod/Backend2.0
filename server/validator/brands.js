@@ -376,6 +376,17 @@ exports.validateUpdateBrand = {
     // validator on `Brand.mobile` demands `[6-9]`, so this let an admin submit a
     // number the save would then reject with a raw validation error.
     mobile: phone("mobile number").optional(),
+    /**
+     * 🆕 The presigned road (U-5). A client that already sent its bytes to S3
+     * names the uploads here instead of attaching files. Each slot keeps its own
+     * purpose, so a logo's id cannot be spent as the cover.
+     */
+    logoUploadId: objectId().optional().messages({
+      "any.invalid": "Invalid logoUploadId.",
+    }),
+    coverImageUploadId: objectId().optional().messages({
+      "any.invalid": "Invalid coverImageUploadId.",
+    }),
     joinedDate: Joi.date().optional().messages({
       "date.base": "Please enter a valid joined date",
     }),

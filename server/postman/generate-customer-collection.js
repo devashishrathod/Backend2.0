@@ -981,9 +981,13 @@ const homeFolder = folder(
         "scheduled live hon to sirf 10 scheduled, evergreen bilkul nahi.",
         "",
         "⚠️ **Breaking change.** Pehle `data` ek poora banner document tha; ab har",
-        "item me sirf `_id`, `type`, `url` aur `redirect` hain — `url` **flat** hai,",
-        "`image`/`video`/`gif` object nahi. `title`, dates aur `storage` public",
-        "response se hata diye gaye hain.",
+        "item me sirf `_id`, `type`, `url`, `thumbnail` aur `redirect` hain — `url`",
+        "**flat** hai, `image`/`video`/`gif` object nahi. `title`, dates aur",
+        "`storage` public response se hata diye gaye hain.",
+        "",
+        "🆕 **`thumbnail`** — VIDEO par poster frame (upload par mandatory hai),",
+        "IMAGE/GIF par media ka apna URL. Kabhi `null` nahi jab tak banner render",
+        "hota hai, taaki app `type` par branch kiye bina ek hi image tag likh sake.",
         "",
         "⚠️ **Kuch na ho to `data` abhi bhi `null` hai**, `[]` nahi, aur message",
         "`\"No active banner found.\"` ho jaata hai. Dono handle karne hain.",
@@ -1005,12 +1009,31 @@ const homeFolder = folder(
           `  pm.expect(d.length, "at least 1").to.be.above(0);`,
           `}`,
         ]),
-        ...A.custom("har item me sirf _id, type, url, redirect", [
+        ...A.custom("har item me sirf _id, type, url, thumbnail, redirect", [
           `const d = pm.response.json().data;`,
           `if (d !== null) d.forEach(function (banner) {`,
-          `  pm.expect(Object.keys(banner).sort()).to.eql(["_id", "redirect", "type", "url"]);`,
+          `  pm.expect(Object.keys(banner).sort()).to.eql(["_id", "redirect", "thumbnail", "type", "url"]);`,
           `  pm.expect(banner._id, "_id").to.be.a("string");`,
           `  pm.expect(["IMAGE", "VIDEO", "GIF"], "type").to.include(banner.type);`,
+          `});`,
+        ]),
+        /**
+         * 🔴 A video's poster has to reach the app.
+         *
+         * It is mandatory at upload, and for a while it was stored and never
+         * sent — which made the requirement pointless: the player still opened
+         * on a blank rectangle until the `.mp4` had buffered a frame. This
+         * assertion is what stops that regressing.
+         */
+        ...A.custom("thumbnail hamesha hai — video par poster, warna khud", [
+          `const d = pm.response.json().data;`,
+          `if (d !== null) d.forEach(function (banner) {`,
+          `  pm.expect(banner.thumbnail, "thumbnail").to.be.a("string");`,
+          `  if (banner.type === "VIDEO") {`,
+          `    pm.expect(banner.thumbnail, "video ka poster .mp4 nahi ho sakta").to.not.eql(banner.url);`,
+          `  } else {`,
+          `    pm.expect(banner.thumbnail, "still apna hi thumbnail hai").to.eql(banner.url);`,
+          `  }`,
           `});`,
         ]),
         ...A.custom("redirect.type kabhi null nahi — set na ho to NONE", [
@@ -1183,6 +1206,7 @@ const voucherFolder = folder(
             name: "string",
             bannerType: "null-or-string",
             bannerUrl: "null-or-string",
+            bannerThumbnail: "null-or-string",
             isSuggested: "boolean",
             outletCount: "number",
             offerCount: "number",
@@ -1199,11 +1223,28 @@ const voucherFolder = folder(
           `  pm.expect(v.nearestOutlet.distance, "distance").to.be.an("object");`,
           `});`,
         ]),
-        ...A.custom("bannerType aur bannerUrl hamesha saath chalte hain", [
+        ...A.custom("banner ke teeno field hamesha saath chalte hain", [
           `pm.response.json().data.data.forEach(function (v) {`,
-          `  const bothNull = v.bannerType === null && v.bannerUrl === null;`,
-          `  const bothSet = !!v.bannerType && !!v.bannerUrl;`,
-          `  pm.expect(bothNull || bothSet, "banner pair for " + v.name).to.eql(true);`,
+          `  const allNull = v.bannerType === null && v.bannerUrl === null && v.bannerThumbnail === null;`,
+          `  const allSet = !!v.bannerType && !!v.bannerUrl && !!v.bannerThumbnail;`,
+          `  pm.expect(allNull || allSet, "banner trio for " + v.name).to.eql(true);`,
+          `});`,
+        ]),
+        /**
+         * 🔴 A video banner's poster has to reach the app.
+         *
+         * It is mandatory at upload, and storing it without sending it makes the
+         * requirement pointless — the app still shows a blank rectangle until
+         * the .mp4 has buffered a frame. A still is its own thumbnail.
+         */
+        ...A.custom("video banner ka thumbnail .mp4 nahi hota", [
+          `pm.response.json().data.data.forEach(function (v) {`,
+          `  if (!v.bannerType) return;`,
+          `  if (v.bannerType === "VIDEO") {`,
+          `    pm.expect(v.bannerThumbnail, "poster for " + v.name).to.not.eql(v.bannerUrl);`,
+          `  } else {`,
+          `    pm.expect(v.bannerThumbnail, "still is its own thumbnail").to.eql(v.bannerUrl);`,
+          `  }`,
           `});`,
         ]),
         ...A.custom(`bannerType enum me se hai (${list(VOUCHER_BANNER_TYPE)})`, [
@@ -1358,6 +1399,7 @@ const voucherFolder = folder(
                 isSuggested: true,
                 bannerType: null,
                 bannerUrl: null,
+                bannerThumbnail: null,
                 nearestOutlet: {
                   distance: {
                     meters: 1753000,

@@ -15,7 +15,9 @@ const {
   sortedVisibleMedias,
   mediaCounts,
   customerMediaMap,
+  applyDisplayPositions,
 } = require("../../helpers/showcases");
+const { getShowcaseConfig } = require("../../helpers/settings");
 
 /**
  * How many media items ride along inside each showcase section.
@@ -191,8 +193,11 @@ const fetchFeatures = (_id) =>
  * as new fields are added to the model.
  */
 const fetchShowcase = async (_id) => {
+  // S-4: a section below the media floor does not reach a customer at all.
+  const { minItems } = await getShowcaseConfig();
+
   const sections = await ShowcaseSection.aggregate([
-    { $match: customerSectionMatch(_id) },
+    { $match: customerSectionMatch(_id, { minItems }) },
     { $sort: { sortOrder: 1 } },
     { $addFields: { visibleMedias: sortedVisibleMedias() } },
     {
@@ -221,7 +226,15 @@ const fetchShowcase = async (_id) => {
   return {
     totalSections: sections.length,
     mediaPreviewLimit: MEDIA_PREVIEW_PER_SECTION,
-    sections,
+    /**
+     * The customer's own positions — 1, 2, 3 over what this response actually
+     * carries. No paging here, so they start at 1.
+     *
+     * ⚠️ The media are a `$slice` preview, so their positions number the strip
+     * the customer is looking at. The full album is its own screen and numbers
+     * itself the same way; `hasMoreMedia` is what says there is more.
+     */
+    sections: applyDisplayPositions(sections),
   };
 };
 

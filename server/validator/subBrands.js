@@ -40,6 +40,17 @@ exports.validateUpdateSubBrand = {
       .messages({
         "string.empty": "Outlet type can't be empty",
       }),
+    /**
+     * 🆕 The presigned road (U-5). A client that already sent its bytes to S3
+     * names the uploads here instead of attaching files. Each slot keeps its own
+     * purpose, so a logo's id cannot be spent as the cover.
+     */
+    logoUploadId: objectId().optional().messages({
+      "any.invalid": "Invalid logoUploadId.",
+    }),
+    coverImageUploadId: objectId().optional().messages({
+      "any.invalid": "Invalid coverImageUploadId.",
+    }),
     joinedDate: Joi.date().optional(),
     description: Joi.string().optional().messages({
       "any.empty": "Description can't be empty",

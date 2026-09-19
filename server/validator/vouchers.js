@@ -1,5 +1,6 @@
 const Joi = require("joi");
 const { PROMO_CODE_LIMITS } = require("../constants/promoCode");
+const { VOUCHER_BANNER_STATUS } = require("../constants/voucherBanner");
 const objectId = require("./validJoiObjectId");
 const {
   VOUCHER_DISCOUNT_TYPES,
@@ -9,7 +10,6 @@ const {
   VOUCHER_STATUSES,
   VOUCHER_SORT_BY,
 } = require("../constants/voucher");
-const { VOUCHER_BANNER_TYPE } = require("../constants/voucherBanner");
 
 const offerSchema = Joi.object({
   title: Joi.string().required(),
@@ -79,66 +79,12 @@ const offersSchema = Joi.any()
     "any.required": "At least one offer is required.",
   });
 
-exports.validateCreateVoucher = {
-  body: Joi.object({
-    brandId: objectId().required().messages({
-      "any.required": "Brand ID is required.",
-      "any.invalid": "Invalid Brand ID.",
-    }),
-    name: Joi.string().trim().min(2).max(150).required(),
-    description: Joi.string().trim().max(2000).optional(),
-    tags: Joi.array()
-      .items(Joi.string().messages({ "any.invalid": "Invalid tag" }))
-      .min(1)
-      .optional(),
-    startAt: Joi.date().iso().required(),
-    endAt: Joi.date().iso().required(),
-    offers: offersSchema,
-    subBrandIds: Joi.array()
-      .items(
-        objectId().messages({
-          "any.invalid": "Invalid sub-brand ID.",
-        }),
-      )
-      .min(1)
-      .required(),
-    isSaveAsDraft: Joi.boolean().optional().default(true),
-    // Optional — the voucher's own independent promo banner, unrelated to
-    // the version/approval flow. If provided, a matching file must be sent
-    // under bannerImage/bannerVideo/bannerGif.
-    bannerType: Joi.string()
-      .valid(...Object.values(VOUCHER_BANNER_TYPE))
-      .optional(),
-  }),
-};
-
-exports.validateSetVoucherBanner = {
-  params: {
-    voucherId: objectId().required().messages({
-      "any.required": "Voucher ID is required.",
-      "any.invalid": "Invalid voucher ID.",
-    }),
-  },
-  body: Joi.object({
-    bannerType: Joi.string()
-      .valid(...Object.values(VOUCHER_BANNER_TYPE))
-      .required()
-      .messages({
-        "any.required": "Banner type is required.",
-        "any.only": `Banner type must be one of: ${Object.values(VOUCHER_BANNER_TYPE).join(", ")}.`,
-      }),
-  }),
-};
-
-exports.validateDeleteVoucherBanner = {
-  params: {
-    voucherId: objectId().required().messages({
-      "any.required": "Voucher ID is required.",
-      "any.invalid": "Invalid voucher ID.",
-    }),
-  },
-};
-
+/**
+ * ⚠️ Moved above `validateCreateVoucher` (U-4), which now uses it too. It was
+ * declared between the two schemas, so a `const` in the temporal dead zone
+ * would have thrown at module load — the kind of failure that takes the whole
+ * process down at boot rather than one request.
+ */
 const jsonTolerantArray = (itemSchema, { label = "Item" } = {}) =>
   Joi.any().custom((value, helpers) => {
     if (value === undefined || value === null || value === "") return [];
@@ -182,6 +128,87 @@ const jsonTolerantArray = (itemSchema, { label = "Item" } = {}) =>
     return parsedItems;
   });
 
+exports.validateCreateVoucher = {
+  body: Joi.object({
+    brandId: objectId().required().messages({
+      "any.required": "Brand ID is required.",
+      "any.invalid": "Invalid Brand ID.",
+    }),
+    name: Joi.string().trim().min(2).max(150).required(),
+    description: Joi.string().trim().max(2000).optional(),
+    tags: Joi.array()
+      .items(Joi.string().messages({ "any.invalid": "Invalid tag" }))
+      .min(1)
+      .optional(),
+    startAt: Joi.date().iso().required(),
+    endAt: Joi.date().iso().required(),
+    offers: offersSchema,
+    subBrandIds: Joi.array()
+      .items(
+        objectId().messages({
+          "any.invalid": "Invalid sub-brand ID.",
+        }),
+      )
+      .min(1)
+      .required(),
+    isSaveAsDraft: Joi.boolean().optional().default(true),
+    /**
+     * ⚠️ No bannerType any more (V-4). The banner file arrives as "media" and
+     * what it is comes from the bytes, so a payload field naming the type was a
+     * second answer to a question the file already answers.
+     */
+
+    /**
+     * 🆕 The presigned road (U-4). A client that already sent its bytes to S3
+     * names the uploads here instead of attaching files.
+     *
+     * ⚠️ `jsonTolerantArray` because this endpoint is multipart — a list arrives
+     * either as repeated form fields or as one JSON string, and both have to
+     * work.
+     *
+     * ⚠️ Mixed is allowed: some attached, some already on S3. What is refused is
+     * one *item* claiming to be both, which `acceptUpload` answers with a 422.
+     */
+    imageUploadIds: jsonTolerantArray(
+      objectId().messages({ "any.invalid": "Invalid uploadId." }),
+      { label: "Image upload" },
+    ).optional(),
+    bannerUploadId: objectId().optional().messages({
+      "any.invalid": "Invalid bannerUploadId.",
+    }),
+    /**
+     * ⚠️ Its own purpose (`VOUCHER_BANNER_POSTER`), not the banner's — a video
+     * and its still are two uploads, and an id meant for one must not be
+     * spendable as the other.
+     */
+    bannerPosterUploadId: objectId().optional().messages({
+      "any.invalid": "Invalid bannerPosterUploadId.",
+    }),
+  }),
+};
+
+exports.validateSetVoucherBanner = {
+  params: {
+    voucherId: objectId().required().messages({
+      "any.required": "Voucher ID is required.",
+      "any.invalid": "Invalid voucher ID.",
+    }),
+  },
+  /**
+   * 🆕 The body used to be empty — the file *was* the request. On the presigned
+   * road the file never arrives, so the ids are the request instead (U-4).
+   */
+  body: Joi.object({
+    bannerUploadId: objectId().optional().messages({
+      "any.invalid": "Invalid bannerUploadId.",
+    }),
+    bannerPosterUploadId: objectId().optional().messages({
+      "any.invalid": "Invalid bannerPosterUploadId.",
+    }),
+  }),
+};
+
+
 exports.validateUpdateVoucher = {
   params: {
     voucherId: objectId().required().messages({
@@ -211,6 +238,12 @@ exports.validateUpdateVoucher = {
       label: "Image ID",
     }).optional(),
 
+    // 🆕 The presigned road (U-4) — see `validateCreateVoucher`.
+    newImageUploadIds: jsonTolerantArray(
+      objectId().messages({ "any.invalid": "Invalid uploadId." }),
+      { label: "Image upload" },
+    ).optional(),
+
     newSubBrandIds: jsonTolerantArray(objectId(), {
       label: "Sub-brand ID",
     }).optional(),
@@ -227,6 +260,55 @@ exports.validateSubmitVoucherForReview = {
       "any.invalid": "Invalid voucher ID.",
     }),
   },
+};
+
+/**
+ * The **banner's** review, which is separate from the voucher's (V-4).
+ *
+ * ⚠️ Keyed on `voucherId`, not a version — a banner belongs to the master
+ * voucher and survives every version of it.
+ */
+exports.validateReviewVoucherBanner = {
+  params: {
+    voucherId: objectId().required().messages({
+      "any.required": "Voucher ID is required.",
+      "any.invalid": "Invalid voucher ID.",
+    }),
+  },
+  body: Joi.object({
+    action: Joi.string()
+      .valid(
+        VOUCHER_BANNER_STATUS.APPROVED,
+        VOUCHER_BANNER_STATUS.REJECTED,
+      )
+      .required()
+      .messages({
+        "any.only": "Action must be either APPROVED or REJECTED.",
+        "any.required": "Review action is required.",
+        "string.empty": "Review action cannot be empty.",
+      }),
+    /**
+     * Required on a rejection and forbidden on an approval — a reason beside an
+     * approval would be stored and then shown to a vendor as though they had
+     * been refused.
+     */
+    rejectionReason: Joi.string()
+      .trim()
+      .max(1000)
+      .when("action", {
+        is: VOUCHER_BANNER_STATUS.REJECTED,
+        then: Joi.required().messages({
+          "any.required": "A reason is required when rejecting a banner.",
+          "string.empty": "A reason is required when rejecting a banner.",
+        }),
+        otherwise: Joi.forbidden().messages({
+          "any.unknown": "A reason is not allowed when approving a banner.",
+        }),
+      })
+      .messages({
+        "string.max": "The reason cannot exceed 1000 characters.",
+      }),
+  }),
 };
 
 exports.validateReviewVoucher = {
@@ -279,6 +361,90 @@ exports.validatePublishVoucher = {
   },
 };
 
+exports.validatePauseVoucher = {
+  params: {
+    versionId: objectId().required().messages({
+      "any.required": "Voucher version ID is required.",
+      "any.invalid": "Invalid voucher version ID.",
+    }),
+  },
+  /**
+   * The reason is optional, and deliberately so. Pausing is the vendor's own
+   * decision about their own voucher — demanding a justification for it would be
+   * asking them to explain themselves to nobody. It is offered because it is
+   * useful to them later ("why is this down?"), not required because it is owed.
+   */
+  body: Joi.object({
+    reason: Joi.string().trim().max(1000).optional().messages({
+      "string.max": "The reason cannot exceed 1000 characters.",
+    }),
+  }),
+};
+
+exports.validateResumeVoucher = {
+  params: {
+    versionId: objectId().required().messages({
+      "any.required": "Voucher version ID is required.",
+      "any.invalid": "Invalid voucher version ID.",
+    }),
+  },
+};
+
+exports.validateReorderVoucherImages = {
+  params: {
+    versionId: objectId().required().messages({
+      "any.required": "Voucher version ID is required.",
+      "any.invalid": "Invalid voucher version ID.",
+    }),
+  },
+  body: Joi.object({
+    /**
+     * ⚠️ The **complete** list. Positions are renumbered 1..n, so a partial
+     * one would collide with whatever was left out of it — the service says so
+     * with the counts, this just makes sure something arrived.
+     */
+    images: Joi.array()
+      .min(1)
+      .items(
+        Joi.object({
+          id: objectId().required().messages({
+            "any.required": "Each image needs its id.",
+            "any.invalid": "Invalid image id.",
+          }),
+          sortOrder: Joi.number().integer().min(1).required().messages({
+            "any.required": "Each image needs a sortOrder.",
+            "number.min": "sortOrder starts at 1.",
+          }),
+        }),
+      )
+      .required()
+      .messages({
+        "array.min": "Send at least one image.",
+        "any.required": "Image list is required.",
+      }),
+  }),
+};
+
+exports.validateDeleteVoucher = {
+  params: {
+    voucherId: objectId().required().messages({
+      "any.required": "Voucher ID is required.",
+      "any.invalid": "Invalid voucher ID.",
+    }),
+  },
+  /**
+   * ⚠️ Optional, like pause's. A vendor deleting their own voucher owes nobody
+   * an explanation — the field is there because `deleteReason` is what makes the
+   * admin's deleted-voucher list readable later, not because a delete has to be
+   * justified before it is allowed.
+   */
+  body: Joi.object({
+    reason: Joi.string().trim().max(500).optional().messages({
+      "string.max": "The reason cannot exceed 500 characters.",
+    }),
+  }),
+};
+
 exports.validateGetAllVoucherVersions = {
   query: Joi.object({
     page: Joi.number().integer().min(1).optional(),
@@ -319,6 +485,14 @@ exports.validateGetAllVoucherVersions = {
       .optional(),
     isImmutable: Joi.alternatives().try(Joi.string(), Joi.boolean()).optional(),
     isActive: Joi.alternatives().try(Joi.string(), Joi.boolean()).optional(),
+    /**
+     * 🆕 ADMIN-only, and enforced in the service rather than here (V-6b) —
+     * Joi sees the query, not who sent it. A vendor passing it gets a 403 that
+     * says so, instead of a list that quietly pretends nothing was deleted.
+     */
+    includeDeleted: Joi.alternatives()
+      .try(Joi.string(), Joi.boolean())
+      .optional(),
     fromDate: Joi.date().iso().optional(),
     toDate: Joi.date().iso().optional(),
     sortBy: Joi.string()

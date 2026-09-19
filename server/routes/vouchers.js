@@ -13,12 +13,16 @@ const {
   submitForReview,
   review,
   publish,
+  pause,
+  resume,
+  remove,
+  reorderImages,
   getAllVersions,
   getAllCustomerVouchers,
   getCustomerVoucher,
   previewCustomerVoucher,
   setBanner,
-  deleteBanner,
+  reviewBanner,
   reviewSuggestion,
   getSuggestions,
 } = require("../controllers/vouchers");
@@ -28,12 +32,16 @@ const {
   validateSubmitVoucherForReview,
   validateReviewVoucher,
   validatePublishVoucher,
+  validatePauseVoucher,
+  validateResumeVoucher,
+  validateDeleteVoucher,
+  validateReorderVoucherImages,
   validateGetAllVoucherVersions,
   validateCustomerGetAllVouchers,
   validateCustomerGetVoucher,
   validateCustomerVoucherPreview,
   validateSetVoucherBanner,
-  validateDeleteVoucherBanner,
+  validateReviewVoucherBanner,
   validateReviewVoucherSuggestion,
   validateGetSuggestedVouchers,
 } = require("../validator/vouchers");
@@ -74,6 +82,61 @@ router.post(
   validateSchema(validatePublishVoucher),
   publish,
 );
+/**
+ * Pause / resume — the vendor's own switch on a live voucher (V-5).
+ *
+ * ⚠️ `isVendorOrAdmin`, same as publish, and ownership is checked again inside
+ * the service. Taking a voucher off the customer app is the same size of action
+ * as putting one on it, so it gets the same gate — the route only establishes
+ * that the caller is *a* vendor.
+ */
+router.post(
+  "/pause/:versionId",
+  isVendorOrAdmin,
+  validateSchema(validatePauseVoucher),
+  pause,
+);
+router.post(
+  "/resume/:versionId",
+  isVendorOrAdmin,
+  validateSchema(validateResumeVoucher),
+  resume,
+);
+/**
+ * 🔴 Images could not be reordered at all (V-7, P8).
+ *
+ * Literal-first path, so it can never be swallowed by the `/:voucherId`
+ * wildcard below — and `PUT`, because it replaces an order rather than
+ * creating anything.
+ *
+ * ⚠️ Takes a **version** id. Images belong to a version, and only an
+ * editable one can be reordered — a published version is `isImmutable`, and
+ * the service says so rather than quietly forking a new one.
+ */
+router.put(
+  "/versions/:versionId/images/reorder",
+  isVendorOrAdmin,
+  validateSchema(validateReorderVoucherImages),
+  reorderImages,
+);
+/**
+ * 🔴 The "D" of CRUD, which this router did not have (V-6).
+ *
+ * Takes the **voucher** id, not a version — a delete is not a per-version act,
+ * and the service takes every version down with it.
+ *
+ * ⚠️ `/:voucherId` is a one-segment wildcard, and it is the only `DELETE` on
+ * this router, so nothing above it can be swallowed. If a literal `DELETE`
+ * path is ever added here — `/vouchers/admin/…` — it has to be declared
+ * **above** this line, or `admin` will be read as a voucher id. That is the
+ * same trap `/admin/suggestions/:voucherId` already carries a note about.
+ */
+router.delete(
+  "/:voucherId",
+  isVendorOrAdmin,
+  validateSchema(validateDeleteVoucher),
+  remove,
+);
 router.get(
   "/versions/get-all",
   isVendorOrAdmin,
@@ -99,18 +162,26 @@ router.get(
   getSuggestions,
 );
 
-// Voucher banner (master-level, independent of version/approval flow)
+// Voucher banner (master-level, independent of the version/approval flow —
+// though it has a review of its own).
 router.post(
   "/:voucherId/banner",
   isVendorOrAdmin,
   validateSchema(validateSetVoucherBanner),
   setBanner,
 );
-router.delete(
-  "/:voucherId/banner",
-  isVendorOrAdmin,
-  validateSchema(validateDeleteVoucherBanner),
-  deleteBanner,
+/**
+ * 🔴 Admin-only, and that is the point of the whole slot: a vendor uploads into
+ * `pending`, an admin decides whether it reaches customers.
+ *
+ * Declared after the POST above so `/:voucherId/banner` cannot swallow it —
+ * `banner/review` is a longer path, but Express matches in declaration order.
+ */
+router.post(
+  "/:voucherId/banner/review",
+  isAdmin,
+  validateSchema(validateReviewVoucherBanner),
+  reviewBanner,
 );
 
 // ---------------------------------------------------------------------------

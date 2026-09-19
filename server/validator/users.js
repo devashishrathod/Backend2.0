@@ -59,6 +59,13 @@ exports.validateUpdateUser = (data) => {
     appliedReferralCode: Joi.string().optional().allow("").max(20).messages({
       "string.max": "Applied referral code cannot exceed {#limit} characters",
     }),
+    /**
+     * 🆕 The presigned road (U-5) — a photo already on S3, named instead of
+     * attached. ⚠️ Not both; `acceptUpload` refuses a file and an id together.
+     */
+    uploadId: objectId().optional().messages({
+      "any.invalid": "Invalid uploadId.",
+    }),
     // mobile: Joi.number().integer().min(1000000000).max(9999999999).messages({
     //   "number.base": "Mobile number must be numeric",
     //   "number.min": "Mobile number must be 10 digits",

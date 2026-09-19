@@ -526,11 +526,22 @@ Saare enum values **UPPERCASE** hain (payment gateway values ke alawa).
 | Max items | 15 |
 | Max images | 15 |
 | Max videos | 5 |
+| Min items per section | 3 🆕 |
 | Max image size | 10 MB |
+| Max GIF size | 15 MB 🆕 |
 | Max video size | 50 MB |
 
-Allowed images: `image/jpeg` · `image/jpg` · `image/png` · `image/webp`
+Allowed images: `image/jpeg` · `image/jpg` · `image/png` · `image/webp` · 🆕 `image/gif`
 Allowed videos: `video/mp4` · `video/webm` · `video/quicktime`
+
+> ⚠️ **GIF ka apna cap hai** — 15 MB, image ka 10 MB nahi. Animated GIF har frame
+> poora store karta hai, to usi tasveer ka GIF photo se kai guna bhaari hota hai.
+> Error message wahi limit bolta hai jo lagi hai:
+> `<file> exceeds maximum GIF size of 15 MB.`
+>
+> 🆕 **Min items** ek floor hai, ceiling nahi: jis section me itni visible media
+> na ho, wo customer ko dikhta hi nahi. Admin ise badal sakta hai — badhane par
+> chhote sections turant chhup jaate hain.
 
 ### DEVICE_PLATFORMS
 `ANDROID` · `IOS` · `WEB`
@@ -1003,7 +1014,10 @@ POST /auth/logout
 | `email` | string | Valid email | Change pe `isEmailVerified` reset |
 | `dob` | string | ISO date | |
 | `appliedReferralCode` | string | Max 20 chars | |
-| `image` | file | – | **Multipart only**, field name `image` |
+| `image` | file | – | **Multipart**, field name `image` |
+| `uploadId` | ObjectId 🆕 | – | Presigned raasta — purpose `USER_AVATAR`. `image` ke saath **nahi** |
+
+🔴 **Kram: upload → save → tab purani photo delete.** Pehle delete save se pehle hota tha, yaani ek fail hua save aapki purani photo le jaata aur row usi dead URL par reh jaati.
 
 ### Success — `200`
 ```json
@@ -2574,8 +2588,12 @@ Brand ki public profile update.
 | `isActive` | boolean\|string | – | |
 | `isOnboarding` | boolean | Default `false` | ⚠️ `true` pe `subCategoryId` **required** ho jaata hai |
 | `subCategoryId` | ObjectId | – | `isOnboarding: true` pe required |
-| `logo` | file | JPG · PNG · WebP · GIF | **Multipart only**, field name `logo` |
-| `coverImage` | file | JPG · PNG · WebP · GIF | 🆕 **Multipart only**, field name `coverImage` |
+| `logo` | file | JPG · PNG · WebP · GIF | **Multipart**, field name `logo` |
+| `coverImage` | file | JPG · PNG · WebP · GIF | 🆕 **Multipart**, field name `coverImage` |
+| `logoUploadId` | ObjectId 🆕 | – | Presigned — purpose `BRAND_LOGO` |
+| `coverImageUploadId` | ObjectId 🆕 | – | Presigned — purpose `BRAND_COVER`. Har slot ka apna purpose hai, to logo ka id cover ki jagah nahi chalega |
+
+🔴 **Uploads ab transaction ke BAHAR hote hain.** Pehle wo `withTransaction` ke andar the, yaani do file jitni der leti utni der ek Mongo transaction khuli rehti — aur Mongo ki apni 60-second seemaa paar hote hi aapki poori edit chali jaati, us wajah se jiska database se koi lena-dena nahi tha. Brand pehle check hota hai, to galat id ab bhi kuch nahi kharchti.
 
 **Cover image** — brand profile ke peeche wali chaudi tasveer. Pehle ye field
 model me thi aur 8 read pipelines use maangti thi, par **likhne ka koi raasta hi
@@ -2631,7 +2649,11 @@ nahi likha hota tha ki file ki wajah se hai.
 
 **1. `subCategoryId` set karne se `categoryId` bhi auto-set hota hai** — service parent category resolve karta hai.
 
-**2. Logo replace hone pe purana Cloudinary se delete** — transactional, fail pe rollback.
+**2. Logo replace hone pe purana delete hota hai** — aur delete us row ke **apne**
+`storage.provider` ko follow karta hai, aaj ki setting ko nahi, to provider badalne
+par purani files strand nahi hotin. Fail pe rollback.
+
+⚠️ **Uploads ab transaction ke bahar hote hain** (U-5) — dekhein upar.
 
 **3. `brandName` lowercase me store** — display pe capitalize karein.
 
@@ -2951,8 +2973,10 @@ Outlet details update.
 | `joinedDate` | date | – | |
 | `description` | string | – | |
 | `isActive` | boolean | – | ⚠️ **Sirf tab apply hota hai jab explicitly bhejo** |
-| `logo` | file | JPG · PNG · WebP · GIF | 🆕 **Multipart only**, field name `logo` |
-| `coverImage` | file | JPG · PNG · WebP · GIF | 🆕 **Multipart only**, field name `coverImage` |
+| `logo` | file | JPG · PNG · WebP · GIF | 🆕 **Multipart**, field name `logo` |
+| `coverImage` | file | JPG · PNG · WebP · GIF | 🆕 **Multipart**, field name `coverImage` |
+| `logoUploadId` | ObjectId 🆕 | – | Presigned — purpose `SUB_BRAND_LOGO` |
+| `coverImageUploadId` | ObjectId 🆕 | – | Presigned — purpose `SUB_BRAND_COVER` |
 
 ```json
 { "description": "Vijay Nagar flagship outlet", "email": "vn@cafemocha.in" }
@@ -3539,11 +3563,78 @@ Live values `Setting.vendor.showcase` se aate hain; ye fallbacks hain:
 | Max items per section | 15 |
 | Max images per section | 15 |
 | Max videos per section | 5 |
+| Min items per section | 3 🆕 |
 | Max image size | 10 MB |
+| Max GIF size | 15 MB 🆕 |
 | Max video size | 50 MB |
 
-Allowed images: `image/jpeg` · `image/jpg` · `image/png` · `image/webp`
+Allowed images: `image/jpeg` · `image/jpg` · `image/png` · `image/webp` · 🆕 `image/gif`
 Allowed videos: `video/mp4` · `video/webm` · `video/quicktime`
+
+> ⚠️ **GIF ka apna cap hai** — 15 MB, image ka 10 MB nahi. Animated GIF har frame
+> poora store karta hai, to usi tasveer ka GIF photo se kai guna bhaari hota hai.
+> Error message wahi limit bolta hai jo lagi hai:
+> `<file> exceeds maximum GIF size of 15 MB.`
+>
+> 🆕 **Min items** ek floor hai, ceiling nahi: jis section me itni visible media
+> na ho, wo customer ko dikhta hi nahi. Admin ise badal sakta hai — badhane par
+> chhote sections turant chhup jaate hain.
+>
+> ✅ **Ab ye sach me lagu hai** (pehle number rakha tha par padhta koi nahi tha).
+> Customer ke teeno surface — brand profile, poori gallery, aur clips feed — aise
+> section ko chhod dete hain. Vendor/admin ke apne endpoints par **koi farak
+> nahi**: aapko wo section dikhta rahega, warna aap theek hi nahi kar paate.
+>
+> Iska seedha matlab: **naya section banate hi customer ko nahi dikhta** — wo
+> khali banta hai — aur teesri media add karte hi dikhne lagta hai.
+
+### 🆕 Do floors — section apne aap customer se gayab na ho jaye
+
+Ab tak sab ceilings the. Ye do floors kehte hain ki **kam se kam kya bacha rehna chahiye**, aur inhe todne wali write **rok di jaati hai**:
+
+| Floor | Default | Kya rokta hai |
+|---|---|---|
+| `minItemsPerSection` | `3` | Jo delete/hide section ko customer ki nazar se **utaar de** |
+| `minSectionsPerBrand` | `1` | Brand ka **aakhri section** delete karna, ya aakhra dikhne wala hide karna |
+
+**Media hide karna = media delete karna** (customer ke liye). Isliye `isActive: false` (#49) par wahi floor lagta hai jo delete (#52) par — warna vendor teen media chup-chaap off karke wahi haalat bana leta, bina kisi rok ke.
+
+> ⚠️ **Jo section pehle se floor ke neeche hai, uspar rok nahi hai.**
+>
+> `minItems` 3 hai aur section me 2 media hain — wo section customer ko waise bhi nahi dikh raha. Uspar delete rokne se kuch bachta nahi, sirf vendor phansta hai: media delete band, aur "poora section delete kar dein" wala raasta bhi band (kyunki `minSectionsPerBrand` 1 se neeche nahi ja sakta). Ek section, do photo — koi legal move hi nahi bachta.
+>
+> Isliye rok sirf **us kadam par** hai jo section ko floor se neeche le jaata hai. Neeche wala section ghat sakta hai, `1` tak — us par purana rule lagta hai: *"At least one media is required in this section."*
+
+**ADMIN par ye floors nahi lagte.** Admin media hata raha hai matlab wo **moderate** kar raha hai. Agar floor use rokta, to platform kisi galat content ko isliye nahi utaar paata kyunki utaarne se section chhota ho jayega — floor vendor ko apni hi galti se bachane ke liye hai, content ko platform se nahi.
+
+**Client ko kya karna hai:** ye `400`/`422` message me hi raasta likha hota hai (naya media add karein, ya doosra section dikhayein). Message seedha dikha dena kaafi hai.
+
+---
+
+### 🆕 `409` — koi aur usi section par kaam kar raha tha
+
+Ek hi section par do log ek saath likhein — ek media delete kare, dusra usi waqt
+reorder kare — to **dusre ko `409` milta hai**, aur uski write hoti hi nahi:
+
+```json
+{
+  "success": false,
+  "message": "Somebody else changed this while you were editing it. Reload and try again."
+}
+```
+
+Ye **sab section-write endpoints** par lag sakta hai — #46 (update), #49 (media
+update), #50 (media replace), #51 (media reorder), #52 (media delete), #53
+(section delete). Pehle aisi haalat me dono write "safal" hoti thi aur section ka
+order aadha-aadha bach jaata tha — panel me media `1, 3` par dikhte the, `1, 2`
+par nahi.
+
+**Client ko kya karna hai:** section dobara fetch karke user ko naya state
+dikhaiye, phir unka action repeat karwaiye. Apne aap retry **mat** kijiye — jo
+badla hai wo user ko dikhna chahiye, warna wahi conflict phir se hoga.
+
+Ye error toote hue server ka nahi hai: write isliye ruki kyunki document beech me
+badal gaya. `500` nahi bhejte, isliye "Something went wrong" wala raasta khatam.
 
 ---
 
@@ -3559,7 +3650,7 @@ Naya showcase section banata hai.
 | `brandId` | ObjectId | admin ke liye ✅ | – | Vendor ke liye optional (apna brand auto) |
 | `title` | string | ✅ | – | 2–60 chars. **Jaisa likha waisa store hota hai** (pehle lowercase hota tha) |
 | `description` | string | ❌ | – | Max 500 chars, `""` allowed |
-| `sortOrder` | number | ❌ | auto (last + 1) | Integer ≥ 1 |
+| ~~`sortOrder`~~ | — | — | **server decide karta hai** | 🆕 **Hata diya gaya** — note 4 |
 | `sectionType` | string | ❌ | `CUSTOM` | `CUSTOM` \| `SYSTEM` |
 | `isActive` | boolean | ❌ | `true` | |
 | `isVisible` | boolean | ❌ | `true` | `false` bhejein to section hidden banega |
@@ -3619,7 +3710,13 @@ Naya showcase section banata hai.
 
 **3. `slug` auto-generate hota hai** brand ke andar unique — same title dobara nahi ho sakta, par slug collision handle ho jaata hai.
 
-**4. `sortOrder` na do to auto** — last section ka `sortOrder + 1`.
+**4. 🆕 `sortOrder` server decide karta hai** — brand ke **non-deleted sections ki ginti + 1**. Pehle `last.sortOrder + 1` tha, jo sirf badhta tha.
+
+Wajah deleted sections nahi the — wo query pehle se `isDeleted: false` filter karti thi. Wajah ye thi ki **delete par bache hue sections renumber nahi hote the**: `1, 2, 3` me se doosra delete karo to `1, 3` reh jaata tha, agla create sabse bada number padhkar `4` deta, aur list `1, 3, 4` ban jaati. Phir delete karo to `1, 4, 5` — numbers ginti se door hote chale jaate the.
+
+Ab positions **dense `1..n`** rehti hain. Delete (#53) gap band karta hai, aur **create bhi pehle brand ko dense karta hai** — to jin brands me ye drift pehle se hai, unka agla section banate hi list sudhar jaati hai aur naya section hamesha aakhir me aata hai.
+
+🔴 **Request se `sortOrder` hata diya gaya hai** — position sirf reorder endpoint (#47) ki property hai, wahi wajah jo media update (#49) me pehle se lagu thi. Purana client bhejta rahe to `422` nahi aayega; `stripUnknown` use chup-chaap hata deta hai.
 
 **5. ✅ Teeno toggle ab actually apply hote hain** (naya) — `isActive` / `isVisible` / `isShowVideosInClips` validator accept karta tha par service inhe drop kar deti thi, to hidden section banane ki koshish karne pe bhi visible section banta tha.
 
@@ -3671,6 +3768,12 @@ GET /showcase/section/get/68f1a2b3c4d5e6f7a8b9c5a1?type=VIDEO
     "isActive": true,
     "isVisible": true,
     "isShowVideosInClips": true,
+    "customerVisibility": {
+      "isLive": true,
+      "reasons": [],
+      "visibleMediaCount": 4,
+      "minItemsRequired": 3
+    },
     "mediaCount": 5,
     "photoCount": 4,
     "videoCount": 1,
@@ -3684,29 +3787,43 @@ GET /showcase/section/get/68f1a2b3c4d5e6f7a8b9c5a1?type=VIDEO
         {
           "_id": "68f1a2b3c4d5e6f7a8b9c5b1",
           "type": "PHOTO",
-          "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1.jpg",
-          "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1-thumb.jpg",
+          "media": {
+            "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1.jpg",
+            "kind": "IMAGE",
+            "width": 1920,
+            "height": 1080,
+            "mimeType": "image/jpeg",
+            "sizeBytes": 2516582,
+            "originalName": "seating area.jpg",
+            "provider": "CLOUDINARY"
+          },
           "title": "seating area",
           "altText": "cafe seating with wooden tables",
           "sortOrder": 1,
           "isActive": true,
-          "storage": { "provider": "CLOUDINARY", "publicId": "showcase/amb1" },
-          "metadata": { "width": 1920, "height": 1080, "sizeMB": 2.4 },
           "createdAt": "2026-08-22T16:05:00.000Z",
           "updatedAt": "2026-08-22T16:05:00.000Z"
         },
         {
           "_id": "68f1a2b3c4d5e6f7a8b9c5b2",
           "type": "VIDEO",
-          "url": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/showcase/amb-tour.mp4",
-          "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb-tour-thumb.jpg",
+          "media": {
+            "url": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/showcase/amb-tour.mp4",
+            "kind": "VIDEO",
+            "width": 1080,
+            "height": 1920,
+            "mimeType": "video/mp4",
+            "sizeBytes": 19084083,
+            "originalName": "cafe walkthrough.mp4",
+            "provider": "CLOUDINARY",
+            "duration": 24,
+            "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb-tour-thumb.jpg"
+          },
           "title": "cafe walkthrough",
           "altText": "video tour",
           "sortOrder": 2,
           "isActive": true,
           "isShowInVideoClips": true,
-          "storage": { "provider": "CLOUDINARY", "publicId": "showcase/amb-tour" },
-          "metadata": { "width": 1080, "height": 1920, "duration": 24, "sizeMB": 18.2 },
           "createdAt": "2026-08-22T16:06:00.000Z",
           "updatedAt": "2026-08-22T16:06:00.000Z"
         }
@@ -3718,6 +3835,40 @@ GET /showcase/section/get/68f1a2b3c4d5e6f7a8b9c5a1?type=VIDEO
 
 > ⚠️ **Media ek nested block hai — `data.media.data[]`, na ki `data.medias[]`.** Pagination bhi usi block me hai, section ke saath flat nahi. Live run me pakda gaya (2026-08-27); doc me pehle flat `medias[]` + top-level `total` likha tha.
 
+### 🆕 `customerVisibility` — section customer ko dikh raha hai ya nahi, aur kyun nahi
+
+```json
+"customerVisibility": {
+  "isLive": false,
+  "reasons": ["NOT_ENOUGH_MEDIA"],
+  "visibleMediaCount": 2,
+  "minItemsRequired": 3
+}
+```
+
+| Field | Matlab |
+|---|---|
+| `isLive` | `true` = section customer ke teeno surface par dikh raha hai |
+| `reasons[]` | Kyun nahi dikh raha. `isLive: true` par hamesha `[]` |
+| `visibleMediaCount` | Kitni media customer ko dikhegi (`isActive && !isDeleted`) |
+| `minItemsRequired` | Abhi ka floor — `Setting.vendor.showcase.minItemsPerSection` |
+
+**`reasons[]` ki values:**
+
+| Code | Kab | Vendor kya kare |
+|---|---|---|
+| `HIDDEN` | `isVisible: false` | Toggle on karein (#46) |
+| `INACTIVE` | `isActive: false` | Toggle on karein (#46) |
+| `NOT_ENOUGH_MEDIA` | `visibleMediaCount < minItemsRequired` | Media add karein (#48), ya chhupi hui media wapas on karein (#49) |
+
+**Ye field kyun hai.** Section ka customer se gayab ho jaana **chup-chaap** hota hai — koi write nahi, koi log nahi, vendor ki apni list bilkul waisi hi. Do wajah aisi hain jo vendor ne khud ki (dono toggle), par teesri kaa jawab panel apne aap nikal hi nahi sakta: wo ek admin setting par nirbhar hai. Isliye teeno ek saath yahin bhej dete hain.
+
+> ⚠️ **Saari wajahein aati hain, sirf pehli nahi.** Section ek saath hidden bhi ho sakta hai aur media me kam bhi. Ek hi bata dena vendor ko ek cheez theek karne bhejta hai aur wo dekhta hai kuch nahi badla. UI chahe ek line dikhaye — par jo wajah batayi hi nahi gayi wo dikha nahi sakta.
+
+> ⚠️ **Ye field derive hoti hai, stored nahi.** Admin `minItemsPerSection` badal de to platform ke har section ka jawab badal jaata hai, bina kisi document ko chhue. Stored flag us waqt har jagah galat ho jaata. Customer read wahi ginti usi tarah karti hai, to dono kabhi alag nahi bol sakte.
+
+> Query ke `search` / `type` / `isActive` filter **is field ko nahi badalte** — visibility section ki property hai, us page ki nahi jo aap dekh rahe hain.
+
 ### Errors
 | Status | Message |
 |---|---|
@@ -3726,7 +3877,26 @@ GET /showcase/section/get/68f1a2b3c4d5e6f7a8b9c5a1?type=VIDEO
 
 ### ⚠️ Notes
 
-**1. Vendor ko `storage` aur `metadata` dikhte hain** — customer ke response se ye strip ho jaate hain. Vendor panel me file size / dimensions dikhane ke liye useful.
+**1. 🔴 `url` / `thumbnail` / `storage` / `metadata` ek `media` object ban gaye.**
+
+| Pehle | Ab |
+|---|---|
+| `url` | `media.url` |
+| `thumbnail` | `media.thumbnail` — **sirf VIDEO par**, aur wo uska poster hai |
+| `metadata.width` / `.height` / `.duration` | `media.width` / `media.height` / `media.duration` |
+| `metadata.sizeMB` | `media.sizeBytes` (bytes, MB nahi) |
+| `metadata.mimeType` | `media.mimeType` |
+| `storage.provider` | `media.provider` |
+| `storage.publicId` / `bucket` / `key` | **nahi aate** |
+
+File size aur dimensions ab bhi dikhte hain — wo panel ke kaam ke hain. Jo nahi
+dikhta wo hai object ka **pata**: `publicId`, `bucket`, `key`. `media.provider`
+bata deta hai file kahan rehti hai, bina ye bataye ki use seedha kaise kheencha
+jaaye.
+
+> ⚠️ `type` (`PHOTO`/`VIDEO`) waisa hi rehta hai, par ab wo **stored field nahi**
+> — `media.kind` se derive hota hai. Ek GIF `type: "PHOTO"` deta hai aur
+> `media.kind: "GIF"` — dono sach hain, alag-alag sawaal ke jawab.
 
 **2. 🔴 `isActive: false` media ab bhi aati hai** (naya). Pehle wo list se gayab ho jaati thi — matlab off karne ke baad usko wapas on karne ka koi rasta hi nahi bachta tha. Ab sirf soft-deleted media chhupti hai. Ek side chahiye to `?isActive=true|false`.
 
@@ -3786,6 +3956,13 @@ Sections ki paginated list.
         "photoCount": 4,
         "videoCount": 1,
         "inactiveMediaCount": 0,
+        "visibleMediaCount": 5,
+        "customerVisibility": {
+          "isLive": true,
+          "reasons": [],
+          "visibleMediaCount": 5,
+          "minItemsRequired": 3
+        },
         "createdAt": "2026-08-22T16:00:00.000Z",
         "updatedAt": "2026-08-22T16:05:00.000Z"
       }
@@ -3812,6 +3989,10 @@ Panel me "Hidden" tab chahiye to `?isVisible=false` bhejein.
 
 **3. Counts soft-deleted media ko chhod kar sab count karte hain** — `isActive: false` media bhi `mediaCount` me hai, aur `inactiveMediaCount` alag se batata hai kitni off hain.
 
+**3a. 🆕 `customerVisibility` har row par aata hai** — wahi shape jo #44 par hai, poora explanation [wahan](#44-get-showcasesectiongetsectionid) hai. List screen par seedha badge bana sakte hain: `isLive: false` wale sections ko mark karein aur `reasons[0]` ki line dikhayein.
+
+> ⚠️ `visibleMediaCount` aur `mediaCount` **alag** hain. `mediaCount` sab kuch ginta hai jo vendor manage karta hai (chhupi media bhi); `visibleMediaCount` sirf wo jo customer dekhega — aur floor **usi** par lagta hai. Jis section me `mediaCount: 5` aur `visibleMediaCount: 2` ho wo customer ko nahi dikhega.
+
 **4. Search case-insensitive hai** aur title pe chalta hai.
 
 ---
@@ -3830,7 +4011,7 @@ Panel me "Hidden" tab chahiye to `?isVisible=false` bhejein.
 |---|---|---|
 | `title` | string | 2–60 chars |
 | `description` | string | Max 500 chars, `""` bhej kar clear kar sakte hain |
-| `sortOrder` | number | Integer ≥ **1** (pehle `0` bhi allowed tha — ab create/reorder ke saath consistent) |
+| ~~`sortOrder`~~ | — | 🆕 **Hata diya gaya** — neeche note dekhein |
 | `sectionType` | string | `CUSTOM` \| `SYSTEM` |
 | `isActive` | boolean | – |
 | `isVisible` | boolean | – |
@@ -3905,6 +4086,7 @@ Panel me "Hidden" tab chahiye to `?isVisible=false` bhejein.
 |---|---|---|
 | `404` | `Showcase section not found.` | |
 | `409` | `Section title already exists.` | Naya title kisi aur section ka hai |
+| `422` | 🆕 `This is the last section customers can see on your profile. Show another one before hiding this.` | `isVisible: false` ya `isActive: false`, aur brand ka koi aur section on nahi hai. **ADMIN par nahi lagta.** |
 | `422` | *(min-1 message)* | Body khali |
 | `422` | `Section title must contain at least 2 characters.` | |
 
@@ -3927,6 +4109,12 @@ Section poora hatana ho tabhi delete (#53) — wohi slot release karta hai.
 **4. ✅ Rename pe slug ab drift nahi karta** (naya) — pehle har rename `ambience` → `ambience-2` → `ambience-3` karta chala jaata tha, kyunki section apne hi slug se "duplicate" match kar jaata tha.
 
 **5. ✅ Ownership check hoti hai** — `resolveSectionForActor`.
+
+**6. 🔴 `sortOrder` hata diya gaya hai** (naya) — position ab sirf reorder endpoint (#47) badalta hai. Yahan se set karne par do sections ek hi number par aa sakte the (ya ek `99` par), aur baad me kuch renumber karta hi nahi tha — to list bas galat padi rehti, bina kisi error ke. Koi per-field rule isse rok nahi sakta: uniqueness aur density **poori list** ki property hain, isliye wo wahin check ho sakti hain jahan poori list aati hai.
+
+Media update (#49) me ye pehle se aisa hi tha — ab baaki domain bhi wahin aa gaya.
+
+> Purana client `sortOrder` bhejta rahe to `422` **nahi** milega — `stripUnknown` use chup-chaap hata deta hai. Kuch migrate karne ki zarurat nahi; bas wo value ka ab koi asar nahi.
 
 ---
 
@@ -3991,7 +4179,8 @@ Sections ka order badalta hai.
 
 ## 48. POST /showcase/section/:sectionId/add-media
 
-Photos/videos upload karta hai. **Multipart request.**
+Photos/videos add karta hai — **multipart**, ya `uploadId` se (🆕 U-3), ya dono
+mila-jula.
 
 **Access:** Intended: VENDOR · Enforced: **VENDOR+ADMIN + ownership** ⚠️
 
@@ -4009,8 +4198,53 @@ Photos/videos upload karta hai. **Multipart request.**
 ### Body (multipart)
 | Field | Type | Required | Default | Notes |
 |---|---|---|---|---|
-| *(files)* | file[] | ✅ | – | Ek ya multiple images/videos |
+| `files` | file[] | ⚠️ | – | Ek ya multiple images/videos |
+| `thumbnails` | file[] | ⚠️ | – | **Har video ke liye ek poster** — index se match hota hai |
+| `uploadIds` | ObjectId[] 🆕 | ⚠️ | – | Presigned raaste se — `SHOWCASE_MEDIA` purpose |
+| `thumbnailUploadIds` | ObjectId[] 🆕 | ⚠️ | – | Unke poster — `SHOWCASE_THUMBNAIL` purpose |
 | `isShowInVideoClips` | boolean | ❌ | `true` | **Sirf batch ki videos pe lagta hai.** Photos pe hamesha `false` store hota hai |
+
+⚠️ `files` **ya** `uploadIds` — kam se kam ek. Dono khali ho to `400`.
+
+### 🆕 Presigned raasta
+
+Har file ke liye pehle `POST /uploads/presign` (#94) → S3 par POST → `POST
+/uploads/confirm` (#95). Jo `uploadId` mile wo yahan bhejiye — file yahan aati hi
+nahi.
+
+```json
+{
+  "uploadIds": ["68f1…e001", "68f1…e002"],
+  "thumbnailUploadIds": ["68f1…e003"],
+  "isShowInVideoClips": true
+}
+```
+
+⚠️ **Poster ke liye purpose alag hai** — `SHOWCASE_THUMBNAIL`, `SHOWCASE_MEDIA`
+nahi. Dono ek hi bucket aur prefix me jaate hain; farq ye ki thumbnail 10 MB par
+capped hai aur video leta hi nahi. Gallery ka id poster ki jagah bhejne par `422`
+aata hai aur **koi upload jalta nahi** — dono abhi bhi apni jagah chal jaayenge.
+
+⚠️ **Mila-jula batch chalta hai** — kuch file attached, kuch pehle se S3 par.
+Store hone ka kram **files pehle, ids baad me**, aur section ki ginti **poore
+batch** par lagti hai, har raaste par alag nahi.
+
+> ### 🔴 Video ke saath poster ab mandatory hai
+>
+> `thumbnails[2]` `files[2]` ka poster hai, aur `thumbnailUploadIds[0]`
+> `uploadIds[0]` ka — **index se jodte hain, aur har raasta apne andar**. Jis
+> index par video hai aur poster nahi, wo request `422` se rukti hai, **upload se
+> pehle** — yaani presigned raaste par bhi aapka upload bacha rehta hai.
+>
+> 🔴 **Section ke apne rules bhi confirm se pehle chalte hain** — kitni media,
+> kaunsa mime. Baad me chalte to jawab wahi rehta, par ek extra file chun lene par
+> aapki **saari** files jal jaatin.
+>
+> Pehle poster provider khud bana deta tha — kam se kam theory me. Sach ye tha:
+> Cloudinary ka `getOptimizedImageUrl(publicId)` `/image/upload/` ka path banata
+> hai ek aise asset ke liye jo `/video/upload/` me rehta hai, yaani **har stored
+> video poster 404 tha**; aur S3 poster banata hi nahi tha. Uska nateeja ye ki
+> video-first section ka `coverImage` khud `.mp4` ban jaata tha.
 
 ### Success — `201`
 ```json
@@ -4018,32 +4252,53 @@ Photos/videos upload karta hai. **Multipart request.**
   "success": true,
   "message": "Media uploaded successfully.",
   "data": {
-    "uploaded": 3,
+    "uploaded": 2,
     "medias": [
       {
-        "_id": "68f1a2b3c4d5e6f7a8b9c5b1",
         "type": "PHOTO",
-        "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1.jpg",
-        "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1-thumb.jpg",
+        "media": {
+          "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1.jpg",
+          "kind": "IMAGE",
+          "width": 1920,
+          "height": 1080,
+          "mimeType": "image/jpeg",
+          "sizeBytes": 2516582,
+          "originalName": "amb1.jpg",
+          "provider": "CLOUDINARY"
+        },
+        "title": "amb1",
+        "altText": "amb1",
         "sortOrder": 1,
-        "isShowInVideoClips": false,
-        "isActive": true,
-        "storage": { "provider": "CLOUDINARY", "publicId": "showcase/amb1" },
-        "metadata": { "width": 1920, "height": 1080, "sizeMB": 2.4 }
+        "isActive": true
       },
       {
-        "_id": "68f1a2b3c4d5e6f7a8b9c5b2",
         "type": "VIDEO",
-        "url": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/showcase/amb-tour.mp4",
-        "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb-tour-thumb.jpg",
+        "media": {
+          "url": "https://res.cloudinary.com/drvdnqydw/video/upload/v1/showcase/amb-tour.mp4",
+          "kind": "VIDEO",
+          "width": 1080,
+          "height": 1920,
+          "mimeType": "video/mp4",
+          "sizeBytes": 19084083,
+          "originalName": "amb-tour.mp4",
+          "provider": "CLOUDINARY",
+          "duration": 24,
+          "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb-tour-thumb.jpg"
+        },
+        "title": "amb-tour",
+        "altText": "amb-tour",
         "sortOrder": 2,
-        "isShowInVideoClips": true,
-        "metadata": { "width": 1080, "height": 1920, "duration": 24, "sizeMB": 18.2 }
+        "isActive": true,
+        "isShowInVideoClips": true
       }
     ]
   }
 }
 ```
+
+> ⚠️ Ye response bhi ab #44 wale **same whitelist** se jaata hai. Pehle prepared
+> documents seedhe laut te the — `storage.publicId` ke saath. `_id` yahan nahi
+> aata (pehle bhi nahi aata tha); list padhni ho to #44 use karein.
 
 ### Errors
 | Status | Message | Kab |
@@ -4067,15 +4322,17 @@ Photos/videos upload karta hai. **Multipart request.**
 
 **1. Limits **existing + naye** dono milakar check hote hain** — agar section me 13 images hain aur aap 3 aur bhejo, to `"Maximum 15 images are allowed."` aayega.
 
-**2. Rollback on failure** — koi bhi file fail ho to **saari** uploaded files Cloudinary se delete ho jaati hain. Partial upload nahi hota.
+**2. Rollback on failure** — koi bhi file fail ho to **saari** uploaded files delete ho jaati hain (har ek apne provider se). Partial upload nahi hota.
 
 **3. `isShowInVideoClips` sirf videos pe apply hota hai** (naya). Photos par hamesha `false` store hota hai — response me bhi `false` dikhega. Pehle har media pe `true` chala jaata tha, jiska koi asar nahi hota tha (clips feed type pe filter karta hai) par panel me ek bekaar toggle dikh jaata tha.
 
-**4. Cover image auto-set hoti hai** — batch ki pehli media ka `thumbnail`, **agar pehle se koi cover na ho** aur `coverImageMode` `AUTO` ho. Video bhi cover ban sakta hai (uska poster frame use hota hai, `.mp4` link nahi).
+**4. Cover image auto-set hoti hai** — batch ki pehli media se, **agar pehle se koi cover na ho** aur `coverImageMode` `AUTO` ho. Video bhi cover ban sakta hai: uska **poster** use hota hai, `.mp4` link nahi.
 
-**5. Video thumbnail auto-generate hota hai** Cloudinary se.
+**5. 🔴 Video poster auto-generate ab nahi hota** — aap bhejte hain, `thumbnails` field me. Dekhein upar ka note. Pehle iska daawa tha ki Cloudinary bana deta hai; wo URL 404 deta tha.
 
-**6. `sortOrder` auto-assign hota hai** — existing ke baad append.
+**6. 🆕 `sortOrder` auto-assign hota hai** — section ki **non-deleted media ki ginti + 1** se shuru hokar batch append hota hai. Pehle `max(sortOrder) + 1` tha, jo **deleted rows bhi ginta** tha (unka number wahin rehta hai), to bahut edit hui section me agli upload `9` par chali jaati jabki andar 2 hi photo thi.
+
+> ⚠️ Ye domain ki ekmaat­ra write hai jo **optimistic lock ke bahar** hai, kyunki `$push` use hoti hai. Upload ke dauraan koi aur media delete kar de to nayi media apni jagah se **ek aage** gir sakti hai — gap banta hai, koi row kabhi gum ya duplicate nahi hoti, aur agla delete/reorder use band kar deta hai. Iske badle `save()` rakhte to yahan bhi `409` aata — 50 MB video upload karne ke baad vendor se dobara upload karwana, jo isse mehnga sauda hai.
 
 **7. Limits admin-configurable hain** — `Setting.vendor.showcase` se. Upar diye defaults hain; live values alag ho sakti hain. Error message me actual value aati hai.
 
@@ -4105,6 +4362,10 @@ Media ka metadata update — **file nahi badalti**.
 | `isShowInVideoClips` | boolean | ⚠️ **Sirf VIDEO pe** — photo pe bhejne se `422` |
 | `isActive` | boolean | – |
 | *(file)* `thumbnail` | file | ⚠️ **Sirf VIDEO pe** — image format, max 10 MB |
+| `thumbnailUploadId` | ObjectId 🆕 | ⚠️ **Sirf VIDEO pe** — presigned raasta, purpose `SHOWCASE_THUMBNAIL` |
+
+⚠️ Poster ya to file ho ya `thumbnailUploadId` — dono raaste ek hi jagah aate
+hain. Photo par koi bhi bhejne par `422`, aur **upload kharch nahi hota**.
 
 > 🔴 **`sortOrder` hata diya gaya hai** (naya). Position ab sirf reorder endpoint (#51) badalta hai. Yahan se set karne pe do media ek hi `sortOrder` pe aa jaati thi aur order arbitrary ho jaata tha.
 
@@ -4142,6 +4403,7 @@ Media ka metadata update — **file nahi badalti**.
 | `404` | `Media not found.` | Media nahi, ya soft-deleted hai |
 | `422` | `isShowInVideoClips applies to video media only. This media is a photo.` | **Naya** |
 | `422` | `A custom thumbnail can only be set on video media. This media is a photo.` | **Naya** |
+| `422` | 🆕 `A section needs at least 3 visible media to stay on your profile. Add another one first, or delete the whole section.` | `isActive: false` bheja aur wo section ko floor se **neeche** le jaata. Hide karna delete jaisa hi hai — [floors block](#🆕-do-floors--section-apne-aap-customer-se-gayab-na-ho-jaye). **ADMIN par nahi lagta.** |
 | `400` | `Thumbnail must be an image in a supported format.` | **Naya** — thumbnail ab validate hoti hai |
 | `400` | `Thumbnail exceeds maximum image size of 10 MB.` | **Naya** |
 | `422` | *(Joi message)* | invalid ids, title/altText limit cross |
@@ -4156,9 +4418,9 @@ Media ka metadata update — **file nahi badalti**.
 
 **4. 🔴 `isShowInVideoClips` sirf video ka switch hai** (naya) — photo pe bhejne pe `422` aata hai. Panel me photo ke liye ye toggle dikhayein hi nahi (#44 photo rows me ye key bhejta hi nahi).
 
-**5. 🔴 Custom thumbnail bhi sirf video pe** (naya) — photo apna hi thumbnail hai. Pehle ye check nahi tha, aur photo pe thumbnail set karne se photo ka apna asset delete hone ka risk tha.
+**5. 🔴 Poster bhi sirf video pe** — photo apna hi thumbnail hai. Pehle ye check nahi tha, aur photo pe thumbnail set karne se photo ka apna asset delete hone ka risk tha.
 
-**6. ✅ Purana custom poster ab actually delete hota hai** (naya) — pehle ek galat condition ki wajah se Cloudinary pe orphan files chhut jaati thi. Auto-generated poster (video ke apne public id se bana) delete **nahi** hota — wo video ke saath hi jaata hai.
+**6. ✅ Purana poster hamesha delete hota hai** — bina koi "ye custom hai ya auto?" wala sawaal poochhe. Wo sawaal isliye tha ki auto-generated poster delete karne se video ka apna asset chala jaata; ab koi poster derive hota hi nahi, to har stored poster ek alag file hai jise sirf yahi media reference karta hai. (Us purane check ka apna bug bhi tha: S3 par `publicId` null hone se URL comparison skip ho jaata aur **har** auto poster custom padha jaata — yaani poster badalne par wahi poster delete ho jaata jo vendor dekh raha tha.)
 
 **7. ✅ Thumbnail upload fail hone pe ab request fail hoti hai** (naya) — pehle error swallow ho jaata tha aur `200` aa jaata tha, jabki poster badla hi nahi hota tha.
 
@@ -4181,7 +4443,12 @@ Media file replace karta hai. **Multipart.**
 ### Body (multipart)
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| *(file)* | file | ✅ | **Exactly ek** file |
+| `file` | file | ⚠️ | **Exactly ek** file |
+| `thumbnail` | file | ⚠️ | **Video replace karte waqt required** — poster image |
+| `uploadId` | ObjectId 🆕 | ⚠️ | Presigned raasta — purpose `SHOWCASE_MEDIA` |
+| `thumbnailUploadId` | ObjectId 🆕 | ⚠️ | Uska poster — purpose `SHOWCASE_THUMBNAIL` |
+
+⚠️ `file` **ya** `uploadId` — ek chahiye, dono nahi.
 
 ### Success — `200`
 ```json
@@ -4191,10 +4458,22 @@ Media file replace karta hai. **Multipart.**
   "data": {
     "_id": "68f1a2b3c4d5e6f7a8b9c5b1",
     "type": "PHOTO",
-    "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1-v2.jpg",
-    "thumbnail": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1-v2-thumb.jpg",
+    "media": {
+      "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/showcase/amb1-v2.jpg",
+      "kind": "IMAGE",
+      "width": 2048,
+      "height": 1152,
+      "mimeType": "image/jpeg",
+      "sizeBytes": 3250585,
+      "originalName": "amb1-v2.jpg",
+      "provider": "CLOUDINARY"
+    },
+    "title": "seating area",
+    "altText": "cafe seating with wooden tables",
     "sortOrder": 1,
-    "metadata": { "width": 2048, "height": 1152, "sizeMB": 3.1 }
+    "isActive": true,
+    "createdAt": "2026-08-22T16:05:00.000Z",
+    "updatedAt": "2026-09-15T10:00:00.000Z"
   }
 }
 ```
@@ -4205,16 +4484,24 @@ Media file replace karta hai. **Multipart.**
 | `404` | `Media not found.` | Section ya media nahi, ya media inactive/deleted hai |
 | `400` | `Please upload exactly one media file.` | Zero ya multiple files |
 | `400` | `Only photo replacement is allowed for this media.` | Type mismatch — **upload se pehle** check hota hai |
+| `422` | `A video needs a poster image. Attach one as "thumbnail", or name its upload as "thumbnailUploadId".` | Video se replace kar rahe hain, poster nahi bheja |
+| `404` 🆕 | `That upload was not found.` | Galat / expire / **kisi aur ka** `uploadId` |
+| `422` 🆕 | `That upload was authorised for SHOWCASE_MEDIA, and this is SHOWCASE_THUMBNAIL. …` | Gallery ka id poster ki jagah (ya ulta) |
 | `400` | *(format/size errors)* | #48 jaise |
 | `500` | `Failed to replace media` | Upload fail — file rollback ho jaati hai |
 
 ### ⚠️ Notes
 
-**1. Purani file Cloudinary se delete ho jaati hai** — sirf new upload succeed **aur** document save hone ke baad. Video ka custom poster bhi saath me hat jaata hai.
+**1. Purani file storage se delete ho jaati hai** — sirf new upload succeed **aur** document save hone ke baad. Video ka poster bhi saath me hat jaata hai.
 
 **2. `_id`, `sortOrder`, `isActive` aur `isShowInVideoClips` same rehte hain** — sirf file badalti hai.
 
 **3. 🔴 Type badal NAHI sakta** — photo ki jagah photo, video ki jagah video. (Ye rule pehle bhi tha par upload ke **baad** check hota tha, aur uska `400` outer catch me `500` ban jaata tha. Ab mime type se pehle hi check hota hai — na bekaar upload, na galat status code.)
+
+> ⚠️ Comparison **wire type** par hai, `kind` par nahi. JPEG ki jagah GIF chalega
+> — gallery ke liye dono photo hain aur dono ek hi ceiling me ginte hain — par
+> `media.kind` phir bhi `GIF` likhega, jo use `gifs/` prefix me rakhta hai, resize
+> step se door.
 
 **4. Cover image auto-sync hoti hai** — agar ye media cover thi to naya poster cover ban jaata hai (`coverImageMode: MANUAL` na ho to).
 
@@ -4266,14 +4553,18 @@ Media file replace karta hai. **Multipart.**
 |---|---|---|
 | `400` | `Media list is required.` | Empty |
 | `404` | `Showcase section not found.` | |
-| `400` | `Please send the complete media order — N media expected, M received.` | ⚠️ **Section ki saari live media bhejni hoti hai**, sirf badli hui nahi |
-| `400` | `Invalid media id : <id>` | Koi id us section ki nahi (ya inactive/deleted hai) |
+| `400` | `Please send the complete media order — N media expected, M received.` | ⚠️ **Section ki saari non-deleted media bhejni hoti hai** (hidden bhi), sirf badli hui nahi |
+| `400` | `Invalid media id : <id>` | Koi id us section ki nahi, ya deleted hai |
 
 ### ⚠️ Notes
 
 **1. ⚠️ Poori list mandatory hai.** Partial reorder allowed nahi. Error message ab batata hai kitni expected thi aur kitni mili.
 
-**2. `sortOrder` `1` se start hota hai** — #47 ke saath ab consistent.
+**2. 🆕 Hidden media bhi list me aati hai** — pehle sirf `isActive: true` wali renumber hoti thi. Media #2 ko hide karke baaki ko reorder karo, to bache hue 1, 2, 3 ho jaate the aur **hidden wali bhi 2 par** hi rehti thi. Wapas on karte hi do media ek hi position par — kaun pehle aayega, ye Mongo ke return order par chhod diya jaata tha.
+
+Hidden ≠ deleted: jo vendor ko apne panel me dikhti hai, wo order ka hissa hai (S-12). Section reorder (#47) hamesha aisa hi tha — ab dono ek jaise hain. Iska matlab **expected count me hidden media bhi gini jaati hai** — pehle wo error "2 media expected" bolta tha jabki panel me teen dikh rahi thi.
+
+**3. `sortOrder` `1` se start hota hai** — #47 ke saath ab consistent.
 
 **3. Cover image order ke saath move karti hai** — pehli media ka thumbnail cover ban jaata hai, isliye response me naya `coverImage` bhi aata hai. `coverImageMode: MANUAL` ho to cover nahi badalta. (Pehle cover ke liye media ka `url` prefer hota tha — video pehle number pe aa jaaye to cover ek `.mp4` link ban jaati thi aur UI me broken image dikhti thi. Ab hamesha `thumbnail` prefer hota hai.)
 
@@ -4306,6 +4597,7 @@ Media file replace karta hai. **Multipart.**
 |---|---|---|
 | `404` | `Media not found.` | Section ya media nahi, ya pehle se deleted/inactive |
 | `400` | `At least one media is required in this section.` | ⚠️ **Aakhri live media delete nahi kar sakte** |
+| `400` | 🆕 `A section needs at least 3 visible media to stay on your profile. Add another one first, or delete the whole section.` | Delete section ko floor se **neeche** le jaata. Number `Setting` se aata hai. **ADMIN par nahi lagta.** Jo section pehle se neeche hai wo ghat sakta hai — [floors block](#🆕-do-floors--section-apne-aap-customer-se-gayab-na-ho-jaye) dekhein |
 
 ### ⚠️ Notes
 
@@ -4316,6 +4608,12 @@ Media file replace karta hai. **Multipart.**
 **3. Cloudinary se file phir bhi delete hoti hai** — storage cost bachane ke liye. Matlab soft delete ek **audit record** hai, restore point nahi.
 
 **4. ✅ Cover image ab khud sudhar jaati hai** (naya) — deleted media cover thi to bachi hui pehli media ka thumbnail cover ban jaata hai, aur naya `coverImage` response me aata hai. Pehle cover stale reh jaati thi (comparison `url` se hoti thi jabki cover `thumbnail` se set hui thi).
+
+**5. 🆕 Baaki media ki position turant renumber ho jaati hai** — teen photo `1, 2, 3` par hain aur beech wali delete karein to bachi hui `1, 2` par aa jaati hain. Pehle deleted media apni position chhod jaati thi aur panel me `1, 3` dikhta tha; vendor ke paas theek karne ka ek hi raasta tha — poora drag-and-drop reorder. Aur agli upload sabse bade number se aage jaati thi, to har delete ke saath farak badhta jaata tha.
+
+Deleted row apna purana number **rakhta hai** — wo audit record hai, ginti me nahi aata, aur `sortOrder: 0` karne par wo schema default se takra kar har read me sabse aage aa jaata. Koi bhi API deleted media nahi lautati, to ye number kahin dikhta nahi.
+
+Hidden media renumber me **shaamil** hoti hai, to use wapas on karne par wo apni hi jagah par aati hai.
 
 ---
 
@@ -4352,6 +4650,7 @@ Poora section delete — media ke saath.
 |---|---|
 | `404` | `Showcase section not found.` |
 | `422` | `Invalid section ID format` |
+| `400` | 🆕 `A brand needs at least one showcase section. Create another one before deleting this.` | Ye brand ka aakhri non-deleted section hai. **ADMIN par nahi lagta.** |
 
 ### ⚠️ Notes
 
@@ -4360,6 +4659,10 @@ Poora section delete — media ke saath.
 **2. Soft delete hai** — section aur uski saari media pe `isDeleted: true`. **Cloudinary files delete ho jaati hain** (doc me pehle ulta likha tha) — to restore possible nahi, ye audit record hai.
 
 **3. Sirf hide karna ho to `isVisible: false` ya `isActive: false` (#46) use karein** — wo slot release **nahi** karte, par customer ko dikhna band ho jaata hai aur file bhi safe rehti hai.
+
+**4. 🆕 Baaki sections turant renumber ho jaate hain** — brand ke paas `1, 2, 3` the aur doosra delete hua to bache hue `1, 2` ho jaate hain. Pehle section-level par ye hota hi nahi tha (media ke andar hota tha), to brand hamesha ke liye `1, 3, 4` list karta rehta — aur create bhi sabse bade number se aage jaata tha, to farak badhta jaata tha.
+
+Delete hua section apna purana number rakhta hai, par wo kisi listing me aata hi nahi. **Sirf isi brand ke** sections renumber hote hain.
 
 ---
 
@@ -4407,11 +4710,38 @@ job use `ARCHIVED → EXPIRED` kar degi.
 Dono customer listing se bahar hain (wo sirf `PUBLISHED` dikhati hai) aur dono
 plan ka voucher slot chhod dete hain.
 
+### 🆕 Images ka floor — ek rule, ek jawab
+
+Voucher ko ab kam se kam **`Setting.vendor.voucher.minImages`** (default **3**) images chahiye. Teen jagah lagta hai, teeno par **ek hi message aur ek hi status**:
+
+| Endpoint | Kis par ginti hoti hai |
+|---|---|
+| #54 create | Is request me aayi files — **upload shuru hone se pehle** |
+| #55 update | Jo edit ke **baad bachta** hai (rakhi + nayi − hatayi) |
+| #56 submit-review | Version me stored images, chahe wo kitni requests me bani hon |
+
+```
+422  A voucher needs at least 3 images — this one has 2. Add 1 more.
+```
+
+**Message agla kadam batata hai, sirf rule nahi.** Purana message *"At least one voucher image is required"* ye batata tha ki platform kya chahta hai aur vendor ko khud hisaab lagane chhod deta tha — jo floor `1` par theek tha aur `3` par nahi, kyunki number vendor ki screen par hai hi nahi. Ab dono ginti aur baaki kitni chahiye, sab message me hai.
+
+> ### ⚠️ Contract change — do cheezein badli hain
+>
+> **1. Message badla hai** teeno endpoints par. Agar aap **text par match** kar rahe the, wo tootega — status code aur `success: false` par match karein.
+>
+> **2. #55 ka status `400` → `422` ho gaya.** Ek hi rule ke do alag status code the: create `422` deta tha, update `400`. Do me se koi bhi client galat nahi tha — bas jis endpoint par gaya uspar depend karta tha. Ab teeno `422` hain.
+
+**Kyun ye zaroori tha:** yahi sawal paanch jagah pucha jaata tha aur **paanch alag jawab** milte the — do status code, teen alag wording, aur **koi bhi `minImages` padhta nahi tha**. To platform 3 par set hota aur ek-image wala voucher paanchon jagah se nikal jaata.
+
+> **#57 approve par ye floor nahi lagta** — wahan sirf structural check hai (0 images = corrupt). Admin `minImages` badha de vendor ke submit ke **baad**, to queue me pade vouchers approve na ho paate aur vendor unhe theek bhi nahi kar sakta (wo bhej chuka hai). Wo voucher ko peeche se retire karna hota — bilkul wahi cheez jise `minImages` ka design rokta hai.
+
 ---
 
 ## 54. POST /vouchers/create
 
-Naya voucher banata hai. **Multipart** (images mandatory).
+Naya voucher banata hai. Images zaroori hain — **multipart**, ya `uploadId` se
+(🆕 U-4), ya dono mila-jula.
 
 **Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** (`resolveActorBrand`)
 
@@ -4430,11 +4760,47 @@ Naya voucher banata hai. **Multipart** (images mandatory).
 | `endAt` | ISO date | ✅ | – | `startAt` se baad |
 | `offers` | array | ✅ | – | Min 1. JSON string bhi accept hota hai |
 | `subBrandIds` | ObjectId[] | ✅ | – | Min 1 — kaunse outlets pe valid |
-| `images` | file[] | ✅ | – | **Multipart**, field name `images`. Min 1 |
+| `images` | file[] | ⚠️ | – | **Multipart**, field name `images` |
+| `imageUploadIds` | ObjectId[] 🆕 | ⚠️ | – | Presigned raasta — purpose `VOUCHER_IMAGE` |
+| `media` | file | ❌ | – | Banner — image, GIF ya video |
+| `bannerUploadId` | ObjectId 🆕 | ❌ | – | Banner, presigned — purpose `VOUCHER_BANNER` |
+| `poster` | file | ⚠️ | – | **Video banner ke saath zaroori** |
+| `bannerPosterUploadId` | ObjectId 🆕 | ⚠️ | – | Wahi, presigned — purpose `VOUCHER_BANNER_POSTER` |
 | `description` | string | ❌ | – | Max 2000 chars |
 | `tags` | string[] | ❌ | – | Min 1 item agar bhejein |
 | `isSaveAsDraft` | boolean | ❌ | `true` | |
-| `bannerType` | string | ❌ | – | `IMAGE` \| `VIDEO` \| `GIF` — saath me matching file bhi chahiye |
+
+⚠️ `images` **ya** `imageUploadIds` — milakar `minImages` (default 3) poore hone
+chahiye. Dono khali ho to wahi refusal jo kam images par aata hai.
+
+⚠️ **`bannerType` ab nahi hai** (V-4). Banner `media` naam se aata hai aur wo kya
+hai ye uske **bytes** se tay hota hai — payload me type batana ek hi sawaal ka
+doosra jawab tha, aur stored wala jeet sakta tha.
+
+### 🆕 Presigned raasta
+
+Har file ke liye pehle `POST /uploads/presign` (#94) → S3 par POST → `POST
+/uploads/confirm` (#95). Jo `uploadId` mile wo yahan bhejiye.
+
+```json
+{
+  "brandId": "68f1…c3a1",
+  "name": "Flat 30% off on total bill",
+  "imageUploadIds": ["68f1…e001", "68f1…e002", "68f1…e003"],
+  "bannerUploadId": "68f1…e004",
+  "bannerPosterUploadId": "68f1…e005"
+}
+```
+
+🔴 **Poster ka purpose alag hai** — `VOUCHER_BANNER_POSTER`, `VOUCHER_BANNER`
+nahi. Ek hi bucket aur prefix, par poster 10 MB par capped hai aur video leta hi
+nahi. Banner ka id poster ki jagah bhejne par `422`, aur koi upload jalta nahi.
+
+🔴 **Image floor aur limits confirm se pehle chalte hain** — teen ki jagah do
+bhejne par refusal aata hai aur aapke uploads **abhi bhi aapke** hain.
+
+⚠️ **Mila-jula batch chalta hai**, aur floor poore batch par lagta hai: do
+attached + ek `uploadId` = teen.
 
 **Offer ka shape:**
 | Field | Type | Required | Default | Validation |
@@ -4534,7 +4900,8 @@ bannerImage:  <file>
 | `400` | `Brand not found` | |
 | `400` | `Voucher name is required.` | Trim ke baad khali |
 | `409` | `Voucher with this name already exists for this brand.` | Duplicate name |
-| `422` | `At least one voucher image is required.` | `images` file nahi |
+| `422` | 🆕 `A voucher needs at least 3 images — this one has 2. Add 1 more.` | Itni images nahi bheji. Number `Setting.vendor.voucher.minImages` se aata hai — neeche note dekhein |
+| `400` | 🆕 `<file> exceeds maximum image size of 10 MB.` | Voucher images par **pehle koi size check tha hi nahi** — P12. Limit `Setting.storage.limits.maxImageSizeMB` se aati hai |
 | `422` | `At least one offer is required.` | |
 | `422` | `Offer 1: "title" is required` | Offer ke andar ka error — `Offer <n>:` prefix ke saath |
 | `422` | `Invalid offer JSON at index 0.` | JSON string malformed |
@@ -4548,7 +4915,17 @@ bannerImage:  <file>
 
 ### ⚠️ Edge cases & notes
 
-**1. Fully transactional hai.** Voucher + Version + SubBrand mappings sab ek MongoDB transaction me bante hain. Fail hone pe **uploaded images bhi rollback** ho jaati hain (`rollbackVoucherImages`).
+**1. Writes fully transactional hain.** Voucher + Version + SubBrand mappings sab ek MongoDB transaction me bante hain. Fail hone pe **uploaded images bhi rollback** ho jaati hain (`rollbackVoucherImages`), aur plan ka slot bhi wapas milta hai.
+
+> ### 🆕 Uploads ab transaction ke **bahar** hote hain
+>
+> Pehle images aur banner dono transaction khulne ke **baad** upload hote the. Transaction apne locks poori umar rakhta hai aur server use `transactionLifetimeLimitSeconds` (default **60s**) par khud abort kar deta hai. Matlab slow connection wale vendor ko slow request nahi milti thi — use ek aisi request milti thi jo minute bhar chalti, sab kuch upload kar deti, aur phir commit par transaction ki error deti. Bytes ka paisa lag chuka hota.
+>
+> Ab tarteeb ye hai: **saari validation aur dono upload pehle, transaction sirf writes ke liye** — jo milliseconds me hote hain. Banner bhi isi wajah se pehle chala gaya (wo video ho sakta hai); use voucher id chahiye thi, aur wo id upload se pehle hi ban jaati hai.
+>
+> **Aapke liye kya badla:** kuch nahi, contract wahi hai. Farak sirf ye ki ab ek badi upload par transaction timeout nahi milega, aur upload fail hone par error **upload ki** hogi — transaction ki nahi.
+>
+> ⚠️ Iska matlab ye bhi hai ki ab zyadatar failures transaction shuru hone se **pehle** hote hain (duplicate naam, galat category, image size, upload fail). Rollback aur slot release dono par pehle jaisa hi chalte hain.
 
 **2. `offers` JSON string ho sakta hai** — multipart me array bhejna mushkil hai, isliye validator string parse kar leta hai. Error message me index bhi aata hai (`Offer 1: …`).
 
@@ -4598,10 +4975,35 @@ Voucher edit — **naya version banata hai**. Multipart.
 | `removedTags` | string[] | – | Hatane wale tags |
 | `newOffers` | array | Offer schema | Naye offers |
 | `removedOfferIds` | ObjectId[] | – | Hatane wale offers |
-| `removeImageIds` | ObjectId[] | – | Hatane wali images |
+| `removeImageIds` | ObjectId[] | – | Hatane wali images — file tabhi delete hoti hai jab koi **doosra version** use na kar raha ho (neeche dekhein) |
 | `newSubBrandIds` | ObjectId[] | – | Naye outlets |
 | `removeSubBrandIds` | ObjectId[] | – | Hatane wale outlets |
 | `newImages` | file[] | – | **Multipart**, field name `newImages` |
+| `newImageUploadIds` | ObjectId[] 🆕 | – | Presigned raasta — purpose `VOUCHER_IMAGE`. Mila-jula batch chalta hai, aur floor **poore** batch par lagta hai |
+
+> #### ⚠️ `removeImageIds` file kab sach me delete karta hai
+>
+> Ek **published** voucher ko edit karne par naya draft version **fork** hota hai,
+> aur fork har kept image ko apne `storage` ke saath copy karta hai — yaani do
+> version ek hi file par point karte hain.
+>
+> Isliye draft se image hatane par server pehle dekhta hai ki us file ko koi aur
+> non-deleted version to nahi use kar raha. Kar raha ho to **row hat jaati hai,
+> file rehti hai** — warna live published voucher ki tasveer mar jaati.
+>
+> Vendor ko farak nahi padta: image us version se hat hi jaati hai. Ye sirf ye
+> batata hai ki purana version kyun theek chalta rehta hai.
+>
+> 🆕 Ab ye baat **service level par test** hoti hai — v1 PUBLISHED, uska fork v2,
+> v2 se shared image hatao, aur v1 ki file zinda rehni chahiye. Pehle iska koi
+> test is raaste par nahi tha, to check ko bypass karne wala change kahin pakda
+> hi nahi jaata.
+
+> ### 🆕 Images ab transaction ke **bahar** upload hoti hain
+>
+> Wahi badlav jo create (#54) par hai: upload pehle, transaction sirf writes ke
+> liye. Ek badi upload par ab transaction timeout nahi milega, aur upload fail ho
+> to error **upload ki** aayegi, transaction ki nahi. Contract wahi hai.
 
 ```json
 {
@@ -4649,8 +5051,9 @@ Voucher edit — **naya version banata hai**. Multipart.
 | `409` | `Voucher with this name already exists for this brand.` | Naya naam duplicate |
 | `400` | `Voucher name cannot be empty.` | |
 | `400` | `At least one offer is required.` | Sab offers hata diye |
-| `400` | `At least one voucher image is required.` | Sab images hata di |
+| ~~`400`~~ → `422` | 🆕 `A voucher needs at least 3 images — this one has 2. Add 1 more.` | ⚠️ **Status badla** (`400` → `422`). Ginti us par hai jo edit ke **baad bachta** hai, upload par nahi |
 | `400` | `Maximum 5 voucher images are allowed.` | Limit cross |
+| `400` | 🆕 `<file> exceeds maximum image size of 10 MB.` | Voucher images par **pehle koi size check tha hi nahi** — P12. Limit `Setting.storage.limits.maxImageSizeMB` se aati hai |
 | `400` | `At least one SubBrand is required.` | Sab outlets hata diye |
 | `403` | `Forbidden: You do not have permission to perform this action on this brand.` | |
 
@@ -4709,7 +5112,9 @@ Koi nahi.
 | `400` | `Published voucher cannot be submitted directly. Create a new version first.` | Already published version submit karne ki koshish |
 | `409` | `Voucher status changed. Please refresh and try again.` | Concurrent modification |
 | `409` | `Voucher version status changed. Please refresh and try again.` | Version race |
-| `400` | *(validation)* | Offers/images/dates adhoore |
+| `422` | 🆕 `A voucher needs at least 3 images — this one has 2. Add 1 more.` | ⚠️ **Naya** — pehle yahan `400 "At least one image is required"` tha, jo `minImages` padhta hi nahi tha. Upar ka [images floor block](#🆕-images-ka-floor--ek-rule-ek-jawab) dekhein |
+| `422` | 🆕 `A voucher needs a banner before it can be submitted. Upload one as "media" on the banner endpoint.` | ⚠️ **Naya** — banner ab submit ke liye zaruri hai (#59). Pending, approved ya rejected — teeno chalte hain, bas kuch to bheja ho |
+| `400` | *(validation)* | Offers/dates adhoore |
 
 ### ⚠️ Notes
 
@@ -4783,17 +5188,274 @@ Koi nahi.
 
 🔴 Publish sirf status nahi badalta — wo **jo version live hai use ARCHIVE** kar deta hai. To koi bhi vendor doosre brand ka **chalta hua voucher hata kar** dusra live kar sakta tha, aur approval history me **uska apna naam** darj hota — ek aise brand par jisse uska koi rishta nahi.
 
-**3. Publish karte hi version `isImmutable: true` ho jaata hai** — ab wo kabhi edit nahi ho sakta. Change chahiye to naya version.
+**4. Publish karte hi version `isImmutable: true` ho jaata hai** — ab wo kabhi edit nahi ho sakta. Change chahiye to naya version.
 
-**4. Expired voucher publish nahi hota** — `endAt` future me honi chahiye.
+**5. Expired voucher publish nahi hota** — `endAt` future me honi chahiye.
 
-**5. Publish ke baad customer ko dikhne lagta hai** — `GET /vouchers/customer/get-all` me, agar outlet radius me ho aur `startAt <= now < endAt`.
+**6. Publish ke baad customer ko dikhne lagta hai** — `GET /vouchers/customer/get-all` me, agar outlet radius me ho aur `startAt <= now < endAt`.
 
-**6. ✅ Ownership ab check hoti hai** — service voucher load karke uske `brandId`
-ke against `resolveActorBrand` chalati hai. Ye sabse mehenga hole tha: publish
-sirf status nahi badalta, wo **jo version live hai use archive** kar deta hai —
-yaani koi bhi vendor doosre brand ka chalta hua voucher hata sakta tha, aur
-approval history me uska apna naam darj hota.
+**7. 🆕 Master voucher ab `PUBLISHED` bolta hai.** Pehle wo `APPROVED` par hi pada reh jaata tha. Isse `PAUSED` ke paas utarne ki seedhi ban gayi (#57a) aur expiry sweep master tak pahunchne lagi.
+
+---
+
+## 57a. POST /vouchers/pause/:versionId
+
+🆕 Live voucher ko customer feed se hataata hai, **bina khatam kiye**.
+
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · vendor sirf apne brand ka
+
+### Path Params
+| Param | Type | Required | Notes |
+|---|---|---|---|
+| `versionId` | ObjectId | ✅ | ⚠️ **Version ka id**, voucher ka nahi |
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `reason` | String | ❌ | Max 1000. Aapka apna note — *"stock khatam, Monday tak"*. Customer ko nahi dikhta |
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Voucher paused. Customers will not see it until you resume it.",
+  "data": {
+    "voucherId": "68f1a2b3c4d5e6f7a8b9c2a1",
+    "versionId": "68f1a2b3c4d5e6f7a8b9c2b1",
+    "voucherCode": "VCH-10000042",
+    "versionCode": "VCH-10000042-V1",
+    "versionNo": 1,
+    "action": "PAUSED",
+    "voucherStatus": "PAUSED",
+    "versionStatus": "PAUSED",
+    "pausedAt": "2026-09-17T10:15:00.000Z",
+    "reason": "Stock khatam, Monday tak"
+  }
+}
+```
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `401` | `User authentication is required.` | Token se `userId` nahi mila |
+| `403` | `Forbidden: You do not have permission to perform this action on this brand.` | Voucher kisi aur brand ka |
+| `400` | `Invalid voucher version ID.` | Format |
+| `404` | `Voucher version not found.` / `Voucher not found.` | |
+| `409` | `Only a published voucher can be paused — this one is APPROVED.` | Wo version live hai hi nahi |
+| `400` | `The reason cannot exceed 1000 characters.` | |
+| `409` | `Voucher version status changed. Please refresh and try again.` | Beech me kisi aur ne badal diya |
+
+---
+
+## 57b. POST /vouchers/resume/:versionId
+
+🆕 Paused voucher ko wapas customer feed me laata hai.
+
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · vendor sirf apne brand ka
+
+### Path Params
+| Param | Type | Required | Notes |
+|---|---|---|---|
+| `versionId` | ObjectId | ✅ | |
+
+### Body
+Koi nahi.
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Voucher is live again.",
+  "data": {
+    "voucherId": "68f1a2b3c4d5e6f7a8b9c2a1",
+    "versionId": "68f1a2b3c4d5e6f7a8b9c2b1",
+    "voucherCode": "VCH-10000042",
+    "versionCode": "VCH-10000042-V1",
+    "versionNo": 1,
+    "action": "RESUMED",
+    "voucherStatus": "PUBLISHED",
+    "versionStatus": "PUBLISHED",
+    "pausedAt": null,
+    "reason": null
+  }
+}
+```
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `401` | `User authentication is required.` | |
+| `403` | `Forbidden: You do not have permission to perform this action on this brand.` | |
+| `404` | `Voucher version not found.` / `Voucher not found.` | |
+| `409` | `Only a paused voucher can be resumed — this one is PUBLISHED.` | Wo paused hai hi nahi |
+| `409` | 🔴 `Version 2 went live while this one was paused, and a voucher can only have one live version. Pause version 2 first, or leave this one paused.` | Beech me doosra version publish ho gaya |
+| `409` | `This voucher's validity ran out while it was paused. Create a new version with new dates.` | `endAt` nikal chuki |
+
+### ⚠️ Notes
+
+**1. Pause khatam karna nahi hai.** Version jaisa tha waisa hi rehta hai — dates, offers, images, sab. Resume karte hi wapas wahi voucher live ho jaata hai. Ye publish-over-karne ya expire hone se alag hai, wo dono wapas nahi aate.
+
+**2. Customer ke liye wo turant gayab ho jaata hai.** Listing `status: "PUBLISHED"` par match karti hai, to paused version kisi feed me nahi aata — aur resume par wapas aa jaata hai. Iske liye customer side par kuch naya nahi jodna pada.
+
+**3. 🔴 Paused rehte hue aap doosra version publish kar sakte hain — par phir purana wapas nahi aayega.** Ek voucher par ek hi live version ho sakta hai (partial unique index). Pause karne se wo slot khali ho jaata hai, to v2 publish ho sakta hai; uske baad v1 ko resume karne par **saaf 409** milta hai jisme likha hota hai ki kaunsa version live hai aur ab kya karna hai. Pehle ye `E11000` database error banke **500** girta.
+
+**4. Ghadi nahi rukti.** Paused voucher ki `endAt` waise hi aati hai. Nikal gayi to hourly sweep use `EXPIRED` kar deti hai aur resume par 409 milta hai — naya version banana padega.
+
+**5. `reason` sirf aapke liye hai.** Approval history me darj hota hai. Customer ko kabhi nahi dikhta, aur admin ke `rejectionReason` se alag field hai — ek wo hai jo aapne chuna, dusra wo jo aap par hua.
+
+**6. Master status tabhi badalta hai jab wo isi version ki baat kar raha ho.** Agar aapne naya version banana shuru kar diya hai to master `DRAFT` par hai (wo aapka chalu kaam track kar raha hai), aur pause use nahi chhuta — `versionStatus` phir bhi `PAUSED` ho jaata hai, aur customer ke liye wahi maayne rakhta hai.
+
+---
+
+## 57c. DELETE /vouchers/:voucherId
+
+🆕 Voucher delete karta hai — **soft**, aur plan ka slot wapas de deta hai.
+
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · vendor sirf apne brand ka
+
+### Path Params
+| Param | Type | Required | Notes |
+|---|---|---|---|
+| `voucherId` | ObjectId | ✅ | ⚠️ **Voucher ka id**, version ka nahi — delete poore voucher par hota hai |
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `reason` | String | ❌ | Max 500. Admin ki deleted-list me yahi padha jaata hai |
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Voucher deleted.",
+  "data": {
+    "voucherId": "68f1a2b3c4d5e6f7a8b9c2a1",
+    "voucherCode": "VCH-10000042",
+    "status": "DELETED",
+    "deletedAt": "2026-09-17T10:15:00.000Z",
+    "deletedBy": "68f1a2b3c4d5e6f7a8b9c0a1",
+    "deleteReason": "Galti se bana diya tha",
+    "versionsDeleted": 2,
+    "previousStatus": "DRAFT"
+  }
+}
+```
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `401` | `User authentication is required.` | |
+| `403` | `Forbidden: You do not have permission to perform this action on this brand.` | Voucher kisi aur brand ka |
+| `400` | `Invalid voucher ID.` | Format |
+| `404` | `Voucher not found.` | Hai hi nahi, ya pehle se deleted |
+| `400` | `The reason cannot exceed 500 characters.` | |
+| `409` | 🔴 `2 customers are holding this voucher right now (1 already paid, 1 still checking out), so it cannot be deleted.` | **Live claim** — neeche dekhein |
+| `409` | `Voucher was already deleted. Please refresh.` | Do delete ek saath aaye |
+
+#### 🔴 `409` ke saath `details` bhi aata hai
+```json
+{
+  "success": false,
+  "message": "2 customers are holding this voucher right now (1 already paid, 1 still checking out), so it cannot be deleted.",
+  "details": {
+    "liveClaims": 2,
+    "breakdown": { "PAID": 1, "PENDING": 1 },
+    "suggestedAction": "Pause it instead — that takes it off the customer app immediately and leaves these claims intact. You can delete it once they are settled."
+  }
+}
+```
+
+### ⚠️ Notes
+
+**1. Soft delete hai — row rehti hai.** `VoucherClaim` apne saath offer, voucher, brand aur outlet ke snapshot rakhta hai, isliye customer ki order history is document ko padhti hi nahi aur delete ke baad bhi poori rehti hai. Par claim `voucherId` par point karta hai — hard delete un sabko khali jagah par chhod deta.
+
+**2. `status: DELETED` aur `isDeleted: true` hamesha saath likhe jaate hain.** Ek jagah se (`voucherDeletionFields`). `isDeleted` wo hai jis par har query filter karti hai; `DELETED` wo hai jo panel dikha sakta hai — boolean kisi ko dikhaya nahi ja sakta.
+
+**3. Saari versions bhi jaati hain.** Voucher ki version ki apni koi zindagi nahi hai. Chhod dete to ek deleted voucher ki `PUBLISHED` version reh jaati, jise customer listing `voucherMappings` se join karke khushi se serve karti rehti.
+
+**4. 🔴 Live claim par delete rukta hai — admin ke liye bhi.** `PENDING` matlab customer abhi checkout par khada hai; `PAID` uss se bhi bhaari — paisa ja chuka hai aur discount abhi mila nahi. Baaki saare states (`REDEEMED`, `FAILED`, `CANCELLED`, `EXPIRED`, `REFUNDED`) khatam ho chuke hain, un par nahi rukta.
+
+Is codebase ke har doosre guard me ADMIN ko chhoot hai, kyunki admin ka kaam hi vendor ke rule ke upar jaana hai. Ye wala alag hai: jise ye bachata hai wo in dono me se koi nahi. Jis customer ne paisa de diya hai use wo discount milna hi chahiye, aur delete dabane wale admin ko pata bhi nahi chalta ki wo kisi ko beech raaste chhod raha hai.
+
+**5. Slot turant wapas milta hai.** Delete ke baad brand ka `vouchersUsed` ek kam ho jaata hai, to naya voucher usi waqt banaya ja sakta hai.
+
+**6. `PAUSED` aur `DELETED` alag cheezein hain.** Pause wapas aa sakta hai (#57b), delete nahi. Agar aap sirf isliye hata rahe hain ki abhi customer ko na dikhe, to pause chahiye.
+
+---
+
+## 57d. PUT /vouchers/versions/:versionId/images/reorder
+
+🆕 Voucher ki images ka kram badalta hai — **poori list bhejni hoti hai**.
+
+**Access:** **VENDOR+ADMIN**, ownership verified ✅ · vendor sirf apne brand ka
+
+### Path Params
+| Param | Type | Required | Notes |
+|---|---|---|---|
+| `versionId` | ObjectId | ✅ | ⚠️ **Version ka id** — images version ki hoti hain, voucher ki nahi |
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `images` | Array | ✅ | **Poori list.** Har item: `{ id, sortOrder }` |
+| `images[].id` | ObjectId | ✅ | Image entry ka `_id` |
+| `images[].sortOrder` | Number ≥ 1 | ✅ | Sirf **kram** tay karta hai — server 1..n me dobara number karta hai |
+
+```json
+{
+  "images": [
+    { "id": "68f1a2b3c4d5e6f7a8b9d003", "sortOrder": 1 },
+    { "id": "68f1a2b3c4d5e6f7a8b9d001", "sortOrder": 2 },
+    { "id": "68f1a2b3c4d5e6f7a8b9d002", "sortOrder": 3 }
+  ]
+}
+```
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Voucher images reordered.",
+  "data": {
+    "versionId": "68f1a2b3c4d5e6f7a8b9c2b1",
+    "voucherCode": "VCH-10000042",
+    "updated": 3,
+    "images": [
+      { "id": "68f1a2b3c4d5e6f7a8b9d003", "sortOrder": 1, "url": "https://cdn.trydood.com/images/vouchers/.../three.webp" },
+      { "id": "68f1a2b3c4d5e6f7a8b9d001", "sortOrder": 2, "url": "https://cdn.trydood.com/images/vouchers/.../one.webp" },
+      { "id": "68f1a2b3c4d5e6f7a8b9d002", "sortOrder": 3, "url": "https://cdn.trydood.com/images/vouchers/.../two.webp" }
+    ]
+  }
+}
+```
+
+Kram pehle se wahi ho to `updated: 0` aur `message: "Images already in this order."` — koi write nahi hoti.
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `401` | `User authentication is required.` | |
+| `403` | `Forbidden: You do not have permission to perform this action on this brand.` | Voucher kisi aur brand ka |
+| `400` | `Invalid voucher version ID.` | Format |
+| `404` | `Voucher version not found.` / `Voucher not found.` | |
+| `409` | 🔴 `A published version cannot be reordered — its images are part of what was approved. Create a new version to change the order.` | `PUBLISHED` ya `APPROVED` version |
+| `400` | `Please send the complete image order — 3 images expected, 2 received.` | Adhoori list |
+| `400` | `Invalid image id : <id>` | Aisa id jo is version ka nahi |
+| `400` | `Duplicate id found.` | Ek hi image do baar |
+| `400` | `Duplicate sort order found.` | Do image ek hi position par |
+| `400` | `Image list is required.` | Khali list |
+
+### ⚠️ Notes
+
+**1. 🔴 Pehli image hi banner ka fallback hai.** Approved banner na ho to customer ko voucher ke upar **`sortOrder: 1` wali image** dikhti hai (#59 · V-4a), aur claim ka snapshot bhi wahi freeze karta hai. Yaani ye endpoint list ki safai nahi hai — ye wo cheez badalta hai jo customer sabse pehle dekhta hai.
+
+**2. Poori list bhejni zaruri hai.** Position 1..n me dobara number hoti hain, to adhoori list unse takrati jo bheji hi nahi gayi. Error me dono ginti aati hain, taaki pata chale kitni chhoot rahi hain.
+
+**3. Aapke bheje number sirf kram batate hain.** `10, 20, 30` bhejein to `1, 2, 3` ban jaate hain. Gaps ka kabhi koi matlab tha hi nahi, aur unhe rakhne ka matlab hota ki agli image daalte waqt server andaza lagaye ki aapne un gaps se kya kehna chaha tha.
+
+**4. 🔴 Sirf `DRAFT` ya `REJECTED` version.** Published version `isImmutable` hoti hai — uski images us cheez ka hissa hain jo admin ne approve ki thi. Yahan **naya version apne aap nahi banta**: ek drag-and-drop jo chupke se version bana kar approval queue me daal de, wo aapne maanga hi nahi tha. Kram badalna ho to pehle naya version banaiye (`PUT /vouchers/update/:voucherId`), phir usme reorder karein.
+
+**5. `REJECTED` version me chalta hai** — wo aapka hi theek karne ko bacha hua kaam hai.
 
 ---
 
@@ -4817,6 +5479,7 @@ Voucher versions ki paginated list — vendor ka voucher dashboard.
 | `versionNumber` | number | ❌ | – | |
 | `versionCode` | string | ❌ | – | |
 | `isImmutable` · `isActive` | boolean | ❌ | – | |
+| `includeDeleted` | boolean | ❌ | `false` | 🆕 **Sirf ADMIN.** Deleted versions bhi list me le aata hai. Vendor ke bhejne par **403** — chupke se ignore nahi hota |
 | `fromDate` · `toDate` | ISO date | ❌ | – | |
 | `sortBy` | string | ❌ | `NEWEST` | `DISTANCE` \| `NEWEST` \| `EXPIRING_SOON` \| `RELEVANCE` |
 | `sortOrder` | string | ❌ | – | `asc` \| `desc` |
@@ -4885,7 +5548,7 @@ GET /vouchers/versions/get-all?brandId=68f1a2b3c4d5e6f7a8b9c3a1&status=DRAFT&lim
 
 ## 59. POST /vouchers/:voucherId/banner
 
-Voucher ka independent promo banner set/replace karta hai. **Multipart.**
+Voucher ka promo banner **review ke liye bhejta** hai. **Multipart.**
 
 **Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership**
 
@@ -4897,96 +5560,145 @@ Voucher ka independent promo banner set/replace karta hai. **Multipart.**
 ### Body (multipart)
 | Field | Type | Required | Validation |
 |---|---|---|---|
-| `bannerType` | string | ✅ | `IMAGE` \| `VIDEO` \| `GIF` |
-| `bannerImage` / `bannerVideo` / `bannerGif` | file | ✅ | **`bannerType` ke hisaab se sahi field name** |
+| `media` | file | ⚠️ | 🆕 **Ek hi field name**, chahe image ho, GIF ho ya video. Allowed types aur size cap `Setting.storage` se |
+| `poster` | file | ⚠️ | 🆕 **Video par required** — poster image. Baaki par bhejna mana hai nahi, par zarurat bhi nahi |
+| `bannerUploadId` | ObjectId 🆕 | ⚠️ | Presigned raasta — purpose `VOUCHER_BANNER` |
+| `bannerPosterUploadId` | ObjectId 🆕 | ⚠️ | Uska poster — purpose `VOUCHER_BANNER_POSTER` |
 
-| `bannerType` | File field | Allowed MIME |
-|---|---|---|
-| `IMAGE` | `bannerImage` | jpeg, jpg, png, webp |
-| `VIDEO` | `bannerVideo` | mp4, webm, quicktime |
-| `GIF` | `bannerGif` | gif |
+⚠️ `media` **ya** `bannerUploadId` — ek chahiye, dono nahi.
+
+🔴 **Poster ka purpose alag hai.** Ek hi bucket aur `vouchers/<id>` prefix, par
+poster 10 MB par capped hai aur video leta hi nahi. Banner ka id poster ki jagah
+bhejne par `422`, aur koi upload jalta nahi — dono abhi bhi apni jagah chal
+jaayenge.
 
 ```
-bannerType:  IMAGE
-bannerImage: <file>
+media: <banner.jpg>
 ```
+
+Video ke liye:
+
+```
+media:  <teaser.mp4>
+poster: <teaser-cover.jpg>
+```
+
+> ### 🔴 `bannerType` ab nahi bhejna — aur teen file field bhi gaye
+>
+> Pehle payload me `bannerType` jaata tha aur file `bannerImage` / `bannerVideo` /
+> `bannerGif` me se kisi ek field me. Yaani client batata tha ki file kya hai, aur
+> server jaanchta tha ki dono baatein milti hain ya nahi — **ek sawal ke do jawab**,
+> aur stored wala jeet sakta tha. Yahi bug home banner mahino tak rakhta raha.
+>
+> Ab file `media` me aati hai aur wo kya hai ye uski apni bytes se tay hota hai
+> (`media.kind`). GIF isi wajah se `gifs/` prefix me jaata hai, us resize step se
+> door jo uski animation flatten kar deta.
+>
+> **Aapko kya badalna hai:** `bannerType` field hata dijiye, aur teeno file field
+> ki jagah `media` use kijiye. Video par poster ab `bannerThumbnail` nahi, `poster`
+> hai.
+
+> ### 🆕 Banner ab **seedha live nahi hota** — pehle review hota hai
+>
+> Ye endpoint banner ko `pending` me daalta hai aur `bannerStatus: PENDING` set
+> karta hai. Customer ko wo **tab tak nahi dikhta** jab tak admin approve na kare.
+>
+> **Purana banner is beech live rehta hai.** Replace karne par jo abhi approved hai
+> wo hilta hi nahi — warna vendor ka apna artwork tweak karna uske live offer ka
+> banner utaar deta, review queue jitni lambi ho utni der ke liye. Aur us beech
+> customer ko ek aisi image dikhti jise kisi ne dekha hi nahi.
+>
+> Pehli baar banner bhejne par (koi approved banner hai hi nahi) customer ko
+> voucher ki **pehli image** dikhti hai — neeche fallback wala note dekhein.
+
+> ### 🔴 Video banner par poster mandatory hai
+>
+> Poster kabhi derive nahi hota. Cloudinary ka `getOptimizedImageUrl(publicId)`
+> `/image/upload/` ka path banata hai ek aise asset ke liye jo `/video/upload/`
+> me rehta hai — wo URL **404** deta tha; S3 poster banata hi nahi. Isliye app ko
+> video banner par dikhane ko kuch hota hi nahi tha jab tak `.mp4` buffer na ho.
+>
+> Check **upload se pehle** chalta hai — poster na ho to `422`, aur video ki
+> bytes chadhti hi nahi.
+
+> ### 🆕 Size cap ab lagta hai
+>
+> Banner par **koi size check tha hi nahi** — sirf mime dekha jaata tha, aur 300 MB
+> ka `.mp4` seedha nikal jaata tha: upload, storage ka paisa, aur voucher card ke
+> sabse upar. Ab global limits lagti hain (`Setting.storage.limits`) — image 10 MB,
+> GIF 15 MB, video 50 MB (defaults).
 
 ### Success — `200`
 ```json
 {
   "success": true,
-  "message": "Voucher banner saved successfully.",
+  "message": "Voucher banner submitted for review.",
   "data": {
     "voucherId": "68f1a2b3c4d5e6f7a8b9c2a1",
     "banner": {
-      "type": "IMAGE",
-      "image": {
+      "pending": {
         "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg",
+        "kind": "IMAGE",
+        "mimeType": "image/jpeg",
+        "sizeBytes": 184320,
+        "originalName": "banner.jpg",
         "storage": { "provider": "CLOUDINARY", "publicId": "vouchers/banner-451" }
-      }
+      },
+      "status": "PENDING",
+      "rejectionReason": null,
+      "reviewedBy": null,
+      "reviewedAt": null
     }
   }
 }
 ```
 
+> ⚠️ **`banner` ka shape poora badal gaya hai.** Pehle `{ type, image, video, gif }`
+> tha; ab `{ current, pending, status, rejectionReason, reviewedBy, reviewedAt }`.
+> `current` wahi hai jo customer ko dikhta hai (hamesha approved), `pending` wo jo
+> review me hai.
+>
+> 🔴 Ye **vendor ka apna** write response hai, isliye `storage` aata hai. Customer
+> ke response me wo kabhi nahi jaata.
+>
+> ⚠️ Banner-less voucher par ab `image: {}`, `video: {}`, `gif: {}` **nahi** aate —
+> pehle teeno khaali object har voucher par likhe jaate the (P9).
+
 ### Errors
 | Status | Message | Kab |
 |---|---|---|
 | `404` | `Voucher not found.` | |
-| `422` | `Please upload a image file for the voucher banner.` | File field missing/galat naam |
-| `422` | `Banner type is required.` | |
-| `422` | `Banner type must be one of: IMAGE, VIDEO, GIF.` | |
+| `422` | 🆕 `Please attach the banner file as "media".` | File hi nahi aayi |
+| `422` | 🆕 `A voucher banner has to be an image, a GIF or a video — "<mime>" is none of those.` | PDF wagairah |
+| `422` | 🆕 `<file> is not a supported format — expected one of: …` | Mime allow-list me nahi |
+| `422` | 🆕 `<file> exceeds the maximum size of 50 MB.` | Size cap — pehle koi cap tha hi nahi |
+| `422` | `A video banner needs a poster image. Attach one as "poster".` | Video bheja, poster nahi |
+| `422` | `The poster has to be a still image — "<mime>" is not one.` | Poster ki jagah video/gif |
 | `403` | `Forbidden: You do not have permission to perform this action on this brand.` | |
 
 ### ⚠️ Notes
 
-**1. Approval flow se bilkul independent hai.** Code comment: *"Never touches status/approval/versions — works regardless of the voucher's current version state."* Matlab published voucher ka banner bhi kabhi bhi badal sakte hain, bina naya version banaye.
+**1. Version/approval flow se alag hai** — ye master-level banner hai, voucher ke version se koi lena-dena nahi. Published voucher ka banner bhi kabhi bhi bheja ja sakta hai, bina naya version banaye. Par ab uska **apna** review hai.
 
-**2. Purana banner auto-delete hota hai** — naya upload succeed hone ke baad Cloudinary se hat jaata hai.
+**2. 🆕 Purana banner tabhi delete hota hai jab wo bhi pending tha.** Do baar bina review ke bhejein to pehli file kisi ne dekhi hi nahi aur koi use point nahi karta, to wo hat jaati hai. **`current` kabhi nahi chhua jaata** — jo live hai wo live rehta hai.
 
-**3. File field ka naam `bannerType` se match karna chahiye** — `bannerType: "VIDEO"` ke saath `bannerImage` bhejoge to `422` aayega.
+**3. 🔴 `DELETE /vouchers/:voucherId/banner` hata diya gaya hai.** Banner ka slot ab kabhi khali nahi hota: approved banner na ho to customer ko voucher ki pehli image dikhti hai. "Mera banner hata do" ab ek state hi nahi hai — badalna ho to naya bhej dijiye.
 
-**4. Ye voucher ke `images` se alag hai** — `images` version ka hissa hain (approval flow me), banner master-level hai.
+**3a. 🆕 Banner ab submit-for-review ke liye zaruri hai (#56).** Bina banner ke voucher submit nahi hota. Publish par ye rok **nahi** hai — banner submit ke baad reject bhi ho sakta hai, aur ek poore approved voucher ko uske artwork ke faisle par rokna galat hoga. Fallback isiliye hai.
 
----
+**4. Reject hone par kya hota hai** — voucher **PUBLISHED hi rehta hai**. Customer ko pehli image dikhti hai, aur aapko `bannerStatus: REJECTED` ke saath `rejectionReason` milta hai. Naya banner bhejte hi wo reason clear ho jaata hai — purana faisla nayi file par nahi chipkta.
 
-## 60. DELETE /vouchers/:voucherId/banner
-
-**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership**
-
-### Path Params
-| Param | Type | Required |
-|---|---|---|
-| `voucherId` | ObjectId | ✅ |
-
-### Success — `200`
-```json
-{ "success": true, "message": "Voucher banner deleted successfully.", "data": {} }
-```
-
-> Note: `data` khali hai — controller `sendSuccess(res, 200, "…")` bina data ke call karta hai.
-
-### Errors
-| Status | Message |
-|---|---|
-| `404` | `Voucher not found.` |
-| `422` | `Voucher ID is required.` / `Invalid voucher ID.` |
-| `403` | `Forbidden: You do not have permission to perform this action on this brand.` |
-
-### ⚠️ Note
-Cloudinary se file bhi delete hoti hai. Banner na ho tab bhi `200` aata hai (idempotent).
+**5. Ye voucher ke `images` se alag hai** — `images` version ka hissa hain (approval flow me), banner master-level hai.
 
 ---
 
-# Brand Feature APIs
+## ~~60. DELETE /vouchers/:voucherId/banner~~ — 🔴 hata diya gaya
 
-Brand ke USP / highlight points — icon + title + description. Customer ko brand profile pe dikhte hain.
+Ye endpoint ab maujood nahi hai. Number jaan-bujh kar khali chhoda hai taaki 61 se aage ke saare section numbers wahi rahein jo purane links aur tickets me likhe hain.
 
-**Max 10 active features per brand.** Plan se metered **nahi** hain.
+Banner "hatane" ka koi matlab nahi raha: slot kabhi khali nahi hota, approved banner na ho to customer ko voucher ki pehli image dikh jaati hai (#59). Badalna ho to naya bhej dijiye — wo purane ko khud replace kar dega.
 
-Writes (`add` / `update` / `delete`) par `isVendorOrAdmin`, aur us ke baad service me
-`resolveActorBrand` — vendor sirf **apna** brand, admin koi bhi (par `brandId` dena
-hoga). Reads par koi gate nahi: customer app brand profile par ye dikhati hai.
+---
 
 ## 61. POST /brandFeatures/add
 
@@ -4999,7 +5711,10 @@ hoga). Reads par koi gate nahi: customer app brand profile par ye dikhati hai.
 |---|---|---|---|---|
 | `brandId` | ObjectId | ✅ | – | Body me — token se resolve nahi hota |
 | `title` | string | ✅ | – | 2–150 chars |
-| `icon` | file | ✅ | – | **Multipart**, field name `icon` |
+| `icon` | file | ⚠️ | – | **Multipart**, field name `icon` |
+| `iconUploadId` | ObjectId 🆕 | ⚠️ | – | Presigned — purpose `BRAND_FEATURE_ICON`. `icon` ke saath **nahi** |
+
+⚠️ Dono me se ek zaroori hai. 🔴 Das-feature ki seemaa **upload se pehle** check hoti hai, to bhari hone par aapka upload bacha rehta hai.
 | `description` | string | ❌ | – | Max 500 chars, `""` allowed |
 | `isActive` | boolean\|string | ❌ | `true` | |
 
@@ -5177,6 +5892,7 @@ Practically vendor panel me shayad na chahiye — `get-all` (#62) me poora data 
 | `description` | string | Max 500, `""` allowed |
 | `isActive` | boolean\|string | – |
 | `icon` | file | **Multipart** — replace karne ke liye |
+| `iconUploadId` | ObjectId 🆕 | Presigned — purpose `BRAND_FEATURE_ICON` |
 
 ```json
 { "description": "High speed fibre internet, free for all guests", "isActive": true }
@@ -5210,7 +5926,7 @@ Practically vendor panel me shayad na chahiye — `get-all` (#62) me poora data 
 
 **1. `isActive: false` → `true` karne pe 10-limit check hota hai.** Agar already 10 active hain to `400` aayega.
 
-**2. Icon replace karne pe purana Cloudinary se delete hota hai.** Ownership check **upload se pehle** chalta hai, to refuse hui request kuch upload nahi karti aur purana icon chhuti nahi.
+**2. Icon replace karne pe purana delete hota hai** (us row ke apne provider se). Ownership check **upload se pehle** chalta hai, to refuse hui request kuch upload nahi karti aur purana icon chhuta nahi.
 
 **3. ✅ Ownership ab enforce hoti hai.** Feature ka `brandId` caller ke brand se match karna chahiye (admin koi bhi). Pehle sirf `featureId` se uthaya jaata tha.
 
@@ -7186,4 +7902,157 @@ aur settlement eligibility teeno saath badalne padenge.
 **Doc version:** 1.2.1 · **Last verified:** 2026-08-28 against a running server (99 requests · 228 assertions · 105 captured examples · all pass)
 **Related docs:** [endpoints_category.md](./endpoints_category.md) · [security_findings.md](./security_findings.md) · [brand_verification_api_doc.md](./brand_verification_api_doc.md) · [subscription_lifecycle_design.md](./subscription_lifecycle_design.md) · [brand_rejection_remediation_design.md](./brand_rejection_remediation_design.md) · [customer_mobile_api_doc.md](./customer_mobile_api_doc.md)
 **Pending:** Super admin panel doc (phase 3)
+
+---
+
+## 94. POST /uploads/presign 🆕
+
+File seedha S3 par bhejne ki **ijazat** maangta hai. File is server tak aati hi nahi.
+
+**Access:** koi bhi signed-in caller · **Any auth**
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `purpose` | String | ✅ | Surface — bucket, allowed types aur size cap isi se tay hote hain |
+| `contentType` | String | ✅ | Jo aap bhej rahe hain (`image/png`, `video/mp4`, …) |
+| `sizeBytes` | Number ≥ 1 | ✅ | File ka size. ⚠️ Ye sirf **padhne-layak 413** deta hai — asli limit S3 lagata hai |
+| `fileName` | String | ❌ | Sirf extension ke liye |
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Upload authorised.",
+  "data": {
+    "uploadId": "68f1a2b3c4d5e6f7a8b9e001",
+    "url": "https://trydood-nonprod-public.s3.ap-south-1.amazonaws.com/",
+    "fields": {
+      "key": "staging/68f1.../9f2c....png",
+      "Content-Type": "image/png",
+      "Policy": "eyJ…",
+      "X-Amz-Signature": "…"
+    },
+    "expiresInSeconds": 900,
+    "stagingKey": "staging/68f1.../9f2c....png",
+    "typePrefix": "images"
+  }
+}
+```
+
+### 🔴 Ab client ko kya karna hai
+
+`url` par ek **multipart POST** bhejiye — **`fields` ke saare field pehle, file sabse aakhir me**. S3 file part ke baad kuch nahi padhta, to baad me bheja gaya field laga hi nahi.
+
+```js
+const form = new FormData();
+Object.entries(data.fields).forEach(([k, v]) => form.append(k, v));
+form.append("file", file);            // sabse aakhir me
+await fetch(data.url, { method: "POST", body: form });
+```
+
+S3 seedha `204` deta hai (koi body nahi). Uske baad `/uploads/confirm`.
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `401` | Token nahi / invalid | |
+| `503` | `Presigned upload is turned off for this platform. …` | 🆕 Admin ne `storage.upload.presignEnabled` off rakha hai. **Multipart abhi bhi chalta hai** — wahi file usi request me file field me bhej dijiye |
+| `409` | `Presigned upload only works on S3, and this platform is set to CLOUDINARY. …` | 🆕 Platform Cloudinary par hai. Ye raasta sirf S3 par likhta hai, to isse do provider par row ban jaatin |
+| `422` | `CATEGORY_IMAGE does not accept video/mp4.` | Surface wo type nahi leta |
+| `413` | `That file is 12 MB. The limit here is 5 MB.` | Surface ke cap se bada. 🔴 Ye number **admin ka** hai — `min(code ka ceiling, Setting.storage.limits, surface override)` |
+| `422` | `Unknown upload purpose. Allowed: …` | Galat purpose |
+
+> ### ⚠️ `expiresInSeconds` hardcoded nahi hai
+>
+> Wo `storage.upload.presignTtlMinutes` se aata hai (default 15 min). **Jo value
+> response me mile usi par chalein** — kisi constant par nahi, kyunki admin use
+> kabhi bhi badal sakta hai.
+>
+> ### 🔴 Poster ke purpose sirf still lete hain
+>
+> `SHOWCASE_THUMBNAIL`, `BANNER_POSTER` aur `VOUCHER_BANNER_POSTER` ab **`GIF`
+> nahi** lete — sirf still image. Pehle presign GIF ke liye signature de deta tha
+> aur surface uske baad `422` deta, yaani vendor ki bandwidth kharch hone ke
+> **baad**. Ab refusal presign par hi ho jaata hai, upload se pehle.
+
+---
+
+## 95. POST /uploads/confirm 🆕
+
+Upload hui file ko uski asli jagah par le jaata hai, aur batata hai wo **sach me kya hai**.
+
+**Access:** koi bhi signed-in caller · **Any auth**
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `uploadId` | ObjectId | ✅ | Presign se mila |
+| `entityId` | ObjectId | ❌ | Kis row ki file hai. Pata ho to key me ek segment aur jud jaata hai |
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Upload confirmed.",
+  "data": {
+    "storage": {
+      "provider": "AWS_S3",
+      "publicId": null,
+      "bucket": "trydood-nonprod-public",
+      "key": "images/categories/68f1a2b3c4d5e6f7a8b9c101/9f2c....png"
+    },
+    "metadata": {
+      "contentType": "image/png",
+      "kind": "IMAGE",
+      "sizeBytes": 184320,
+      "width": 1200,
+      "height": 800
+    }
+  }
+}
+```
+
+Ye `storage` object aap kahin bhejte **nahi** — agla step surface ka apna endpoint
+hai, aur use sirf `uploadId` chahiye.
+
+⚠️ **Vendor panel ki koi surface abhi `uploadId` nahi leti.** Pehli surface
+category hai (U-2), jo admin-only hai — admin doc **#61 / #64**. Showcase U-3 me
+judta hai, voucher U-4 me, baaki U-5 me. Tab tak vendor panel ke liye ye dono
+endpoint **ready hain par kisi ke kaam ke nahi** — multipart hi chalu hai.
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `404` | `That upload was not found.` | Galat id, **ya kisi aur ki id** |
+| `409` | `That upload has already been used.` | Dobara confirm |
+| `400` | `That file was never uploaded, or has already expired.` | S3 par kuch hai hi nahi |
+| `400` | `That file type is not supported.` | Bytes kisi jaani-pehchani file ki nahi |
+| `422` | `USER_AVATAR does not accept MP4 files.` | Bytes surface ke hisaab se galat |
+| `413` 🆕 | `That file is 3 MB. The limit here is 2 MB.` | **Asli** size limit se bada. Object wahin delete ho jaata hai |
+
+### ⚠️ Notes
+
+**1. 🔴 Yahi ek jagah hai jahan file ki asli pehchaan hoti hai.** Is se pehle har check us `Content-Type` par tha jo **client ne chuna**. Yahan object ke apne pehle bytes padhe jaate hain, aur stored type unse aata hai. PNG ke naam par bheja gaya GIF `gifs/` me landta hai — theek us resize step se bahar jo uski animation khatam kar deta.
+
+**2. Kisi aur ka `uploadId` `404` deta hai, `403` nahi.** Jo id maujood hai uske baare me "ye aapki nahi" keh dena, ye bata dena hai ki wo id asli hai.
+
+**3. Ek upload ek hi baar.** Warna ek hi file do alag rows par lag jaati, aur doosri wo file rakhti jiske liye usne kuch diya hi nahi.
+
+**4. 🔴 Size ki limit admin ki hai, aur wahi dono jagah lagti hai.** Ek hi number
+teen se banta hai — `min(code ka ceiling, Setting.storage.limits, surface
+override)` — aur wahi signed policy ke `content-length-range` me jaata hai, yaani
+**S3 khud** use lagata hai. Aapka bheja `sizeBytes` sirf padhne-layak `413` ke
+liye hai: size chhota bata kar bada file bhejna kaam nahi karega, wo S3 par hi
+ruk jaayega.
+
+⚠️ **`confirm` par ye dobara naapa jaata hai, asli byte count se.** Signature ek
+baar likhi jaati hai aur pandrah minute chalti hai; admin us beech limit ghata
+sakta hai aur aapke haath ki signature nahi badalti. Isliye jo file policy se nikal
+gayi wo bhi yahan ruk sakti hai — aur ruk jaaye to object wahin delete ho jaata hai.
+
+⚠️ Aur limit **verified kind** ki hoti hai, declared ki nahi. GIF ka apna bada
+ceiling hai, to PNG ko GIF bata kar bhejna warna GIF ka allowance muft me de deta.
+
+**5. Reject hui file wahin delete ho jaati hai.** Aur jo `staging/` me pada reh gaya, use bucket ka apna lifecycle rule uthata hai.
 

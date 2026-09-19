@@ -21,6 +21,38 @@ set -e
 
 CHANGED=$(git diff --cached --name-only --diff-filter=ACMR)
 
+# ---------------------------------------------------------------------------
+# Any JavaScript change: is every name it uses actually in scope?
+#
+# `verifyImports` proves a module loads and that its destructured names really
+# are exported. It cannot answer this one. JavaScript resolves a free variable
+# only when the line runs, so a service calling a helper nobody imported loads
+# cleanly, exports cleanly, and throws ReferenceError the first time a user
+# reaches that branch.
+#
+# That shipped three times during the media migration — `throwError` on a new
+# 422 path, then `toMediaDocument` on every image upload, then `toDisplayName`
+# on every category write. Each was found by a test that happened to exercise
+# the branch, which is luck rather than coverage. See scripts/verifyNoUndef.js.
+#
+# Cheap enough for every JS change: it parses the files, it does not load them.
+# ---------------------------------------------------------------------------
+if echo "$CHANGED" | grep -qE '^server/.*[.]js$'; then
+  echo "-> javascript changed, checking every name is in scope..."
+  if ! ( cd server && node scripts/verifyNoUndef.js ); then
+    cat <<'MSG'
+
+----------------------------------------------------------------
+  Commit refused: something is used but never declared or imported.
+
+  The module still loads - that is exactly the problem. Add the import.
+----------------------------------------------------------------
+
+MSG
+    exit 1
+  fi
+fi
+
 echo "$CHANGED" | grep -qE '^server/(routes/|index\.js|docs/(endpoints_category|customer_mobile_api_doc|vendor_panel_api_doc|super_admin_panel_api_doc)\.md|postman/)' || exit 0
 
 echo "→ endpoints changed, checking doc + collection coverage…"

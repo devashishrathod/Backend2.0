@@ -1,4 +1,8 @@
 const {
+  assertVoucherImageFloor,
+  voucherImageFloorMessage,
+} = require("./assertImageFloor");
+const {
   calculateVoucherPricing,
   computeOfferDiscount,
 } = require("./calculateVoucherPricing");
@@ -6,6 +10,13 @@ const {
   buildVoucherOrderSummary,
 } = require("./buildVoucherOrderSummary");
 const { resolveClaimOffer } = require("./resolveClaimOffer");
+const {
+  assertNoLiveClaims,
+  liveClaimsMessage,
+  LIVE_CLAIM_STATUSES,
+} = require("./assertNoLiveClaims");
+const { voucherDeletionFields } = require("./markDeleted");
+const { buildVoucherSnapshot } = require("./buildVoucherSnapshot");
 const { buildClaimPreview } = require("./buildClaimPreview");
 const {
   normalizeVoucherName,
@@ -24,6 +35,7 @@ const {
   uploadVoucherImages,
   rollbackVoucherImages,
 } = require("./validateImagesFiles");
+const { pickOrphanImages } = require("./orphanImages");
 const {
   generateVoucherCode,
   generateVoucherVersionCode,
@@ -49,6 +61,7 @@ const {
 } = require("./voucherBannerMedia");
 
 module.exports = {
+  pickOrphanImages,
   normalizeVoucherName,
   getUniqueTags,
   validateVoucherCategory,
@@ -85,7 +98,14 @@ module.exports = {
   buildVoucherOrderSummary,
   // Which offer applies. Ranks with the same computeOfferDiscount that charges.
   resolveClaimOffer,
+  assertNoLiveClaims,
+  liveClaimsMessage,
+  LIVE_CLAIM_STATUSES,
+  voucherDeletionFields,
+  buildVoucherSnapshot,
   // One builder for preview AND order creation, so the price shown is the price
   // charged. `strictPromo` is the only difference between the two.
   buildClaimPreview,
+  assertVoucherImageFloor,
+  voucherImageFloorMessage,
 };

@@ -54,6 +54,17 @@ exports.getSuggestedVouchers = async (query) => {
 
   return {
     ...result,
+    /**
+     * ⚠️ No images passed, so no fallback here — deliberately.
+     *
+     * This is the **admin's** suggestions list, not a customer surface. An admin
+     * arranging what customers are shown needs to see the real banner state,
+     * including "this voucher has no approved banner yet": standing in the first
+     * image would hide the one thing they might want to act on. `bannerStatus`
+     * still reports where the pending banner stands.
+     *
+     * The customer reads pass their version's images and do fall back (V-4a).
+     */
     data: result.data.map(({ banner, ...voucher }) => ({
       ...voucher,
       ...pickVoucherBanner(banner),

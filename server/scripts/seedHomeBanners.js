@@ -49,10 +49,10 @@ const mongoose = require("mongoose");
 
 const cloudinary = require("../configs/cloudinary");
 const {
-  BANNER_TYPE,
   BANNER_REDIRECT_TYPE,
   BANNER_ACTIVE_LIMIT,
 } = require("../constants/banner");
+const { MEDIA_KIND } = require("../constants/storage");
 
 // Atlas SRV lookup fails on some networks' default resolver, and a failed first
 // attempt leaves mongoose buffering rather than retrying.
@@ -96,7 +96,7 @@ const SCHEDULED = [
   {
     title: "Beauty Week - Flat 50% Off",
     description: "Salon and cosmetics vouchers at partner outlets.",
-    type: BANNER_TYPE.IMAGE,
+    kind: MEDIA_KIND.IMAGE,
     headline: "FLAT 50% OFF",
     caption: "Beauty Week - salons and cosmetics",
     source: photo("photo-1596462502278-27bfdc403348"),
@@ -107,7 +107,7 @@ const SCHEDULED = [
   {
     title: "Weekend Feast - Up to 40% Off",
     description: "Dine-in vouchers at partner restaurants.",
-    type: BANNER_TYPE.IMAGE,
+    kind: MEDIA_KIND.IMAGE,
     headline: "WEEKEND FEAST",
     caption: "Up to 40% off at partner restaurants",
     source: photo("photo-1517248135467-4c7edcad34c4"),
@@ -118,7 +118,7 @@ const SCHEDULED = [
   {
     title: "Spa Retreat - 35% Off",
     description: "Spa and wellness sessions, booked through Trydood.",
-    type: BANNER_TYPE.IMAGE,
+    kind: MEDIA_KIND.IMAGE,
     headline: "SPA RETREAT",
     caption: "Save 35% on wellness sessions",
     source: photo("photo-1544161515-4ab6ce6db874"),
@@ -129,7 +129,7 @@ const SCHEDULED = [
   {
     title: "Flash Deal - Ends Tonight",
     description: "Animated banner for the running flash sale.",
-    type: BANNER_TYPE.GIF,
+    kind: MEDIA_KIND.GIF,
     headline: "FLASH DEAL",
     caption: "Up to 60% off - ends tonight",
     frames: [
@@ -144,7 +144,7 @@ const SCHEDULED = [
   {
     title: "Stay and Save - Luxury Hotels",
     description: "Hotel stays at 30% off for the festive week.",
-    type: BANNER_TYPE.IMAGE,
+    kind: MEDIA_KIND.IMAGE,
     headline: "STAY AND SAVE",
     caption: "Luxury hotels from 30% off",
     source: photo("photo-1566073771259-6a8506099945"),
@@ -155,7 +155,7 @@ const SCHEDULED = [
   {
     title: "Dessert Days - 45% Off",
     description: "Desserts and beverages across partner cafes.",
-    type: BANNER_TYPE.IMAGE,
+    kind: MEDIA_KIND.IMAGE,
     headline: "DESSERT DAYS",
     caption: "Sweet deals up to 45% off",
     source: photo("photo-1551024506-0bccd828d307"),
@@ -166,7 +166,7 @@ const SCHEDULED = [
   {
     title: "Ride for Less - 25% Off",
     description: "City rides at a flat discount.",
-    type: BANNER_TYPE.IMAGE,
+    kind: MEDIA_KIND.IMAGE,
     headline: "RIDE FOR LESS",
     caption: "Flat 25% off on city rides",
     source: photo("photo-1449965408869-eaa3f722e40d"),
@@ -177,7 +177,7 @@ const SCHEDULED = [
   {
     title: "Bridal Week - 40% Off",
     description: "Animated banner for bridal and groom wear.",
-    type: BANNER_TYPE.GIF,
+    kind: MEDIA_KIND.GIF,
     headline: "BRIDAL WEEK",
     caption: "Bride and groom wear at 40% off",
     frames: [
@@ -195,7 +195,7 @@ const EVERGREEN = [
   {
     title: "Every Day Savings",
     description: "The always-on brand banner.",
-    type: BANNER_TYPE.IMAGE,
+    kind: MEDIA_KIND.IMAGE,
     headline: "EVERY DAY SAVINGS",
     caption: "Trydood vouchers at partner outlets",
     source: photo("photo-1483985988355-763728e1935b"),
@@ -204,7 +204,7 @@ const EVERGREEN = [
   {
     title: "Cafe Favourites",
     description: "Coffee and cafe vouchers near you.",
-    type: BANNER_TYPE.IMAGE,
+    kind: MEDIA_KIND.IMAGE,
     headline: "CAFE FAVOURITES",
     caption: "Coffee and more, near you",
     source: photo("photo-1554118811-1e0d58224f24"),
@@ -213,7 +213,7 @@ const EVERGREEN = [
   {
     title: "Glow Every Day",
     description: "Salon and nail bar vouchers.",
-    type: BANNER_TYPE.IMAGE,
+    kind: MEDIA_KIND.IMAGE,
     headline: "GLOW EVERY DAY",
     caption: "Salons and nail bars near you",
     source: photo("photo-1604654894610-df63bc536371"),
@@ -222,7 +222,7 @@ const EVERGREEN = [
   {
     title: "Sweet Cravings",
     description: "Bakery and sweet shop vouchers.",
-    type: BANNER_TYPE.IMAGE,
+    kind: MEDIA_KIND.IMAGE,
     headline: "SWEET CRAVINGS",
     caption: "Bakeries and sweet shops nearby",
     source: photo("photo-1486427944299-d1955d23e34d"),
@@ -231,7 +231,7 @@ const EVERGREEN = [
   {
     title: "Cool Down",
     description: "Ice cream and shake vouchers.",
-    type: BANNER_TYPE.IMAGE,
+    kind: MEDIA_KIND.IMAGE,
     headline: "COOL DOWN",
     caption: "Ice cream and shakes all summer",
     source: photo("photo-1497034825429-c343d7c6a68f"),
@@ -240,7 +240,7 @@ const EVERGREEN = [
   {
     title: "Fresh and Healthy",
     description: "Juice bar vouchers.",
-    type: BANNER_TYPE.IMAGE,
+    kind: MEDIA_KIND.IMAGE,
     headline: "FRESH AND HEALTHY",
     caption: "Juice bars around you",
     source: photo("photo-1622597467836-f3285f2131b8"),
@@ -249,7 +249,7 @@ const EVERGREEN = [
   {
     title: "Pamper Yourself",
     description: "Massage and therapy vouchers.",
-    type: BANNER_TYPE.IMAGE,
+    kind: MEDIA_KIND.IMAGE,
     headline: "PAMPER YOURSELF",
     caption: "Massage and spa therapies",
     source: photo("photo-1600334089648-b0d9d3028eb2"),
@@ -258,7 +258,7 @@ const EVERGREEN = [
   {
     title: "Weekend Getaway",
     description: "Resort and stay vouchers.",
-    type: BANNER_TYPE.IMAGE,
+    kind: MEDIA_KIND.IMAGE,
     headline: "WEEKEND GETAWAY",
     caption: "Resorts and stays worth the drive",
     source: photo("photo-1571003123894-1f0594d2b5d9"),
@@ -272,7 +272,7 @@ const EVERGREEN = [
   {
     title: "Trending Now",
     description: "Animated evergreen banner for accessories.",
-    type: BANNER_TYPE.GIF,
+    kind: MEDIA_KIND.GIF,
     headline: "TRENDING NOW",
     caption: "Watches, bags and more",
     frames: [
@@ -285,7 +285,7 @@ const EVERGREEN = [
   {
     title: "Book a Shoot",
     description: "Animated evergreen banner for photographers.",
-    type: BANNER_TYPE.GIF,
+    kind: MEDIA_KIND.GIF,
     headline: "BOOK A SHOOT",
     caption: "Photographers for every occasion",
     frames: [
@@ -552,13 +552,15 @@ const main = async () => {
 
   const assets = [];
   for (const row of existing) {
-    const media = row.image || row.video || row.gif || {};
+    // Pre-migration rows kept the bytes in one of three type-named fields.
+    // Both shapes are read here because this script's whole job is clearing out
+    // whatever the database happens to be holding.
+    const media = row.media || row.image || row.video || row.gif || {};
     const publicId = media.storage?.publicId || null;
-    const kind = String(row.type || "").toUpperCase() === BANNER_TYPE.VIDEO
-      ? "video"
-      : "image";
+    const mediaKind = media.kind || String(row.type || "").toUpperCase();
+    const kind = mediaKind === MEDIA_KIND.VIDEO ? "video" : "image";
     console.log(
-      `   ${String(row._id)}  ${String(row.type).padEnd(5)}  ${JSON.stringify(row.title)}`,
+      `   ${String(row._id)}  ${String(mediaKind || "?").padEnd(5)}  ${JSON.stringify(row.title)}`,
     );
     console.log(`      cloudinary: ${publicId || "(none recorded)"}  [${kind}]`);
     if (publicId) assets.push({ publicId, kind });
@@ -626,18 +628,21 @@ const main = async () => {
     });
 
     const media =
-      spec.type === BANNER_TYPE.GIF
+      spec.kind === MEDIA_KIND.GIF
         ? await uploadAnimated(spec, spec.slug)
         : await uploadStill(spec, spec.slug);
 
-    const field = spec.type === BANNER_TYPE.GIF ? "gif" : "image";
     const target = categoryId(spec.category);
 
     await Banner.create({
       title: spec.title,
       description: spec.description,
-      type: spec.type,
-      [field]: { url: media.url, storage: media.storage },
+      media: {
+        url: media.url,
+        storage: media.storage,
+        kind: spec.kind,
+        sizeBytes: media.bytes ?? 0,
+      },
       redirect: target
         ? { type: BANNER_REDIRECT_TYPE.CATEGORY, targetId: target, url: null }
         : { type: BANNER_REDIRECT_TYPE.NONE, targetId: null, url: null },
@@ -670,7 +675,7 @@ const main = async () => {
   live.forEach((banner, i) => {
     const row = titles.find((t) => String(t._id) === String(banner._id));
     console.log(
-      `   ${String(i + 1).padStart(2)}. ${banner.type.padEnd(5)} ${(row?.startDate ? "scheduled" : "evergreen").padEnd(10)} ${row?.title}`,
+      `   ${String(i + 1).padStart(2)}. ${String(banner.type ?? "?").padEnd(5)} ${(row?.startDate ? "scheduled" : "evergreen").padEnd(10)} ${row?.title}`,
     );
   });
 
@@ -690,9 +695,9 @@ const main = async () => {
     total: await Banner.countDocuments({}),
     scheduled: await Banner.countDocuments({ startDate: { $ne: null } }),
     evergreen: await Banner.countDocuments({ startDate: null }),
-    image: await Banner.countDocuments({ type: BANNER_TYPE.IMAGE }),
-    gif: await Banner.countDocuments({ type: BANNER_TYPE.GIF }),
-    video: await Banner.countDocuments({ type: BANNER_TYPE.VIDEO }),
+    image: await Banner.countDocuments({ "media.kind": MEDIA_KIND.IMAGE }),
+    gif: await Banner.countDocuments({ "media.kind": MEDIA_KIND.GIF }),
+    video: await Banner.countDocuments({ "media.kind": MEDIA_KIND.VIDEO }),
   };
   console.log(`  done — ${JSON.stringify(counts)}`);
 

@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { storageSchema } = require("./storageSchema");
+const { mediaSchema } = require("./mediaSchema");
 const {
   customerField,
   userField,
@@ -321,7 +321,7 @@ const refundRequestSchema = new mongoose.Schema(
      * ⚠️ The `*Url` field above is kept and still read. Rows written before
      * this existed have only that, and they must keep working.
      */
-    documentStorage: { type: storageSchema, default: undefined },
+    documentMedia: { type: mediaSchema, default: undefined },
     /** Everything the document prints, frozen when it was issued. */
     documentSnapshot: { type: documentSnapshotSchema },
 

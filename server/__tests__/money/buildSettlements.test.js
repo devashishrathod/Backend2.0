@@ -3,6 +3,7 @@ const {
   connectTestDb,
   disconnectTestDb,
   clearCollections,
+  writeSetting,
 } = require("./setup/testDb");
 
 const Transaction = require("../../models/Transaction");
@@ -70,12 +71,12 @@ const payment = (overrides = {}) => ({
   ...overrides,
 });
 
+// ⚠️ Through `writeSetting`, which drops the settings cache after the write.
+// A bare `findOneAndUpdate` is not read: `getSetting()` holds a 30-second
+// snapshot (F-1), so the code under test answers from what the previous test
+// set up and the toggle being flipped here does nothing.
 const setSetting = (path, value) =>
-  Setting.findOneAndUpdate(
-    {},
-    { $set: { [`customer.settlement.${path}`]: value } },
-    { upsert: true, returnDocument: "after" },
-  );
+  writeSetting({ $set: { [`customer.settlement.${path}`]: value } });
 
 beforeAll(async () => {
   await connectTestDb();
@@ -437,11 +438,9 @@ describe("admin approval, when it is switched off", () => {
    * auto-approve every payout on the platform, silently, on the next deploy.
    */
   it("treats a settings document that predates the field as approval-required", async () => {
-    await Setting.findOneAndUpdate(
-      {},
-      { $unset: { "customer.settlement.requiresAdminApproval": "" } },
-      { upsert: true },
-    );
+    await writeSetting({
+      $unset: { "customer.settlement.requiresAdminApproval": "" },
+    });
     await Transaction.create(payment());
 
     await buildSettlements();

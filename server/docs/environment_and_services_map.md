@@ -9,7 +9,9 @@ category-wise, aur **NODE_ENV ke base par kaun sa kya switch karega**.
 > ab `CONFIG_PROFILE` ke paas hai; asli design **[§3](#3-config-architecture--✅-ho-gaya)**
 > me hai, aur wahi ship hua hai. Do sections record ke liye rakhe hain.
 >
-> Media ka poora current flow: [media_upload_map.md](./media_upload_map.md)
+> Media ke saare call sites: [media_upload_map.md](./media_upload_map.md) —
+> ⚠️ wo **migration se pehle** ka snapshot hai (Cloudinary-only), aaj ka flow nahi.
+> Aaj ka: [master_execution_plan.md](./master_execution_plan.md) §0.5 + Part 4B
 
 ---
 
@@ -418,11 +420,19 @@ assets **permanently orphan** hain.
 | | |
 |---|---|
 | **Provider** | AWS S3 (+ CloudFront) |
-| **Client** | `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` *(abhi install nahi hai)* |
+| **Client** | ✅ **teeno install hain** — `@aws-sdk/client-s3` · `@aws-sdk/s3-request-presigner` · `@aws-sdk/s3-presigned-post` (sab `^3.1131.0`) |
 | **Switch** | ✅ **Prod tier alag bucket, dev+staging shared bucket alag prefix** |
 
 > **Poora setup runbook — bucket, IAM, CloudFront, har `aws` command:**
 > **[aws_s3_setup.md](./aws_s3_setup.md)**
+>
+> **Production par jaane ka kadam-dar-kadam sequence + rollback:**
+> **[production_go_live_runbook.md](./production_go_live_runbook.md)**
+>
+> 📌 **Naapa gaya 2026-09-19:** chaaron buckets **ban chuke hain** (`ap-south-1`),
+> dono public buckets par Block Public Access **ON** hai (CloudFront + OAC ke liye
+> yahi sahi hai), aur IAM policy tang hai. **Bacha sirf CloudFront + DNS** —
+> `cdn.trydood.com` abhi resolve nahi hota.
 
 | Variable | Production | Non-prod (dev + staging) |
 |---|---|---|
@@ -433,6 +443,47 @@ assets **permanently orphan** hain.
 | `S3_BUCKET_PRIVATE` | `trydood-prod-private` | `trydood-nonprod-private` |
 | `S3_PREFIX` | *(khaali)* | `dev/` ya `staging/` |
 | `CDN_BASE_URL` | `https://cdn.trydood.com` | non-prod CloudFront domain |
+
+> # 🔴 Aaj ka `.env` is table se sehmat nahi — aur ye baad me pakda nahi jaayega
+>
+> Naapa gaya **2026-09-19**, dev machine par:
+>
+> | Variable | `.env` me | Hona chahiye |
+> |---|---|---|
+> | `S3_BUCKET_PUBLIC` | `trydood-nonprod-public` | ✅ sahi |
+> | `S3_BUCKET_PRIVATE` | `trydood-nonprod-private` | ✅ sahi |
+> | `S3_PREFIX` | `dev/` | ✅ sahi |
+> | `CDN_BASE_URL` | `https://cdn.trydood.com` | 🔴 **galat** — ye **prod** distribution ka CNAME hai |
+>
+> [aws_s3_setup.md §3](./aws_s3_setup.md) me **do alag distributions** banti hain
+> — ek `trydood-prod-public` par, ek `trydood-nonprod-public` par — aur
+> `cdn.trydood.com` pehli wali ka CNAME hai.
+>
+> ### ⚠️ Aaj isse kuch nahi bigadta, aur wahi khatra hai
+>
+> `cdn.trydood.com` abhi resolve hi nahi hota, aur DB me **0 S3 rows** hain. To
+> ye mismatch aaj poori tarah khamosh hai.
+>
+> 🔴 Jis din dono live honge, dev/staging ka har upload row par ye URL likhega:
+>
+> ```
+> https://cdn.trydood.com/dev/images/categories/<id>/<uuid>.png
+>          └── prod distribution          └── key nonprod bucket me hai
+> ```
+>
+> Prod distribution ka origin `trydood-prod-public` hai, to wo key wahan hai hi
+> nahi — **404, hamesha ke liye**. Aur URL row par **likhne ke waqt** bana hota
+> hai ([`providers/s3.js`](../services/storage/providers/s3.js)), padhte waqt
+> dobara nahi banta — to har aisi row ko baad me haath se theek karna padega.
+>
+> **Fix:** non-prod deploy par `CDN_BASE_URL` ko **non-prod distribution** ke
+> domain par set karein (ya S3 par jaane tak khaali chhod dein). Ye `.env` ka
+> badlaav hai, code ka nahi.
+>
+> ⚠️ `checkS3Ready()` ise **nahi** pakdega. Wo sirf ye dekhta hai ki `CDN_BASE_URL`
+> ek fresh object serve karta hai ya nahi — aur jis din prod CDN zinda hoga, wo
+> dev ke object par bhi 404 dega, yaani preflight switch **rok dega**. Wo achhi
+> khabar hai, par tabhi jab wo din aane se pehle ye theek ho.
 
 **Bucket layout:**
 

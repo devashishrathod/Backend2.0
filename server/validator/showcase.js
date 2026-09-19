@@ -7,6 +7,19 @@ const {
   SHOWCASE_COVER_IMAGE_MODE,
 } = require("../constants/showcase");
 
+/**
+ * ⚠️ No `sortOrder` here, and none on update either (S-13).
+ *
+ * Positions belong to the reorder endpoints, which renumber a whole list at once
+ * and can therefore keep it dense and unique. A position accepted one section at
+ * a time cannot: two creates naming `1` both get it, and the order that comes
+ * back depends on which document Mongo returns first. The media update endpoint
+ * has refused it from the start for exactly this reason; this is the rest of the
+ * domain catching up.
+ *
+ * `stripUnknown` is on for every request, so a client still sending the field
+ * has it dropped rather than being refused — nothing to migrate.
+ */
 exports.validateCreateSection = Joi.object({
   // Required when an admin is creating on a brand's behalf; a vendor may omit
   // it and gets their own brand. `resolveActorBrand` enforces both halves.
@@ -21,9 +34,6 @@ exports.validateCreateSection = Joi.object({
   }),
   description: Joi.string().trim().allow("").max(500).optional().messages({
     "string.max": "Description cannot exceed 500 characters.",
-  }),
-  sortOrder: Joi.number().integer().min(1).optional().messages({
-    "number.min": "Sort order must be at least 1.",
   }),
   sectionType: Joi.string()
     .valid(...Object.values(SHOWCASE_SECTION_TYPE))
@@ -101,10 +111,7 @@ exports.validateUpdateSection = {
     description: Joi.string().trim().allow("").max(500).optional().messages({
       "string.max": "Description cannot exceed 500 characters.",
     }),
-    // Min 1, matching create and reorder. It used to allow 0 here only.
-    sortOrder: Joi.number().integer().min(1).optional().messages({
-      "number.min": "Sort order must be at least 1.",
-    }),
+    // ⚠️ No `sortOrder` — see the note on `validateCreateSection`.
     sectionType: Joi.string()
       .valid(...Object.values(SHOWCASE_SECTION_TYPE))
       .optional()
@@ -214,6 +221,29 @@ exports.validateReorderSections = {
 };
 
 // Media
+/**
+ * 🆕 The presigned road (U-3).
+ *
+ * ⚠️ **Index-aligned, and each road pairs within itself.** `thumbnails[2]` is
+ * the poster for the third attached **file**; `thumbnailUploadIds[0]` is the
+ * poster for the first **uploadId**. The stored order is files first, then ids —
+ * the same order `acceptUploads` uses — so sort order and pairing agree.
+ *
+ * A mixed request is allowed: during the migration a client may well have some
+ * files already on S3 and some not. What is refused is one *item* claiming to be
+ * both, which `acceptUpload` answers with a 422.
+ */
+const uploadIdList = (label) =>
+  Joi.array()
+    .items(
+      Joi.string().hex().length(24).messages({
+        "string.hex": `Invalid ${label}.`,
+        "string.length": `Invalid ${label}.`,
+      }),
+    )
+    .single()
+    .optional();
+
 exports.validateAddMedia = {
   params: {
     sectionId: objectId().required(),
@@ -224,6 +254,8 @@ exports.validateAddMedia = {
     isShowInVideoClips: Joi.boolean().default(true).messages({
       "boolean.base": "isShowInVideoClips must be true or false.",
     }),
+    uploadIds: uploadIdList("uploadId"),
+    thumbnailUploadIds: uploadIdList("thumbnailUploadId"),
   }),
 };
 
@@ -249,6 +281,12 @@ exports.validateUpdateMedia = {
     isActive: Joi.boolean().optional().messages({
       "boolean.base": "isActive must be true or false.",
     }),
+    // 🆕 A poster-only update on the presigned road — the body is no longer
+    // always empty when a poster is being replaced.
+    thumbnailUploadId: Joi.string().hex().length(24).optional().messages({
+      "string.hex": "Invalid thumbnailUploadId.",
+      "string.length": "Invalid thumbnailUploadId.",
+    }),
     // No `.min(1)` here: a thumbnail-only update arrives as a file with an
     // empty body, and that is a legitimate request.
   }),
@@ -259,6 +297,17 @@ exports.validateReplaceMedia = {
     sectionId: objectId().required(),
     mediaId: objectId().required(),
   },
+  // 🆕 One media, so one id each — and a video still brings its own poster.
+  body: Joi.object({
+    uploadId: Joi.string().hex().length(24).optional().messages({
+      "string.hex": "Invalid uploadId.",
+      "string.length": "Invalid uploadId.",
+    }),
+    thumbnailUploadId: Joi.string().hex().length(24).optional().messages({
+      "string.hex": "Invalid thumbnailUploadId.",
+      "string.length": "Invalid thumbnailUploadId.",
+    }),
+  }),
 };
 
 exports.validateDeleteMedia = {

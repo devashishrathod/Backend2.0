@@ -9,6 +9,7 @@ const {
   kindFromMime,
 } = require("../../constants/storage");
 const { throwError } = require("../../utils");
+const { getStorageConfig } = require("../../helpers/settings");
 
 const cloudinaryProvider = require("./providers/cloudinary");
 const s3Provider = require("./providers/s3");
@@ -28,12 +29,25 @@ const s3Provider = require("./providers/s3");
 
 const PROVIDERS = Object.freeze({
   [STORAGE_PROVIDER.CLOUDINARY]: cloudinaryProvider,
-  [STORAGE_PROVIDER.S3]: s3Provider,
+  [STORAGE_PROVIDER.AWS_S3]: s3Provider,
 });
 
-/** Which provider new uploads go to. */
-const activeProvider = () =>
-  config.MEDIA_PROVIDER || STORAGE_PROVIDER.CLOUDINARY;
+/**
+ * Which provider new uploads go to.
+ *
+ * ⚠️ **From `Setting.storage.provider`, not from the environment** — which is
+ * why this is async where it used to be a plain read.
+ *
+ * `MEDIA_PROVIDER` still exists, but only as the value a brand-new install is
+ * **seeded** with (see the model). After that the admin owns it, and
+ * redeploying with a different env var does not quietly override what they
+ * chose. Two sources for one answer is only safe when it is written down which
+ * of them wins.
+ */
+const activeProvider = async () => {
+  const { provider } = await getStorageConfig();
+  return provider || STORAGE_PROVIDER.CLOUDINARY;
+};
 
 /**
  * Which provider an **existing** asset lives on.
@@ -99,13 +113,11 @@ const resolveKind = (asset) => {
   return EXT_KIND[ext] || MEDIA_KIND.IMAGE;
 };
 
-const activeProviderModule = () => {
-  const provider = PROVIDERS[activeProvider()];
+const activeProviderModule = async () => {
+  const name = await activeProvider();
+  const provider = PROVIDERS[name];
   if (!provider) {
-    throwError(
-      500,
-      `MEDIA_PROVIDER is not a known provider: ${activeProvider()}`,
-    );
+    throwError(500, `Setting.storage.provider is not a known provider: ${name}`);
   }
   return provider;
 };
@@ -131,7 +143,8 @@ exports.uploadFromPath = async ({
   const resolved =
     kind || kindFromMime(originalFile?.mimetype) || MEDIA_KIND.IMAGE;
 
-  return activeProviderModule().upload({
+  const provider = await activeProviderModule();
+  return provider.upload({
     filePath,
     purpose,
     entityId,
@@ -248,10 +261,76 @@ exports.documentUrl = async (asset) => {
   if (!asset?.storage) return asset?.url ?? null;
 
   const provider = providerFor(asset);
-  if (provider.signedGetUrl) return provider.signedGetUrl({ storage: asset.storage });
+  if (provider.signedGetUrl) {
+    /**
+     * 🔴 `Setting.storage.delivery.signedUrlTtlMinutes`, which until now was a
+     * field the admin could edit that reached nothing — the provider used its
+     * own five-minute constant whatever the panel said.
+     *
+     * ⚠️ Read here rather than inside the provider, so the provider stays what
+     * its own header calls it: a key, a bucket and the bytes. How long a link
+     * should live is a platform decision, not an S3 one.
+     */
+    const { signedUrlTtlSeconds } = await getStorageConfig();
+    return provider.signedGetUrl({
+      storage: asset.storage,
+      expiresIn: signedUrlTtlSeconds,
+    });
+  }
 
   return provider.url({ storage: asset.storage, url: asset.url });
 };
 
 exports.resolveKind = resolveKind;
 exports.activeProvider = activeProvider;
+
+/**
+ * 🔴 Direct-to-S3 upload (U-1) — re-exported here rather than imported from
+ * their own files, so every caller keeps going through one door.
+ *
+ * ⚠️ These two are **S3-only**, unlike everything above them. `presign` is
+ * built on `@aws-sdk/s3-presigned-post` and Cloudinary has no equivalent, so a
+ * platform running on Cloudinary keeps using the multipart path — and keeps it
+ * for good, not "until U-5". That sunset is X-4, and X-4 waits on Cloudinary
+ * growing a presign of its own, not on a date. Reads and deletes stay
+ * provider-agnostic either way — see §0.5 of the execution plan for why
+ * production is S3-only from day one.
+ *
+ * 🔴 So a platform on Cloudinary must leave `Setting.storage.upload
+ * .presignEnabled` off: these two would write to S3 while every multipart
+ * upload went to Cloudinary, and the same surface would hold rows on two
+ * providers.
+ */
+const { createUploadIntent } = require("./presign");
+const { confirmUpload } = require("./confirm");
+
+exports.createUploadIntent = createUploadIntent;
+exports.confirmUpload = confirmUpload;
+/**
+ * ⚠️ `PRESIGN_TTL_SECONDS` is gone from here. It was a constant re-exported to
+ * nobody, and the window is now `Setting.storage.upload.presignTtlMinutes` —
+ * `createUploadIntent` returns the value it actually signed as
+ * `expiresInSeconds`, which is the only number a client should ever act on.
+ */
+
+/**
+ * The door every surface knocks on — one file or a list, multipart or
+ * presigned, and the same shape back either way (U-1).
+ */
+const {
+  acceptUpload,
+  acceptUploads,
+  describeIncoming,
+  describeAllIncoming,
+} = require("./accept");
+
+exports.acceptUpload = acceptUpload;
+exports.acceptUploads = acceptUploads;
+
+/**
+ * "What is about to arrive?" — answered from either road, without spending the
+ * upload. A surface with rules of its own (how many, which exact mime types)
+ * has to refuse **before** confirm, or a refusal costs the vendor the file.
+ */
+exports.describeIncoming = describeIncoming;
+exports.describeAllIncoming = describeAllIncoming;

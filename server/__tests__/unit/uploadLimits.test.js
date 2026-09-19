@@ -116,7 +116,28 @@ const listen = (app) =>
 const close = () =>
   new Promise((resolve) => (server ? server.close(() => resolve()) : resolve()));
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 250));
+/**
+ * Wait until the temp directory holds `count` files.
+ *
+ * 🔴 This used to be a flat `setTimeout(250)`, and 250ms was a guess about how
+ * long a stream close and an unlink take. Run on their own the tests passed; run
+ * inside the full suite, with every jest worker competing for the same disk,
+ * the cleanup occasionally landed on the wrong side of that number and one test
+ * failed for no reason anybody could reproduce.
+ *
+ * Polling makes the wait proportional to what actually happens: it returns the
+ * instant the condition holds, and gives up after a ceiling far above any real
+ * cleanup so a genuine regression still fails — with the assertion below saying
+ * what was there instead of a timeout saying nothing.
+ */
+const CLEANUP_CEILING_MS = 5000;
+
+const settle = async (count = 0) => {
+  const deadline = Date.now() + CLEANUP_CEILING_MS;
+  while (tempFilesNow().length !== count && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+};
 
 beforeAll(() => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "trydood-upload-test-"));
@@ -147,7 +168,7 @@ describe("upload stack", () => {
     ]);
 
     expect(res.status).toBe(200);
-    await settle();
+    await settle(1);
     expect(tempFilesNow()).toHaveLength(1);
   });
 

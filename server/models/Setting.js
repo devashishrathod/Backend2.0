@@ -20,6 +20,8 @@ const {
 } = require("../constants/customer");
 const { SEARCH_LIMITS } = require("../constants/search");
 const { GATEWAY_FEE_BEARER } = require("../constants/transaction");
+const { STORAGE_PROVIDER } = require("../constants/storage");
+const { config } = require("../configs/env");
 const {
   ADMIN_NOTIFICATION_DEFAULTS,
 } = require("../constants/notification");
@@ -37,6 +39,27 @@ const voucherSettingSchema = new mongoose.Schema(
       default: 5,
       min: 1,
     },
+    /**
+     * How many images a voucher must carry before it can go live (V-1).
+     *
+     * 🔴 A floor, not a ceiling — the first one this block has had. A voucher
+     * with one photograph reaches a customer as a card with nothing to look at,
+     * and the customer listing has no way to tell that apart from a voucher
+     * whose images simply have not uploaded yet.
+     *
+     * ⚠️ Raising this does **not** retire vouchers that are already published,
+     * the way `minItemsPerSection` hides sections the moment it saves. The
+     * difference is deliberate: a published voucher is a commitment a customer
+     * may already have claimed, so the floor is checked on the way **in** —
+     * create, image edit, and submit-for-review — and never on the way out.
+     * V-2 is what reads it.
+     */
+    minImages: {
+      type: Number,
+      required: true,
+      default: 3,
+      min: 1,
+    },
     maxDistanceKm: {
       type: Number,
       default: 25,
@@ -45,6 +68,24 @@ const voucherSettingSchema = new mongoose.Schema(
   },
   { _id: false },
 );
+
+/**
+ * 🔴 The floor cannot climb above the ceiling.
+ *
+ * `minImages: 6` beside `maxImages: 5` makes every voucher at once too empty to
+ * publish and too full to fix: submit refuses it for having too few images, and
+ * the upload that would carry it over the line is refused for exceeding the
+ * maximum. There is no request a vendor can make that escapes.
+ *
+ * ⚠️ A path validator, not a `pre("validate")` hook. A hook does not run on
+ * `validateSync()`, so a document built that way would validate perfectly clean
+ * — a trap this migration has now walked into four times.
+ */
+voucherSettingSchema.path("minImages").validate(function (value) {
+  const ceiling = this.maxImages;
+  if (!Number.isFinite(value) || !Number.isFinite(ceiling)) return true;
+  return value <= ceiling;
+}, "minImages cannot be more than maxImages.");
 
 /**
  * ⚠️ No `maxSections` here, deliberately.
@@ -80,10 +121,47 @@ const showcaseSettingSchema = new mongoose.Schema(
       default: 5,
       min: 1,
     },
+    /**
+     * How many visible media a section must keep to stay on the brand's
+     * profile — the floor, where everything else here is a ceiling.
+     *
+     * ⚠️ Raising this **hides sections immediately**. Move it from 3 to 5 and
+     * every 3- and 4-media section disappears from the customer's view that
+     * second, with no write anywhere and nothing in a log. Code cannot soften
+     * that: the number is the rule. It is called out in the admin doc for the
+     * same reason.
+     */
+    minItemsPerSection: {
+      type: Number,
+      required: true,
+      default: 3,
+      min: 1,
+    },
+    /** A brand keeps at least this many sections — the delete guard reads it. */
+    minSectionsPerBrand: {
+      type: Number,
+      required: true,
+      default: 1,
+      min: 1,
+    },
     maxImageSizeMB: {
       type: Number,
       required: true,
       default: 10,
+      min: 1,
+    },
+    /**
+     * GIFs get their own ceiling, and it is larger on purpose.
+     *
+     * An animated GIF is every frame stored whole — a two-second loop routinely
+     * outweighs a photograph of the same picture several times over. Metering it
+     * against `maxImageSizeMB` would refuse ordinary GIFs while claiming to
+     * allow them, which is the worst of both.
+     */
+    maxGifSizeMB: {
+      type: Number,
+      required: true,
+      default: 15,
       min: 1,
     },
     maxVideoSizeMB: {
@@ -92,9 +170,18 @@ const showcaseSettingSchema = new mongoose.Schema(
       default: 50,
       min: 1,
     },
+    /**
+     * ⚠️ `image/gif` is in here now.
+     *
+     * It is an `image/*` type, so it already passed every "is this an image"
+     * check in the codebase — this list is what decides whether it is actually
+     * accepted. `media.kind` still records it as `GIF` rather than `IMAGE`,
+     * which is what routes the object to `gifs/` and clear of the resize step
+     * that would flatten the animation.
+     */
     allowedImages: {
       type: [String],
-      default: ["image/jpeg", "image/jpg", "image/png", "image/webp"],
+      default: ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"],
     },
     allowedVideos: {
       type: [String],
@@ -104,6 +191,29 @@ const showcaseSettingSchema = new mongoose.Schema(
   },
   { _id: false },
 );
+
+/**
+ * The floor cannot climb above the ceiling.
+ *
+ * 🔴 `minItemsPerSection: 6` beside `maxItemsPerSection: 5` is a setting that
+ * makes every section on the platform simultaneously too small to show and too
+ * full to fix: the customer read hides it, and the upload that would rescue it
+ * is refused. There is no request a vendor can make that escapes, and nothing
+ * would say why.
+ *
+ * ⚠️ Enforced here **and** in `validator/settings.js`, because the admin panel
+ * is not the only writer — the seeders and any script that touches the document
+ * go straight to the model.
+ *
+ * `validate` on the path rather than `pre("validate")`: a hook does not run on
+ * `validateSync()`, so the sync path would report a document like this as clean.
+ * That has cost this migration three separate findings already.
+ */
+showcaseSettingSchema.path("minItemsPerSection").validate(function (value) {
+  const ceiling = this.maxItemsPerSection;
+  if (!Number.isFinite(value) || !Number.isFinite(ceiling)) return true;
+  return value <= ceiling;
+}, "minItemsPerSection cannot be more than maxItemsPerSection.");
 
 /**
  * Everything the subscription / checkout flow is allowed to vary by admin.
@@ -831,10 +941,133 @@ const appSettingSchema = new mongoose.Schema(
   { _id: false },
 );
 
+/**
+ * Where files go, how big they may be, and what they may be.
+ *
+ * ### Why this is a top-level block and not a corner of `vendor`
+ *
+ * None of it is vendor-specific. The provider decides where **every** upload on
+ * the platform lands — a customer's avatar, an admin's banner, a generated
+ * invoice. Putting it under `vendor` would say something about ownership that
+ * is not true.
+ *
+ * ### ⚠️ Global is a ceiling; a surface may only narrow it
+ *
+ * `vendor.showcase.maxImageSizeMB` already exists and will keep existing. The
+ * two are not rivals: the global number is the most this platform will ever
+ * accept, and a surface may ask for less. The effective limit is the **smaller**
+ * of the two, and a surface limit above the global is refused on save rather
+ * than silently losing — because two numbers answering one question is only safe
+ * when it is written down which of them wins.
+ *
+ * ### Every field here has a reader
+ *
+ * Deliberately. `maxSections` used to sit in this file with nothing consulting
+ * it, so the admin panel offered a limit that changed nothing — which is its own
+ * kind of bug. Nothing goes in this block until something reads it.
+ */
+const storageSettingSchema = new mongoose.Schema(
+  {
+    /**
+     * Which provider **new** uploads go to.
+     *
+     * ⚠️ Only new ones. Deleting an existing asset follows that row's own
+     * `storage.provider`, never this — otherwise flipping the switch would
+     * strand every file uploaded before it.
+     *
+     * The enum comes from `STORAGE_PROVIDER` rather than a literal list, so the
+     * day a provider is renamed there is one place to change.
+     */
+    provider: {
+      type: String,
+      enum: Object.values(STORAGE_PROVIDER),
+      /**
+       * ⚠️ Seeded from `MEDIA_PROVIDER`, and only seeded.
+       *
+       * A Mongoose default runs when the document is **created**, so the env
+       * var decides what a brand-new install starts on and nothing after that.
+       * From then on this field is the single source: an admin flips it in the
+       * panel, and redeploying with a different env var does not quietly
+       * override what they chose.
+       *
+       * Two sources for one answer is only safe when it is written down which
+       * of them wins, and this is where it is written.
+       */
+      default: () => config.MEDIA_PROVIDER || STORAGE_PROVIDER.CLOUDINARY,
+      required: true,
+    },
+
+    /** Per-kind ceilings, in MB. Bytes are computed once in `getStorageConfig`. */
+    limits: {
+      maxImageSizeMB: { type: Number, default: 10, min: 1 },
+      /**
+       * ⚠️ GIFs get their own ceiling, and a higher one. An animated GIF is
+       * every frame at once — a 3-second loop is routinely larger than a photo
+       * of the same picture, and holding it to the image limit rejects files
+       * that are perfectly ordinary for their type.
+       */
+      maxGifSizeMB: { type: Number, default: 15, min: 1 },
+      maxVideoSizeMB: { type: Number, default: 50, min: 1 },
+      maxDocumentSizeMB: { type: Number, default: 20, min: 1 },
+      maxAudioSizeMB: { type: Number, default: 20, min: 1 },
+    },
+
+    /**
+     * What each kind may actually be, by mime type.
+     *
+     * ⚠️ `gifTypes` is separate from `imageTypes` even though a GIF is an
+     * `image/*` file. That is what lets a surface say "images yes, GIFs no"
+     * without re-deciding here what a GIF is.
+     */
+    allowed: {
+      imageTypes: {
+        type: [String],
+        default: ["image/jpeg", "image/jpg", "image/png", "image/webp"],
+      },
+      gifTypes: { type: [String], default: ["image/gif"] },
+      videoTypes: {
+        type: [String],
+        default: ["video/mp4", "video/webm", "video/quicktime"],
+      },
+      documentTypes: { type: [String], default: ["application/pdf"] },
+      audioTypes: { type: [String], default: ["audio/mpeg", "audio/mp4"] },
+    },
+
+    upload: {
+      /** The direct-to-S3 route, switchable without a deploy. */
+      presignEnabled: { type: Boolean, default: false },
+      /** How long the client has to start the upload. */
+      presignTtlMinutes: { type: Number, default: 15, min: 1 },
+      /**
+       * How long an unconfirmed upload intent survives.
+       *
+       * ⚠️ Longer than the signature, because a slow upload that finishes at
+       * minute fourteen still has to be confirmable — the row must outlive the
+       * window, not match it.
+       */
+      intentTtlMinutes: { type: Number, default: 60, min: 1 },
+    },
+
+    delivery: {
+      /** How long a presigned GET for a private document stays valid. */
+      signedUrlTtlMinutes: { type: Number, default: 5, min: 1 },
+    },
+  },
+  { _id: false },
+);
+
 const settingSchema = new mongoose.Schema(
   {
     vendor: {
       type: vendorSettingSchema,
+      default: () => ({}),
+    },
+    /**
+     * ⚠️ Platform-wide, beside `vendor` and `customer` rather than inside one —
+     * see the note on the schema above.
+     */
+    storage: {
+      type: storageSettingSchema,
       default: () => ({}),
     },
     customer: {

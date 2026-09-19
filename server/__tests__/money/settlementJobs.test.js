@@ -38,6 +38,7 @@ const {
   connectTestDb,
   disconnectTestDb,
   clearCollections,
+  invalidateSettingCache,
 } = require("./setup/testDb");
 
 const Transaction = require("../../models/Transaction");
@@ -218,11 +219,24 @@ describe("the registry", () => {
   });
 });
 
+/**
+ * Replace the settings document mid-test, and drop the cache after it.
+ *
+ * ⚠️ `clearCollections` invalidates for the setup, but these writes happen
+ * **inside** an `it` — sometimes after a `buildSettlements()` call has already
+ * warmed the cache. `getSetting()` holds a 30-second snapshot (F-1), so a
+ * toggle flipped here is simply not read and the job carries on as though it
+ * were still on.
+ */
+const seedSetting = async (doc) => {
+  await Setting.deleteMany({});
+  await Setting.create(doc);
+  invalidateSettingCache();
+};
+
 describe("building on a schedule", () => {
   it("does nothing at all when payouts are switched off", async () => {
-    await Setting.create({
-      customer: { settlement: { isEnabled: false } },
-    });
+    await seedSetting({ customer: { settlement: { isEnabled: false } } });
     await payment();
 
     const result = await buildSettlements();
@@ -236,7 +250,7 @@ describe("building on a schedule", () => {
    * and which of the two it is decides whether anyone should be woken up.
    */
   it("says why it skipped rather than reporting a quiet success", async () => {
-    await Setting.create({ customer: { settlement: { isEnabled: false } } });
+    await seedSetting({ customer: { settlement: { isEnabled: false } } });
 
     const result = await buildSettlements();
 
@@ -270,8 +284,7 @@ describe("building on a schedule", () => {
     expect(ran.periodEnd).toBeDefined();
     expect(ran.reason).toBeUndefined();
 
-    await Setting.deleteMany({});
-    await Setting.create({ customer: { settlement: { isEnabled: false } } });
+    await seedSetting({ customer: { settlement: { isEnabled: false } } });
     const off = await buildSettlements();
 
     expect(off.skipped).toBe(true);
@@ -474,7 +487,7 @@ describe("money owed for longer than we promised", () => {
   });
 
   it("honours the admin's own window", async () => {
-    await Setting.create({
+    await seedSetting({
       customer: { settlement: { notReceivedAlertHours: 12 } },
     });
     await settlement({ createdAt: ago(24 * HOUR) });

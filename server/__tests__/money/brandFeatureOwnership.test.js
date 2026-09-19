@@ -38,11 +38,36 @@
  */
 
 jest.mock("../../services/storage", () => ({
-  uploadFromPath: jest.fn(async () => ({
+  /**
+   * ⚠️ `metadata` is part of the contract, not decoration.
+   *
+   * 🔴 This returned `{ url, storage }` only, and went stale the day
+   * `toMediaDocument` landed (M-1): it derives `kind` from `metadata.mimeType`
+   * and **throws** rather than guessing, so every brand-feature write failed
+   * here with "Cannot store media: no kind". The real facade always fills
+   * `metadata` — both providers build it from `originalFile`.
+   */
+  uploadFromPath: jest.fn(async ({ originalFile } = {}) => ({
     url: "https://example.test/icons/uploaded.png",
     storage: { provider: "CLOUDINARY", publicId: "Images/uploaded" },
+    metadata: {
+      originalName: originalFile?.name ?? null,
+      mimeType: originalFile?.mimetype ?? "image/png",
+      size: 1024,
+      width: null,
+      height: null,
+      duration: 0,
+    },
   })),
   deleteAsset: jest.fn(async () => true),
+  deleteAssets: jest.fn(async () => ({ deleted: 0, failed: 0 })),
+  /**
+   * ⚠️ The **real** facade (U-5), not a stub. The service asks it what is
+   * arriving before it spends anything, and a stub here would quietly replace
+   * the one step that decides which road the request took. Its multipart road
+   * lands on the mock above, so nothing reaches a provider.
+   */
+  ...jest.requireActual("../../services/storage/accept"),
 }));
 
 const mongoose = require("mongoose");
@@ -64,6 +89,9 @@ const {
   deleteBrandFeature,
 } = require("../../services/brandFeatures");
 const { uploadFromPath, deleteAsset } = require("../../services/storage");
+const { localFile, cleanup: cleanupFixtures } = require("../support/localFile");
+
+afterAll(cleanupFixtures);
 
 const oid = () => new mongoose.Types.ObjectId();
 
@@ -104,11 +132,12 @@ const adminActor = () => ({ userId: oid(), role: ROLES.ADMIN });
  * — which is the correct answer to a file that does not say what it is. The
  * fixture was describing an upload that could not happen.
  */
-const iconUpload = {
-  tempFilePath: "/does/not/matter",
-  name: "icon.png",
-  mimetype: "image/png",
-};
+/**
+ * ⚠️ A **real** file now (G2). `acceptUpload` is the real one above, and it
+ * reads the first kilobyte — a made-up path used to work only because nothing
+ * on this road ever opened the file, which was the bug.
+ */
+const iconUpload = () => localFile("png", { name: "icon.png" });
 
 let OWNER;
 let INTRUDER;
@@ -139,7 +168,7 @@ describe("who may write a brand's features", () => {
       addBrandFeature(
         vendorActor(INTRUDER, OTHER_BRAND._id),
         { brandId: BRAND._id.toString(), title: "Injected" },
-        iconUpload,
+        iconUpload(),
       ),
     ).rejects.toMatchObject({ statusCode: 403 });
 
@@ -155,7 +184,7 @@ describe("who may write a brand's features", () => {
       addBrandFeature(
         vendorActor(INTRUDER, OTHER_BRAND._id),
         { brandId: BRAND._id.toString(), title: "Injected" },
-        iconUpload,
+        iconUpload(),
       ),
     ).rejects.toMatchObject({ statusCode: 403 });
 
@@ -166,7 +195,7 @@ describe("who may write a brand's features", () => {
     const feature = await addBrandFeature(
       vendorActor(OWNER, BRAND._id),
       { brandId: BRAND._id.toString(), title: "Free parking" },
-      iconUpload,
+      iconUpload(),
     );
 
     expect(String(feature.brandId)).toBe(String(BRAND._id));
@@ -177,7 +206,7 @@ describe("who may write a brand's features", () => {
     const feature = await addBrandFeature(
       adminActor(),
       { brandId: BRAND._id.toString(), title: "Admin added" },
-      iconUpload,
+      iconUpload(),
     );
 
     expect(String(feature.brandId)).toBe(String(BRAND._id));
@@ -208,7 +237,7 @@ describe("who may write a brand's features", () => {
       updateBrandFeature(
         vendorActor(INTRUDER, OTHER_BRAND._id),
         { featureId: feature._id.toString() },
-        iconUpload,
+        iconUpload(),
       ),
     ).rejects.toMatchObject({ statusCode: 403 });
 

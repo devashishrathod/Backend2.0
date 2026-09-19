@@ -5,7 +5,7 @@ exports.createTermAndCondition = async (payload) => {
   let { title, type, description, isActive } = payload;
 
   // Lowercased only so the duplicate check below is case-insensitive.
-  title = title?.toLowerCase();
+  title = title?.trim();
 
   // `description` is deliberately left as typed. It used to be lowercased with
   // the title, which flattened headings, proper nouns and any markup in the

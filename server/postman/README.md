@@ -9,8 +9,30 @@ jhooth nahi bol sakti.
 | Collection | Requests | Status |
 |---|---:|---|
 | `trydood-customer.postman_collection.json` | 144 | ⚠️ 502 assertions · **2 failed** · 210 examples, **144/144 requests par** |
-| `trydood-vendor.postman_collection.json` | 131 | ⚠️ 300 assertions · **1 failed** · 147 examples, **131/131 requests par** |
-| `trydood-admin.postman_collection.json` | 120 | 133 examples, **120/120 requests par** — is cycle me dobara nahi chalayi |
+| `trydood-vendor.postman_collection.json` | 136 | ⚠️ 300 assertions · **1 failed** · 163 examples, **136/136 requests par** |
+| `trydood-admin.postman_collection.json` | 124 | 143 examples, **124/124 requests par** — is cycle me dobara nahi chalayi |
+
+> ### ⚠️ Ye teen number haath se sync hote hain
+>
+> `verifyApiCoverage` har route ka ek request aur ek example maangta hai, par
+> **ye table nahi padhta**. Jo sach hai wo script ke apne output me chhapta hai:
+>
+> ```
+> node scripts/verifyApiCoverage.js
+>   customer   144 requests · 210 examples
+>   vendor     136 requests · 163 examples
+>   admin      124 requests · 143 examples
+> ```
+>
+> Collection badalne par ye table wahan se bharna padta hai — warna wo chup-chaap
+> purana ho jaata hai, bilkul jaise neeche wala "0 failed" hua tha.
+>
+> **Aakhri sync:** Block G — vendor presign me `503`/`409` ke example jude, aur
+> admin ko `24 — Uploads` folder mila (2 request, 8 example). Wo folder isliye
+> juda ki admin doc `/uploads/presign` aur `/uploads/confirm` ko **#111/#112** ke
+> roop me apne endpoint ki tarah document karta hai, par request sirf vendor
+> collection me thi — yaani admin team ke paas wo doc tha jise wo apne collection
+> me try hi nahi kar sakte the.
 
 > ### ⚠️ 3 assertions fail hain — fixture/state ki, code ki nahi
 >

@@ -1,4 +1,5 @@
 const ShowcaseSection = require("../../models/ShowcaseSection");
+const { toDisplayName } = require("../../helpers/common");
 const { throwError } = require("../../utils");
 const { escapeRegex } = require("../../validator/common");
 const { SHOWCASE_COVER_IMAGE_MODE } = require("../../constants/showcase");
@@ -8,6 +9,7 @@ const {
   formatSectionSummary,
   getMediaCoverImage,
   syncSectionCoverImage,
+  assertBrandKeepsAVisibleSection,
 } = require("../../helpers/showcases");
 
 /**
@@ -25,8 +27,16 @@ exports.updateSection = async (actor, payload) => {
   // to run is gone.
   const section = await resolveSectionForActor(actor, payload.sectionId);
 
+  /**
+   * S-3 — a brand keeps one section customers can see.
+   *
+   * Checked before anything is written, so a refused request leaves the title
+   * and description exactly as they were rather than half-applied.
+   */
+  await assertBrandKeepsAVisibleSection(section, { payload, actor });
+
   if (payload.title !== undefined) {
-    const title = payload.title.trim();
+    const title = toDisplayName(payload.title);
 
     const exists = await ShowcaseSection.exists({
       _id: { $ne: section._id },
@@ -52,7 +62,17 @@ exports.updateSection = async (actor, payload) => {
   if (payload.sectionType !== undefined) {
     section.sectionType = payload.sectionType;
   }
-  if (payload.sortOrder !== undefined) section.sortOrder = payload.sortOrder;
+  /**
+   * ⚠️ `sortOrder` is not here, and is not accepted (S-13).
+   *
+   * 🔴 It used to be written straight through from the payload, so a vendor
+   * could put two sections on `1` — or one on `99` — and the order that came
+   * back depended on which document Mongo returned first. Nothing renumbered
+   * afterwards, so the section list simply stayed wrong.
+   *
+   * Positions move through `PUT /showcase/section/:brandId/reorder`, which takes
+   * the whole list and can keep it dense and unique.
+   */
   if (payload.isActive !== undefined) section.isActive = payload.isActive;
   if (payload.isVisible !== undefined) section.isVisible = payload.isVisible;
   if (payload.isShowVideosInClips !== undefined) {

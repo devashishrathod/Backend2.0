@@ -244,11 +244,32 @@
       "Bash(awk 'NR>=31{print}' constants.js)",
       "Bash(grep -nP \"^\\\\s{2,4}\\(status|archivedAt|isImmutable|isActive|isDeleted|versionNumber|attachedSubBrandsCount|expiredAt|endAt\\)\" models/VoucherVersion.js)",
       "Bash(python \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/92c95983-293a-44a5-872a-2cb712c95651/scratchpad/barrels.py\")",
-      "Bash(python \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/92c95983-293a-44a5-872a-2cb712c95651/scratchpad/cycles.py\")"
+      "Bash(python \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/92c95983-293a-44a5-872a-2cb712c95651/scratchpad/cycles.py\")",
+      "Bash(cp scripts/verifyEnvCoverage.js /tmp/vec.bak.js)",
+      "Bash(node scripts/verifyEnvCoverage.js)",
+      "Bash(node --check scripts/verifyEnvCoverage.js)",
+      "Bash(sed -n '/^const ENV_READ/,/^const CONFIG_READ/p' scripts/verifyEnvCoverage.js)",
+      "Bash(node --check constants.js)",
+      "Bash(ENABLE_JOBS=false PORT=0 timeout 30 node index.js)",
+      "Bash(node --check __tests__/money/setup/runLock.js)",
+      "Bash(node --check controllers/locations/update.js)",
+      "Bash(node --check routes/locations.js)",
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/92c95983-293a-44a5-872a-2cb712c95651/scratchpad/mutate-loc3.js\")",
+      "Bash(awk '/batch 2\\\\/7/,/batch 3\\\\/7/' money-run.log)",
+      "Bash(node --check __tests__/money/documentDelivery.test.js)",
+      "Bash(awk '/batch 4\\\\/7/,/batch 5\\\\/7/' money-run.log)",
+      "Bash(awk '/batch 5\\\\/7/,/batch 6\\\\/7/' money-run.log)",
+      "Bash(node --check scripts/runMoneySuite.js)",
+      "Bash(awk '/batch 6\\\\/7/,0' money-run.log)",
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/92c95983-293a-44a5-872a-2cb712c95651/scratchpad/rx.js\")",
+      "Bash(node \"C:/Users/acar/AppData/Local/Temp/claude/c--Users-acar-OneDrive-Documents-GitHub-Backend2-0/92c95983-293a-44a5-872a-2cb712c95651/scratchpad/idx.js\")",
+      "Bash(node scripts/showTestIndexes.js OtpThrottle)",
+      "Bash(node --check helpers/otps/claimOtpSend.js)"
     ],
     "additionalDirectories": [
       "C:\\Users\\acar\\OneDrive\\Documents\\GitHub\\Backend2.0\\server",
-      "C:\\Users\\acar\\AppData\\Local\\Temp\\claude\\c--Users-acar-OneDrive-Documents-GitHub-Backend2-0\\3f5cbb04-9cde-4b99-a692-f5a1c6f1304d"
+      "C:\\Users\\acar\\AppData\\Local\\Temp\\claude\\c--Users-acar-OneDrive-Documents-GitHub-Backend2-0\\3f5cbb04-9cde-4b99-a692-f5a1c6f1304d",
+      "\\tmp"
     ]
   },
   "hooks": {

@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { storageSchema } = require("./storageSchema");
+const { mediaSchema } = require("./mediaSchema");
 const { isValidEmail, isValidPhoneNumber } = require("../validator/common");
 const {
   userField,
@@ -226,7 +226,7 @@ const transactionSchema = new mongoose.Schema(
      * ⚠️ The `*Url` field above is kept and still read. Rows written before
      * this existed have only that, and they must keep working.
      */
-    documentStorage: { type: storageSchema, default: undefined },
+    documentMedia: { type: mediaSchema, default: undefined },
     // Unguessable handle for the public invoice download link. The sequential
     // invoice number is a document-of-record and must never appear in a URL.
     documentToken: { type: String },

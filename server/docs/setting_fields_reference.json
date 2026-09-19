@@ -12,9 +12,10 @@
     "sampleResponse": "server/docs/setting_default_response.json",
     "documentIsSingleton": "One document for the whole platform. `helpers/settings/getSetting.js` upserts it on first read, so GET never 404s.",
     "updateIsAMerge": "PUT merges block by block — a payload carrying one field leaves its siblings alone. Omitting a field is NOT the same as clearing it.",
-    "totalLeafFields": 125,
-    "writableFields": 121,
-    "readOnlyFields": 4
+    "totalLeafFields": 144,
+    "writableFields": 140,
+    "readOnlyFields": 4,
+    "fieldCountNote": "144 = 139 schema leaf paths + 5 document-level fields (_id, isActive, createdAt, updatedAt, updatedBy). Counted from models/Setting.js, not by hand — the previous 125/121 had drifted and nothing compared them."
   },
   "enums": {
     "customer.settlement.cycleType": [
@@ -41,6 +42,10 @@
     ],
     "vendor.subscription.currency": [
       "INR"
+    ],
+    "STORAGE_PROVIDER": [
+      "CLOUDINARY",
+      "AWS_S3"
     ]
   },
   "sharedLimits": {
@@ -99,6 +104,37 @@
       "rule": "app.features.* = false only tells the mobile app not to show the screen",
       "enforcedBy": "each endpoint enforces independently",
       "why": "Turning promoCodes off here still leaves create-order returning its hard 422. The flag is a UI hint, never a security control."
+    },
+    {
+      "name": "storage limit ceiling rule",
+      "rule": "vendor.showcase.maxImageSizeMB <= storage.limits.maxImageSizeMB  AND  vendor.showcase.maxVideoSizeMB <= storage.limits.maxVideoSizeMB",
+      "enforcedBy": "helpers/settings/assertStorageLimitRule.js, on the MERGED document in services/settings/updateSetting.js",
+      "failsWith": "422, naming both numbers",
+      "why": "The read path already takes min(global, surface), so the platform is safe either way. This keeps the panel honest: without it an admin types 80 against a 50 ceiling, gets a 200, sees 80 rendered back, and every upload over 50 is still refused with nothing saying why. Checked on the merged document because the two limits can arrive in separate requests."
+    },
+    {
+      "name": "showcase floor rule",
+      "rule": "vendor.showcase.minItemsPerSection <= vendor.showcase.maxItemsPerSection",
+      "enforcedBy": "validator/settings.js (payload carrying both), helpers/settings/assertShowcaseFloorRule.js on the MERGED document in services/settings/updateSetting.js, and a path validator on the model for writers that bypass the API (seeders, scripts)",
+      "failsWith": "422, naming both numbers",
+      "why": "A floor above the ceiling makes every section at once too small to show and too full to fix: the customer read hides anything under the floor, and the upload that would carry a section over it is refused by the ceiling. No request a vendor can make escapes, and nothing would say why. Checked on the merged document because the two numbers can arrive in separate requests.",
+      "withDefaults": "3 <= 15 ✓"
+    },
+    {
+      "name": "voucher image floor rule",
+      "rule": "vendor.voucher.minImages <= vendor.voucher.maxImages",
+      "enforcedBy": "validator/settings.js (payload carrying both), helpers/settings/assertVoucherFloorRule.js on the MERGED document in services/settings/updateSetting.js, and a path validator on the model",
+      "failsWith": "422, naming both numbers",
+      "why": "Same shape as the showcase floor: a voucher would be at once too empty to publish and too full to fix — submit refuses it for too few images, the upload that would rescue it is refused for too many.",
+      "withDefaults": "3 <= 5 ✓"
+    },
+    {
+      "name": "presign window vs intent lifetime",
+      "rule": "storage.upload.intentTtlMinutes >= storage.upload.presignTtlMinutes",
+      "enforcedBy": "helpers/settings/assertStorageLimitRule.js, on the MERGED document in services/settings/updateSetting.js",
+      "failsWith": "422, naming both numbers and saying which has to outlive which",
+      "why": "presignTtlMinutes is how long a client may START an upload; intentTtlMinutes is how long the Upload row lives, and that row is what confirm loads to find out whose upload this is. The row is removed by a TTL index, which does not ask whether a signature is still valid. Set intent below presign and a vendor on a slow connection finishes at minute eight, S3 takes every byte because the signature is good for an hour, and confirm answers 'That upload was not found' - about a row that was deleted, not an upload that failed. Retrying works, so it reads as a flaky upload rather than a number somebody typed. Both fields validate independently (1-60 and 1-1440), so neither validator can see this: it is only wrong in relation to the other.",
+      "withDefaults": "60 >= 15 ✓"
     }
   ],
   "notWritableViaApi": {
@@ -123,6 +159,15 @@
       "min": 1,
       "writableViaApi": true,
       "description": "How many images one voucher may carry."
+    },
+    "vendor.voucher.minImages": {
+      "type": "number",
+      "default": 3,
+      "integer": true,
+      "min": 1,
+      "requiredInSchema": true,
+      "writableViaApi": true,
+      "description": "How many images a voucher must carry before it can be published. Read on the way IN only — create, image edit, submit-for-review — so raising it never retires a voucher that is already live and may have been claimed. This is the opposite of vendor.showcase.minItemsPerSection, and the difference is deliberate."
     },
     "vendor.voucher.maxDistanceKm": {
       "type": "number",
@@ -159,6 +204,24 @@
       "writableViaApi": true,
       "description": "Videos allowed in one section."
     },
+    "vendor.showcase.minItemsPerSection": {
+      "type": "number",
+      "default": 3,
+      "integer": true,
+      "min": 1,
+      "requiredInSchema": true,
+      "writableViaApi": true,
+      "description": "Visible media a section must keep to reach a customer at all. ⚠️ Raising this hides sections IMMEDIATELY — every section under the new floor drops out of the customer's view the moment it saves, with no write anywhere and nothing in a log. Also refuses the vendor delete or hide that would take a section below it (admins exempt)."
+    },
+    "vendor.showcase.minSectionsPerBrand": {
+      "type": "number",
+      "default": 1,
+      "integer": true,
+      "min": 1,
+      "requiredInSchema": true,
+      "writableViaApi": true,
+      "description": "Sections a brand must keep. Refuses the delete of the last one, and the hide of the last one customers can see (admins exempt). Cannot be set below 1."
+    },
     "vendor.showcase.maxImageSizeMB": {
       "type": "number",
       "default": 10,
@@ -167,6 +230,15 @@
       "requiredInSchema": true,
       "writableViaApi": true,
       "description": "Per-image upload ceiling in MB."
+    },
+    "vendor.showcase.maxGifSizeMB": {
+      "type": "number",
+      "default": 15,
+      "integer": true,
+      "min": 1,
+      "requiredInSchema": true,
+      "writableViaApi": true,
+      "description": "Per-GIF upload ceiling in MB — larger than maxImageSizeMB on purpose. An animated GIF stores every frame whole, so metering it against the photo limit would refuse ordinary GIFs while allowedImages claims to accept them."
     },
     "vendor.showcase.maxVideoSizeMB": {
       "type": "number",
@@ -183,7 +255,8 @@
         "image/jpeg",
         "image/jpg",
         "image/png",
-        "image/webp"
+        "image/webp",
+        "image/gif"
       ],
       "itemType": "string",
       "minItems": 1,
@@ -192,7 +265,7 @@
         "trimmed": true
       },
       "writableViaApi": true,
-      "description": "Accepted image MIME types. The upload is refused on anything not in this list — sending [] blocks every image upload."
+      "description": "Accepted image MIME types. The upload is refused on anything not in this list — sending [] blocks every image upload. image/gif is in this list now; it is metered against maxGifSizeMB and stored with kind GIF, which keeps it clear of the resize step that would flatten the animation."
     },
     "vendor.showcase.allowedVideos": {
       "type": "array of string",
@@ -1166,6 +1239,136 @@
       "writableViaApi": false,
       "readOnlyReason": "System field — never accepted from the request body.",
       "description": "Set by mongoose `timestamps` on every save. Read-only."
+    },
+    "storage.provider": {
+      "type": "string",
+      "default": "CLOUDINARY",
+      "enum": [
+        "CLOUDINARY",
+        "AWS_S3"
+      ],
+      "writableViaApi": true,
+      "description": "Which provider NEW uploads go to. Reading or deleting an existing asset follows that row's own storage.provider, never this (services/storage/index.js:60) - so flipping the switch cannot strand files uploaded before it, in either direction. Switching TO AWS_S3 is guarded: updateSetting runs checkS3Ready(), which writes, reads and deletes a real object in BOTH buckets and then fetches one from the public bucket WITHOUT credentials; any failure is a 422 and the save does not happen. Switching back to CLOUDINARY runs no preflight at all (PROVIDERS_NEEDING_PREFLIGHT holds only AWS_S3), so rollback is instant.",
+      "defaultNote": "Seeded from the MEDIA_PROVIDER env var at document CREATION only (models/Setting.js:996), so \"CLOUDINARY\" is what a fresh install gets when MEDIA_PROVIDER is unset - it is not a flat constant. Once the document exists this field is the single source: redeploying with a different MEDIA_PROVIDER does NOT override what an admin chose. WARNING: on a fresh production database the first boot therefore decides the provider WITHOUT any preflight, because preflight only runs on a panel edit."
+    },
+    "storage.limits.maxImageSizeMB": {
+      "type": "number",
+      "default": 10,
+      "integer": true,
+      "min": 1,
+      "writableViaApi": true,
+      "description": "Platform ceiling for an image, in MB. A surface may ask for less; it cannot ask for more. Enforced on BOTH upload roads — multipart and presigned — against the kind read from the file's own bytes, not the Content-Type the client sent."
+    },
+    "storage.limits.maxGifSizeMB": {
+      "type": "number",
+      "default": 15,
+      "integer": true,
+      "min": 1,
+      "writableViaApi": true,
+      "description": "Platform ceiling for a GIF. Higher than an image on purpose - an animated GIF is every frame at once. Enforced on both upload roads, against the kind read from the bytes: a video announced as a GIF is weighed as a video."
+    },
+    "storage.limits.maxVideoSizeMB": {
+      "type": "number",
+      "default": 50,
+      "integer": true,
+      "min": 1,
+      "writableViaApi": true,
+      "description": "Platform ceiling for a video. Enforced on both upload roads, against the kind read from the file's own bytes."
+    },
+    "storage.limits.maxDocumentSizeMB": {
+      "type": "number",
+      "default": 20,
+      "integer": true,
+      "min": 1,
+      "writableViaApi": true,
+      "description": "Platform ceiling for a generated document (invoices)."
+    },
+    "storage.limits.maxAudioSizeMB": {
+      "type": "number",
+      "default": 20,
+      "integer": true,
+      "min": 1,
+      "writableViaApi": true,
+      "description": "Platform ceiling for an audio file. ⚠️ Nothing can currently reach it: there is no audio upload surface, and UPLOAD_PURPOSE.AUDIO was removed along with the caller-less uploadAudio it existed for. MEDIA_KIND.AUDIO remains so kindFromMime can still NAME an audio file, which is what lets a surface refuse one. Kept here because the day audio is added, this is the number it will be held to."
+    },
+    "storage.allowed.imageTypes": {
+      "type": "string[]",
+      "default": [
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/webp"
+      ],
+      "writableViaApi": true,
+      "description": "Mime types an IMAGE may be. GIF is deliberately NOT here - see gifTypes."
+    },
+    "storage.allowed.gifTypes": {
+      "type": "string[]",
+      "default": [
+        "image/gif"
+      ],
+      "writableViaApi": true,
+      "description": "Mime types a GIF may be. Separate from imageTypes so a surface can accept images but not animation without re-deciding what a GIF is."
+    },
+    "storage.allowed.videoTypes": {
+      "type": "string[]",
+      "default": [
+        "video/mp4",
+        "video/webm",
+        "video/quicktime"
+      ],
+      "writableViaApi": true,
+      "description": "Mime types a VIDEO may be."
+    },
+    "storage.allowed.documentTypes": {
+      "type": "string[]",
+      "default": [
+        "application/pdf"
+      ],
+      "writableViaApi": true,
+      "description": "Mime types a DOCUMENT may be."
+    },
+    "storage.allowed.audioTypes": {
+      "type": "string[]",
+      "default": [
+        "audio/mpeg",
+        "audio/mp4"
+      ],
+      "writableViaApi": true,
+      "description": "Mime types an AUDIO file may be."
+    },
+    "storage.upload.presignEnabled": {
+      "type": "boolean",
+      "default": false,
+      "writableViaApi": true,
+      "description": "The direct-to-S3 upload route, switchable without a deploy. OFF (the default) makes POST /uploads/presign answer 503 with a message naming the multipart field as the other road. ⚠️ POST /uploads/confirm deliberately does NOT read this: turning it off while uploads are in flight must not strand bytes already in the bucket and already paid for. The switch closes the door; it does not trap whoever is already inside. ⚠️ Requires storage.provider = AWS_S3 — this road writes to S3 unconditionally, so leaving it on under CLOUDINARY would put some rows of one surface on each provider depending on the road the client took. Presign answers 409 in that state."
+    },
+    "storage.upload.presignTtlMinutes": {
+      "type": "number",
+      "default": 15,
+      "integer": true,
+      "min": 1,
+      "max": 60,
+      "writableViaApi": true,
+      "description": "How long the client has to start a presigned upload."
+    },
+    "storage.upload.intentTtlMinutes": {
+      "type": "number",
+      "default": 60,
+      "integer": true,
+      "min": 1,
+      "max": 1440,
+      "writableViaApi": true,
+      "description": "How long an unconfirmed upload intent survives. Longer than the signature on purpose: a slow upload finishing at minute fourteen must still be confirmable."
+    },
+    "storage.delivery.signedUrlTtlMinutes": {
+      "type": "number",
+      "default": 5,
+      "integer": true,
+      "min": 1,
+      "max": 1440,
+      "writableViaApi": true,
+      "description": "How long a presigned GET for a private document stays valid."
     }
   }
 }

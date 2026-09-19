@@ -1,6 +1,15 @@
-const { getSetting } = require("./getSetting");
+const {
+  getSetting,
+  getSettingDocument,
+  invalidateSettingCache,
+} = require("./getSetting");
 const { getVoucherConfig } = require("./getVoucherConfig");
+const {
+  getStorageConfig,
+  effectiveLimitMB,
+} = require("./getStorageConfig");
 const { getShowcaseConfig } = require("./getShowcaseConfig");
+const { getUploadLimit } = require("./getUploadLimit");
 const { getSubscriptionConfig } = require("./getSubscriptionConfig");
 const { getCustomerConfig } = require("./getCustomerConfig");
 const { getAdminConfig } = require("./getAdminConfig");
@@ -8,11 +17,27 @@ const { getSecurityConfig } = require("./getSecurityConfig");
 const { getAppConfig } = require("./getAppConfig");
 const { assertSettlementTimingRule } = require("./assertSettlementTimingRule");
 const { assertReserveRateRule } = require("./assertReserveRateRule");
+const {
+  assertStorageLimitRule,
+  STORAGE_LIMIT_RULES,
+} = require("./assertStorageLimitRule");
+const { assertShowcaseFloorRule } = require("./assertShowcaseFloorRule");
+const { assertVoucherFloorRule } = require("./assertVoucherFloorRule");
 
 module.exports = {
   getSetting,
+  getSettingDocument,
+  invalidateSettingCache,
   getVoucherConfig,
+  getStorageConfig,
+  effectiveLimitMB,
   getShowcaseConfig,
+  /**
+   * One number for "how big may this file be, here" — the static ceiling, the
+   * platform setting and the surface override, resolved once. Both roads read
+   * it; before this the presigned one read only the constant.
+   */
+  getUploadLimit,
   getSubscriptionConfig,
   getCustomerConfig,
   // The admin audience's own channel toggles. ⚠️ Before this, admin alerts were
@@ -27,4 +52,8 @@ module.exports = {
   // each comparison.
   assertSettlementTimingRule,
   assertReserveRateRule,
+  assertStorageLimitRule,
+  STORAGE_LIMIT_RULES,
+  assertShowcaseFloorRule,
+  assertVoucherFloorRule,
 };

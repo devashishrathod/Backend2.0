@@ -1,4 +1,5 @@
 const Joi = require("joi");
+const objectId = require("./validJoiObjectId");
 const { ROLES, LOGIN_TYPES } = require("../constants");
 const phone = require("./validJoiPhone");
 
@@ -63,6 +64,18 @@ exports.validateRegisterUser = Joi.object({
     "any.required": "Password is required",
   }),
   isActive: Joi.boolean().optional(),
+  /**
+   * 🆕 The presigned road (U-5) — a profile photo already on S3, named instead
+   * of attached.
+   *
+   * ⚠️ This endpoint is **admin-gated**, so there is always a signed-in caller,
+   * and the facade needs one: it looks an upload intent up by id **and** owner.
+   * The actor is the admin doing the creating, not the account being created —
+   * which does not exist yet.
+   */
+  uploadId: objectId().optional().messages({
+    "any.invalid": "Invalid uploadId.",
+  }),
 });
 
 exports.validateLogin = Joi.object({

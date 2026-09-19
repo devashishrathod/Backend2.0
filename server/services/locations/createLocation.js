@@ -50,17 +50,14 @@ exports.createLocation = async (actor, payload) => {
     ...flagsForKind(kind),
     createdBy: actor.userId,
     updatedBy: actor.userId,
-
     addressLine1,
     addressLine2,
     landmark,
-
-    city: city?.toLowerCase(),
-    district: district?.toLowerCase(),
+    city,
+    district,
     zipcode,
-    state: state?.toLowerCase(),
-    country: country?.toLowerCase(),
-
+    state,
+    country,
     formattedAddress:
       formattedAddress ||
       [
@@ -74,9 +71,8 @@ exports.createLocation = async (actor, payload) => {
         country,
       ]
         .filter(Boolean)
-        .map((value) => String(value).toLowerCase())
+        .map((value) => String(value))
         .join(", "),
-
     geo,
     addressType,
     isDefault,

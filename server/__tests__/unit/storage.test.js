@@ -2,9 +2,12 @@
  * The storage facade, and the four silent failures it exists to end.
  *
  * Every test here is about something that used to succeed while doing nothing:
- * an `case "S3"` that returned without deleting, a URL check that skipped any
- * host it did not recognise, a rollback that deleted by URL, and a thumbnail
- * check that read an auto-generated poster as one the vendor had uploaded.
+ * a `case "S3"` that returned without deleting, a URL check that skipped any
+ * host it did not recognise, and a rollback that deleted by URL.
+ *
+ * ⚠️ A fourth one used to live here — a thumbnail check that read an
+ * auto-generated poster as one the vendor had uploaded. It is gone with the
+ * function; see the note where those tests were.
  */
 
 const mockConfig = {
@@ -29,6 +32,16 @@ jest.mock("../../helpers/cloudinary", () => ({
   getOptimizedImageUrl: jest.fn((id) => `https://res.cloudinary.test/${id}`),
 }));
 
+/**
+ * ⚠️ The provider now comes from `Setting.storage.provider`, not from the
+ * environment — so this stands in for the settings read rather than for a config
+ * value. `MEDIA_PROVIDER` only seeds a brand-new install.
+ */
+const mockStorageConfig = { provider: "CLOUDINARY" };
+jest.mock("../../helpers/settings", () => ({
+  getStorageConfig: async () => mockStorageConfig,
+}));
+
 const mockS3Send = jest.fn(async () => ({}));
 jest.mock("../../configs/s3", () => ({
   getS3Client: () => ({ send: mockS3Send }),
@@ -47,11 +60,11 @@ const {
   STORAGE_BUCKET,
   kindFromMime,
 } = require("../../constants/storage");
-const { isCustomThumbnail } = require("../../helpers/showcases/upload");
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockConfig.MEDIA_PROVIDER = "CLOUDINARY";
+  mockStorageConfig.provider = "CLOUDINARY";
   mockConfig.S3_PREFIX = "dev/";
 });
 
@@ -156,13 +169,23 @@ describe("buildKey", () => {
   });
 
   test("documents keep their number instead of a uuid", () => {
-    expect(
-      keys.buildDocumentKey({
-        year: "2026",
-        series: "INV",
-        documentNumber: "INV-2026-00042",
-      }),
-    ).toBe("dev/documents/2026/INV/INV-2026-00042.pdf");
+    // ⚠️ Takes the document **number**, not a bag of parts. The year and the
+    // series are read out of the number itself — `services/uploads/index.js`
+    // has only ever passed the string, and this test had been calling an older
+    // signature that no caller uses, so it was failing on a function that works.
+    expect(keys.buildDocumentKey("TD/VCH/26-27/000001")).toBe(
+      "dev/documents/26-27/VCH/TD-VCH-26-27-000001.pdf",
+    );
+  });
+
+  test("a number that is not a document number is refused, not guessed", () => {
+    // The old object form lands here now — which is the point: a caller that
+    // gets this wrong should hear about it rather than build a key from
+    // `[object Object]`.
+    expect(() => keys.buildDocumentKey({ documentNumber: "INV-2026" })).toThrow(
+      /Not a document number/,
+    );
+    expect(() => keys.buildDocumentKey("")).toThrow(/Not a document number/);
   });
 
   test("a staging key sits outside the type tree", () => {
@@ -188,7 +211,7 @@ describe("deleteAsset — L-1, the provider switch that did nothing", () => {
     await storage.deleteAsset({
       url: "https://cdn.test/dev/images/brands/b1/x.webp",
       storage: {
-        provider: STORAGE_PROVIDER.S3,
+        provider: STORAGE_PROVIDER.AWS_S3,
         bucket: "trydood-nonprod-public",
         key: "dev/images/brands/b1/x.webp",
       },
@@ -315,73 +338,23 @@ describe("deleteAssets — L-3, the rollback that left orphans", () => {
   });
 });
 
-describe("isCustomThumbnail — L-4, the poster that got deleted", () => {
-  test("an S3 video with an auto poster is NOT custom", () => {
-    // The bug: `publicId` is null on S3, so the old equality check was skipped
-    // and this returned true — deleting the poster the vendor was looking at.
-    expect(
-      isCustomThumbnail({
-        type: "VIDEO",
-        url: "https://cdn.test/dev/videos/showcase/s1/v.mp4",
-        thumbnail: "https://cdn.test/dev/images/showcase/s1/auto.webp",
-        storage: {
-          provider: STORAGE_PROVIDER.S3,
-          publicId: null,
-          key: "dev/videos/showcase/s1/v.mp4",
-        },
-      }),
-    ).toBe(false);
-  });
-
-  test("a poster the vendor uploaded IS custom, on either provider", () => {
-    for (const provider of [STORAGE_PROVIDER.S3, STORAGE_PROVIDER.CLOUDINARY]) {
-      expect(
-        isCustomThumbnail({
-          type: "VIDEO",
-          url: "https://cdn.test/v.mp4",
-          thumbnail: "https://cdn.test/poster.webp",
-          storage: { provider },
-          thumbnailStorage: { provider, key: "dev/images/showcase/s1/p.webp" },
-        }),
-      ).toBe(true);
-    }
-  });
-
-  test("a photo is never its own custom thumbnail", () => {
-    expect(
-      isCustomThumbnail({
-        type: "PHOTO",
-        url: "https://res.cloudinary.test/Images/p1",
-        thumbnail: "https://res.cloudinary.test/Images/p1",
-        storage: { provider: STORAGE_PROVIDER.CLOUDINARY, publicId: "Images/p1" },
-      }),
-    ).toBe(false);
-  });
-
-  test("legacy Cloudinary rows still read the old way", () => {
-    // They predate `thumbnailStorage`, and on Cloudinary the derived poster
-    // really is a transformation of the media's own public id.
-    const derived = {
-      type: "VIDEO",
-      url: "https://res.cloudinary.test/Videos/v1.mp4",
-      thumbnail: "https://res.cloudinary.test/Videos/v1",
-      storage: { provider: STORAGE_PROVIDER.CLOUDINARY, publicId: "Videos/v1" },
-    };
-    expect(isCustomThumbnail(derived)).toBe(false);
-
-    expect(
-      isCustomThumbnail({
-        ...derived,
-        thumbnail: "https://res.cloudinary.test/Images/uploaded-poster",
-      }),
-    ).toBe(true);
-  });
-
-  test("no thumbnail at all is not custom", () => {
-    expect(isCustomThumbnail({ type: "VIDEO", url: "a" })).toBe(false);
-    expect(isCustomThumbnail(null)).toBe(false);
-  });
-});
+/**
+ * 🔴 `isCustomThumbnail` ke test yahan se hate — function hi nahi raha.
+ *
+ * Wo ek sawaal ka jawab deta tha: "ye poster vendor ne upload kiya ya humne
+ * derive kiya?" — kyunki derived poster ko delete karna video ka apna asset le
+ * doobta tha. Us sawaal ka koi bharosemand jawab tha hi nahi: S3 par `publicId`
+ * null hota hai, to URL comparison skip ho jaata aur **har** derived poster
+ * custom padha jaata — yaani video ka poster badalne par wahi poster delete ho
+ * jaata jo vendor abhi dekh raha tha.
+ *
+ * M-4 me poster derive hona band ho gaya (dono provider par), aur
+ * `mediaSchema` use VIDEO par mandatory rakhta hai. Ab har stored poster ek
+ * alag file hai jise sirf wahi media reference karta hai — to sawaal hi khatam.
+ *
+ * Poster ka naya behaviour `sectionCover.test.js` aur `bannerMedia.test.js` me
+ * test hota hai.
+ */
 
 describe("S3 provider URLs", () => {
   const s3 = require("../../services/storage/providers/s3");
@@ -424,15 +397,25 @@ describe("S3 provider URLs", () => {
 });
 
 describe("provider selection", () => {
-  test("new uploads follow MEDIA_PROVIDER", () => {
-    expect(storage.activeProvider()).toBe(STORAGE_PROVIDER.CLOUDINARY);
-    mockConfig.MEDIA_PROVIDER = STORAGE_PROVIDER.S3;
-    expect(storage.activeProvider()).toBe(STORAGE_PROVIDER.S3);
+  test("new uploads follow Setting.storage.provider", async () => {
+    // ⚠️ The admin panel decides this, not a redeploy. `MEDIA_PROVIDER` seeds a
+    // brand-new install and is never read again — otherwise a deploy would
+    // quietly override what somebody chose in the panel.
+    expect(await storage.activeProvider()).toBe(STORAGE_PROVIDER.CLOUDINARY);
+    mockStorageConfig.provider = STORAGE_PROVIDER.AWS_S3;
+    expect(await storage.activeProvider()).toBe(STORAGE_PROVIDER.AWS_S3);
+  });
+
+  test("⚠️ the environment does not override the panel", async () => {
+    mockConfig.MEDIA_PROVIDER = STORAGE_PROVIDER.AWS_S3;
+    mockStorageConfig.provider = STORAGE_PROVIDER.CLOUDINARY;
+
+    expect(await storage.activeProvider()).toBe(STORAGE_PROVIDER.CLOUDINARY);
   });
 
   test("🔴 deletes follow the row, not the setting", async () => {
     // Flipping the switch must not strand everything uploaded before it.
-    mockConfig.MEDIA_PROVIDER = STORAGE_PROVIDER.S3;
+    mockStorageConfig.provider = STORAGE_PROVIDER.AWS_S3;
     await storage.deleteAsset({
       storage: { provider: STORAGE_PROVIDER.CLOUDINARY, publicId: "Images/old" },
     });
@@ -441,5 +424,203 @@ describe("provider selection", () => {
       "image",
     );
     expect(mockS3Send).not.toHaveBeenCalled();
+  });
+});
+
+describe("🔴 a private object has no URL, and asking for one must not throw", () => {
+  /**
+   * `exports.url` refuses a private bucket on purpose — there is no lasting link
+   * to one. But `upload` called it unconditionally, so **every document upload
+   * would have thrown** the moment the provider became S3: invoices,
+   * settlements, refunds and chargebacks all render into the private bucket.
+   *
+   * Nothing caught it because the provider was still Cloudinary and the document
+   * tests mock the upload away.
+   */
+  const fs = require("fs");
+  const os = require("os");
+  const path = require("path");
+  const s3 = require("../../services/storage/providers/s3");
+
+  let probe;
+
+  beforeAll(() => {
+    probe = path.join(os.tmpdir(), `storage-probe-${Date.now()}`);
+    fs.writeFileSync(probe, "%PDF-1.7\n");
+  });
+
+  /**
+   * ⚠️ Deliberately **not** deleted.
+   *
+   * `PutObjectCommand` is handed a read stream, and `fs.createReadStream` opens
+   * the file on a later tick. The mocked `send` resolves without ever consuming
+   * it, so the handle is still pending when a cleanup would run — removing the
+   * file raced that open and crashed the worker with ENOENT, from both a
+   * per-test `finally` and an `afterAll`.
+   *
+   * Nine bytes in the OS temp directory is the cheaper answer than teaching the
+   * shared `send` mock to drain a stream nothing else cares about.
+   */
+
+  test("a document upload returns null rather than throwing", async () => {
+    const result = await s3.upload({
+      filePath: probe,
+      purpose: UPLOAD_PURPOSE.DOCUMENT,
+      entityId: "e1",
+      kind: MEDIA_KIND.DOCUMENT,
+      originalFile: { name: "x.pdf", mimetype: "application/pdf" },
+      key: "dev/documents/26-27/VCH/TD-VCH-26-27-000001.pdf",
+    });
+
+    expect(result.url).toBeNull();
+    // and it still says where the bytes are, which is what mints the real link
+    expect(result.storage.key).toContain("dev/documents/");
+    expect(result.storage.bucket).toBe("trydood-nonprod-private");
+  });
+
+  test("⚠️ a public upload still gets its URL", async () => {
+    const result = await s3.upload({
+      filePath: probe,
+      purpose: UPLOAD_PURPOSE.BRAND_LOGO,
+      entityId: "b1",
+      kind: MEDIA_KIND.IMAGE,
+      originalFile: { name: "a.webp", mimetype: "image/webp" },
+    });
+
+    expect(result.url).toContain("https://cdn.test/");
+  });
+
+  /**
+   * 🔴 No provider returns a `thumbnail` any more (M-4).
+   *
+   * It was `getOptimizedImageUrl(publicId)` on Cloudinary — the delivery URL a
+   * second time for a photo, and for a **video** an `/image/upload/` path for an
+   * asset under `/video/upload/`, which 404s. S3 returned `null` for a video and
+   * the URL again for a photo. A caller that trusted the field got a broken
+   * poster on one provider and nothing on the other, and `thumbnail || url` then
+   * made a section's cover the `.mp4` itself.
+   *
+   * A poster is uploaded alongside the video now and lives in
+   * `mediaSchema.poster`, so there is no derived field left to trust.
+   */
+  test("no provider hands back a derived thumbnail", async () => {
+    const fromS3 = await s3.upload({
+      filePath: probe,
+      purpose: UPLOAD_PURPOSE.BRAND_LOGO,
+      entityId: "b1",
+      kind: MEDIA_KIND.IMAGE,
+      originalFile: { name: "a.webp", mimetype: "image/webp" },
+    });
+
+    expect(fromS3).not.toHaveProperty("thumbnail");
+
+    cloudinary.uploadFile.mockResolvedValueOnce({
+      public_id: "Images/x",
+      secure_url: "https://res.cloudinary.test/Images/x.mp4",
+      format: "mp4",
+      bytes: 10,
+    });
+    const fromCloudinary = await require("../../services/storage/providers/cloudinary").upload(
+      {
+        filePath: probe,
+        purpose: UPLOAD_PURPOSE.SHOWCASE_MEDIA,
+        entityId: "s1",
+        kind: MEDIA_KIND.VIDEO,
+        originalFile: { name: "v.mp4", mimetype: "video/mp4" },
+      },
+    );
+
+    expect(fromCloudinary).not.toHaveProperty("thumbnail");
+  });
+
+  test("and `url()` itself still refuses a private object outright", () => {
+    // The guard stays where it belongs — building a plain URL for a private
+    // object would produce a link that 403s, or worse, one that works.
+    expect(() =>
+      s3.url({
+        storage: { bucket: "trydood-nonprod-private", key: "dev/documents/x.pdf" },
+      }),
+    ).toThrow(/no public URL/);
+  });
+});
+
+/**
+ * 🔴 G5 — how long a document link lives is the admin's number.
+ *
+ * `Setting.storage.delivery.signedUrlTtlMinutes` had a schema entry, a
+ * validator and a line in the admin doc, and **nothing read it**: `s3.js` used
+ * its own five-minute constant whatever the panel said.
+ *
+ * ⚠️ Read in the facade rather than inside the provider, so the provider stays
+ * what its own header calls it — a key, a bucket and the bytes. How long a link
+ * should live is a platform decision, not an S3 one.
+ */
+describe("🔴 a document link expires when the admin says, not when s3.js says", () => {
+  const s3 = require("../../services/storage/providers/s3");
+
+  const asset = {
+    url: null,
+    storage: {
+      provider: "AWS_S3",
+      bucket: "trydood-nonprod-private",
+      key: "documents/TD-VCH-26-27-000001.pdf",
+    },
+  };
+
+  let signed;
+  beforeEach(() => {
+    signed = jest
+      .spyOn(s3, "signedGetUrl")
+      .mockResolvedValue("https://signed.test/x?X-Amz-Expires=600");
+  });
+  afterEach(() => signed.mockRestore());
+
+  test("the configured TTL reaches the signer", async () => {
+    mockStorageConfig.signedUrlTtlSeconds = 11 * 60;
+
+    await storage.documentUrl(asset);
+
+    expect(signed).toHaveBeenCalledWith(
+      expect.objectContaining({ expiresIn: 11 * 60 }),
+    );
+  });
+
+  test("⚠️ and changing it changes what is signed, with no deploy", async () => {
+    mockStorageConfig.signedUrlTtlSeconds = 60;
+    await storage.documentUrl(asset);
+    expect(signed).toHaveBeenLastCalledWith(
+      expect.objectContaining({ expiresIn: 60 }),
+    );
+
+    mockStorageConfig.signedUrlTtlSeconds = 30 * 60;
+    await storage.documentUrl(asset);
+    expect(signed).toHaveBeenLastCalledWith(
+      expect.objectContaining({ expiresIn: 30 * 60 }),
+    );
+  });
+
+  test("the object it signs is the one it was handed", async () => {
+    mockStorageConfig.signedUrlTtlSeconds = 300;
+
+    await storage.documentUrl(asset);
+
+    expect(signed).toHaveBeenCalledWith(
+      expect.objectContaining({ storage: asset.storage }),
+    );
+  });
+
+  /**
+   * ⚠️ Cloudinary has nothing short-lived to mint — its delivery URL is the only
+   * one there is. So the TTL is not read at all there, and asking for it must
+   * not become a reason to fail.
+   */
+  test("a Cloudinary document still answers with its permanent URL", async () => {
+    const cloudinaryDoc = {
+      url: "https://res.cloudinary.test/invoice",
+      storage: { provider: "CLOUDINARY", publicId: "invoice", bucket: null, key: null },
+    };
+
+    await expect(storage.documentUrl(cloudinaryDoc)).resolves.toBeTruthy();
+    expect(signed).not.toHaveBeenCalled();
   });
 });

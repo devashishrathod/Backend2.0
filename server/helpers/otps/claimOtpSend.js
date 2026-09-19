@@ -96,6 +96,27 @@ exports.claimOtpSend = async (target, purpose) => {
   ).lean();
 
   const sends = (row?.sends || []).map((d) => new Date(d).getTime());
+
+  /**
+   * 🔴 **KNOWN BUG — O-1.** This identifies a claim by its timestamp, and a
+   * timestamp is not unique between callers.
+   *
+   * N requests that land in the same millisecond compute the **same**
+   * `now.getTime()`. The first one's write appends it; every other one then
+   * finds that identical value in `sends` and reports `allowed: true` **without
+   * having written anything**. So a burst of "resend" taps all pass, and N
+   * messages go out — the throttle fails precisely when it is needed, silently.
+   *
+   * The atomic write above is correct. What is wrong is asking "did my
+   * timestamp survive?" instead of "did *my claim* survive?", which needs a
+   * per-call nonce. The same flaw is in `releaseOtpSend`, which gives a slot
+   * back by value — the note at the top of this file already worried about
+   * exactly that collision for the release path and missed it here.
+   *
+   * Caught by `__tests__/money/otpThrottle.test.js` — "two requests at the same
+   * moment › lets exactly one through". That test is **correct and currently
+   * red**; do not skip it. Fix is phase O-1 in the master execution plan.
+   */
   const allowed = sends.includes(now.getTime());
 
   if (allowed) return { allowed: true, at: now, retryAfterSeconds: 0 };

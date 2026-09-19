@@ -1,12 +1,11 @@
 const mongoose = require("mongoose");
 const { brandField } = require("./validObjectId");
 const {
-  SHOWCASE_MEDIA_TYPE,
   SHOWCASE_SECTION_TYPE,
   SHOWCASE_COVER_IMAGE_MODE,
 } = require("../constants/showcase");
-const { STORAGE_PROVIDER } = require("../constants/storage");
-const { storageSchema } = require("./storageSchema");
+const { MEDIA_KIND } = require("../constants/storage");
+const { mediaSchema } = require("./mediaSchema");
 
 // ---------------------------------------------------------------------------
 // A brand's photo / video gallery, one document per section (album).
@@ -23,47 +22,46 @@ const { storageSchema } = require("./storageSchema");
 // back on. Only the customer-facing services narrow further.
 // ---------------------------------------------------------------------------
 
-const mediaSchema = new mongoose.Schema(
+/**
+ * One item in a brand's gallery.
+ *
+ * ### 🔴 The file and the gallery entry are two different things
+ *
+ * This used to be one flat shape holding both: `type` / `url` / `thumbnail` /
+ * `thumbnailStorage` / `storage` / `metadata` described the **file**, while
+ * `title` / `altText` / `sortOrder` / `isShowInVideoClips` described its **place
+ * in the album**. Mixing them is what produced the platform's only per-surface
+ * copy of file metadata — `metadata.size`, `metadata.width` and friends existed
+ * here and nowhere else, so every other surface stored a URL and knew nothing
+ * about the bytes behind it.
+ *
+ * Now the file lives in `media`, exactly the `mediaSchema` every other surface
+ * uses, and the gallery's own fields sit beside it.
+ *
+ * ### ⚠️ There is no `type` field any more
+ *
+ * The wire still answers `PHOTO` / `VIDEO` (locked: S-7 — a GIF reads as a
+ * PHOTO), but that value is **derived from `media.kind` at read time**, never
+ * stored. A stored copy is a second source of truth that can disagree with the
+ * bytes it describes, which is exactly the bug the banner carried for months.
+ * `media.kind` additionally keeps the finer answer — `GIF` is distinct from
+ * `IMAGE` there, which is what routes it clear of the resize step.
+ */
+const showcaseMediaSchema = new mongoose.Schema(
   {
-    type: {
-      type: String,
-      enum: Object.values(SHOWCASE_MEDIA_TYPE),
-      required: true,
-    },
-    url: { type: String, required: true },
-    // For a PHOTO this is the optimised delivery URL (same asset as `url`);
-    // for a VIDEO it is the poster frame. Covers always prefer this field.
-    thumbnail: { type: String },
     /**
-     * Set **only** when the vendor uploaded the poster themselves.
+     * The file. `poster` inside it is mandatory on a VIDEO, which is what
+     * replaces the old `thumbnail` + `thumbnailStorage` pair.
      *
-     * A photo's thumbnail is its own delivery URL, and a video's default poster
-     * is derived from the video — deleting either takes the media down with it.
-     * Telling those apart used to mean comparing URL strings against a
-     * Cloudinary transformation, which has no equivalent on S3: `publicId` is
-     * null there, the comparison is skipped, and an auto poster reads as custom.
-     * A field that is either there or not has no such gap.
+     * 🔴 Those two existed to answer "did the vendor upload this poster, or did
+     * we derive it?" — a question with no good answer. On Cloudinary it meant
+     * comparing the stored URL against `getOptimizedImageUrl(publicId)`; on S3
+     * `publicId` is null so the comparison was skipped and **every** derived
+     * poster read as custom, which meant changing a video's poster deleted the
+     * one the vendor was still looking at. A poster is never derived now, so the
+     * question does not exist.
      */
-    thumbnailStorage: { type: storageSchema, default: undefined },
-    storage: {
-      provider: {
-        type: String,
-        enum: Object.values(STORAGE_PROVIDER),
-        default: STORAGE_PROVIDER.CLOUDINARY,
-      },
-      publicId: { type: String },
-      bucket: { type: String },
-      key: { type: String },
-    },
-    metadata: {
-      originalName: { type: String },
-      mimeType: { type: String },
-      format: { type: String },
-      size: { type: Number, default: 0 },
-      width: { type: Number, default: null },
-      height: { type: Number, default: null },
-      duration: { type: Number, default: 0 },
-    },
+    media: { type: mediaSchema, required: [true, "A media file is required."] },
     title: { type: String },
     altText: { type: String },
     sortOrder: { type: Number, default: 0 },
@@ -84,8 +82,8 @@ const mediaSchema = new mongoose.Schema(
 // Last line of defence for the VIDEO-only rule: whatever a caller passes, a
 // non-video media is stored with the flag off. Runs on `create` and on any
 // `parent.save()`; the `$set` paths in the media services enforce it directly.
-mediaSchema.pre("validate", function () {
-  if (this.type !== SHOWCASE_MEDIA_TYPE.VIDEO) {
+showcaseMediaSchema.pre("validate", function () {
+  if (this.media?.kind !== MEDIA_KIND.VIDEO) {
     this.isShowInVideoClips = false;
   }
 });
@@ -119,7 +117,7 @@ const showcaseSectionSchema = new mongoose.Schema(
       default: SHOWCASE_SECTION_TYPE.CUSTOM,
     },
     sortOrder: { type: Number, default: 0 },
-    medias: { type: [mediaSchema], default: [] },
+    medias: { type: [showcaseMediaSchema], default: [] },
     // Customer-facing switch. `isActive` is the vendor's own on/off; this one
     // is "show it on my public profile".
     isVisible: { type: Boolean, default: true },
@@ -128,7 +126,44 @@ const showcaseSectionSchema = new mongoose.Schema(
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
   },
-  { timestamps: true, versionKey: false },
+  /**
+   * ⚠️ `__v` is **on** here, unlike most models in this repo — and `__v` alone
+   * was not enough.
+   *
+   * 🔴 Every renumber in this domain is a read-modify-write over the whole
+   * `medias` array — load the section, recompute `sortOrder` on each row, save.
+   * Two of those at once do **not** produce a clean last-writer-wins: Mongoose
+   * sends a `$set` only for the paths that moved relative to *that writer's own
+   * load*, so the second writer stays silent about positions the first already
+   * shifted and the section keeps half of each renumber. Measured: four photos,
+   * one deleted by each of two vendors, and the two survivors come back at
+   * positions 2 and 3 with nothing at 1 — the "1, 3" the panel has been showing.
+   * Both vendors were told it worked, because both deletes did work.
+   *
+   * ### Why `optimisticConcurrency` and not just the version key
+   *
+   * Dropping `versionKey: false` gets the field back, but Mongoose's **default**
+   * versioning only puts `__v` in the update filter for operations it judges
+   * positionally unsafe — `$pop`, `$pull`, and friends. Every write in this
+   * domain is a `$set` on a positional path (`medias.3.isDeleted`,
+   * `medias.3.sortOrder`), which is not one of them, so the save went out with
+   * **no version predicate at all** and both writers won.
+   *
+   * That was measured, not assumed: `__tests__/money/showcaseVersionLock.test.js`
+   * reproduces the damaged order, and every conflict test in it still passed
+   * with the version key on and this flag off. A lock that is present in the
+   * schema and absent from the query is worse than none, because everything
+   * downstream believes it.
+   *
+   * `optimisticConcurrency: true` checks the version on **every** `save()`, which
+   * is what this domain needs. `errorHandler` turns the resulting `VersionError`
+   * into a **409** telling the vendor to reload — a refused write they can retry
+   * beats a quiet corruption they cannot see.
+   *
+   * The cost is that any caller doing `findOne` → mutate → `save()` must handle
+   * the conflict; `updateOne` / `findOneAndUpdate` paths are unaffected.
+   */
+  { timestamps: true, optimisticConcurrency: true },
 );
 
 // Indexes are shaped after the three queries that actually run, rather than one

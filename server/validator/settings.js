@@ -1,4 +1,5 @@
 const Joi = require("joi");
+const { STORAGE_PROVIDER } = require("../constants/storage");
 const {
   SETTLEMENT_CYCLE_TYPES,
   PAYOUT_PROVIDERS,
@@ -17,8 +18,36 @@ const { SEARCH_LIMITS } = require("../constants/search");
 const voucherSettingSchema = Joi.object({
   maxOffers: Joi.number().integer().min(1).max(100).optional(),
   maxImages: Joi.number().integer().min(1).optional(),
+  /**
+   * ⚠️ Unlike the showcase floor, raising this does **not** change anything a
+   * customer can already see. A published voucher may have been claimed, so the
+   * floor is checked on the way in — create, image edit, submit — never on the
+   * way out. Vouchers already live stay live.
+   */
+  minImages: Joi.number().integer().min(1).optional(),
   maxDistanceKm: Joi.number().integer().min(1).optional(),
-});
+})
+  /**
+   * 🔴 The floor cannot climb above the ceiling.
+   *
+   * `minImages: 6` with `maxImages: 5` leaves a voucher at once too empty to
+   * publish and too full to fix — submit refuses it for too few, the upload that
+   * would rescue it is refused for too many.
+   *
+   * ⚠️ This only catches a payload carrying **both** numbers. One field at a
+   * time gives Joi nothing to compare against, which is what
+   * `assertVoucherFloorRule` covers on the merged document — the same split the
+   * showcase floor and the storage limits use.
+   */
+  .custom((value, helpers) => {
+    const { minImages: floor, maxImages: ceiling } = value;
+    if (Number.isFinite(floor) && Number.isFinite(ceiling) && floor > ceiling) {
+      return helpers.message(
+        `minImages (${floor}) cannot be more than maxImages (${ceiling}).`,
+      );
+    }
+    return value;
+  });
 
 // ⚠️ No `maxSections` — the plan's `showcase` entitlement meters section count,
 // not this block. See the note on `showcaseSettingSchema` in models/Setting.js.
@@ -26,12 +55,43 @@ const showcaseSettingSchema = Joi.object({
   maxItemsPerSection: Joi.number().integer().min(1).optional(),
   maxImagesPerSection: Joi.number().integer().min(1).optional(),
   maxVideosPerSection: Joi.number().integer().min(1).optional(),
+  /**
+   * ⚠️ Raising this hides sections **immediately** — every section below the new
+   * floor drops out of the customer's view the moment it saves. The admin doc
+   * says so where an admin will read it; there is nothing code can do about it,
+   * because the number is the rule.
+   */
+  minItemsPerSection: Joi.number().integer().min(1).optional(),
+  minSectionsPerBrand: Joi.number().integer().min(1).optional(),
   maxImageSizeMB: Joi.number().integer().min(1).optional(),
+  maxGifSizeMB: Joi.number().integer().min(1).optional(),
   maxVideoSizeMB: Joi.number().integer().min(1).optional(),
   allowedImages: Joi.array().items(Joi.string().trim()).min(1).optional(),
   allowedVideos: Joi.array().items(Joi.string().trim()).min(1).optional(),
   isActive: Joi.boolean().optional(),
-});
+})
+  /**
+   * 🔴 The floor cannot climb above the ceiling.
+   *
+   * `minItemsPerSection: 6` with `maxItemsPerSection: 5` makes every section at
+   * once too small to show and too full to fix — the customer read hides it and
+   * the upload that would rescue it is refused. No request escapes that.
+   *
+   * ⚠️ This only catches a payload that carries **both** numbers. An admin who
+   * lowers the ceiling today and raised the floor yesterday sends one of them,
+   * and Joi sees a single field it has nothing to compare against. The merged
+   * document is checked in `assertShowcaseFloorRule`, which runs on what will
+   * actually be stored — the same split as the storage limits.
+   */
+  .custom((value, helpers) => {
+    const { minItemsPerSection: floor, maxItemsPerSection: ceiling } = value;
+    if (Number.isFinite(floor) && Number.isFinite(ceiling) && floor > ceiling) {
+      return helpers.message(
+        `minItemsPerSection (${floor}) cannot be more than maxItemsPerSection (${ceiling}).`,
+      );
+    }
+    return value;
+  });
 
 // Everything the subscription / checkout flow reads at runtime. Merged onto the
 // existing block, so an admin can change just the GST rate without resetting
@@ -494,6 +554,47 @@ const appSettingSchema = Joi.object({
   }).optional(),
 });
 
+
+/**
+ * Platform-wide storage rules.
+ *
+ * ⚠️ The size numbers here are **ceilings**. A surface (showcase today, voucher
+ * next) may ask for less, and `assertSurfaceLimitsWithinGlobal` refuses one that
+ * asks for more — see the note there for why a silent `min()` alone is not
+ * enough at the write boundary.
+ */
+const storageSettingSchema = Joi.object({
+  provider: Joi.string()
+    .uppercase()
+    .valid(...Object.values(STORAGE_PROVIDER))
+    .optional()
+    .messages({
+      "any.only": `provider must be one of: ${Object.values(STORAGE_PROVIDER).join(", ")}`,
+    }),
+  limits: Joi.object({
+    maxImageSizeMB: Joi.number().integer().min(1).optional(),
+    maxGifSizeMB: Joi.number().integer().min(1).optional(),
+    maxVideoSizeMB: Joi.number().integer().min(1).optional(),
+    maxDocumentSizeMB: Joi.number().integer().min(1).optional(),
+    maxAudioSizeMB: Joi.number().integer().min(1).optional(),
+  }).optional(),
+  allowed: Joi.object({
+    imageTypes: Joi.array().items(Joi.string().trim()).min(1).optional(),
+    gifTypes: Joi.array().items(Joi.string().trim()).min(1).optional(),
+    videoTypes: Joi.array().items(Joi.string().trim()).min(1).optional(),
+    documentTypes: Joi.array().items(Joi.string().trim()).min(1).optional(),
+    audioTypes: Joi.array().items(Joi.string().trim()).min(1).optional(),
+  }).optional(),
+  upload: Joi.object({
+    presignEnabled: Joi.boolean().optional(),
+    presignTtlMinutes: Joi.number().integer().min(1).max(60).optional(),
+    intentTtlMinutes: Joi.number().integer().min(1).max(1440).optional(),
+  }).optional(),
+  delivery: Joi.object({
+    signedUrlTtlMinutes: Joi.number().integer().min(1).max(1440).optional(),
+  }).optional(),
+});
+
 exports.validateUpdateSetting = {
   body: Joi.object({
     vendor: Joi.object({
@@ -501,6 +602,7 @@ exports.validateUpdateSetting = {
       showcase: showcaseSettingSchema.optional(),
       subscription: subscriptionSettingSchema.optional(),
     }).optional(),
+    storage: storageSettingSchema.optional(),
     customer: customerSettingSchema.optional(),
     security: securitySettingSchema.optional(),
     /**

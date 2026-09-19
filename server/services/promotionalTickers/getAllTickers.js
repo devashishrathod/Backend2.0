@@ -1,6 +1,7 @@
 const PromotionalTicker = require("../../models/PromotionalTicker");
 const { pagination } = require("../../utils");
 const { TICKER_SORT_BY } = require("../../constants/promotionalTicker");
+const { toAdminTickerListShape } = require("../../helpers/promotionalTickers");
 
 exports.getAllTickers = async (query) => {
   const {
@@ -32,11 +33,16 @@ exports.getAllTickers = async (query) => {
     { $sort: { [sortBy]: sortOrder === "asc" ? 1 : -1 } },
   ];
 
-  return pagination(
+  const result = await pagination(
     PromotionalTicker,
     pipeline,
     page,
     limit,
     "promotional ticker",
   );
+
+  // Shaped after the aggregation, for the same reason the banner listing is: a
+  // `$project` that has to name every field twice is a `$project` that will one
+  // day forget one, and the one it forgets is `icon.storage`.
+  return { ...result, data: toAdminTickerListShape(result.data) };
 };

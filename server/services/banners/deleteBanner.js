@@ -1,5 +1,4 @@
 const Banner = require("../../models/Banner");
-const { BANNER_MEDIA_FIELD } = require("../../constants/banner");
 const { deleteBannerMedia } = require("../../helpers/banners");
 const { throwError } = require("../../utils");
 
@@ -7,17 +6,20 @@ exports.deleteBanner = async (userId, id) => {
   const banner = await Banner.findOne({ _id: id, isDeleted: false });
   if (!banner) throwError(404, "Banner not found.");
 
-  // Read before the flags change, because the media lives on a type-named
-  // field and the type is what tells us which one to look at.
-  const field = BANNER_MEDIA_FIELD[banner.type];
-  const media = field ? (banner[field]?.toObject?.() ?? banner[field]) : null;
+  // Read before the flags change — the save below is what the delete is for,
+  // and the media has to be captured while the document still describes it.
+  const media = banner.media?.toObject?.() ?? banner.media;
 
   banner.isDeleted = true;
   banner.isActive = false;
   banner.updatedBy = userId;
-  // Deleting doesn't touch type/media, so it shouldn't be blocked by
-  // full-document validation (e.g. legacy documents saved before the
-  // BANNER_TYPE enum switched to uppercase).
+  /**
+   * ⚠️ Deleting does not touch the media, so it must not be blocked by
+   * full-document validation. A row written before `media` existed — three
+   * separate `image`/`video`/`gif` fields and a `type` beside them — has no
+   * `media` at all, and `required` would refuse to let an admin delete exactly
+   * the stale banners they are trying to clear out.
+   */
   await banner.save({ validateBeforeSave: false });
 
   /**
@@ -31,7 +33,7 @@ exports.deleteBanner = async (userId, id) => {
    *
    * `deleteBannerMedia` swallows and logs its own failures: a file that
    * outlives its row is worth a log line, not a failed request for the admin
-   * who has already seen the banner disappear.
+   * who has already seen the banner disappear. A video's poster goes with it.
    */
-  await deleteBannerMedia(banner.type, media);
+  await deleteBannerMedia(media);
 };

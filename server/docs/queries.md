@@ -242,7 +242,8 @@ Reference doc me `http://localhost:5000` tha. Trydood local pe `http://localhost
 
 Ye files exist karti hain lekin koi route inko expose nahi karta (git me untracked hain — abhi bane hain):
 - `models/VoucherUsage.js` — voucher redemption tracking
-- `services/vouchers/expireVouchers.js` — auto-expiry (cron job? `jobs/index.js` empty hai)
+- ~~`services/vouchers/expireVouchers.js` — auto-expiry (cron job? `jobs/index.js` empty hai)~~
+  **Ab galat hai.** `jobs/index.js` (520 line) `expireVouchers` ko har 60 minute par chalata hai. Wo V-5 tak versions to expire karti thi par masters kabhi nahi — filter `Voucher.endAt` par tha, jo field hai hi nahi. Ab theek hai.
 
 Customer app ke liye redemption flow (voucher redeem/scan/QR) abhi missing hai — sirf `preview` hai.
 

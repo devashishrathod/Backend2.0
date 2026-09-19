@@ -20,8 +20,14 @@ exports.submitVoucherForReview = async (userId, voucherId) => {
       isActive: true,
     })
       .session(session)
+      /**
+       * ⚠️ `banner` is in here because submit now requires one (V-2). An
+       * inclusion projection returns only what it names, so without it the
+       * banner check would see `undefined` on every voucher and refuse all of
+       * them — a guard that is wrong in exactly one direction and always.
+       */
       .select(
-        "_id brandId createdBy currentVersionId publishedVersionId status voucherCode",
+        "_id brandId createdBy currentVersionId publishedVersionId status voucherCode banner",
       );
 
     if (!voucher) throwError(404, "Voucher not found.");
@@ -52,12 +58,12 @@ exports.submitVoucherForReview = async (userId, voucherId) => {
       );
     }
 
-    const { maxOffers, maxImages } = await getVoucherConfig();
+    const { maxOffers, maxImages, minImages } = await getVoucherConfig();
 
     const validation = await validateVoucherBeforeSubmit(
       voucher,
       version,
-      { maxOffers, maxImages },
+      { maxOffers, maxImages, minImages },
       session,
     );
 

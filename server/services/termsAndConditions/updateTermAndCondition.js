@@ -16,7 +16,7 @@ exports.updateTermAndCondition = async (id, payload) => {
   if (typeof isActive !== "undefined") result.isActive = isActive;
 
   if (title) {
-    title = title.toLowerCase();
+    title = title.trim();
     // Was `result.findOne(...)` — a query method called on a *document*, which
     // does not exist, so every title change threw
     // "result.findOne is not a function".

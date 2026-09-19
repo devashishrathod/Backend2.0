@@ -5,7 +5,8 @@ const { ROLES } = require("../../constants");
 const { DUPLICATE_KEY } = require("../../constants/mongo");
 const { throwError } = require("../../utils");
 const storage = require("../storage");
-const { assertImageFile } = require("../../helpers/media");
+const { describeIncoming } = storage;
+const { assertImageFile, toMediaDocument, toDeletable } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const { assertActiveSubscription } = require("../../helpers/subscribeds");
 const { switchOutletType } = require("../../helpers/subBrands");
@@ -37,16 +38,19 @@ const IMAGE_SLOTS = Object.freeze([
   {
     file: "logo",
     field: "logo",
-    storageField: "logoStorage",
+    mediaField: "logoMedia",
     label: "Logo",
     purpose: UPLOAD_PURPOSE.SUB_BRAND_LOGO,
+    // 🆕 The presigned road's name for the same slot (U-5).
+    uploadIdField: "logoUploadId",
   },
   {
     file: "coverImage",
     field: "coverImage",
-    storageField: "coverImageStorage",
+    mediaField: "coverImageMedia",
     label: "Cover image",
     purpose: UPLOAD_PURPOSE.SUB_BRAND_COVER,
+    uploadIdField: "coverImageUploadId",
   },
 ]);
 
@@ -162,24 +166,31 @@ exports.updateSubBrand = async (actor, payload, files = null) => {
   /** `field → { previous, uploaded }`, so a failed save knows what to undo. */
   const replaced = new Map();
   for (const slot of IMAGE_SLOTS) {
-    const file = uploads[slot.file];
-    if (!file) continue;
+    /**
+     * ⚠️ Described before it is spent (U-5). Nothing below this point can
+     * refuse, so there is no upload to save here — but the shape has to match
+     * every other surface, and `describeIncoming` is also what refuses somebody
+     * else's `uploadId` before it reaches the facade.
+     */
+    const item = await describeIncoming(actor, {
+      file: uploads[slot.file],
+      uploadId: payload[slot.uploadIdField],
+      purpose: slot.purpose,
+    });
+    if (!item) continue;
 
-    const uploaded = await storage.uploadFromPath({
-      filePath: file.tempFilePath,
-      originalFile: file,
+    const uploaded = await storage.acceptUpload(actor, {
+      file: item.file,
+      uploadId: item.uploadId,
       purpose: slot.purpose,
       entityId: subBrand._id,
     });
     replaced.set(slot.field, {
-      previous: {
-        url: subBrand[slot.field] || null,
-        storage: subBrand[slot.storageField],
-      },
+      previous: toDeletable(subBrand[slot.mediaField], subBrand[slot.field]),
       uploaded,
     });
     subBrand[slot.field] = uploaded.url;
-    subBrand[slot.storageField] = uploaded.storage;
+    subBrand[slot.mediaField] = toMediaDocument(uploaded);
   }
 
   try {
@@ -200,7 +211,7 @@ exports.updateSubBrand = async (actor, payload, files = null) => {
 
   // Saved. The ones they replaced can go — best effort, an orphan is a log line.
   for (const [field, { previous }] of replaced) {
-    if (!previous.url) continue;
+    if (!previous?.url) continue;
     try {
       await storage.deleteAsset(previous);
     } catch (deleteError) {

@@ -10,6 +10,7 @@ const {
   connectTestDb,
   disconnectTestDb,
   clearCollections,
+  writeSetting,
 } = require("./setup/testDb");
 
 const Transaction = require("../../models/Transaction");
@@ -491,11 +492,9 @@ describe("recovering it from the next cycle", () => {
    */
   it("says nothing when the cycle merely fell below the minimum", async () => {
     // ⚠️ `customer.settlement.…` — the config is namespaced by audience.
-    await Setting.findOneAndUpdate(
-      {},
-      { $set: { "customer.settlement.minPayoutAmount": 100000 } },
-      { upsert: true },
-    );
+    await writeSetting({
+      $set: { "customer.settlement.minPayoutAmount": 100000 },
+    });
     await payment();
 
     await buildSettlements();

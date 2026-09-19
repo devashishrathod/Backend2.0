@@ -27,7 +27,7 @@ exports.deleteBrandFeature = async (actor, featureId) => {
     try {
       await storage.deleteAsset({
         url: feature.icon,
-        storage: feature.iconStorage,
+        storage: feature.iconMedia?.storage,
       });
     } catch (error) {
       console.error("Failed to delete feature icon:", error);

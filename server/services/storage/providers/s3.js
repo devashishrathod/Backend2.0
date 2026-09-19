@@ -83,19 +83,41 @@ exports.upload = async ({
   );
 
   const storage = {
-    provider: STORAGE_PROVIDER.S3,
+    provider: STORAGE_PROVIDER.AWS_S3,
     publicId: null,
     bucket: bucketName(bucket),
     key,
   };
 
   return {
-    url: exports.url({ storage }),
-    // ⚠️ A video has no poster until the metadata Lambda makes one (Phase 7).
-    // Claiming the video's own URL as its thumbnail would put an un-playable
-    // tile in every cover slot, so this stays empty and `syncSectionCoverImage`
-    // falls through to the next visible media.
-    thumbnail: kind === MEDIA_KIND.VIDEO ? null : exports.url({ storage }),
+    /**
+     * 🔴 `null` for a private object, not a thrown error.
+     *
+     * `exports.url` refuses a private bucket on purpose — there is no lasting
+     * link to one, and handing out a guessable path would defeat the bucket.
+     * But calling it unconditionally here made **every document upload throw**
+     * the moment the provider was S3: invoices, settlements, refunds and
+     * chargebacks all render into the private bucket.
+     *
+     * Nothing caught it because the provider was still Cloudinary and the
+     * document tests mock the upload. `documentUrl` mints a presigned GET per
+     * request from `storage`, so a null here is the correct answer rather than
+     * a missing one.
+     */
+    url: isPublic ? exports.url({ storage }) : null,
+    /**
+     * 🔴 `thumbnail` is gone from here too (M-4).
+     *
+     * It never had anything to return for a video — S3 produces no poster — and
+     * for a photo it was the delivery URL a second time. The comment that used
+     * to sit here claimed a missing thumbnail made `syncSectionCoverImage`
+     * "fall through to the next visible media"; it did not. `getMediaCoverImage`
+     * was `thumbnail || url`, so a video-first section's cover became the `.mp4`
+     * itself.
+     *
+     * A poster is uploaded alongside the video now, on both providers, and lives
+     * in `mediaSchema.poster`.
+     */
     storage,
     metadata: {
       originalName: originalFile?.name ?? null,

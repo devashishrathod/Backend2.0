@@ -91,7 +91,13 @@ exports.buildClaimPreview = async (
     _id: voucherId,
     isActive: true,
     isDeleted: false,
-  }).select("_id name categoryId subCategoryId brandId");
+    /**
+     * ⚠️ `banner` yahan isliye hai ki claim ka snapshot wahi tasveer freeze
+     * kare jo customer ne dekhi thi (V-6c). Inclusion projection sirf wahi
+     * laati hai jo naam se maangi ho — iske bina `pickVoucherBanner` ko
+     * hamesha `undefined` milta aur har claim fallback par gir jaata.
+     */
+  }).select("_id name categoryId subCategoryId brandId banner");
   if (!voucher) throwError(404, "Voucher not found.");
 
   const now = new Date();

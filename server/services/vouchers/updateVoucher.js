@@ -1,16 +1,20 @@
 const mongoose = require("mongoose");
+const { toDisplayName } = require("../../helpers/common");
 const Voucher = require("../../models/Voucher");
 const VoucherVersion = require("../../models/VoucherVersion");
 const VoucherSubBrand = require("../../models/VoucherSubBrand");
 const { throwError } = require("../../utils");
 const {
+  normalizeVoucherName,
   getUniqueTags,
   validateVoucherDates,
   validateVoucherSubBrands,
   normalizeVoucherImages,
   validateVoucherImages,
+  voucherImageFloorMessage,
   uploadVoucherImages,
   rollbackVoucherImages,
+  pickOrphanImages,
   generateVoucherVersionCode,
   getNextVersionNumber,
   createVoucherHistory,
@@ -26,15 +30,15 @@ const {
 } = require("../../constants/voucher");
 const { getVoucherConfig } = require("../../helpers/settings");
 const { resolveActorBrand } = require("../../helpers/brands");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
+const { describeAllIncoming } = require("../storage");
 
 const mergeTags = (existingTags = [], newTags = [], removedTags = []) => {
   const removeSet = new Set(
-    (removedTags || [])
-      .map((tag) => String(tag).trim().toLowerCase())
-      .filter(Boolean),
+    (removedTags || []).map((tag) => String(tag).trim()).filter(Boolean),
   );
   const kept = getUniqueTags(existingTags || []).filter(
-    (tag) => !removeSet.has(tag.toLowerCase()),
+    (tag) => !removeSet.has(tag),
   );
   return getUniqueTags([...kept, ...(newTags || [])]);
 };
@@ -78,11 +82,18 @@ const mergeOffers = (
     .map((offer, index) => ({ ...offer, sortOrder: index + 1 }));
 };
 
+/**
+ * ⚠️ `minImages` is passed in rather than read here, because this function is
+ * synchronous and `getVoucherConfig()` is not. The caller already holds the
+ * config, so nothing is lost — and making this async would mean every future
+ * change to it has to think about a settings read in the middle of a merge.
+ */
 const mergeImages = (
   existingImages = [],
   uploadedImages = [],
   removeImageIds = [],
   maxImages,
+  minImages,
 ) => {
   const removeSet = new Set((removeImageIds || []).map(String));
   const kept = (existingImages || []).filter(
@@ -92,19 +103,27 @@ const mergeImages = (
     removeSet.has(String(image._id)),
   );
 
+  // ⚠️ The whole `mediaSchema` value carries over as one field. It used to be
+  // unpacked into `url` + `storage`, which is how the third thing — the kind,
+  // the size, a video's poster — was forgotten every time one was added.
   const keptImages = kept.map((image) => ({
     _id: image._id,
-    url: image.url,
-    storage: image.storage,
+    media: image.media,
   }));
-  const addedImages = (uploadedImages || []).map((image) => ({
-    url: image.url,
-    storage: image.storage,
-  }));
+  const addedImages = (uploadedImages || []).map((media) => ({ media }));
 
   const combined = [...keptImages, ...addedImages];
-  if (!combined.length) {
-    throwError(400, "At least one voucher image is required.");
+  /**
+   * The floor on what the edit **leaves behind**, not on what was uploaded — a
+   * vendor removing three of four images has to be stopped even though they
+   * uploaded nothing at all.
+   *
+   * ⚠️ 422 now, where this used to answer 400. One rule answering with two
+   * different status codes was half of what made P13 hard to see; the message
+   * and the code are both shared with create and submit now.
+   */
+  if (combined.length < minImages) {
+    throwError(422, voucherImageFloorMessage(combined.length, minImages));
   }
   if (combined.length > maxImages) {
     throwError(400, `Maximum ${maxImages} voucher images are allowed.`);
@@ -180,13 +199,26 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
   let uploadedImages = [];
   let removedImagesToDelete = [];
   try {
-    session.startTransaction();
-
+    /**
+     * ---------------- reads and uploads first, transaction after ----------------
+     *
+     * 🔴 P3 — the image upload used to run **inside** the transaction.
+     *
+     * Five images to S3 with a Mongo transaction open means the transaction's
+     * locks are held for the length of the upload, and the server aborts it at
+     * `transactionLifetimeLimitSeconds` (60 by default). A vendor on a slow
+     * connection did not get a slow edit: they got one that ran for a minute,
+     * uploaded everything, and then failed at commit talking about a
+     * transaction — with the bytes already paid for.
+     *
+     * Everything between here and `startTransaction()` below is reads and pure
+     * merging. The transaction covers the writes, which is what it was for.
+     */
     const voucher = await Voucher.findOne({
       _id: payload.voucherId,
       isDeleted: false,
       isActive: true,
-    }).session(session);
+    });
 
     if (!voucher) throwError(404, "Voucher not found.");
 
@@ -199,18 +231,20 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
       throwError(400, "Voucher has no editable version.");
     }
 
+    // No session — the transaction has not started yet, and this is a read.
     const currentVersion = await VoucherVersion.findOne({
       _id: voucher.currentVersionId,
       voucherId: voucher._id,
       isDeleted: false,
       isActive: true,
-    })
-      .session(session)
-      .lean();
+    }).lean();
 
     if (!currentVersion) throwError(404, "Voucher current version not found.");
 
-    const { maxOffers, maxImages } = await getVoucherConfig();
+    // The whole config, not two numbers off it — `validateVoucherImages` needs
+    // the size ceilings too, which is what P12 was missing.
+    const voucherConfig = await getVoucherConfig();
+    const { maxOffers, maxImages, minImages } = voucherConfig;
 
     if (currentVersion.status === VOUCHER_STATUSES.UNDER_REVIEW) {
       throwError(409, "Voucher is under review and cannot be edited.");
@@ -247,20 +281,31 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
 
     const name =
       payload.name !== undefined
-        ? String(payload.name).trim()
+        ? toDisplayName(payload.name)
         : currentVersion.name;
     if (!name) throwError(400, "Voucher name cannot be empty.");
-    const normalizedName = name.trim().toLowerCase();
+    /**
+     * ⚠️ The **same** helper create uses. These had drifted: create collapsed
+     * inner whitespace and update did not, so "Pizza  Hut" made one row on
+     * create and a second on update — past a unique index that saw two
+     * different strings.
+     */
+    const normalizedName = normalizeVoucherName(name);
 
     if (payload.name !== undefined) {
+      /**
+       * ⚠️ No session, and it does not need one — see the same read in
+       * `createVoucher`. This turns the common case into a clear 409; the
+       * partial unique index on `(brandId, normalizedName)` is what actually
+       * settles a race, and the `11000` branch below turns that into the same
+       * 409.
+       */
       const duplicateVoucher = await Voucher.findOne({
         _id: { $ne: voucher._id },
         brandId: voucher.brandId,
         normalizedName,
         isDeleted: false,
-      })
-        .session(session)
-        .select("_id");
+      }).select("_id");
       if (duplicateVoucher) {
         throwError(
           409,
@@ -299,10 +344,19 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
       maxOffers,
     );
 
-    const voucherFiles = normalizeVoucherImages(images);
-    validateVoucherImages(voucherFiles, maxImages);
+    // 🔴 Described before anything is confirmed — see `createVoucher`.
+    const voucherFiles = await describeAllIncoming(actor, {
+      files: normalizeVoucherImages(images),
+      uploadIds: payload.newImageUploadIds,
+      purpose: UPLOAD_PURPOSE.VOUCHER_IMAGE,
+    });
+    validateVoucherImages(voucherFiles, voucherConfig);
     if (voucherFiles.length) {
-      uploadedImages = await uploadVoucherImages(voucherFiles, voucher._id);
+      uploadedImages = await uploadVoucherImages(
+        actor,
+        voucherFiles,
+        voucher._id,
+      );
     }
 
     const { finalImages, removedImages } = mergeImages(
@@ -310,7 +364,11 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
       uploadedImages,
       payload.removeImageIds,
       maxImages,
+      minImages,
     );
+
+    // ---------------- the writes, and only the writes: inside ----------------
+    session.startTransaction();
 
     const existingSubBrandDocs = await VoucherSubBrand.find({
       voucherId: voucher._id,
@@ -527,8 +585,21 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
         { session },
       );
 
-      // Draft/rejected images belong only to this version, so removed ones
-      // can be deleted for real (unlike the forked-version case above).
+      /**
+       * Removed from a draft, so these are candidates for a real delete —
+       * **candidates**, not a list.
+       *
+       * 🔴 The old comment here said a draft's images "belong only to this
+       * version", and that is exactly what a fork makes untrue: the draft was
+       * cloned from a published version and carries its `storage` across, so
+       * the two point at one object. Deleting on that assumption destroyed the
+       * file the live voucher was still serving.
+       *
+       * `pickOrphanImages` asks the only question that settles it — is any
+       * surviving version still pointing at this file? — and it runs after the
+       * commit, so it reads the state the delete would actually be leaving
+       * behind.
+       */
       removedImagesToDelete = removedImages;
 
       await createVoucherHistory({
@@ -555,7 +626,13 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
     await session.commitTransaction();
 
     if (removedImagesToDelete.length) {
-      await rollbackVoucherImages(removedImagesToDelete);
+      // ⚠️ After the commit on purpose: the surviving versions are only what
+      // they really are once this transaction has landed.
+      const orphans = await pickOrphanImages(
+        removedImagesToDelete,
+        voucher._id,
+      );
+      if (orphans.length) await rollbackVoucherImages(orphans);
     }
 
     return {

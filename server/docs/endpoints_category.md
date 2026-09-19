@@ -11,7 +11,7 @@
 **Framework:** Express.js (CommonJS) · **DB:** MongoDB (Mongoose)
 **Route mounting:** `routes/index.js` auto-mounts har file ko uske filename se → `routes/subBrands.js` = `/trydood/v1/subBrands` (camelCase preserved). Do file `routePrefix` override karti hain — `voucherClaims.js` → `/voucher-claims`, `customerBankAccounts.js` → `/bank-accounts`.
 
-**Scanned:** 2026-09-11 · **Total endpoints: 220** (+3 utility/non-versioned)
+**Scanned:** 2026-09-11 · **Total endpoints: 226** (+3 utility/non-versioned)
 
 > ### ⚠️ Ye ginti pichhli baar 53 endpoint peeche reh gayi thi
 >
@@ -114,7 +114,18 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 
 ---
 
-## Summary — 220 endpoints
+## Summary — 226 endpoints
+
+> ⚠️ **`#` ek sthir id hai, position nahi.** Usme gaps hain (33, 34, 166,
+> 172–175, 182, 187) — wo hataye gaye endpoints ki jagah hai — aur naye endpoints
+> apne module ke saath baithte hain par **agla khali number** lete hain, isliye
+> kabhi-kabhi kram tootta dikhta hai (jaise `/vouchers` me 79 ke baad 210, 211).
+>
+> Ye jaan-bujh kar hai. Beech me daal kar sabko renumber karna is file ke
+> vendor/admin section tables ko tod deta hai — wo har section ke saamne endpoint
+> numbers likhte hain (`3–8, 12` jaise), 207 tak. Neeche ka Guest Surface table
+> bhi inhi ids ko bina kram ke dohrata hai. `verifyApiCoverage.js` number padhta
+> hi nahi — wo path se match karta hai.
 
 | # | Module | Base path | Total | 🟠 | 🟢 | 🔵 | 🟣 | ⚪ | 🤖 |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
@@ -130,7 +141,7 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | 10 | Locations | `/locations` | 6 | – | 1 | – | – | 5 | – |
 | 11 | Showcase | `/showcase` | 13 | 2 | – | – | – | 11 | – |
 | 12 | Brand Features | `/brandFeatures` | 5 | 2 | – | – | – | 3 | – |
-| 13 | Vouchers | `/vouchers` | 13 | 3\* | 3\* | – | 3 | 7 | – |
+| 13 | Vouchers | `/vouchers` | 17 | 3\* | 3\* | – | 4 | 10 | – |
 | 14 | Banners (App-level) | `/banners` | 6 | 1 | – | – | 5 | – | – |
 | 15 | Promotional Tickers | `/promotionalTickers` | 6 | 1 | – | – | 5 | – | – |
 | 16 | Categories | `/categories` | 5 | 2 | – | – | 3 | – | – |
@@ -152,12 +163,13 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | 32 | Privacy & Policies | `/privacy-and-policies` | 5 | 2 | – | – | 3 | – | – |
 | 33 | App Config | `/app-config` | 1 | 1 | – | – | – | – | – |
 | 34 | Documents 🆕 | `/documents` | 1 | – | – | – | – | – | 1 |
-| | **TOTAL** | | **220** | **22** | **17** | **15** | **85** | **78** | **3** |
+| 35 | Uploads 🆕 | `/uploads` | 2 | – | – | – | – | 2 | – |
+| | **TOTAL** | | **226** | **22** | **17** | **15** | **86** | **83** | **3** |
 
 > \* **4 endpoints do category me hain** (`optionalAuth`) — teen `/vouchers/customer/*`
 > aur `GET /search`. Wo 🟠 aur 🟢 dono column me ginne gaye hain, isliye
-> `22 + 17 + 15 + 85 + 78 + 3 = 220` **tabhi** milta hai jab un chaar ko ek baar
-> hi gina jaaye: distinct = `18 (pure guest) + 4 (dual) + 17 (customer) + 15 + 85 + 78 + 3 = 220` ✓
+> `22 + 17 + 15 + 86 + 83 + 3 = 226` **tabhi** milta hai jab un chaar ko ek baar
+> hi gina jaaye: distinct = `18 (pure guest) + 4 (dual) + 17 (customer) + 15 + 86 + 83 + 3 = 226` ✓
 >
 > **Round 6 me kya juda:** `/auth` me do (email verification, ⚪ — har role),
 > naya `/app-config` (🟠 public), aur `/notifications` ke do endpoints ab customer
@@ -169,10 +181,21 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 |---|---:|---|---|
 | 🟠 Guest surface | **21** | Poori list neeche `§ Guest Surface` me | 🆕 Round 5 |
 | 📱 `customer_mobile_api_doc.md` | **66** | 17 exclusive + 22 guest + 26 shared global + 1 🤖 invoice link | ✅ **v1.7.0 — poora.** Live verified: 135 requests · 473 assertions · 0 failed · 198 captured examples |
-| 🏪 `vendor_panel_api_doc.md` | **101** | 15 exclusive + 74 shared global + 10 guest reads + 2 🤖 links | ⚠️ v1.2.1 me 78 the — 19 naye jodne hain |
-| 🛡️ `super_admin_panel_api_doc.md` | **175** | 83 exclusive + 74 shared global + 14 guest reads + 4 🤖 reference | ⬜ Baaki |
+| 🏪 `vendor_panel_api_doc.md` | **105** | 15 exclusive + 77 shared global + 10 guest reads + 2 🤖 links | ⚠️ v1.2.1 me 78 the — 19 naye jodne hain |
+| 🛡️ `super_admin_panel_api_doc.md` | **179** | 83 exclusive + 77 shared global + 14 guest reads + 4 🤖 reference | ⬜ Baaki |
 
-> Sum > 220 kyunki shared endpoints kai docs me aate hain.
+> Sum > 226 kyunki shared endpoints kai docs me aate hain.
+>
+> ⚠️ **Ye per-doc numbers hath se maintain hote hain aur aapas me nahi milte.**
+> Upar ki table vendor **104** kehti hai, neeche ka section heading **100**;
+> admin par **178** banaam **173**, customer par **66** banaam **57**. Ye farq
+> V-5/V-6 se pehle se hai — "shared global" ek curated subset hai (har public
+> route har doc me nahi jaata), isliye ise gate mapping se derive nahi kiya ja
+> sakta aur do me se kaun sa base sahi hai ye bina dono docs gine tay nahi hota.
+>
+> `verifyApiCoverage.js` inhe **padhta hi nahi** — wo sirf chaar stated totals
+> jaanchta hai, jo sahi hain. V-5 aur V-6 ke teen naye route dono jagah **+3**
+> kar diye gaye hain (delta pakka hai, base ka jhagda alag maslaa hai).
 >
 > **Cross-check:** har endpoint kam se kam ek doc me hai —
 > 🟠 21 (customer doc me saare 21) · 🟢 17 (customer) · 🔵 15 (vendor) ·
@@ -343,7 +366,7 @@ Ownership enforcement ka proper pattern:
 
 # A. Identity & Access
 
-## 1. Auth — `/auth` (14)
+## 1. Auth — `/auth` (18)
 
 > ⚠️ **Is router par koi blanket gate nahi hai** — har route apna gate likhta hai,
 > kyunki 9 me se koi bhi entry point token nahi de sakta (wahi to unka kaam hai).
@@ -386,7 +409,7 @@ Ownership enforcement ka proper pattern:
 
 ---
 
-## 2. Users — `/users` (3)
+## 2. Users — `/users` (4)
 
 | # | Method | Endpoint | Access | Cat | Notes |
 |---|---|---|---|---|---|
@@ -614,6 +637,31 @@ Brand ki photo/video gallery. **Do audience, ek hi documents ke do view.**
 | 66 | PUT | `/showcase/section/:sectionId/media/reorder` |
 | 67 | DELETE | `/showcase/section/:sectionId/media/delete/:mediaId` |
 
+> ### 🆕 #63, #64, #65 ab `uploadId` bhi lete hain (U-3)
+>
+> | Endpoint | Multipart | Presigned |
+> |---|---|---|
+> | #63 add-media | `files[]` + `thumbnails[]` | `uploadIds[]` + `thumbnailUploadIds[]` |
+> | #65 replace | `file` + `thumbnail` | `uploadId` + `thumbnailUploadId` |
+> | #64 update | `thumbnail` | `thumbnailUploadId` |
+>
+> ⚠️ **Index-aligned, aur har raasta apne andar pair karta hai.** `thumbnails[2]`
+> teesri **attached file** ka poster hai; `thumbnailUploadIds[0]` pehle
+> **uploadId** ka. Store hone ka kram files pehle, ids baad me — wahi kram jo
+> `acceptUploads` use karta hai — to sortOrder aur pairing kabhi alag nahi hote.
+>
+> ⚠️ **Mila-jula batch chalta hai** (kuch file, kuch id) aur section ki ginti
+> **poore batch** par lagti hai, har raaste par alag-alag nahi.
+>
+> 🔴 **Poster ka apna purpose hai** — `SHOWCASE_THUMBNAIL`, `SHOWCASE_MEDIA`
+> nahi. Dono ek hi bucket aur prefix me jaate hain; farq ye hai ki thumbnail 10 MB
+> par capped hai aur VIDEO leta hi nahi. Gallery ka id poster ki jagah bhejne par
+> **422**, aur koi upload jalta nahi.
+>
+> 🔴 **Section ke apne rules confirm se pehle chalte hain** — kitni media, kaunsa
+> mime, photo ki jagah photo. Baad me chalte to jawab wahi rehta par vendor ki
+> **saari** files jal jaatin, sirf isliye ki unhone ek zyada chun li.
+
 **Managed view** (57–67) **wo sab deta hai jo soft-deleted nahi hai** — hidden aur
 switched-off content bhi, kyunki vendor ko usi ki zarurat hai use **wapas on karne**
 ke liye.
@@ -654,23 +702,27 @@ Brand ke highlight points. Max **10 active** per brand.
 
 # C. Catalogue & discovery
 
-## 13. Vouchers — `/vouchers` (13)
+## 13. Vouchers — `/vouchers` (17)
 
 **Lifecycle:** Vendor create → submit review → Admin approve/reject → publish (Vendor ya Admin) → Customer ko visible
 **Note:** Har voucher write brand ke plan ka slot consume karta hai — isliye ye brand owner (ya admin) tak gated hain. Ownership khud services me `resolveActorBrand` se; route gate ka kaam sirf customers ko vendor tooling se bahar rakhna hai.
 
 | # | Method | Endpoint | Access | Cat | Notes |
 |---|---|---|---|---|---|
-| 75 | POST | `/vouchers/create` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | Transactional, image rollback |
-| 76 | PUT | `/vouchers/update/:voucherId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | Naya version banata hai |
+| 75 | POST | `/vouchers/create` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | Transactional, image rollback. 🆕 `imageUploadIds` / `bannerUploadId` / `bannerPosterUploadId` (U-4) |
+| 76 | PUT | `/vouchers/update/:voucherId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | Naya version banata hai. 🆕 `newImageUploadIds` (U-4) |
 | 77 | POST | `/vouchers/submit-review/:voucherId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | |
 | 78 | POST | `/vouchers/review/:versionId` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Approval ka faisla admin ka hai, vendor ka nahi. `APPROVED` \| `REJECTED` |
 | 79 | POST | `/vouchers/publish/:versionId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | Sirf `APPROVED` version |
-| 80 | GET | `/vouchers/versions/get-all` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | |
+| 216 | POST | `/vouchers/pause/:versionId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | 🆕 Live voucher ko customer feed se hataye bina khatam kiye. Sirf `PUBLISHED` version. `reason` optional |
+| 213 | PUT | `/vouchers/versions/:versionId/images/reorder` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | 🆕 Poori list, 1..n. 🔴 **Pehli image hi banner fallback hai**, to ye customer ko dikhne wali cheez badalta hai. Sirf `DRAFT`/`REJECTED` version — published par **409**, fork nahi |
+| 212 | DELETE | `/vouchers/:voucherId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | 🆕 Soft delete — `status: DELETED` + `isDeleted` saath me, saari versions bhi, aur plan slot wapas. 🔴 **Live claim (PENDING/PAID) ho to 409 — ADMIN par bhi** |
+| 211 | POST | `/vouchers/resume/:versionId` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | 🆕 Wapas live. ⚠️ Beech me koi aur version publish ho gaya to **saaf 409** (partial unique index ka `E11000` nahi), aur validity nikal chuki ho to bhi 409 |
+| 80 | GET | `/vouchers/versions/get-all` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | 🆕 `includeDeleted` — **ADMIN-only**, default off. Vendor bheje to 403, chup-chaap ignore nahi |
 | 81 | PUT | `/vouchers/admin/suggestions/:voucherId` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Suggested voucher add / remove / reorder — ek hi endpoint dono taraf. ⚠️ `/:voucherId/banner` se **pehle** declare, warna `admin` voucher id padha jaata |
 | 82 | GET | `/vouchers/admin/suggestions` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Admin view — **expired/unpublished pins bhi** dikhte hain taaki unpin ho sakein |
-| 83 | POST | `/vouchers/:voucherId/banner` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | Master-level banner, version/approval flow se independent |
-| 84 | DELETE | `/vouchers/:voucherId/banner` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | |
+| 83 | POST | `/vouchers/:voucherId/banner` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | Master-level banner, version/approval flow se independent. 🆕 `bannerUploadId` / `bannerPosterUploadId` (U-4) |
+| 84 | POST | `/vouchers/:voucherId/banner/review` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | 🆕 Banner approve / reject + reason. Voucher ka apna status nahi chhuta — reject par voucher PUBLISHED hi rehta hai aur pehli image banner ban jaati hai |
 | 85 | GET | `/vouchers/customer/get-all` | Intended: Guest + Customer · Enforced: **optionalAuth** | 🟠 🟢 | Geo listing · `suggestedOnly` tab · `bannerType`/`bannerUrl`/`isSuggested`/`isOutOfRange`. `categoryId`/`subCategoryId` filter kaam karta hai. Search offer ka title bhi match karti hai aur term escape hoti hai. **Guest ko `latitude` + `longitude` khud dena padta hai** |
 | 86 | GET | `/vouchers/customer/get/:voucherId` | Intended: Guest + Customer · Enforced: **optionalAuth** | 🟠 🟢 | `bannerType`/`bannerUrl` |
 | 87 | POST | `/vouchers/customer/voucher/preview` | Intended: Guest + Customer · Enforced: **optionalAuth** | 🟠 🟢 | Discount + convenience fee + promo. `offerApplied` · `pricing.convenienceFee` · `pricing.promoDiscount`. Koi offer valid na ho to **error nahi** — plain bill. **Guest ko daam milta hai, order nahi** (order `/voucher-claims/create-order` par `isCustomer` hai) |
@@ -681,6 +733,28 @@ Brand ke highlight points. Max **10 active** per brand.
 > coordinates ki jagah le sake. Gate ke bina wo `undefined` rehta hai **signed-in
 > caller ke liye bhi** — jisne in teeno ko **sabke liye** `404 "Customer not found."`
 > bana diya tha.
+
+> ### 🆕 #75, #76, #83 ab `uploadId` bhi lete hain (U-4)
+>
+> | Endpoint | Multipart | Presigned |
+> |---|---|---|
+> | #75 create | `images[]` · `media` · `poster` | `imageUploadIds[]` · `bannerUploadId` · `bannerPosterUploadId` |
+> | #76 update | `newImages[]` | `newImageUploadIds[]` |
+> | #83 banner | `media` · `poster` | `bannerUploadId` · `bannerPosterUploadId` |
+>
+> 🔴 **Poster ka apna purpose hai** — `VOUCHER_BANNER_POSTER`, `VOUCHER_BANNER`
+> nahi. Ek hi bucket aur `vouchers/<id>` prefix, par poster 10 MB par capped hai
+> aur VIDEO leta hi nahi. Pehle wo banner ke purpose par jaata tha, yaani ek
+> still ko video ka 50 MB milta tha — aur presigned road par purpose hi wo ek
+> cheez hai jo dono me farq karti hai.
+>
+> 🔴 **Image floor aur limits confirm se pehle chalte hain.** Ek vendor jo teen
+> ki jagah do image bhej raha hai, use picker khula hone par hi pata chalna
+> chahiye — aur is raaste par "pata chalne" ki keemat upload hai, jo bach jaata
+> hai.
+>
+> ⚠️ Mila-jula batch chalta hai, aur floor **poore batch** par lagta hai — do
+> attached + ek `uploadId` = teen.
 
 > **Guest surface me:** #85, #86, #87 (3) · **Customer doc me:** #85, #86, #87
 > **Vendor doc me:** #75–#77, #79, #80, #83, #84 (7) · **Admin doc me:** #75–#84 (10)
@@ -737,10 +811,10 @@ Banners jaisi hi ownership story — platform content, admin-managed.
 
 | # | Method | Endpoint | Access | Cat | Notes |
 |---|---|---|---|---|---|
-| 100 | POST | `/categories/create` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | |
+| 100 | POST | `/categories/create` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | 🆕 **Pehli surface jo `uploadId` leti hai** (U-2). Multipart `image` abhi bhi chalta hai; dono ek saath bhejna **422** |
 | 101 | GET | `/categories/getAll` | Intended: Guest + all panels · Enforced: **Public** | 🟠 | `stats.subCategories` · `stats.brands` · `stats.vouchers` · `stats.promoCodes`, har ek `{ total, active }` |
 | 102 | GET | `/categories/get/:id` | Intended: Guest + all panels · Enforced: **Public** | 🟠 | Wahi stats |
-| 103 | PUT | `/categories/update/:id` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | |
+| 103 | PUT | `/categories/update/:id` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | 🆕 `uploadId` ya multipart `image` (U-2). 🔴 **upload → save → tab purani delete** — beech me kuch bhi fail ho (reject hua upload, ya save khud) to purani tasveer S3 par bhi rehti hai aur row me bhi. Delete ka fail hona request nahi giraata, sirf ek orphan chhodta hai |
 | 104 | DELETE | `/categories/delete/:id` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | ⚠️ `400` jab tak koi sub-category / brand / voucher use kar raha hai |
 
 > **Guest surface me:** #101, #102 · **Customer doc me:** #101, #102
@@ -762,6 +836,35 @@ Banners jaisi hi ownership story — platform content, admin-managed.
 > **Vendor doc me:** #106, #107 · **Admin doc me:** saare 5
 
 ---
+
+
+> ### 🆕 Presigned raasta in par bhi (U-5)
+>
+> | Endpoint | Presigned field |
+> |---|---|
+> | `POST /auth/register` | `uploadId` (avatar) |
+> | `PUT /users/update` | `uploadId` (avatar) |
+> | `PUT /brands/update` | `logoUploadId` · `coverImageUploadId` |
+> | `PUT /subBrands/update/:subBrandId` | `logoUploadId` · `coverImageUploadId` |
+> | `POST /brandFeatures/add` · `PUT /update/:featureId` | `iconUploadId` |
+> | `POST /banners/create` · `PUT /update/:id` | `mediaUploadId` · `posterUploadId` |
+> | `POST /promotionalTickers/create` · `PUT /update/:id` | `iconUploadId` |
+> | `POST /subCategories/:categoryId/create` · `PUT /update/:id` | `uploadId` |
+>
+> ⚠️ Har jagah **file ya id, dono nahi** — `acceptUpload` dono ek saath aane par
+> `422` deta hai, kyunki chup-chaap ek chun lene ka matlab hota caller maanta
+> rahe ki doosra gaya.
+>
+> 🔴 **App banner ke poster ka apna purpose hai** — `BANNER_POSTER`,
+> `BANNER_MEDIA` nahi. Ek hi bucket aur `banners/<id>` prefix, par poster 10 MB
+> par capped hai aur video leta hi nahi. (Showcase aur voucher banner ke saath
+> bhi yahi hai.)
+>
+> 🔴 **`PUT /brands/update` ke uploads ab transaction ke BAHAR hote hain** (E5).
+> Pehle wo `withTransaction` ke andar the, yaani do file jitni der leti utni der
+> ek Mongo transaction khuli rehti — aur Mongo ki apni 60-second seemaa paar hote
+> hi vendor ki poori edit chali jaati, us wajah se jiska database se koi lena-dena
+> nahi tha.
 
 ## 18. Search — `/search` (5)
 
@@ -875,7 +978,7 @@ Subscription promo codes. **Poora module `router.use(isAdmin)`** — vendor mana
 
 ---
 
-## 24. Transactions — `/transactions` (15)
+## 24. Transactions — `/transactions` (14)
 
 Razorpay subscription payments + webhook operations + payment health.
 
@@ -888,7 +991,6 @@ Razorpay subscription payments + webhook operations + payment health.
 
 | # | Method | Endpoint | Access | Cat | Notes |
 |---|---|---|---|---|---|
-| 138 | GET | `/documents/:token` | Intended: Customer + Vendor · Enforced: **Public (token)** | 🤖 | ⚠️ **Deliberately unauthenticated.** Link WhatsApp message aur email se khulta hai, jahan browser me koi session hota hi nahi — login maangne ka matlab hai Download button kaam na kare, jo uska ekmatra kaam hai. 32-byte random token hi credential hai; galat token par wahi `404` jo na-maujood token par. **Chhe kism ke document ek hi route se**: claim receipt, subscription invoice, grant advice, payout statement, refund receipt, chargeback advice — resolver khud pata karta hai token kis collection ka hai. Pehle `transactions/invoice/:token` aur `settlements/statement/:token` do alag route the, aur dono ka apna token field naam tha, to bare token se ye pata hi nahi chalta tha ki wo kis kism ka document hai. PDF **pehli request par** banti hai aur uske baad cache hoti hai; **number** phir bhi issue par milta hai, taaki series me gap na aaye |
 | 139 | POST | `/transactions/webhook/razorpay/customer` | Intended: Razorpay · Enforced: **Public (HMAC)** | 🤖 | **CUSTOMER account** (voucher claims); secrets `RAZORPAY_CUSTOMER_WEBHOOK_SECRETS`. Account **route se** aata hai, signature se nahi — signature sirf authenticate karta hai. Galat endpoint par aayi delivery phir bhi process hoti hai, par WARNING alert ke saath |
 | 140 | POST | `/transactions/webhook/razorpay` | Intended: Razorpay · Enforced: **Public (HMAC)** | 🤖 | **VENDOR account** (subscriptions); secrets `RAZORPAY_WEBHOOK_SECRETS` (comma-separated, rotation-safe). Isse activation browser se independent hai — jo customer tab band kar de use bhi apna claim milta hai |
 | 141 | POST | `/transactions/subscribe/preview` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | Price + promo code preview, order banane se pehle |
@@ -1313,6 +1415,63 @@ jo baaki blocks use karte hain).
 
 ---
 
+## 34. Documents 🆕 — `/documents` (1)
+
+Ek hi signed link jo **chhe** kism ke document serve karta hai. Summary table me
+ye apna module hai, par uski row saalon se §24 Transactions me padi thi — wahan se
+yahan aa gayi, number wahi ka wahi.
+
+| # | Method | Endpoint | Access | Cat | Notes |
+|---|---|---|---|---|---|
+| 138 | GET | `/documents/:token` | Intended: Customer + Vendor · Enforced: **Public (token)** | 🤖 | ⚠️ **Deliberately unauthenticated.** Link WhatsApp message aur email se khulta hai, jahan browser me koi session hota hi nahi — login maangne ka matlab hai Download button kaam na kare, jo uska ekmatra kaam hai. 32-byte random token hi credential hai; galat token par wahi `404` jo na-maujood token par. **Chhe kism ke document ek hi route se**: claim receipt, subscription invoice, grant advice, payout statement, refund receipt, chargeback advice — resolver khud pata karta hai token kis collection ka hai. Pehle `transactions/invoice/:token` aur `settlements/statement/:token` do alag route the, aur dono ka apna token field naam tha, to bare token se ye pata hi nahi chalta tha ki wo kis kism ka document hai. PDF **pehli request par** banti hai aur uske baad cache hoti hai; **number** phir bhi issue par milta hai, taaki series me gap na aaye |
+
+---
+
+## 35. Uploads 🆕 — `/uploads` (2)
+
+Direct-to-S3 raasta (U-1). File is server tak aati hi nahi — client S3 par likhta
+hai, aur hum sirf **ijazat** dete hain aur baad me **pehchaan** karte hain.
+
+⚠️ Ye rows pehle §13 Vouchers me thi. `/uploads` ka vouchers se koi taalluq nahi —
+har surface iske peechhe aati hai, voucher unme se sirf ek hai (U-4).
+
+| # | Method | Endpoint | Access | Cat | Notes |
+|---|---|---|---|---|---|
+| 214 | POST | `/uploads/presign` | Intended: sab (signed-in) · Enforced: **Any auth** | ⚪ | 🆕 Presigned **POST** — client seedha S3 par likhta hai. Policy S3 enforce karta hai: exact key, pinned content-type, size range. File is server tak aati hi nahi. 🔴 Size cap ab **admin ka number** hai (`Setting.storage.limits` + surface override), pehle code ka constant tha |
+| 215 | POST | `/uploads/confirm` | Intended: sab (signed-in) · Enforced: **Any auth** | ⚪ | 🆕 🔴 Yahi tay hota hai ki file **sach me kya hai** — magic bytes se. `staging/` se asli key par move, type bytes se. Replay guard aur owner check dono. 🔴 Asli size bhi yahin naapa jaata hai — presign ke baad limit ghat sakti hai, aur signature nahi badalti |
+
+> ### 🔴 Surface endpoint `uploadId` kaise leta hai
+>
+> Confirm ke baad client wahi `uploadId` us surface ko bhejta hai jiske liye
+> upload hua tha — file attach karne ki jagah. Surface `acceptUpload` se poochhti
+> hai, aur dono raaston se use ek hi shape milti hai.
+>
+> **Abhi kaun leta hai:** `POST /categories/create` (#100) aur
+> `PUT /categories/update/:id` (#103) — U-2 ka pilot. Baaki surfaces U-3, U-4 aur
+> U-5 me judti hain; tab tak wo sirf multipart leti hain.
+>
+> ⚠️ **File aur `uploadId` ek saath bhejna `422` hai**, dono me se ek chun lena
+> nahi. Chup-chaap ek chun lene ka matlab hota caller maanta rahe ki doosra gaya.
+
+> ### 🔴 Size ki limit ab dono raaston par ek hai
+>
+> Pehle `presign` apni policy ek **code ke constant** se banata tha, aur `confirm`
+> ke paas asli byte count hote hue bhi wo kisi limit se compare hota hi nahi tha.
+> Matlab `Setting.storage.limits` (ST-3) aur har surface override (ST-4) sirf
+> multipart raaste par lagte the: admin platform ka video limit 50 se 20 karta,
+> panel maan jaata, aur seedha-S3 raasta 50 par hi rehta.
+>
+> Ab ek hi number teeno se banta hai — `min(code ka ceiling, Setting.storage.limits,
+> surface override)` — aur wahi **policy** me jaata hai, yaani S3 khud use lagata
+> hai. `confirm` usi ko asli size se dobara naapta hai, kyunki signature ek baar
+> likhi jaati hai aur admin uske baad bhi limit ghata sakta hai.
+>
+> ⚠️ `confirm` par limit **verified kind** ki hoti hai, declared ki nahi. GIF ka
+> apna, bada ceiling hai — to PNG ko GIF bata kar bhejna warna GIF ka allowance
+> muft me de deta.
+
+---
+
 ## Utility / Non-versioned (3) — docs se bahar
 
 `GET /` (health) · `GET /my-ip` · `GET /client-ip` — sab public, `/trydood/v1` ke **bahar**, `index.js` me seedha declare.
@@ -1421,9 +1580,9 @@ koi error nahi hota.
 
 ---
 
-# 🏪 Vendor Panel Doc — 97 Endpoints
+# 🏪 Vendor Panel Doc — 101 Endpoints
 
-**15 exclusive + 70 shared global + 10 guest reads + 2 🤖 links**
+**15 exclusive + 73 shared global + 10 guest reads + 2 🤖 links**
 
 | # | Section | Count | Endpoints (#) |
 |---:|---|---:|---|
@@ -1501,9 +1660,9 @@ koi error nahi hota.
 
 ---
 
-# 🛡️ Super Admin Panel Doc — 170 Endpoints
+# 🛡️ Super Admin Panel Doc — 174 Endpoints
 
-**82 exclusive + 70 shared global + 14 guest reads + 4 🤖 reference**
+**82 exclusive + 73 shared global + 14 guest reads + 4 🤖 reference**
 
 | # | Section | Count | Endpoints (#) |
 |---:|---|---:|---|
@@ -1572,7 +1731,7 @@ koi error nahi hota.
 
 | Doc | Endpoints | Status |
 |---|---:|---|
-| `endpoints_category.md` | **220** | ✅ **Round 6 — ye file.** Live routers ke against introspection se verify. `scripts/verifyApiCoverage.js` isi ko enforce karta hai |
+| `endpoints_category.md` | **226** | ✅ **Round 6 — ye file.** Live routers ke against introspection se verify. `scripts/verifyApiCoverage.js` isi ko enforce karta hai |
 | 🟠 Guest surface | 21 | 🆕 Round 5 — naya category, poori list is file me |
 | `customer_mobile_api_doc.md` | 66 | ✅ **v1.7.0** — live verified, 135 requests · 473 assertions · 0 failed · 198 captured examples (135/135 requests) |
 | `vendor_panel_api_doc.md` | 101 | ⚠️ **v1.2.1 me 78 hain** — 19 jodne hain (voucher claims reads, refunds, disputes, settlements, legacy mounts) |

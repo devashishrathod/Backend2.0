@@ -1,10 +1,12 @@
 const ShowcaseSection = require("../../models/ShowcaseSection");
+const { toDisplayName } = require("../../helpers/common");
 const { escapeRegex } = require("../../validator/common");
 const { throwError } = require("../../utils");
 const { SHOWCASE_SECTION_TYPE } = require("../../constants/showcase");
 const {
   generateUniqueSlug,
   formatSectionSummary,
+  resequenceSections,
 } = require("../../helpers/showcases");
 const {
   resolveActorBrand,
@@ -34,7 +36,7 @@ exports.createSection = async (actor, payload) => {
   // renders. It used to be lowercased on the way in, which is why every album
   // on the brand profile read "ambience" instead of "Ambience". Uniqueness is
   // still case-insensitive, so "Ambience" and "ambience" cannot coexist.
-  const title = payload.title.trim();
+  const title = toDisplayName(payload.title);
 
   const exists = await ShowcaseSection.exists({
     brandId: brand._id,
@@ -46,17 +48,33 @@ exports.createSection = async (actor, payload) => {
   if (exists) throwError(409, "Section title already exists.");
 
   const slug = await generateUniqueSlug(brand._id, title);
-  let sortOrder = payload.sortOrder;
 
-  if (!sortOrder) {
-    const last = await ShowcaseSection.findOne({
+  /**
+   * ---------------- where this section goes in the brand's list ----------------
+   *
+   * 🔴 The old rule was `last.sortOrder + 1`, and it only ever climbed.
+   *
+   * ⚠️ Not because deleted sections were counted — that query already filtered
+   * `isDeleted: false`, and assuming otherwise is a mistake this phase made and a
+   * mutant caught. (It *is* true of media: `getNextMediaSortOrder` read the raw
+   * array, deleted rows included.)
+   *
+   * It climbed because a delete left a hole in the numbers of the sections that
+   * **remained**: `1, 2, 3` minus the second stayed `1, 3`, the next create read
+   * the highest and answered 4, and the brand listed `1, 3, 4`. Delete again and
+   * it was `1, 4, 5` — the numbers walking away from the count for good.
+   *
+   * Resequencing first is what makes this safe on the brands that already carry
+   * that drift. `count + 1` alone on a brand holding `1, 5` would answer 3 and
+   * slot the new section *in front of* the old one; dense first, and the new
+   * section lands last where the vendor expects it.
+   */
+  await resequenceSections(brand._id);
+  const sortOrder =
+    (await ShowcaseSection.countDocuments({
       brandId: brand._id,
       isDeleted: false,
-    })
-      .sort({ sortOrder: -1 })
-      .select("sortOrder");
-    sortOrder = last ? last.sortOrder + 1 : 1;
-  }
+    })) + 1;
 
   // Claimed as late as possible — after the duplicate-title and slug checks —
   // so a rejected request never consumes a slot. The claim itself is an atomic
