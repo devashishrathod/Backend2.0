@@ -112,6 +112,20 @@ exports.validateCreateBanner = {
       redirect: jsonTolerantObject(redirectObjectSchema, {
         label: "Redirect",
       }).optional(),
+      /**
+       * 🆕 The presigned road (U-5). A client that already sent its bytes to S3
+       * names the uploads here instead of attaching files.
+       *
+       * ⚠️ The poster has its own purpose (`BANNER_POSTER`), not the banner's —
+       * a video and its still are two uploads, and an id meant for one must not
+       * be spendable as the other.
+       */
+      mediaUploadId: objectId().optional().messages({
+        "any.invalid": "Invalid mediaUploadId.",
+      }),
+      posterUploadId: objectId().optional().messages({
+        "any.invalid": "Invalid posterUploadId.",
+      }),
       startDate: Joi.date().iso().optional().allow(null),
       endDate: Joi.date().iso().optional().allow(null),
       isActive: Joi.boolean().optional().default(true),
@@ -133,6 +147,20 @@ exports.validateUpdateBanner = {
       redirect: jsonTolerantObject(redirectObjectSchema, {
         label: "Redirect",
       }).optional(),
+      /**
+       * 🆕 The presigned road (U-5). A client that already sent its bytes to S3
+       * names the uploads here instead of attaching files.
+       *
+       * ⚠️ The poster has its own purpose (`BANNER_POSTER`), not the banner's —
+       * a video and its still are two uploads, and an id meant for one must not
+       * be spendable as the other.
+       */
+      mediaUploadId: objectId().optional().messages({
+        "any.invalid": "Invalid mediaUploadId.",
+      }),
+      posterUploadId: objectId().optional().messages({
+        "any.invalid": "Invalid posterUploadId.",
+      }),
       startDate: Joi.date().iso().optional().allow(null),
       endDate: Joi.date().iso().optional().allow(null),
       isActive: Joi.boolean().optional(),

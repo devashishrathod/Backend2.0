@@ -28,6 +28,11 @@ const {
   normalizeVoucherOffers,
 } = require("../../helpers/voucherOffers");
 const { VOUCHER_STATUSES } = require("../../constants/voucher");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
+const {
+  describeIncoming,
+  describeAllIncoming,
+} = require("../storage");
 const {
   VOUCHER_BANNER_STATUS,
   VOUCHER_BANNER_FILE_FIELD,
@@ -140,7 +145,21 @@ exports.createVoucher = async (actor, payload, files = {}) => {
 
     const validity = validateVoucherValidityPeriod(startAt, endAt);
 
-    const voucherFiles = normalizeVoucherImages(images);
+    /**
+     * 🔴 One list, two roads (U-4). `describeAllIncoming` answers
+     * `{ name, mimetype, size }` for every image — from the file, or from the
+     * intent row an `uploadId` points at — so the floor, the count and the mime
+     * allow-list below all read the same fields they always did.
+     *
+     * ⚠️ It runs **before** anything is confirmed. A vendor three images short
+     * of the floor should be told while the picker is still open, not after the
+     * uploads are spent.
+     */
+    const voucherFiles = await describeAllIncoming(actor, {
+      files: normalizeVoucherImages(images),
+      uploadIds: payload.imageUploadIds,
+      purpose: UPLOAD_PURPOSE.VOUCHER_IMAGE,
+    });
     /**
      * The floor, before a single byte is uploaded — a vendor who is three images
      * short should be told so while they still have the picker open, not after
@@ -155,7 +174,7 @@ exports.createVoucher = async (actor, payload, files = {}) => {
     // row is inserted — so the id is minted here. Mongo generates ids
     // client-side anyway; this is the value `create` would have produced.
     const voucherId = new mongoose.Types.ObjectId();
-    uploadedImages = await uploadVoucherImages(voucherFiles, voucherId);
+    uploadedImages = await uploadVoucherImages(actor, voucherFiles, voucherId);
 
     /**
      * The banner goes up here too, for the same reason — and it is the one that
@@ -163,12 +182,22 @@ exports.createVoucher = async (actor, payload, files = {}) => {
      * `Voucher.create`, purely because it wanted the id; the id is minted above,
      * so nothing required that.
      */
-    const bannerFile = files?.[VOUCHER_BANNER_FILE_FIELD];
+    const bannerFile = await describeIncoming(actor, {
+      file: files?.[VOUCHER_BANNER_FILE_FIELD],
+      uploadId: payload.bannerUploadId,
+      purpose: UPLOAD_PURPOSE.VOUCHER_BANNER,
+    });
     if (bannerFile) {
+      const bannerPoster = await describeIncoming(actor, {
+        file: files?.[VOUCHER_BANNER_POSTER_FIELD],
+        uploadId: payload.bannerPosterUploadId,
+        purpose: UPLOAD_PURPOSE.VOUCHER_BANNER_POSTER,
+      });
       uploadedBanner = await uploadVoucherBannerMedia(
+        actor,
         bannerFile,
         voucherId,
-        files?.[VOUCHER_BANNER_POSTER_FIELD],
+        bannerPoster,
       );
     }
 

@@ -4,11 +4,13 @@ const Upload = require("../../models/Upload");
 const { getS3Client, bucketName } = require("../../configs/s3");
 const {
   UPLOAD_PURPOSES,
-  MEDIA_KIND,
   MEDIA_KIND_PREFIX,
+  STORAGE_PROVIDER,
   kindFromMime,
 } = require("../../constants/storage");
 const { buildStagingKey } = require("./keys");
+const { refusalForMime } = require("./inspect");
+const { getUploadLimit, getStorageConfig } = require("../../helpers/settings");
 const { throwError } = require("../../utils");
 
 /**
@@ -38,20 +40,6 @@ const { throwError } = require("../../utils");
  * where a file gets to be what it says it is.
  */
 
-/** How long the client has to start the upload. */
-const PRESIGN_TTL_SECONDS = 15 * 60;
-
-/**
- * How long the intent row survives if nothing is confirmed.
- *
- * Longer than the signature, because a slow upload that finishes at minute
- * fourteen still has to be confirmable — the row must outlive the window, not
- * match it.
- */
-const INTENT_TTL_MS = 60 * 60 * 1000;
-
-exports.PRESIGN_TTL_SECONDS = PRESIGN_TTL_SECONDS;
-
 /**
  * @param {{ userId: string }} actor
  * @param {{ purpose, contentType, sizeBytes, fileName }} payload
@@ -59,8 +47,86 @@ exports.PRESIGN_TTL_SECONDS = PRESIGN_TTL_SECONDS;
 exports.createUploadIntent = async (actor, payload) => {
   const { purpose, contentType, sizeBytes, fileName } = payload;
 
+  /**
+   * 🔴 All three used to be constants in this file while the admin panel showed
+   * fields — `presignEnabled`, `presignTtlMinutes`, `intentTtlMinutes` — that
+   * changed nothing at all. `getStorageConfig` had already converted them into
+   * the units wanted here, and nothing read the result: a knob with a schema, a
+   * validator, a doc entry and no reader is worse than an absent one, because
+   * everybody downstream believes it works.
+   *
+   * ### ⚠️ `confirm` deliberately does **not** read `presignEnabled`
+   *
+   * Turning presigning off while vendors hold valid signatures must not strand
+   * their uploads: those files are already in the bucket and already paid for,
+   * and refusing them would leave objects with no row and vendors with no
+   * explanation. The switch closes the door; it does not trap whoever is already
+   * inside.
+   *
+   * ⚠️ Default `false` — nothing is live on this road yet, and a capability that
+   * has to be turned **on** is cheaper to get wrong than one that has to be
+   * turned off. That stops being true the day X-4 removes the multipart road,
+   * because then this switch stops being survivable; revisit it there.
+   *
+   * ⚠️ The intent TTL is kept **longer** than the signature by
+   * `assertStorageLimitRule`, not trusted here — an upload that starts at minute
+   * fourteen still has to be confirmable, so the row must outlive the window
+   * rather than match it.
+   */
+  const { presignEnabled, presignTtlSeconds, intentTtlMs, provider } =
+    await getStorageConfig();
+
+  if (!presignEnabled) {
+    throwError(
+      503,
+      "Presigned upload is turned off for this platform. Turn it on in " +
+        "Admin → Settings → Storage, or send the file directly as a multipart " +
+        "field on the same request.",
+    );
+  }
+
+  /**
+   * 🔴 On, but pointing at the wrong provider.
+   *
+   * This road writes to S3 unconditionally — it is built on
+   * `@aws-sdk/s3-presigned-post` and there is no Cloudinary equivalent. So if
+   * the platform is on Cloudinary and this is left on, the **same surface**
+   * stores some rows on S3 and some on Cloudinary depending on which road the
+   * client happened to take, and nothing anywhere says so. Deletes would still
+   * work (they follow the row), but every other assumption about where media
+   * lives quietly stops holding.
+   *
+   * ⚠️ The message names both fixes, because either is legitimate: this is what
+   * a half-finished migration looks like from the admin panel, and the person
+   * reading it cannot see which half they are in.
+   */
+  if (provider !== STORAGE_PROVIDER.AWS_S3) {
+    throwError(
+      409,
+      `Presigned upload only works on S3, and this platform is set to ` +
+        `${provider}. Either switch Admin → Settings → Storage → provider to ` +
+        `AWS_S3, or turn presigned upload off so every file takes the same road.`,
+    );
+  }
+
   const entry = UPLOAD_PURPOSES[purpose];
   if (!entry) throwError(422, `Unknown upload purpose: ${purpose}`);
+
+  /**
+   * 🔴 Types this platform refuses outright, refused **before** the upload.
+   *
+   * `confirm` catches these from the bytes, which is the check that actually
+   * holds — but it runs after the client has uploaded the whole file. A caller
+   * who honestly declares `image/heic` should not be handed a signature, spend
+   * a 4 MB photo over mobile data, and only then be told no.
+   *
+   * ⚠️ The words come from the same list `identify` refuses by, so both roads
+   * say it identically — and `kindFromMime` cannot help here: it answers
+   * `IMAGE` for `image/heic` and `image/svg+xml` alike, because its job is to
+   * **name** a file so a surface can refuse it, not to decide policy.
+   */
+  const declaredRefusal = refusalForMime(contentType);
+  if (declaredRefusal) throwError(400, declaredRefusal.reason);
 
   /**
    * ⚠️ The declared type is checked against the surface **now**, so a caller
@@ -75,12 +141,25 @@ exports.createUploadIntent = async (actor, payload) => {
     );
   }
 
-  const maxBytes = entry.maxBytes;
-  if (maxBytes && sizeBytes > maxBytes) {
+  /**
+   * 🔴 The admin's number, not the constant.
+   *
+   * This used to be `entry.maxBytes` — a static per-surface ceiling in code. So
+   * `Setting.storage.limits` (ST-3) and every surface override (ST-4) applied to
+   * the multipart road and to nothing else: an admin lowering the platform video
+   * limit from 50 MB to 20 changed the panel and left this road at 50.
+   *
+   * ⚠️ It also goes into the **policy** below, which is the part that matters.
+   * This 413 is only the readable refusal; `content-length-range` is what S3
+   * enforces, and enforcing the old constant there meant the real limit was the
+   * one nobody could change.
+   */
+  const { maxBytes, maxSizeMB } = await getUploadLimit(purpose, kind);
+  if (sizeBytes > maxBytes) {
     throwError(
       413,
       `That file is ${Math.ceil(sizeBytes / 1024 / 1024)} MB. The limit here is ` +
-        `${Math.floor(maxBytes / 1024 / 1024)} MB.`,
+        `${maxSizeMB} MB.`,
     );
   }
 
@@ -93,7 +172,7 @@ exports.createUploadIntent = async (actor, payload) => {
   const { url, fields } = await createPresignedPost(getS3Client(), {
     Bucket: bucketName(entry.bucket),
     Key: stagingKey,
-    Expires: PRESIGN_TTL_SECONDS,
+    Expires: presignTtlSeconds,
     Conditions: [
       // Exactly this key. `starts-with` on the full key leaves no room to move.
       ["eq", "$key", stagingKey],
@@ -123,7 +202,8 @@ exports.createUploadIntent = async (actor, payload) => {
     stagingKey,
     declaredContentType: contentType,
     declaredSizeBytes: sizeBytes,
-    expiresAt: new Date(Date.now() + INTENT_TTL_MS),
+    declaredFileName: fileName,
+    expiresAt: new Date(Date.now() + intentTtlMs),
   });
 
   return {
@@ -135,7 +215,7 @@ exports.createUploadIntent = async (actor, payload) => {
      */
     url,
     fields,
-    expiresInSeconds: PRESIGN_TTL_SECONDS,
+    expiresInSeconds: presignTtlSeconds,
     // What the object will be called once confirmed, so a client that wants to
     // show progress has something stable to key on.
     stagingKey,

@@ -191,14 +191,40 @@ describe("getShowcaseConfig — the only read path there is", () => {
     stored({
       minItemsPerSection: 4,
       minSectionsPerBrand: 2,
-      maxGifSizeMB: 20,
+      // Below the platform ceiling (15 MB by default), which is the only
+      // direction a surface may move — see the narrowing test below.
+      maxGifSizeMB: 8,
     });
 
     const config = await getShowcaseConfig();
 
     expect(config.minItems).toBe(4);
     expect(config.minSections).toBe(2);
-    expect(config.maxGifSizeMB).toBe(20);
+    expect(config.maxGifSizeMB).toBe(8);
+  });
+
+  /**
+   * 🔴 A surface may narrow the platform ceiling. It may not raise it.
+   *
+   * This read path used to hand back whatever `vendor.showcase` said, with no
+   * `min` anywhere — `effectiveLimitMB`, written for exactly this, had no caller
+   * at all. `assertStorageLimitRule` refuses such a save, so the two together
+   * are meant to be belt and braces; only the belt was on.
+   *
+   * ⚠️ The state below is reachable without breaking that rule: a document
+   * seeded directly, restored from an older shape, or written before the rule
+   * existed. The read path has to be safe on its own.
+   */
+  test("a surface above the platform ceiling is cut back to it", async () => {
+    mockSetting.value = {
+      storage: { limits: { maxGifSizeMB: 12, maxVideoSizeMB: 30 } },
+      vendor: { showcase: { maxGifSizeMB: 20, maxVideoSizeMB: 80 } },
+    };
+
+    const config = await getShowcaseConfig();
+
+    expect(config.maxGifSizeMB).toBe(12);
+    expect(config.maxVideoSizeMB).toBe(30);
   });
 
   test("a document without them falls back to the constants", async () => {

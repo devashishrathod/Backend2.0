@@ -20,6 +20,7 @@ const mongoose = require("mongoose");
 
 const {
   connectTestDb,
+  enablePresign,
   disconnectTestDb,
   clearCollections,
 } = require("./setup/testDb");
@@ -77,10 +78,26 @@ const failure = async (promise) => {
   }
 };
 
+/**
+ * ⚠️ 120s, not the config's 60.
+ *
+ * 🔴 This hook does three round trips to a shared M0 — connect, the settings
+ * write, and `createIndexes()` — and `createIndexes` costs seconds even when
+ * every index already exists, because the cost is *checking* them. Under a full
+ * suite run it competes with everything else on the same tier and crossed 60s
+ * the moment `enablePresign` was added: all three presign suites failed at
+ * **70.7 seconds**, every test at once, on correct assertions.
+ *
+ * A hook timeout does not read as "the cluster was busy" — it reads as a broken
+ * feature. CLAUDE.md records that exact false signal sending two earlier
+ * debugging sessions the wrong way.
+ */
 beforeAll(async () => {
   await connectTestDb();
+  // ⚠️ The presigned road is off by default (G5) — this suite uses it.
+  await enablePresign();
   await Upload.createIndexes();
-});
+}, 120000);
 
 afterAll(async () => {
   await clearCollections(Upload);
@@ -143,6 +160,55 @@ describe("asking for permission to upload", () => {
     );
 
     expect(statusCode).toBe(422);
+  });
+
+  /**
+   * 🔴 Refused **before** the bytes, not after them.
+   *
+   * `confirm` already catches a HEIC from its own bytes, and that is the check
+   * that holds. But it runs once the client has uploaded the whole file — on a
+   * phone, a 4 MB photo pushed over mobile data to be told no. A caller who
+   * honestly declares `image/heic` can be told now.
+   *
+   * ⚠️ `kindFromMime` cannot do this: it answers `IMAGE` for `image/heic` and
+   * `image/svg+xml` alike, because its job is to **name** a file so a surface
+   * can refuse it, not to decide policy.
+   */
+  describe("🔴 types this platform refuses are refused before the upload", () => {
+    it.each([
+      ["image/heic", /JPEG or PNG/],
+      ["image/heif", /JPEG or PNG/],
+      ["image/avif", /JPEG, PNG or WebP/],
+      ["image/svg+xml", /scripts/],
+    ])("%s never gets a signature", async (contentType, reason) => {
+      const { statusCode, message } = await failure(
+        presign(actor(), { contentType }),
+      );
+
+      expect(statusCode).toBe(400);
+      expect(message).toMatch(reason);
+    });
+
+    it("🔴 and no intent row is written for one", async () => {
+      const who = actor();
+      const before = await Upload.countDocuments({ userId: who.userId });
+
+      await failure(presign(who, { contentType: "image/heic" }));
+
+      // A row here would mean an upload the client could still confirm against.
+      expect(await Upload.countDocuments({ userId: who.userId })).toBe(before);
+    });
+
+    it("⚠️ a real video is not caught by the same net", async () => {
+      // HEIC and MP4 share a container; the refusal must not widen to video.
+      const intent = await presign(actor(), {
+        purpose: UPLOAD_PURPOSE.SHOWCASE_MEDIA,
+        contentType: "video/mp4",
+        fileName: "clip.mp4",
+      });
+
+      expect(intent.uploadId).toBeDefined();
+    });
   });
 });
 
@@ -352,5 +418,146 @@ describe("🔴 what confirm refuses", () => {
     // The intent is left unconsumed — nothing was attached to anything.
     const row = await Upload.findById(intent.uploadId).lean();
     expect(row.consumedAt ?? null).toBeNull();
+  });
+});
+
+/**
+ * 🔴 G5 — the switch that used to be a decoration.
+ *
+ * `Setting.storage.upload.presignEnabled` had a schema entry, a validator, a
+ * line in the admin doc and **no reader at all**: the route was live whatever it
+ * said. Three sibling fields were in the same state — `presignTtlMinutes`,
+ * `intentTtlMinutes`, `signedUrlTtlMinutes` — each converted by
+ * `getStorageConfig` into a value nothing consumed.
+ *
+ * ⚠️ Every test here writes the setting and then reads it back through the real
+ * path, so what is proven is the wiring, not the mock.
+ */
+describe("🔴 presigning can be turned off, and turning it off is survivable", () => {
+  const { writeSetting } = require("./setup/testDb");
+
+  afterEach(async () => {
+    // Back on for whatever runs next in this file.
+    await enablePresign();
+  });
+
+  const intentFor = (who) =>
+    createUploadIntent(who, {
+      purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
+      contentType: "image/png",
+      sizeBytes: 64,
+      fileName: "x.png",
+    });
+
+  it("refuses with 503 when the admin has it off", async () => {
+    await writeSetting({ $set: { "storage.upload.presignEnabled": false } });
+
+    const { statusCode, message } = await failure(intentFor(actor()));
+
+    expect(statusCode).toBe(503);
+    // ⚠️ The message has to name the other road. A client told only "off" has
+    // nothing to do; multipart still works and is one field away.
+    expect(message).toMatch(/multipart/);
+    expect(message).toMatch(/Admin → Settings → Storage/);
+  });
+
+  /**
+   * 🔴 The whole reason `confirm` does not read the flag.
+   *
+   * An admin turning presigning off while uploads are in flight must not strand
+   * them: those bytes are in the bucket and already paid for. Refusing the
+   * confirm would leave an object with no row and a vendor with no explanation.
+   */
+  it("🔴 but an upload already in flight still confirms", async () => {
+    const who = actor();
+    const intent = await intentFor(who);
+    const uploaded = await uploadTo(intent, PNG, "image/png");
+    expect(uploaded.ok).toBe(true);
+
+    // The switch goes off *after* the bytes are up and *before* the confirm.
+    await writeSetting({ $set: { "storage.upload.presignEnabled": false } });
+
+    const confirmed = await confirmUpload(who, intent.uploadId, {});
+
+    expect(confirmed.storage.key).toBeTruthy();
+  });
+
+  /**
+   * 🔴 On, but pointing at the wrong provider.
+   *
+   * This road writes to S3 unconditionally. Left on while the platform is on
+   * Cloudinary, the same surface stores some rows on S3 and some on Cloudinary
+   * depending on which road the client took, and nothing anywhere says so.
+   */
+  it("🔴 refuses when the platform is not on S3", async () => {
+    await writeSetting({ $set: { "storage.provider": "CLOUDINARY" } });
+
+    const { statusCode, message } = await failure(intentFor(actor()));
+
+    expect(statusCode).toBe(409);
+    expect(message).toMatch(/CLOUDINARY/);
+    // Both fixes are legitimate, and the reader cannot see which half they are in.
+    expect(message).toMatch(/AWS_S3/);
+    expect(message).toMatch(/turn presigned upload off/);
+  });
+
+  it("⚠️ and the window it reports is the admin's number, not a constant", async () => {
+    await writeSetting({ $set: { "storage.upload.presignTtlMinutes": 7 } });
+
+    const intent = await intentFor(actor());
+
+    expect(intent.expiresInSeconds).toBe(7 * 60);
+  });
+
+  /**
+   * 🔴 And the window it actually **signs** — which is a different line.
+   *
+   * `presignTtlSeconds` is used twice: once as `Expires` inside
+   * `createPresignedPost`, which is what S3 enforces, and once as
+   * `expiresInSeconds` in the response, which is what the client is told. The
+   * test above only covered the second.
+   *
+   * ⚠️ Mutation found this: hardcoding `Expires: 15 * 60` back left the whole
+   * suite green. The two can drift apart and nothing would notice until a vendor
+   * is told they have seven minutes, starts uploading at minute eight against a
+   * signature S3 considers fine — or, worse, the other way round: told fifteen,
+   * refused at seven, with S3's own XML as the only explanation.
+   *
+   * The policy is base64 JSON carrying its own `expiration`, so this reads what
+   * was signed rather than what was reported.
+   */
+  it("🔴 the window it SIGNS is that number too, not just the one it reports", async () => {
+    await writeSetting({ $set: { "storage.upload.presignTtlMinutes": 7 } });
+
+    const before = Date.now();
+    const intent = await intentFor(actor());
+
+    const policy = JSON.parse(
+      Buffer.from(intent.fields.Policy, "base64").toString("utf8"),
+    );
+    const signedFor = new Date(policy.expiration).getTime() - before;
+
+    // 7 minutes, with room for the round trip that created it.
+    expect(signedFor).toBeGreaterThan(6.5 * 60 * 1000);
+    expect(signedFor).toBeLessThan(7.5 * 60 * 1000);
+    // ⚠️ And explicitly not the constant it used to be.
+    expect(signedFor).toBeLessThan(15 * 60 * 1000);
+  });
+
+  it("⚠️ the intent row outlives that window", async () => {
+    await writeSetting({
+      $set: {
+        "storage.upload.presignTtlMinutes": 5,
+        "storage.upload.intentTtlMinutes": 90,
+      },
+    });
+
+    const before = Date.now();
+    const intent = await intentFor(actor());
+    const row = await Upload.findById(intent.uploadId).lean();
+
+    const livesFor = row.expiresAt.getTime() - before;
+    // Comfortably past the 5-minute signature, near the 90 minutes asked for.
+    expect(livesFor).toBeGreaterThan(80 * 60 * 1000);
   });
 });

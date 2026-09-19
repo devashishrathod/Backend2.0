@@ -1,6 +1,8 @@
 const Voucher = require("../../models/Voucher");
 const { throwError } = require("../../utils");
 const { resolveActorBrand } = require("../../helpers/brands");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
+const { describeIncoming } = require("../storage");
 const { VOUCHER_BANNER_STATUS } = require("../../constants/voucherBanner");
 const {
   uploadVoucherBannerMedia,
@@ -34,12 +36,13 @@ const {
  * read falls back to the voucher's first image (V-4a). "Remove my banner" is
  * therefore not a state the platform has — the endpoint that offered it is gone.
  *
- * @param {object} actor       `{ userId, role, brandId }`
- * @param {string} voucherId
- * @param {object} file        the banner, as `media`
+ * @param {object} actor        `{ userId, role, brandId }`
+ * @param {object} payload      `{ voucherId, bannerUploadId?, bannerPosterUploadId? }`
+ * @param {object} [file]       the banner, attached as `media`
  * @param {object} [posterFile] required when the banner is a video
  */
-exports.setVoucherBanner = async (actor, voucherId, file, posterFile) => {
+exports.setVoucherBanner = async (actor, payload, file, posterFile) => {
+  const { voucherId } = payload;
   const voucher = await Voucher.findOne({ _id: voucherId, isDeleted: false });
   if (!voucher) throwError(404, "Voucher not found.");
 
@@ -54,10 +57,28 @@ exports.setVoucherBanner = async (actor, voucherId, file, posterFile) => {
   const supersededPending =
     voucher.banner?.pending?.toObject?.() ?? voucher.banner?.pending ?? null;
 
-  const newMedia = await uploadVoucherBannerMedia(
+  /**
+   * 🔴 Described before anything is confirmed (U-4). Ownership is checked above
+   * and the banner's own rules are checked inside — both have to be able to
+   * refuse while the upload is still spendable, or a vendor who attaches the
+   * wrong file pays for it twice.
+   */
+  const banner = await describeIncoming(actor, {
     file,
+    uploadId: payload.bannerUploadId,
+    purpose: UPLOAD_PURPOSE.VOUCHER_BANNER,
+  });
+  const poster = await describeIncoming(actor, {
+    file: posterFile,
+    uploadId: payload.bannerPosterUploadId,
+    purpose: UPLOAD_PURPOSE.VOUCHER_BANNER_POSTER,
+  });
+
+  const newMedia = await uploadVoucherBannerMedia(
+    actor,
+    banner,
     voucher._id,
-    posterFile,
+    poster,
   );
 
   voucher.banner.pending = newMedia;

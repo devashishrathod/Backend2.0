@@ -64,6 +64,22 @@ const uploadSchema = new mongoose.Schema(
     declaredSizeBytes: { type: Number },
 
     /**
+     * The name the file had on the uploader's machine.
+     *
+     * 🔴 Kept because surfaces use it as a **default title**. Showcase names each
+     * gallery item after its file, so without this every media added through the
+     * presigned road would arrive untitled while the multipart road filled it in
+     * — the same request, two different results, depending on a road the vendor
+     * never chose.
+     *
+     * ⚠️ It never reaches S3. The object key is a uuid, on purpose: a filename
+     * in a public URL leaks whatever the uploader happened to call the file.
+     * This is a display string and nothing else — capped here so a pathological
+     * name cannot become a title the update endpoint would then refuse.
+     */
+    declaredFileName: { type: String, maxlength: 255, trim: true },
+
+    /**
      * Where it ended up, once confirmed — the same shape every other row uses.
      */
     storage: { type: storageSchema, default: undefined },

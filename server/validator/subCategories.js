@@ -10,6 +10,17 @@ exports.validateCreateSubCategory = (data) => {
     description: Joi.string().allow("").max(300).messages({
       "string.max": "Description cannot exceed {#limit} characters",
     }),
+    /**
+     * 🆕 The presigned road (U-5). A client that already sent its bytes to S3
+     * names the upload here instead of attaching a file.
+     *
+     * ⚠️ Not both — `acceptUpload` refuses a request carrying a file **and** an
+     * uploadId, because picking one silently means the caller believes they sent
+     * the other.
+     */
+    uploadId: objectId().optional().messages({
+      "any.invalid": "Invalid uploadId.",
+    }),
     isActive: Joi.boolean().optional(),
   });
   return createSchema.validate(data, { abortEarly: false });
@@ -26,6 +37,17 @@ exports.validateUpdateSubCategory = (payload) => {
     }),
     categoryId: objectId().messages({
       "any.invalid": "Invalid categoryId format",
+    }),
+    /**
+     * 🆕 The presigned road (U-5). A client that already sent its bytes to S3
+     * names the upload here instead of attaching a file.
+     *
+     * ⚠️ Not both — `acceptUpload` refuses a request carrying a file **and** an
+     * uploadId, because picking one silently means the caller believes they sent
+     * the other.
+     */
+    uploadId: objectId().optional().messages({
+      "any.invalid": "Invalid uploadId.",
     }),
     isActive: Joi.boolean().optional(),
   });

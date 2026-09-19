@@ -14,8 +14,9 @@ const {
   STORAGE_PROVIDER,
   MEDIA_KIND_PREFIX,
 } = require("../../constants/storage");
-const { identify, readDimensions } = require("./inspect");
+const { identify, readDimensions, HEAD_BYTES } = require("./inspect");
 const { prefix } = require("./keys");
+const { getUploadLimit } = require("../../helpers/settings");
 const { throwError } = require("../../utils");
 
 /**
@@ -41,9 +42,6 @@ const { throwError } = require("../../utils");
  * Anything that never gets that far is removed by the bucket's own lifecycle
  * rule — no cron, no sweep job.
  */
-
-/** Enough to hold every signature and every dimension header we read. */
-const HEAD_BYTES = 1024;
 
 const readHead = async (client, bucket, key) => {
   const result = await client.send(
@@ -131,6 +129,40 @@ exports.confirmUpload = async (actor, uploadId, { entityId } = {}) => {
     throwError(
       422,
       `${intent.purpose} does not accept ${identified.name} files.`,
+    );
+  }
+
+  /**
+   * 🔴 How big it **really** is, against the limit as it stands **now**.
+   *
+   * Nothing checked this before. The presign policy's `content-length-range` was
+   * the only size enforcement on this road, and a policy is written once, at
+   * presign time — so two things slipped past it:
+   *
+   * - the policy carried the **static** ceiling, not the admin's (fixed in
+   *   `presign`, but every signature issued before that is still valid for its
+   *   full fifteen minutes)
+   * - an admin can lower the limit **between** the presign and the confirm, and
+   *   the signature in the client's hand does not change when they do
+   *
+   * ⚠️ Checked per **verified** kind, not per declared one. A 40 MB file
+   * announced as a GIF and actually a video is metered as a video — which is the
+   * whole reason the kind is settled from the bytes a few lines above.
+   *
+   * The object is discarded, exactly as a refused type is. Leaving it would mean
+   * a caller could park oversize objects in `staging/` at will, one failed
+   * confirm at a time.
+   */
+  const { maxBytes, maxSizeMB } = await getUploadLimit(
+    intent.purpose,
+    identified.kind,
+  );
+  if (head.ContentLength > maxBytes) {
+    await discard(client, bucket, intent.stagingKey);
+    throwError(
+      413,
+      `That file is ${Math.ceil(head.ContentLength / 1024 / 1024)} MB. ` +
+        `The limit here is ${maxSizeMB} MB.`,
     );
   }
 

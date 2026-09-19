@@ -103,8 +103,17 @@ const assertVoucherImageSize = (file, { maxBytes, maxSizeMB }) => {
 };
 
 /**
+ * ### ⚠️ It takes **descriptions**, not files (U-4)
+ *
+ * `items` is what `describeAllIncoming` answered: `{ name, mimetype, size }`
+ * plus exactly one of `file` or `uploadId`. Both roads produce the same shape,
+ * so everything above reads the same fields it always did — and which road each
+ * image came down stops being this file's business.
+ *
+ * @param actor      whose upload it is — the facade looks an intent up by id
+ *                   **and** owner, so a signed permission is not transferable
  * @param voucherId  goes into the object key.
- * @returns {Promise<Array>} `mediaSchema` values, in the order the files came
+ * @returns {Promise<Array>} `mediaSchema` values, in the order the items came
  *
  * ⚠️ No `sortOrder` here any more. It used to be stamped onto the upload result,
  * which mixed "what this file is" with "where it sits in the gallery" — the two
@@ -112,13 +121,13 @@ const assertVoucherImageSize = (file, { maxBytes, maxSizeMB }) => {
  * image rows, and it is the only place that knows about the images already
  * there.
  */
-exports.uploadVoucherImages = async (files, voucherId) => {
+exports.uploadVoucherImages = async (actor, items, voucherId) => {
   const uploaded = [];
   try {
-    for (const file of files) {
-      const uploadedImage = await storage.uploadFromPath({
-        filePath: file.tempFilePath,
-        originalFile: file,
+    for (const item of items) {
+      const uploadedImage = await storage.acceptUpload(actor, {
+        file: item.file,
+        uploadId: item.uploadId,
         purpose: UPLOAD_PURPOSE.VOUCHER_IMAGE,
         entityId: voucherId,
       });

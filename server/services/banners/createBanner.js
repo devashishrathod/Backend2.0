@@ -10,8 +10,15 @@ const {
   BANNER_MEDIA_FILE_FIELD,
   BANNER_POSTER_FILE_FIELD,
 } = require("../../helpers/banners");
+const { describeIncoming } = require("../storage");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
-exports.createBanner = async (userId, payload, files) => {
+/**
+ * ⚠️ `actor` where it used to be a bare `userId` (U-5): the facade looks an
+ * upload intent up by id **and** owner, so it has to know who is asking.
+ */
+exports.createBanner = async (actor, payload, files) => {
+  const userId = actor.userId;
   const {
     title,
     description,
@@ -28,10 +35,21 @@ exports.createBanner = async (userId, payload, files) => {
 
   // Minted before the upload, because the object key carries it.
   const _id = new mongoose.Types.ObjectId();
+  // 🔴 Described before anything is confirmed — the capacity check above has to
+  // be able to refuse while the upload is still spendable.
   const media = await uploadBannerMedia(
-    files?.[BANNER_MEDIA_FILE_FIELD],
+    actor,
+    await describeIncoming(actor, {
+      file: files?.[BANNER_MEDIA_FILE_FIELD],
+      uploadId: payload.mediaUploadId,
+      purpose: UPLOAD_PURPOSE.BANNER_MEDIA,
+    }),
     _id,
-    files?.[BANNER_POSTER_FILE_FIELD],
+    await describeIncoming(actor, {
+      file: files?.[BANNER_POSTER_FILE_FIELD],
+      uploadId: payload.posterUploadId,
+      purpose: UPLOAD_PURPOSE.BANNER_POSTER,
+    }),
   );
 
   try {

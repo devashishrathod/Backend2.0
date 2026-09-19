@@ -6,10 +6,9 @@ const {
 } = require("../../constants/voucherBanner");
 
 exports.setBanner = asyncWrapper(async (req, res) => {
-  const { voucherId } = req.validatedData;
   const result = await setVoucherBanner(
     { userId: req.userId, role: req.role, brandId: req.brandId },
-    voucherId,
+    req.validatedData,
     // One field name whatever the file is — the kind comes from the bytes (V-4).
     req.files?.[VOUCHER_BANNER_FILE_FIELD],
     // ⚠️ Required when the banner is a video — nothing derives a poster.

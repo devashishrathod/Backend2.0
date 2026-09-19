@@ -3,6 +3,6 @@ const { registerUser } = require("../../services/auth");
 
 exports.register = asyncWrapper(async (req, res) => {
   const image = req.files?.image;
-  const result = await registerUser(req.validatedData, image);
+  const result = await registerUser({ userId: req.userId, role: req.role }, req.validatedData, image);
   return sendSuccess(res, 201, "User registered successfully", result);
 });

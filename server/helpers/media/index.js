@@ -4,6 +4,7 @@ const {
   toMediaListResponse,
 } = require("./toMediaResponse");
 const { toMediaDocument, toDeletable } = require("./toMediaDocument");
+const { discardOnFailure } = require("./discardOnFailure");
 
 module.exports = {
   assertImageFile,
@@ -11,4 +12,5 @@ module.exports = {
   toMediaListResponse,
   toMediaDocument,
   toDeletable,
+  discardOnFailure,
 };

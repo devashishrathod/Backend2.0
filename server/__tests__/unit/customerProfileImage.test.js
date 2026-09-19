@@ -2,6 +2,9 @@ const Customer = require("../../models/Customer");
 const User = require("../../models/User");
 const { mediaSchema } = require("../../models/mediaSchema");
 const { MEDIA_KIND } = require("../../constants/storage");
+const { localFile, cleanup } = require("../support/localFile");
+
+afterAll(cleanup);
 
 /**
  * Where a customer's photo lives, and why it is only one place.
@@ -95,7 +98,14 @@ describe("🔴 one field, one writer", () => {
         findById: async () => customer,
       }));
       jest.doMock("../../services/storage", () => ({
-        uploadFromPath: async () => ({
+        /**
+         * ⚠️ The **real** `describeIncoming` (U-5), not a stub. The service asks
+         * it what is arriving before it spends anything, and a stub here would
+         * quietly replace the one step that decides which road the request took.
+         * On the multipart road it just reads the file it was handed.
+         */
+        ...jest.requireActual("../../services/storage/accept"),
+        acceptUpload: async () => ({
           url: "https://cdn.example.com/new.webp",
           storage: { provider: "AWS_S3", bucket: "b", key: "k" },
           metadata: { mimeType: "image/webp", size: 10 },
@@ -111,11 +121,13 @@ describe("🔴 one field, one writer", () => {
       ({ updateUserById } = require("../../services/users/updateUserById"));
     });
 
-    await updateUserById("u1", {}, {
-      tempFilePath: "/tmp/x.webp",
-      mimetype: "image/webp",
-      name: "x.webp",
-    });
+    /**
+     * ⚠️ A **real** file, because `describeIncoming` is the real one above and
+     * now reads the first kilobyte (G2). A made-up `tempFilePath` used to work
+     * only because nothing on this road ever opened the file — which was the
+     * bug, not a convenience.
+     */
+    await updateUserById("u1", {}, localFile("webp", { name: "x.webp" }));
 
     return { user, customer, deleted };
   };

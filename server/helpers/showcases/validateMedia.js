@@ -22,9 +22,23 @@ exports.countVideos = (files = []) => {
   return files.filter((file) => file.mimetype.startsWith("video")).length;
 };
 
+/**
+ * The file's name, without its extension — the default title and alt text.
+ *
+ * ⚠️ Capped, because it becomes a **stored field with its own limit**. The
+ * update endpoint refuses a title over 100 characters and alt text over 150, and
+ * this path writes them directly: a 300-character filename produced a media the
+ * vendor could look at and not edit, because every save of it was refused for a
+ * value they never typed.
+ *
+ * `path.parse` also drops any directory part, so a name like
+ * `../../etc/passwd.png` becomes `passwd`.
+ */
+const TITLE_MAX = 100;
+
 exports.getFileNameWithoutExtension = (fileName) => {
   if (!fileName) return "";
-  return path.parse(fileName).name;
+  return path.parse(fileName).name.trim().slice(0, TITLE_MAX);
 };
 
 exports.validateMediaFiles = (

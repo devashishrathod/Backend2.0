@@ -106,11 +106,119 @@ describe("what is refused by name", () => {
     });
   });
 
+  /**
+   * 🔴 The whole family shares MP4's container, so "starts with ftyp" calls a
+   * photo a video. On the four surfaces that accept video that is not a
+   * refusal — it is a photo stored under `videos/` as `video/mp4`, which no
+   * player opens and nothing logs.
+   */
+  describe("🔴 HEIC and AVIF — same container as MP4, told apart by the brand", () => {
+    const iso = (brand) =>
+      Buffer.concat([
+        Buffer.from([0, 0, 0, 0x18]),
+        Buffer.from("ftyp"),
+        Buffer.from(brand),
+        Buffer.alloc(32),
+      ]);
+
+    test.each([
+      ["heic", "HEIC"],
+      ["heix", "HEIC"],
+      ["hevc", "HEIC"],
+      // Some cameras write the generic HEIF brand instead of `heic`.
+      ["mif1", "HEIC"],
+      ["msf1", "HEIC"],
+      ["avif", "AVIF"],
+      ["avis", "AVIF"],
+    ])("%s is refused by name, not stored as a video", (brand, name) => {
+      expect(identify(iso(brand))).toMatchObject({ refused: true, name });
+    });
+
+    test.each([["isom"], ["mp42"], ["qt  "], ["3gp4"], ["avc1"]])(
+      "%s is still a video — the video brands are not the list being guarded",
+      (brand) => {
+        expect(identify(iso(brand))).toMatchObject({
+          name: "MP4/MOV",
+          kind: "VIDEO",
+        });
+      },
+    );
+
+    test("🔴 the reason tells an iPhone owner what to actually do", () => {
+      const { reason } = identify(iso("heic"));
+      // A refusal a normal customer will meet has to end somewhere other than
+      // "no" — the setting that fixes it for good is three taps away.
+      expect(reason).toMatch(/JPEG or PNG/);
+      expect(reason).toMatch(/Most Compatible/);
+    });
+
+    test("the brand is read case-insensitively", () => {
+      expect(identify(iso("HEIC"))).toMatchObject({ refused: true });
+    });
+
+    test("⚠️ a file too short to hold a brand is not guessed at", () => {
+      // "ftyp" present, brand truncated — treated as an ordinary ISO file
+      // rather than refused on four bytes that were never read.
+      const stub = Buffer.concat([Buffer.alloc(4), Buffer.from("ftyp")]);
+      expect(identify(stub)).toMatchObject({ name: "MP4/MOV" });
+    });
+  });
+
   test("HTML is refused too", () => {
     expect(identify(Buffer.from("<!DOCTYPE html><html></html>"))).toMatchObject({
       refused: true,
       name: "HTML",
     });
+  });
+});
+
+/**
+ * 🔴 The same refusal reached by name, so the presign road can say it **before**
+ * the bytes are spent rather than after.
+ */
+describe("refusalForMime — the presign road's half", () => {
+  const { refusalForMime } = require("../../services/storage/inspect");
+
+  test.each([
+    ["image/heic", "HEIC"],
+    ["image/heif", "HEIC"],
+    ["image/avif", "AVIF"],
+    ["image/svg+xml", "SVG"],
+    ["text/html", "HTML"],
+  ])("%s is refused before a signature is minted", (mime, name) => {
+    expect(refusalForMime(mime)).toMatchObject({ refused: true, name });
+  });
+
+  test.each([["image/jpeg"], ["image/png"], ["image/gif"], ["video/mp4"], ["application/pdf"]])(
+    "%s is not refused here",
+    (mime) => {
+      expect(refusalForMime(mime)).toBeNull();
+    },
+  );
+
+  test("case and whitespace do not get one past", () => {
+    expect(refusalForMime("  IMAGE/HEIC ")).toMatchObject({ name: "HEIC" });
+  });
+
+  test.each([[""], [null], [undefined]])("%p is null, not a refusal", (mime) => {
+    // No declared type is the surface's problem to answer, not this one's —
+    // refusing here would turn a missing field into a wrong explanation.
+    expect(refusalForMime(mime)).toBeNull();
+  });
+
+  /**
+   * 🔴 The two roads must refuse the **same set**, or a file is refused on one
+   * and stored on the other — which is the exact class of bug Block G closed.
+   */
+  test("every by-name refusal has a by-bytes refusal behind it", () => {
+    const { REFUSED } = require("../../services/storage/inspect");
+    for (const entry of REFUSED) {
+      expect(Array.isArray(entry.mimes)).toBe(true);
+      expect(entry.mimes.length).toBeGreaterThan(0);
+      expect(typeof entry.test).toBe("function");
+      // And the words are one string, not two that can drift apart.
+      expect(refusalForMime(entry.mimes[0]).reason).toBe(entry.reason);
+    }
   });
 });
 
@@ -168,5 +276,74 @@ describe("dimensions, from the same bytes", () => {
 
   test("a video has no dimensions here — that is the Lambda's job", () => {
     expect(readDimensions(FILES.mp4, "MP4/MOV")).toBeNull();
+  });
+});
+
+/**
+ * 🔴 G2 — the same two answers, read off a file that is already on this disk.
+ *
+ * `confirm` fetches an uploaded object's head with a ranged GET. The multipart
+ * road has the file sitting in `tempFileDir` already, so it costs a local open
+ * — and until this existed, that road read nothing at all and trusted the
+ * `Content-Type` header the client wrote.
+ */
+describe("🔴 inspectLocalFile — the multipart road's half", () => {
+  const fs = require("fs");
+  const os = require("os");
+  const path = require("path");
+  const { inspectLocalFile, HEAD_BYTES } = require("../../services/storage/inspect");
+
+  const written = [];
+  const write = (bytes) => {
+    const file = path.join(os.tmpdir(), `inspect-${Date.now()}-${Math.random()}`);
+    fs.writeFileSync(file, bytes);
+    written.push(file);
+    return file;
+  };
+
+  afterAll(() => written.forEach((f) => fs.rmSync(f, { force: true })));
+
+  test("it reads the same verdict the ranged GET would", () => {
+    const { identified } = inspectLocalFile(write(FILES.png));
+    expect(identified).toMatchObject({ kind: "IMAGE", mime: "image/png" });
+  });
+
+  test("and the dimensions come off the same bytes", () => {
+    // 7 × 11 — this file's own PNG fixture, read straight out of its IHDR.
+    const { dimensions } = inspectLocalFile(write(FILES.png));
+    expect(dimensions).toEqual({ width: 7, height: 11 });
+  });
+
+  test("🔴 a refusal keeps its own reason, for the caller to repeat", () => {
+    const { identified } = inspectLocalFile(write(FILES.svg ?? Buffer.from("<svg />")));
+    expect(identified).toMatchObject({ refused: true, name: "SVG" });
+  });
+
+  test("something no signature matches is `null`, not a guess", () => {
+    const { identified } = inspectLocalFile(write(Buffer.from("plain text, at length")));
+    expect(identified).toBeNull();
+  });
+
+  /**
+   * ⚠️ A file smaller than the window is normal, not an error — the read just
+   * returns fewer bytes and the signature still matches from offset zero.
+   */
+  test("a file shorter than the read window still identifies", () => {
+    expect(HEAD_BYTES).toBeGreaterThan(FILES.gif.length);
+    const { identified } = inspectLocalFile(write(FILES.gif));
+    expect(identified).toMatchObject({ kind: "GIF" });
+  });
+
+  /**
+   * 🔴 Our bug, and it has to say so. `useTempFiles` off means every file
+   * arrives as a buffer instead, and `openSync(undefined)` answers
+   * "ENOENT ... open 'undefined'" — which sends the reader looking for a missing
+   * upload rather than a changed middleware option.
+   */
+  test("🔴 a missing tempFilePath is named as a server-side mistake", () => {
+    expect(() => inspectLocalFile(undefined)).toThrow(/useTempFiles/);
+    expect(() => inspectLocalFile(undefined)).toThrow(
+      expect.objectContaining({ statusCode: 500 }),
+    );
   });
 });

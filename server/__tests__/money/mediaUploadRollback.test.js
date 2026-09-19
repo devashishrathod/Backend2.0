@@ -92,8 +92,18 @@ const { createBanner } = require("../../services/banners/createBanner");
 const { deleteBanner } = require("../../services/banners/deleteBanner");
 const { createTicker } = require("../../services/promotionalTickers/createTicker");
 const { deleteTicker } = require("../../services/promotionalTickers/deleteTicker");
+const { localFile, cleanup: cleanupFixtures } = require("../support/localFile");
+
+afterAll(cleanupFixtures);
 
 const USER = new mongoose.Types.ObjectId();
+
+/**
+ * ⚠️ `actor`, not a bare id (U-5). These services take `{ userId, role }` now,
+ * because the facade looks an upload intent up by id **and** owner — so it has
+ * to know who is asking, and a bare `userId` could not carry the role.
+ */
+const ACTOR = { userId: USER, role: "ADMIN" };
 
 /**
  * ⚠️ What the uploaders return is a `mediaSchema` value now (M-3), not a loose
@@ -109,16 +119,17 @@ const UPLOADED = {
   storage: { provider: "CLOUDINARY", publicId: "a", bucket: null, key: null },
 };
 
-// `mimetype` is not checked here — both uploaders are mocked, and the real mime
-// allow-list lives inside them. It is set anyway so the fixture describes a file
-// that could actually exist; the version without it is what made
-// `brandFeatureOwnership` fail the moment a real check appeared upstream.
-const file = () => ({
-  name: "a.png",
-  tempFilePath: "/tmp/a.png",
-  size: 67,
-  mimetype: "image/png",
-});
+/**
+ * A real PNG on disk.
+ *
+ * ⚠️ It used to be an object with a made-up `tempFilePath`, and the comment here
+ * explained that the mime "is not checked, but set anyway so the fixture
+ * describes a file that could actually exist". G2 turned that courtesy into a
+ * requirement: both roads now read the first kilobyte, so a fixture has to **be**
+ * what it claims. The same shortcut is what made `brandFeatureOwnership` fail
+ * the last time a real check appeared upstream.
+ */
+const file = () => localFile("png", { name: "a.png" });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -143,11 +154,21 @@ describe("createBanner — one file field, and the id that ties row to object", 
   test("the file comes from `media`, whatever kind it turns out to be", async () => {
     Banner.create.mockResolvedValue({ _id: new mongoose.Types.ObjectId() });
 
-    await createBanner(USER, { title: "t" }, { media: file() });
+    await createBanner(ACTOR, { title: "t" }, { media: file() });
 
-    const [calledFile, calledId, calledPoster] = uploadBannerMedia.mock.calls[0];
-    expect(calledFile).toEqual(expect.objectContaining({ name: "a.png" }));
-    expect(calledPoster).toBeUndefined();
+    // ⚠️ `(actor, file, bannerId, poster)` since U-5 — the actor comes first.
+    const [calledActor, calledFile, calledId, calledPoster] =
+      uploadBannerMedia.mock.calls[0];
+    expect(String(calledActor.userId)).toBe(String(USER));
+    /**
+     * ⚠️ A **description**, not the raw file: `{ name, mimetype, size }` plus
+     * one of `file` or `uploadId`. Both roads produce this shape, which is what
+     * lets the helper read the same fields whichever one the request came down.
+     */
+    expect(calledFile).toEqual(
+      expect.objectContaining({ name: "a.png", uploadId: null }),
+    );
+    expect(calledPoster).toBeNull();
 
     expect(Banner.create).toHaveBeenCalledWith(
       expect.objectContaining({ media: UPLOADED }),
@@ -171,9 +192,9 @@ describe("createBanner — one file field, and the id that ties row to object", 
   test("a video's poster travels with it", async () => {
     Banner.create.mockResolvedValue({ _id: new mongoose.Types.ObjectId() });
 
-    await createBanner(USER, { title: "t" }, { media: file(), poster: file() });
+    await createBanner(ACTOR, { title: "t" }, { media: file(), poster: file() });
 
-    const [, , calledPoster] = uploadBannerMedia.mock.calls[0];
+    const [, , , calledPoster] = uploadBannerMedia.mock.calls[0];
     expect(calledPoster).toEqual(expect.objectContaining({ name: "a.png" }));
   });
 
@@ -190,14 +211,17 @@ describe("createBanner — one file field, and the id that ties row to object", 
       }),
     );
 
-    await expect(createBanner(USER, { title: "t" }, {})).rejects.toMatchObject({
+    await expect(createBanner(ACTOR, { title: "t" }, {})).rejects.toMatchObject({
       statusCode: 422,
     });
 
     expect(uploadBannerMedia).toHaveBeenCalledWith(
-      undefined,
+      expect.objectContaining({ userId: USER }),
+      // `describeIncoming` answers `null` when nothing arrived — the uploader is
+      // still the one that refuses, with the field name in the message.
+      null,
       expect.anything(),
-      undefined,
+      null,
     );
     expect(Banner.create).not.toHaveBeenCalled();
   });
@@ -213,7 +237,7 @@ describe("createBanner — one file field, and the id that ties row to object", 
     );
 
     await expect(
-      createBanner(USER, { title: "t" }, { media: file() }),
+      createBanner(ACTOR, { title: "t" }, { media: file() }),
     ).rejects.toMatchObject({ statusCode: 409 });
 
     expect(uploadBannerMedia).not.toHaveBeenCalled();
@@ -225,7 +249,7 @@ describe("createBanner — a failed insert must not strand the upload", () => {
     Banner.create.mockRejectedValue(new Error("E11000 duplicate key"));
 
     await expect(
-      createBanner(USER, { title: "t" }, { media: file() }),
+      createBanner(ACTOR, { title: "t" }, { media: file() }),
     ).rejects.toThrow(/E11000/);
 
     // ⚠️ The whole point. Without this line the asset lives in storage for
@@ -244,14 +268,14 @@ describe("createBanner — a failed insert must not strand the upload", () => {
     );
 
     await expect(
-      createBanner(USER, { title: "" }, { media: file() }),
+      createBanner(ACTOR, { title: "" }, { media: file() }),
     ).rejects.toMatchObject({ statusCode: 422, message: "Title is required" });
   });
 
   test("nothing is deleted when the insert succeeds", async () => {
     Banner.create.mockResolvedValue({ _id: new mongoose.Types.ObjectId() });
 
-    await createBanner(USER, { title: "t" }, { media: file() });
+    await createBanner(ACTOR, { title: "t" }, { media: file() });
 
     expect(deleteBannerMedia).not.toHaveBeenCalled();
   });
@@ -261,7 +285,7 @@ describe("createTicker — same shape, same rollback", () => {
   test("the icon is uploaded and stored", async () => {
     PromotionalTicker.create.mockResolvedValue({ _id: new mongoose.Types.ObjectId() });
 
-    await createTicker(USER, { title: "t", displayOrder: 1 }, { icon: file() });
+    await createTicker(ACTOR, { title: "t", displayOrder: 1 }, { icon: file() });
 
     expect(uploadTickerIcon).toHaveBeenCalled();
     expect(PromotionalTicker.create).toHaveBeenCalledWith(
@@ -273,7 +297,7 @@ describe("createTicker — same shape, same rollback", () => {
     PromotionalTicker.create.mockRejectedValue(new Error("validation failed"));
 
     await expect(
-      createTicker(USER, { title: "t" }, { icon: file() }),
+      createTicker(ACTOR, { title: "t" }, { icon: file() }),
     ).rejects.toThrow(/validation failed/);
 
     expect(deleteTickerIcon).toHaveBeenCalledWith(UPLOADED);
@@ -291,13 +315,17 @@ describe("createTicker — same shape, same rollback", () => {
       Object.assign(new Error("Please upload an icon image."), { statusCode: 422 }),
     );
 
-    await expect(createTicker(USER, { title: "t" }, {})).rejects.toMatchObject({
+    await expect(createTicker(ACTOR, { title: "t" }, {})).rejects.toMatchObject({
       statusCode: 422,
     });
 
     // The missing file is still the first argument; the second is the id the
     // object key would have been built from, minted before the upload.
-    expect(uploadTickerIcon).toHaveBeenCalledWith(undefined, expect.anything());
+    expect(uploadTickerIcon).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: USER }),
+      null,
+      expect.anything(),
+    );
     expect(PromotionalTicker.create).not.toHaveBeenCalled();
   });
 });

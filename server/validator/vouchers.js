@@ -79,50 +79,12 @@ const offersSchema = Joi.any()
     "any.required": "At least one offer is required.",
   });
 
-exports.validateCreateVoucher = {
-  body: Joi.object({
-    brandId: objectId().required().messages({
-      "any.required": "Brand ID is required.",
-      "any.invalid": "Invalid Brand ID.",
-    }),
-    name: Joi.string().trim().min(2).max(150).required(),
-    description: Joi.string().trim().max(2000).optional(),
-    tags: Joi.array()
-      .items(Joi.string().messages({ "any.invalid": "Invalid tag" }))
-      .min(1)
-      .optional(),
-    startAt: Joi.date().iso().required(),
-    endAt: Joi.date().iso().required(),
-    offers: offersSchema,
-    subBrandIds: Joi.array()
-      .items(
-        objectId().messages({
-          "any.invalid": "Invalid sub-brand ID.",
-        }),
-      )
-      .min(1)
-      .required(),
-    isSaveAsDraft: Joi.boolean().optional().default(true),
-    /**
-     * ⚠️ No bannerType any more (V-4). The banner file arrives as "media" and
-     * what it is comes from the bytes, so a payload field naming the type was a
-     * second answer to a question the file already answers.
-     */
-  }),
-};
-
-exports.validateSetVoucherBanner = {
-  params: {
-    voucherId: objectId().required().messages({
-      "any.required": "Voucher ID is required.",
-      "any.invalid": "Invalid voucher ID.",
-    }),
-  },
-  // No body — the file is the request. Its kind comes from the bytes (V-4).
-  body: Joi.object({}),
-};
-
-
+/**
+ * ⚠️ Moved above `validateCreateVoucher` (U-4), which now uses it too. It was
+ * declared between the two schemas, so a `const` in the temporal dead zone
+ * would have thrown at module load — the kind of failure that takes the whole
+ * process down at boot rather than one request.
+ */
 const jsonTolerantArray = (itemSchema, { label = "Item" } = {}) =>
   Joi.any().custom((value, helpers) => {
     if (value === undefined || value === null || value === "") return [];
@@ -166,6 +128,87 @@ const jsonTolerantArray = (itemSchema, { label = "Item" } = {}) =>
     return parsedItems;
   });
 
+exports.validateCreateVoucher = {
+  body: Joi.object({
+    brandId: objectId().required().messages({
+      "any.required": "Brand ID is required.",
+      "any.invalid": "Invalid Brand ID.",
+    }),
+    name: Joi.string().trim().min(2).max(150).required(),
+    description: Joi.string().trim().max(2000).optional(),
+    tags: Joi.array()
+      .items(Joi.string().messages({ "any.invalid": "Invalid tag" }))
+      .min(1)
+      .optional(),
+    startAt: Joi.date().iso().required(),
+    endAt: Joi.date().iso().required(),
+    offers: offersSchema,
+    subBrandIds: Joi.array()
+      .items(
+        objectId().messages({
+          "any.invalid": "Invalid sub-brand ID.",
+        }),
+      )
+      .min(1)
+      .required(),
+    isSaveAsDraft: Joi.boolean().optional().default(true),
+    /**
+     * ⚠️ No bannerType any more (V-4). The banner file arrives as "media" and
+     * what it is comes from the bytes, so a payload field naming the type was a
+     * second answer to a question the file already answers.
+     */
+
+    /**
+     * 🆕 The presigned road (U-4). A client that already sent its bytes to S3
+     * names the uploads here instead of attaching files.
+     *
+     * ⚠️ `jsonTolerantArray` because this endpoint is multipart — a list arrives
+     * either as repeated form fields or as one JSON string, and both have to
+     * work.
+     *
+     * ⚠️ Mixed is allowed: some attached, some already on S3. What is refused is
+     * one *item* claiming to be both, which `acceptUpload` answers with a 422.
+     */
+    imageUploadIds: jsonTolerantArray(
+      objectId().messages({ "any.invalid": "Invalid uploadId." }),
+      { label: "Image upload" },
+    ).optional(),
+    bannerUploadId: objectId().optional().messages({
+      "any.invalid": "Invalid bannerUploadId.",
+    }),
+    /**
+     * ⚠️ Its own purpose (`VOUCHER_BANNER_POSTER`), not the banner's — a video
+     * and its still are two uploads, and an id meant for one must not be
+     * spendable as the other.
+     */
+    bannerPosterUploadId: objectId().optional().messages({
+      "any.invalid": "Invalid bannerPosterUploadId.",
+    }),
+  }),
+};
+
+exports.validateSetVoucherBanner = {
+  params: {
+    voucherId: objectId().required().messages({
+      "any.required": "Voucher ID is required.",
+      "any.invalid": "Invalid voucher ID.",
+    }),
+  },
+  /**
+   * 🆕 The body used to be empty — the file *was* the request. On the presigned
+   * road the file never arrives, so the ids are the request instead (U-4).
+   */
+  body: Joi.object({
+    bannerUploadId: objectId().optional().messages({
+      "any.invalid": "Invalid bannerUploadId.",
+    }),
+    bannerPosterUploadId: objectId().optional().messages({
+      "any.invalid": "Invalid bannerPosterUploadId.",
+    }),
+  }),
+};
+
+
 exports.validateUpdateVoucher = {
   params: {
     voucherId: objectId().required().messages({
@@ -194,6 +237,12 @@ exports.validateUpdateVoucher = {
     removeImageIds: jsonTolerantArray(objectId(), {
       label: "Image ID",
     }).optional(),
+
+    // 🆕 The presigned road (U-4) — see `validateCreateVoucher`.
+    newImageUploadIds: jsonTolerantArray(
+      objectId().messages({ "any.invalid": "Invalid uploadId." }),
+      { label: "Image upload" },
+    ).optional(),
 
     newSubBrandIds: jsonTolerantArray(objectId(), {
       label: "Sub-brand ID",

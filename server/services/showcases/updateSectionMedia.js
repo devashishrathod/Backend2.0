@@ -2,6 +2,7 @@ const { throwError } = require("../../utils");
 const storage = require("../storage");
 const { UPLOAD_PURPOSE, MEDIA_KIND } = require("../../constants/storage");
 const { getShowcaseConfig } = require("../../helpers/settings");
+const { describeIncoming } = require("../storage");
 const {
   resolveSectionForActor,
   validateThumbnailFile,
@@ -35,7 +36,10 @@ exports.updateSectionMedia = async (actor, payload, thumbnailFile) => {
   const hasFieldUpdate = [title, altText, isShowInVideoClips, isActive].some(
     (value) => value !== undefined,
   );
-  if (!hasFieldUpdate && !thumbnailFile) {
+  // ⚠️ Asked before the poster is described (U-3): an id that is about to be
+  // refused should not change whether "you sent nothing" is the right answer.
+  const hasThumbnail = Boolean(thumbnailFile || payload.thumbnailUploadId);
+  if (!hasFieldUpdate && !hasThumbnail) {
     throwError(400, "Please provide at least one field to update.");
   }
 
@@ -75,7 +79,7 @@ exports.updateSectionMedia = async (actor, payload, thumbnailFile) => {
     });
   }
 
-  if (thumbnailFile && !isVideo) {
+  if (hasThumbnail && !isVideo) {
     throwError(
       422,
       "A custom thumbnail can only be set on video media. This media is a photo.",
@@ -93,18 +97,28 @@ exports.updateSectionMedia = async (actor, payload, thumbnailFile) => {
   const previousPoster = item.media?.poster?.toObject?.() ?? item.media?.poster;
   let uploadedThumbnail = null;
 
-  if (thumbnailFile) {
+  if (hasThumbnail) {
+    /**
+     * ⚠️ Described first, accepted second (U-3). `validateThumbnailFile` reads
+     * `mimetype` and `size`, and on the presigned road those live on the intent
+     * row rather than on a file — so the surface's own rule runs **before** the
+     * upload is spent, exactly as it did when a file arrived.
+     */
+    const poster = await describeIncoming(actor, {
+      file: thumbnailFile,
+      uploadId: payload.thumbnailUploadId,
+      purpose: UPLOAD_PURPOSE.SHOWCASE_THUMBNAIL,
+    });
     const config = await getShowcaseConfig();
-    validateThumbnailFile(thumbnailFile, config);
+    validateThumbnailFile(poster, config);
     // Not swallowed any more. The upload failure used to be logged and the
     // request answered `200`, so the vendor was told their new poster had been
     // saved while the old one was still live.
-    uploadedThumbnail = await storage.uploadFromPath({
-      filePath: thumbnailFile.tempFilePath,
-      originalFile: thumbnailFile,
+    uploadedThumbnail = await storage.acceptUpload(actor, {
+      file: poster.file,
+      uploadId: poster.uploadId,
       purpose: UPLOAD_PURPOSE.SHOWCASE_THUMBNAIL,
       entityId: section._id,
-      kind: MEDIA_KIND.IMAGE,
     });
     /**
      * ⚠️ The poster replaces the one on the media, wholesale.

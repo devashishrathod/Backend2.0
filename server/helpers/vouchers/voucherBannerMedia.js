@@ -34,12 +34,21 @@ const { throwError } = require("../../utils");
  * `getOptimizedImageUrl(publicId)` builds an `/image/upload/` path for an asset
  * that lives under `/video/upload/` (a 404), and S3 produces none at all.
  *
- * @param file        the banner file, arriving as `media`
+ * ### ⚠️ It takes **descriptions**, not files (U-4)
+ *
+ * `item` is what `describeIncoming` answered: `{ name, mimetype, size }` plus
+ * exactly one of `file` or `uploadId`. Both roads produce the same shape, so
+ * every rule below reads the same fields it always did.
+ *
+ * @param actor       whose upload it is — the facade looks an intent up by id
+ *                    **and** owner, so a signed permission is not transferable
+ * @param file        the banner's description — `{ name, mimetype, size }` plus
+ *                    one of `file` or `uploadId`
  * @param voucherId   goes into the object key — see `helpers/banners/media.js`
- * @param posterFile  required when the banner is a video
+ * @param posterFile  the same shape, required when the banner is a video
  * @returns {Promise<object>} a `mediaSchema` value
  */
-exports.uploadVoucherBannerMedia = async (file, voucherId, posterFile) => {
+exports.uploadVoucherBannerMedia = async (actor, file, voucherId, posterFile) => {
   if (!file) {
     throwError(
       422,
@@ -88,22 +97,33 @@ exports.uploadVoucherBannerMedia = async (file, voucherId, posterFile) => {
     assertWithinSize(posterFile, posterKind, config, "poster");
   }
 
-  const uploaded = await storage.uploadFromPath({
-    filePath: file.tempFilePath,
-    originalFile: file,
+  const uploaded = await storage.acceptUpload(actor, {
+    file: file.file,
+    uploadId: file.uploadId,
     purpose: UPLOAD_PURPOSE.VOUCHER_BANNER,
     entityId: voucherId,
-    kind,
   });
 
   let poster;
   if (isVideo) {
-    const uploadedPoster = await storage.uploadFromPath({
-      filePath: posterFile.tempFilePath,
-      originalFile: posterFile,
-      purpose: UPLOAD_PURPOSE.VOUCHER_BANNER,
+    /**
+     * 🔴 `VOUCHER_BANNER_POSTER`, not `VOUCHER_BANNER` — a fix, not a
+     * translation.
+     *
+     * Same bucket, same `vouchers/<id>` prefix, so nothing moves. What differs
+     * is the allowance: a poster is capped at 10 MB and refuses VIDEO outright,
+     * which is right for a still. This path sent it as `VOUCHER_BANNER` and
+     * bought it the banner's 50 MB.
+     *
+     * On the presigned road the purpose is also the **only** thing telling the
+     * two apart — share it and the ids become interchangeable, which means the
+     * tighter of the two rules is the one a caller can skip.
+     */
+    const uploadedPoster = await storage.acceptUpload(actor, {
+      file: posterFile.file,
+      uploadId: posterFile.uploadId,
+      purpose: UPLOAD_PURPOSE.VOUCHER_BANNER_POSTER,
       entityId: voucherId,
-      kind: MEDIA_KIND.IMAGE,
     });
 
     // ⚠️ The video is already in the bucket if this fails. No row points at it

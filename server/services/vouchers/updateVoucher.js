@@ -30,6 +30,8 @@ const {
 } = require("../../constants/voucher");
 const { getVoucherConfig } = require("../../helpers/settings");
 const { resolveActorBrand } = require("../../helpers/brands");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
+const { describeAllIncoming } = require("../storage");
 
 const mergeTags = (existingTags = [], newTags = [], removedTags = []) => {
   const removeSet = new Set(
@@ -342,10 +344,19 @@ exports.updateVoucher = async (actor, payload = {}, images) => {
       maxOffers,
     );
 
-    const voucherFiles = normalizeVoucherImages(images);
+    // 🔴 Described before anything is confirmed — see `createVoucher`.
+    const voucherFiles = await describeAllIncoming(actor, {
+      files: normalizeVoucherImages(images),
+      uploadIds: payload.newImageUploadIds,
+      purpose: UPLOAD_PURPOSE.VOUCHER_IMAGE,
+    });
     validateVoucherImages(voucherFiles, voucherConfig);
     if (voucherFiles.length) {
-      uploadedImages = await uploadVoucherImages(voucherFiles, voucher._id);
+      uploadedImages = await uploadVoucherImages(
+        actor,
+        voucherFiles,
+        voucher._id,
+      );
     }
 
     const { finalImages, removedImages } = mergeImages(

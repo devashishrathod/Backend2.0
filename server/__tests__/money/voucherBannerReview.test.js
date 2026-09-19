@@ -26,6 +26,9 @@ jest.mock("../../helpers/brands/resolveActorBrand", () => ({
 jest.mock("../../helpers/vouchers/voucherBannerMedia", () => ({
   ...jest.requireActual("../../helpers/vouchers/voucherBannerMedia"),
   deleteVoucherBannerMedia: jest.fn().mockResolvedValue(undefined),
+  // ⚠️ The upload itself is covered in `unit/voucherMedia`; what the U-4 block
+  // below proves is that the ids reach it, and with the right purpose.
+  uploadVoucherBannerMedia: jest.fn(),
 }));
 
 const Voucher = require("../../models/Voucher");
@@ -47,7 +50,16 @@ const {
 } = require("../../services/vouchers/submitVoucherForReview");
 const {
   deleteVoucherBannerMedia,
+  uploadVoucherBannerMedia,
 } = require("../../helpers/vouchers/voucherBannerMedia");
+const {
+  setVoucherBanner,
+} = require("../../services/vouchers/setVoucherBanner");
+const Upload = require("../../models/Upload");
+const {
+  resolveActorBrand,
+} = require("../../helpers/brands/resolveActorBrand");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const {
   generateBrandMerchantId,
 } = require("../../helpers/brands/generateBrandMerchantId");
@@ -161,13 +173,132 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await clearCollections(Voucher, VoucherVersion, VoucherSubBrand, Brand, Setting);
+  await clearCollections(
+    Voucher,
+    VoucherVersion,
+    VoucherSubBrand,
+    Brand,
+    Setting,
+    Upload,
+  );
   await disconnectTestDb();
 });
 
 beforeEach(async () => {
   jest.clearAllMocks();
-  await clearCollections(Voucher, VoucherVersion, VoucherSubBrand, Brand, Setting);
+  uploadVoucherBannerMedia.mockResolvedValue({
+    url: "https://example.test/banner.webp",
+    kind: "IMAGE",
+    storage: { provider: "AWS_S3", bucket: "b", key: "k" },
+  });
+  await clearCollections(
+    Voucher,
+    VoucherVersion,
+    VoucherSubBrand,
+    Brand,
+    Setting,
+    Upload,
+  );
+});
+
+/**
+ * U-4 — submitting a banner by `uploadId`.
+ *
+ * ⚠️ No S3 here. `describeIncoming` reads the intent row and nothing else, so an
+ * inserted row is the whole fixture; the upload itself is mocked, exactly as the
+ * delete already was.
+ */
+describe("🔴 a banner can be named instead of attached", () => {
+  const intent = async (userId, purpose) =>
+    String(
+      (
+        await Upload.create({
+          userId,
+          purpose,
+          stagingKey: `staging/${oid()}.png`,
+          declaredContentType: "image/png",
+          declaredSizeBytes: 1024,
+          declaredFileName: "banner.png",
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        })
+      )._id,
+    );
+
+  const submit = async (payload, brand) => {
+    try {
+      return {
+        result: await setVoucherBanner(
+          { userId: brand.userId, role: "VENDOR", brandId: brand._id },
+          payload,
+        ),
+        error: null,
+      };
+    } catch (error) {
+      return { result: null, error };
+    }
+  };
+
+  test("the id reaches the upload, with its actor", async () => {
+    const { voucher, brand } = await seedVoucher();
+    resolveActorBrand.mockResolvedValue(brand);
+    const banner = await intent(brand.userId, UPLOAD_PURPOSE.VOUCHER_BANNER);
+
+    const { error } = await submit(
+      { voucherId: String(voucher._id), bannerUploadId: banner },
+      brand,
+    );
+
+    expect(error).toBeNull();
+    expect(uploadVoucherBannerMedia).toHaveBeenCalled();
+    const [actor, described] = uploadVoucherBannerMedia.mock.calls[0];
+    expect(String(actor.userId)).toBe(String(brand.userId));
+    expect(described.uploadId).toBe(banner);
+  });
+
+  /**
+   * 🔴 A banner and its poster are two uploads, and the **purpose** is the only
+   * thing telling them apart. Share it and the ids become interchangeable —
+   * which makes the poster's tighter rule (10 MB, no video) the one a caller can
+   * skip, simply by sending them the other way round.
+   */
+  test("a banner's id cannot be spent as its poster", async () => {
+    const { voucher, brand } = await seedVoucher();
+    resolveActorBrand.mockResolvedValue(brand);
+    const banner = await intent(brand.userId, UPLOAD_PURPOSE.VOUCHER_BANNER);
+    const wrongPoster = await intent(
+      brand.userId,
+      UPLOAD_PURPOSE.VOUCHER_BANNER,
+    );
+
+    const { error } = await submit(
+      {
+        voucherId: String(voucher._id),
+        bannerUploadId: banner,
+        bannerPosterUploadId: wrongPoster,
+      },
+      brand,
+    );
+
+    expect(error).toMatchObject({ statusCode: 422 });
+    expect(error.message).toContain("VOUCHER_BANNER_POSTER");
+    // 🔴 And nothing was spent — both ids are still theirs.
+    expect(uploadVoucherBannerMedia).not.toHaveBeenCalled();
+  });
+
+  test("somebody else's id is refused as if it did not exist", async () => {
+    const { voucher, brand } = await seedVoucher();
+    resolveActorBrand.mockResolvedValue(brand);
+    const stranger = await intent(oid(), UPLOAD_PURPOSE.VOUCHER_BANNER);
+
+    const { error } = await submit(
+      { voucherId: String(voucher._id), bannerUploadId: stranger },
+      brand,
+    );
+
+    // 404, not 403 — "not yours" about a real id confirms the id is real.
+    expect(error).toMatchObject({ statusCode: 404 });
+    expect(uploadVoucherBannerMedia).not.toHaveBeenCalled();
+  });
 });
 
 describe("approving a banner", () => {

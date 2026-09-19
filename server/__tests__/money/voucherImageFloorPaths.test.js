@@ -52,6 +52,16 @@ jest.mock("../../helpers/vouchers/validateImagesFiles", () => ({
   uploadVoucherImages: jest.fn(),
   rollbackVoucherImages: jest.fn().mockResolvedValue(undefined),
 }));
+/**
+ * ⚠️ The banner's own upload is mocked for the same reason the images' is: this
+ * file is about the rules **around** the upload. What the banner ids have to
+ * prove here is that they reach the describe step at all, and with the right
+ * purpose — the upload itself is covered in `unit/voucherMedia`.
+ */
+jest.mock("../../helpers/vouchers/voucherBannerMedia", () => ({
+  ...jest.requireActual("../../helpers/vouchers/voucherBannerMedia"),
+  uploadVoucherBannerMedia: jest.fn(),
+}));
 
 /**
  * ⚠️ Outlet resolution is mocked for the same reason, and it matters more than
@@ -97,7 +107,13 @@ const {
 const {
   uploadVoucherImages,
 } = require("../../helpers/vouchers/validateImagesFiles");
+const {
+  uploadVoucherBannerMedia,
+} = require("../../helpers/vouchers/voucherBannerMedia");
 const { ROLES } = require("../../constants");
+const Upload = require("../../models/Upload");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
+const { localFile, cleanup: cleanupFixtures } = require("../support/localFile");
 
 const oid = () => new mongoose.Types.ObjectId();
 let seq = 0;
@@ -232,6 +248,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  cleanupFixtures();
   await clearCollections(
     Voucher,
     VoucherVersion,
@@ -239,6 +256,7 @@ afterAll(async () => {
     VoucherSubBrand,
     Brand,
     Setting,
+    Upload,
   );
   await disconnectTestDb();
 });
@@ -246,6 +264,11 @@ afterAll(async () => {
 beforeEach(async () => {
   jest.clearAllMocks();
   uploadVoucherImages.mockResolvedValue([]);
+  uploadVoucherBannerMedia.mockResolvedValue({
+    url: "https://example.test/banner.webp",
+    kind: "IMAGE",
+    storage: { provider: "AWS_S3", bucket: "b", key: "k" },
+  });
   await clearCollections(
     Voucher,
     VoucherVersion,
@@ -253,16 +276,20 @@ beforeEach(async () => {
     VoucherSubBrand,
     Brand,
     Setting,
+    Upload,
   );
 });
 
-/** An uploaded file as `express-fileupload` hands it over. */
-const uploadFile = (index) => ({
-  name: `photo-${index}.jpg`,
-  mimetype: "image/jpeg",
-  size: 1024 * 1024,
-  tempFilePath: `/tmp/photo-${index}.jpg`,
-});
+/**
+ * An uploaded file as `express-fileupload` hands it over — **a real one**.
+ *
+ * ⚠️ `uploadVoucherImages` is mocked, so no bytes leave this machine. But the
+ * floor is worked out by `describeAllIncoming`, which is not mocked and which
+ * since G2 opens every incoming file to see what it actually is. A made-up
+ * `tempFilePath` now fails with `ENOENT` before the count is ever reached —
+ * and an `ENOENT` is not the 422 this suite is about.
+ */
+const uploadFile = (index) => localFile("jpeg", { name: `photo-${index}.jpg` });
 
 describe("create — refused before a single byte is uploaded", () => {
   const create = async (fileCount, brand) =>
@@ -330,6 +357,219 @@ describe("create — refused before a single byte is uploaded", () => {
   });
 });
 
+/**
+ * U-4 — the same rules, reached through an `uploadId` instead of a file.
+ *
+ * ### 🔴 What is actually under test
+ *
+ * That the floor, the count and the mime allow-list all run on what an
+ * `uploadId` **claims to be**, and run **before** the upload is spent. A vendor
+ * one image short of the floor has to be told while their picker is open, not
+ * after paying for the uploads — and on this road "paying" already happened, so
+ * what they lose is the upload itself.
+ *
+ * ⚠️ No S3 here. `describeIncoming` reads the intent row and nothing else, so an
+ * inserted row is the whole fixture. `uploadVoucherImages` stays mocked, as it
+ * is for the file cases above — the facade's own round trip is proven against
+ * the real bucket in `uploadAccept`, `categoryUpload` and `showcaseUpload`.
+ */
+describe("🔴 create — the same floor, reached by uploadId", () => {
+  const intent = async (who, over = {}) =>
+    String(
+      (
+        await Upload.create({
+          userId: who,
+          purpose: over.purpose ?? UPLOAD_PURPOSE.VOUCHER_IMAGE,
+          stagingKey: `staging/${oid()}.jpg`,
+          declaredContentType: over.contentType ?? "image/jpeg",
+          declaredSizeBytes: over.size ?? 1024 * 1024,
+          declaredFileName: over.fileName ?? "photo.jpg",
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        })
+      )._id,
+    );
+
+  const createWith = async (brand, body) =>
+    attempt(() =>
+      createVoucher(
+        { userId: brand.userId, role: ROLES.VENDOR, brandId: brand._id },
+        {
+          brandId: String(brand._id),
+          name: "new voucher",
+          categoryId: String(oid()),
+          subCategoryId: String(oid()),
+          startAt: daysFromNow(2).toISOString(),
+          endAt: daysFromNow(60).toISOString(),
+          offers: [offer],
+          subBrandIds: [String(oid())],
+          ...body,
+        },
+        undefined,
+      ),
+    );
+
+  test("two uploadIds is the same refusal a file would have got", async () => {
+    const { brand } = await draftVoucher(3);
+    resolveActorBrand.mockResolvedValue(brand);
+    const ids = [await intent(brand.userId), await intent(brand.userId)];
+
+    expect(await createWith(brand, { imageUploadIds: ids })).toMatchObject({
+      statusCode: 422,
+      message: "A voucher needs at least 3 images — this one has 2. Add 1 more.",
+    });
+    // 🔴 And the uploads are still theirs to spend.
+    expect(uploadVoucherImages).not.toHaveBeenCalled();
+  });
+
+  test("three goes through, and the ids arrive as descriptions", async () => {
+    const { brand } = await draftVoucher(3);
+    resolveActorBrand.mockResolvedValue(brand);
+    const ids = [
+      await intent(brand.userId, { fileName: "one.jpg" }),
+      await intent(brand.userId, { fileName: "two.jpg" }),
+      await intent(brand.userId, { fileName: "three.jpg" }),
+    ];
+
+    await createWith(brand, { imageUploadIds: ids });
+
+    expect(uploadVoucherImages).toHaveBeenCalled();
+    const [actor, items] = uploadVoucherImages.mock.calls[0];
+    // ⚠️ The actor reaches the facade — without it every presigned upload
+    // answers "not found", and no multipart test would ever notice.
+    expect(String(actor.userId)).toBe(String(brand.userId));
+    expect(items.map((item) => item.uploadId)).toEqual(ids);
+    expect(items.map((item) => item.name)).toEqual([
+      "one.jpg",
+      "two.jpg",
+      "three.jpg",
+    ]);
+  });
+
+  test("a mixed batch counts as one list", async () => {
+    const { brand } = await draftVoucher(3);
+    resolveActorBrand.mockResolvedValue(brand);
+    const named = await intent(brand.userId);
+
+    await attempt(() =>
+      createVoucher(
+        { userId: brand.userId, role: ROLES.VENDOR, brandId: brand._id },
+        {
+          brandId: String(brand._id),
+          name: "new voucher",
+          categoryId: String(oid()),
+          subCategoryId: String(oid()),
+          startAt: daysFromNow(2).toISOString(),
+          endAt: daysFromNow(60).toISOString(),
+          offers: [offer],
+          subBrandIds: [String(oid())],
+          imageUploadIds: [named],
+        },
+        { images: [uploadFile(1), uploadFile(2)] },
+      ),
+    );
+
+    // Two attached + one named = three, which clears the floor. Counting the
+    // roads separately would have refused this.
+    expect(uploadVoucherImages).toHaveBeenCalled();
+    const [, items] = uploadVoucherImages.mock.calls[0];
+    // ⚠️ Files first, then ids — the order `acceptUploads` uses.
+    expect(items.map((item) => Boolean(item.uploadId))).toEqual([
+      false,
+      false,
+      true,
+    ]);
+  });
+
+  test("somebody else's uploadId is refused as if it did not exist", async () => {
+    const { brand } = await draftVoucher(3);
+    resolveActorBrand.mockResolvedValue(brand);
+    const ids = [
+      await intent(brand.userId),
+      await intent(brand.userId),
+      await intent(oid()),
+    ];
+
+    expect(await createWith(brand, { imageUploadIds: ids })).toMatchObject({
+      statusCode: 404,
+    });
+    expect(uploadVoucherImages).not.toHaveBeenCalled();
+  });
+
+  test("a named banner reaches the banner upload", async () => {
+    const { brand } = await draftVoucher(3);
+    resolveActorBrand.mockResolvedValue(brand);
+    const ids = [
+      await intent(brand.userId),
+      await intent(brand.userId),
+      await intent(brand.userId),
+    ];
+    const banner = await intent(brand.userId, {
+      purpose: UPLOAD_PURPOSE.VOUCHER_BANNER,
+      contentType: "image/png",
+    });
+
+    await createWith(brand, { imageUploadIds: ids, bannerUploadId: banner });
+
+    expect(uploadVoucherBannerMedia).toHaveBeenCalled();
+    const [actor, described] = uploadVoucherBannerMedia.mock.calls[0];
+    expect(String(actor.userId)).toBe(String(brand.userId));
+    expect(described.uploadId).toBe(banner);
+  });
+
+  /**
+   * 🔴 A banner and its poster are two uploads, and the **purpose** is the only
+   * thing telling them apart. Share it and the ids become interchangeable —
+   * which means the poster's tighter rule (10 MB, no video) is the one a caller
+   * can skip, simply by sending them the other way round.
+   */
+  test("a banner's id cannot be spent as its poster", async () => {
+    const { brand } = await draftVoucher(3);
+    resolveActorBrand.mockResolvedValue(brand);
+    const ids = [
+      await intent(brand.userId),
+      await intent(brand.userId),
+      await intent(brand.userId),
+    ];
+    const banner = await intent(brand.userId, {
+      purpose: UPLOAD_PURPOSE.VOUCHER_BANNER,
+    });
+    // Presigned as a banner, sent as the poster.
+    const wrongPoster = await intent(brand.userId, {
+      purpose: UPLOAD_PURPOSE.VOUCHER_BANNER,
+    });
+
+    const error = await createWith(brand, {
+      imageUploadIds: ids,
+      bannerUploadId: banner,
+      bannerPosterUploadId: wrongPoster,
+    });
+
+    expect(error).toMatchObject({ statusCode: 422 });
+    expect(error.message).toContain("VOUCHER_BANNER_POSTER");
+    expect(uploadVoucherBannerMedia).not.toHaveBeenCalled();
+  });
+
+  /**
+   * 🔴 A stranger's id with the **wrong** purpose — the case the ownership
+   * lookup really exists for. With a matching purpose the request falls through
+   * to `acceptUpload`, whose own owner check answers the same 404; this one does
+   * not fall through, so a leaky lookup would answer **422** and name the
+   * surface the upload was for.
+   */
+  test("and does not leak what it was for", async () => {
+    const { brand } = await draftVoucher(3);
+    resolveActorBrand.mockResolvedValue(brand);
+    const stranger = await intent(oid(), {
+      purpose: UPLOAD_PURPOSE.VOUCHER_BANNER,
+    });
+
+    const error = await createWith(brand, { imageUploadIds: [stranger] });
+
+    expect(error.statusCode).toBe(404);
+    expect(error.message).not.toContain("VOUCHER_BANNER");
+  });
+});
+
 describe("edit — the floor is on what the edit leaves behind", () => {
   /**
    * 🔴 The case a check on "files that arrived" cannot see.
@@ -361,6 +601,63 @@ describe("edit — the floor is on what the edit leaves behind", () => {
       statusCode: 422,
       message: "A voucher needs at least 3 images — this one has 2. Add 1 more.",
     });
+  });
+
+  /**
+   * 🔴 The edit road's own `uploadId` list.
+   *
+   * ⚠️ Mutation found this one: the floor on an edit is computed from **kept
+   * minus removed plus added**, and "added" has to include the named uploads.
+   * Reading only the attached files makes every presigned edit look like it
+   * added nothing — so removing two of four while naming two replacements would
+   * be refused, and the vendor would be told to add images they had already
+   * uploaded.
+   */
+  test("named uploads count as added when the floor is worked out", async () => {
+    const fixture = await draftVoucher(4);
+    resolveActorBrand.mockResolvedValue(fixture.brand);
+
+    const stored = await VoucherVersion.findById(fixture.version._id).lean();
+    const removeImageIds = stored.images.slice(0, 2).map((i) => String(i._id));
+    const replacement = String(
+      (
+        await Upload.create({
+          userId: fixture.userId,
+          purpose: UPLOAD_PURPOSE.VOUCHER_IMAGE,
+          stagingKey: `staging/${oid()}.jpg`,
+          declaredContentType: "image/jpeg",
+          declaredSizeBytes: 1024,
+          declaredFileName: "replacement.jpg",
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        })
+      )._id,
+    );
+    uploadVoucherImages.mockResolvedValue([
+      { url: "https://example.test/new.webp", kind: "IMAGE" },
+    ]);
+
+    const error = await attempt(() =>
+      updateVoucher(
+        {
+          userId: fixture.userId,
+          role: ROLES.VENDOR,
+          brandId: fixture.brand._id,
+        },
+        {
+          voucherId: String(fixture.voucher._id),
+          removeImageIds,
+          newImageUploadIds: [replacement],
+        },
+        undefined,
+      ),
+    );
+
+    // 4 − 2 + 1 = 3, exactly the floor. Ignoring the named upload would make it
+    // 2 and refuse an edit that is perfectly fine.
+    expect(error).toBeNull();
+    const [actor, items] = uploadVoucherImages.mock.calls[0];
+    expect(String(actor.userId)).toBe(String(fixture.userId));
+    expect(items.map((item) => item.uploadId)).toEqual([replacement]);
   });
 
   test("a refused edit removes nothing", async () => {

@@ -543,3 +543,84 @@ describe("🔴 a private object has no URL, and asking for one must not throw", 
     ).toThrow(/no public URL/);
   });
 });
+
+/**
+ * 🔴 G5 — how long a document link lives is the admin's number.
+ *
+ * `Setting.storage.delivery.signedUrlTtlMinutes` had a schema entry, a
+ * validator and a line in the admin doc, and **nothing read it**: `s3.js` used
+ * its own five-minute constant whatever the panel said.
+ *
+ * ⚠️ Read in the facade rather than inside the provider, so the provider stays
+ * what its own header calls it — a key, a bucket and the bytes. How long a link
+ * should live is a platform decision, not an S3 one.
+ */
+describe("🔴 a document link expires when the admin says, not when s3.js says", () => {
+  const s3 = require("../../services/storage/providers/s3");
+
+  const asset = {
+    url: null,
+    storage: {
+      provider: "AWS_S3",
+      bucket: "trydood-nonprod-private",
+      key: "documents/TD-VCH-26-27-000001.pdf",
+    },
+  };
+
+  let signed;
+  beforeEach(() => {
+    signed = jest
+      .spyOn(s3, "signedGetUrl")
+      .mockResolvedValue("https://signed.test/x?X-Amz-Expires=600");
+  });
+  afterEach(() => signed.mockRestore());
+
+  test("the configured TTL reaches the signer", async () => {
+    mockStorageConfig.signedUrlTtlSeconds = 11 * 60;
+
+    await storage.documentUrl(asset);
+
+    expect(signed).toHaveBeenCalledWith(
+      expect.objectContaining({ expiresIn: 11 * 60 }),
+    );
+  });
+
+  test("⚠️ and changing it changes what is signed, with no deploy", async () => {
+    mockStorageConfig.signedUrlTtlSeconds = 60;
+    await storage.documentUrl(asset);
+    expect(signed).toHaveBeenLastCalledWith(
+      expect.objectContaining({ expiresIn: 60 }),
+    );
+
+    mockStorageConfig.signedUrlTtlSeconds = 30 * 60;
+    await storage.documentUrl(asset);
+    expect(signed).toHaveBeenLastCalledWith(
+      expect.objectContaining({ expiresIn: 30 * 60 }),
+    );
+  });
+
+  test("the object it signs is the one it was handed", async () => {
+    mockStorageConfig.signedUrlTtlSeconds = 300;
+
+    await storage.documentUrl(asset);
+
+    expect(signed).toHaveBeenCalledWith(
+      expect.objectContaining({ storage: asset.storage }),
+    );
+  });
+
+  /**
+   * ⚠️ Cloudinary has nothing short-lived to mint — its delivery URL is the only
+   * one there is. So the TTL is not read at all there, and asking for it must
+   * not become a reason to fail.
+   */
+  test("a Cloudinary document still answers with its permanent URL", async () => {
+    const cloudinaryDoc = {
+      url: "https://res.cloudinary.test/invoice",
+      storage: { provider: "CLOUDINARY", publicId: "invoice", bucket: null, key: null },
+    };
+
+    await expect(storage.documentUrl(cloudinaryDoc)).resolves.toBeTruthy();
+    expect(signed).not.toHaveBeenCalled();
+  });
+});

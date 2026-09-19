@@ -297,20 +297,49 @@ describe("counts and filters ask the file, not a label", () => {
 describe("uploadSingleMedia — what it refuses before paying for an upload", () => {
   const { uploadSingleMedia } = require("../../helpers/showcases/upload");
   const storageFacade = require("../../services/storage");
+  const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
-  const file = (mimetype) => ({ mimetype, tempFilePath: "/tmp/x" });
+  const who = { userId: "u1", role: "VENDOR" };
 
-  let uploadSpy;
+  /**
+   * ⚠️ A `describeIncoming` result, not a raw file (U-3).
+   *
+   * The helper takes a description now — `{ name, mimetype, size }` plus exactly
+   * one of `file` or `uploadId` — so every rule below reads the same fields
+   * whichever road the item came down. `presigned()` is the same item arriving
+   * as an id instead.
+   */
+  const item = (mimetype) => ({
+    name: "clip",
+    mimetype,
+    size: 10,
+    uploadId: null,
+    file: { mimetype, tempFilePath: "/tmp/x" },
+  });
+  const presigned = (mimetype) => ({
+    name: "clip",
+    mimetype,
+    size: 10,
+    uploadId: "68f1a2b3c4d5e6f7a8b9e001",
+    file: null,
+  });
+
+  let acceptSpy;
   beforeEach(() => {
-    uploadSpy = jest
-      .spyOn(storageFacade, "uploadFromPath")
-      .mockImplementation(async ({ kind }) => ({
-        url: `https://cdn.example.com/x.${kind === MEDIA_KIND.VIDEO ? "mp4" : "webp"}`,
+    acceptSpy = jest
+      .spyOn(storageFacade, "acceptUpload")
+      .mockImplementation(async ({ file, purpose }) => ({
+        url: `https://cdn.example.com/x-${purpose}.webp`,
         storage: storageRef,
-        metadata: { mimeType: "image/webp", size: 10, width: 8, height: 6 },
+        metadata: {
+          mimeType: file?.mimetype ?? "image/webp",
+          size: 10,
+          width: 8,
+          height: 6,
+        },
       }));
   });
-  afterEach(() => uploadSpy.mockRestore());
+  afterEach(() => acceptSpy.mockRestore());
 
   const refusal = async (...args) => {
     try {
@@ -322,14 +351,14 @@ describe("uploadSingleMedia — what it refuses before paying for an upload", ()
   };
 
   test("no file at all", async () => {
-    expect(await refusal(undefined, "s1")).toMatchObject({
+    expect(await refusal(who, undefined, "s1")).toMatchObject({
       status: 400,
       message: "Media file is required.",
     });
   });
 
   test("a PDF is not gallery media", async () => {
-    expect(await refusal(file("application/pdf"), "s1")).toMatchObject({
+    expect(await refusal(who, item("application/pdf"), "s1")).toMatchObject({
       status: 400,
       message: "Unsupported media type.",
     });
@@ -343,65 +372,101 @@ describe("uploadSingleMedia — what it refuses before paying for an upload", ()
    * field the caller has to fix.
    */
   test("a video with no poster is refused before the upload", async () => {
-    expect(await refusal(file("video/mp4"), "s1")).toMatchObject({
-      status: 422,
-      message: 'A video needs a poster image. Attach one as "thumbnail".',
-    });
-    expect(uploadSpy).not.toHaveBeenCalled();
+    const answer = await refusal(who, item("video/mp4"), "s1");
+
+    expect(answer.status).toBe(422);
+    // Both roads named, because the caller may be on either one.
+    expect(answer.message).toContain("thumbnail");
+    expect(answer.message).toContain("thumbnailUploadIds");
+    expect(acceptSpy).not.toHaveBeenCalled();
+  });
+
+  test("the same is true of a presigned video", async () => {
+    const answer = await refusal(who, presigned("video/mp4"), "s1");
+
+    expect(answer.status).toBe(422);
+    expect(acceptSpy).not.toHaveBeenCalled();
   });
 
   test("a poster that is itself a video is refused", async () => {
     expect(
-      await refusal(file("video/mp4"), "s1", file("video/mp4")),
+      await refusal(who, item("video/mp4"), "s1", item("video/mp4")),
     ).toMatchObject({
       status: 422,
       message: expect.stringMatching(/poster has to be a still image/),
     });
-    expect(uploadSpy).not.toHaveBeenCalled();
+    expect(acceptSpy).not.toHaveBeenCalled();
   });
 
   test("a GIF poster is refused too — a poster is a still frame", async () => {
     expect(
-      await refusal(file("video/mp4"), "s1", file("image/gif")),
+      await refusal(who, item("video/mp4"), "s1", item("image/gif")),
     ).toMatchObject({ status: 422 });
   });
 
   /**
    * 🔴 A GIF is an `image/*` file, so every "is this an image" check passes it —
    * which is how one ends up under `images/` and gets its animation flattened.
-   * The kind goes to the facade explicitly so it lands under `gifs/`.
+   *
+   * ⚠️ The kind is no longer handed to the provider by this helper; the facade
+   * derives it from the mime. So what this pins is the **stored** kind, which is
+   * what decides the prefix and what every reader downstream believes.
    */
   test("a GIF routes as a GIF, not as an image", async () => {
-    const media = await uploadSingleMedia(file("image/gif"), "s1");
+    const media = await uploadSingleMedia(who, item("image/gif"), "s1");
 
     expect(media.kind).toBe(MEDIA_KIND.GIF);
-    expect(uploadSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: MEDIA_KIND.GIF }),
-    );
   });
 
   test("a video uploads its poster and stores it on the media", async () => {
     const media = await uploadSingleMedia(
-      file("video/mp4"),
+      who,
+      item("video/mp4"),
       "s1",
-      file("image/webp"),
+      item("image/webp"),
     );
 
     expect(media.kind).toBe(MEDIA_KIND.VIDEO);
     expect(media.poster).toMatchObject({ url: expect.stringContaining("http") });
-    // The video with its own kind, then the poster forced to IMAGE.
-    expect(uploadSpy).toHaveBeenNthCalledWith(
+
+    /**
+     * 🔴 The video under `SHOWCASE_MEDIA`, the poster under
+     * `SHOWCASE_THUMBNAIL`. Same bucket and prefix, different allowance: a
+     * poster is capped at 10 MB and refuses VIDEO outright. This path used to
+     * send the poster as `SHOWCASE_MEDIA` and buy it a video's 50 MB.
+     */
+    expect(acceptSpy).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ kind: MEDIA_KIND.VIDEO }),
+      who,
+      expect.objectContaining({ purpose: UPLOAD_PURPOSE.SHOWCASE_MEDIA }),
     );
-    expect(uploadSpy).toHaveBeenNthCalledWith(
+    expect(acceptSpy).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ kind: MEDIA_KIND.IMAGE }),
+      who,
+      expect.objectContaining({ purpose: UPLOAD_PURPOSE.SHOWCASE_THUMBNAIL }),
+    );
+  });
+
+  /**
+   * ⚠️ The actor reaches the facade. It looks an upload intent up by id **and**
+   * owner, so dropping it makes every presigned upload answer "not found" — and
+   * nothing on the multipart road would notice, because that road never reads it.
+   */
+  test("a presigned item is handed to the facade as an id, with its actor", async () => {
+    await uploadSingleMedia(who, presigned("image/webp"), "s1");
+
+    expect(acceptSpy).toHaveBeenCalledWith(
+      who,
+      expect.objectContaining({
+        uploadId: "68f1a2b3c4d5e6f7a8b9e001",
+        file: null,
+        entityId: "s1",
+      }),
     );
   });
 
   test("a photo needs no poster", async () => {
-    const media = await uploadSingleMedia(file("image/webp"), "s1");
+    const media = await uploadSingleMedia(who, item("image/webp"), "s1");
 
     expect(media.kind).toBe(MEDIA_KIND.IMAGE);
     expect(media.poster).toBeUndefined();
@@ -437,5 +502,90 @@ describe("prepareMediaDocuments", () => {
     expect(
       prepareMediaDocuments([videoMedia()], 1, false)[0].isShowInVideoClips,
     ).toBe(false);
+  });
+});
+
+describe("🔴 the title a file gives itself has to fit the field", () => {
+  const {
+    getFileNameWithoutExtension,
+  } = require("../../helpers/showcases/validateMedia");
+
+  /**
+   * ⚠️ `title` is capped at 100 characters and `altText` at 150 by the update
+   * endpoint — but `prepareMediaDocuments` writes both directly, from the file's
+   * own name. A long filename therefore produced a media the vendor could look
+   * at and **not edit**: every save of it was refused for a value they never
+   * typed and could not see the length of.
+   *
+   * Found by mutation. Removing the cap left every other test green, because
+   * every fixture had a short name.
+   */
+  test("a very long filename is cut to the field's own limit", () => {
+    const name = `${"a".repeat(300)}.jpg`;
+
+    expect(getFileNameWithoutExtension(name)).toHaveLength(100);
+  });
+
+  test("an ordinary name is left exactly as it is", () => {
+    expect(getFileNameWithoutExtension("a quiet corner.jpg")).toBe(
+      "a quiet corner",
+    );
+  });
+
+  /**
+   * ⚠️ `path.parse` drops any directory part, so a name a client controls
+   * cannot carry one into a stored field.
+   */
+  test("a path in the name keeps only the last segment", () => {
+    expect(getFileNameWithoutExtension("../../etc/passwd.png")).toBe("passwd");
+  });
+
+  test("no name at all is an empty string, not a crash", () => {
+    expect(getFileNameWithoutExtension(undefined)).toBe("");
+  });
+});
+
+describe("🔴 the showcase validator refuses a malformed uploadId", () => {
+  const {
+    validateAddMedia,
+    validateReplaceMedia,
+    validateUpdateMedia,
+  } = require("../../validator/showcase");
+
+  const messages = (schema, body) =>
+    schema.validate(body, { abortEarly: false }).error?.details.map(
+      (detail) => detail.message,
+    ) ?? [];
+
+  /**
+   * ⚠️ The first gate, and the only one that answers before anything is loaded —
+   * so a malformed id never becomes a database lookup, and never becomes a `404`
+   * that reads as if the upload had expired.
+   */
+  test("add-media refuses a bad id in either list", () => {
+    expect(messages(validateAddMedia.body, { uploadIds: ["nope"] })).toContain(
+      "Invalid uploadId.",
+    );
+    expect(
+      messages(validateAddMedia.body, { thumbnailUploadIds: ["nope"] }),
+    ).toContain("Invalid thumbnailUploadId.");
+  });
+
+  test("replace and update refuse one too", () => {
+    expect(messages(validateReplaceMedia.body, { uploadId: "nope" })).toContain(
+      "Invalid uploadId.",
+    );
+    expect(
+      messages(validateUpdateMedia.body, { thumbnailUploadId: "nope" }),
+    ).toContain("Invalid thumbnailUploadId.");
+  });
+
+  test("a real id is accepted, as a list or on its own", () => {
+    const id = "68f1a2b3c4d5e6f7a8b9e001";
+
+    expect(messages(validateAddMedia.body, { uploadIds: [id] })).toEqual([]);
+    // ⚠️ `.single()` — a form sending one value does not send an array.
+    expect(messages(validateAddMedia.body, { uploadIds: id })).toEqual([]);
+    expect(messages(validateReplaceMedia.body, { uploadId: id })).toEqual([]);
   });
 });

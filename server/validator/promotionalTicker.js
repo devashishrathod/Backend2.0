@@ -80,6 +80,11 @@ exports.validateCreateTicker = {
       redirect: jsonTolerantObject(redirectObjectSchema, {
         label: "Redirect",
       }).optional(),
+      // 🆕 The presigned road (U-5) — an icon already on S3, named instead of
+      // attached.
+      iconUploadId: objectId().optional().messages({
+        "any.invalid": "Invalid iconUploadId.",
+      }),
       displayOrder: Joi.number().integer().min(0).optional().default(0),
       startDate: Joi.date().iso().optional().allow(null),
       endDate: Joi.date().iso().optional().allow(null),
@@ -101,6 +106,11 @@ exports.validateUpdateTicker = {
       redirect: jsonTolerantObject(redirectObjectSchema, {
         label: "Redirect",
       }).optional(),
+      // 🆕 The presigned road (U-5) — an icon already on S3, named instead of
+      // attached.
+      iconUploadId: objectId().optional().messages({
+        "any.invalid": "Invalid iconUploadId.",
+      }),
       displayOrder: Joi.number().integer().min(0).optional(),
       startDate: Joi.date().iso().optional().allow(null),
       endDate: Joi.date().iso().optional().allow(null),

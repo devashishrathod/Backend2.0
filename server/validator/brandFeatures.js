@@ -16,6 +16,13 @@ exports.validateAddBrandFeature = {
     description: Joi.string().trim().max(500).optional().allow("").messages({
       "string.max": "Feature description cannot exceed 500 characters",
     }),
+    /**
+     * 🆕 The presigned road (U-5) — an icon already on S3, named instead of
+     * attached. ⚠️ Not both; `acceptUpload` refuses a file and an id together.
+     */
+    iconUploadId: objectId().optional().messages({
+      "any.invalid": "Invalid iconUploadId.",
+    }),
     isActive: Joi.alternatives()
       .try(Joi.string(), Joi.boolean())
       .optional()
@@ -38,6 +45,13 @@ exports.validateUpdateBrandFeature = {
     }),
     description: Joi.string().trim().max(500).optional().allow("").messages({
       "string.max": "Feature description cannot exceed 500 characters",
+    }),
+    /**
+     * 🆕 The presigned road (U-5) — an icon already on S3, named instead of
+     * attached. ⚠️ Not both; `acceptUpload` refuses a file and an id together.
+     */
+    iconUploadId: objectId().optional().messages({
+      "any.invalid": "Invalid iconUploadId.",
     }),
     isActive: Joi.alternatives().try(Joi.string(), Joi.boolean()).optional(),
   }),

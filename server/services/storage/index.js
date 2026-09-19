@@ -261,7 +261,22 @@ exports.documentUrl = async (asset) => {
   if (!asset?.storage) return asset?.url ?? null;
 
   const provider = providerFor(asset);
-  if (provider.signedGetUrl) return provider.signedGetUrl({ storage: asset.storage });
+  if (provider.signedGetUrl) {
+    /**
+     * 🔴 `Setting.storage.delivery.signedUrlTtlMinutes`, which until now was a
+     * field the admin could edit that reached nothing — the provider used its
+     * own five-minute constant whatever the panel said.
+     *
+     * ⚠️ Read here rather than inside the provider, so the provider stays what
+     * its own header calls it: a key, a bucket and the bytes. How long a link
+     * should live is a platform decision, not an S3 one.
+     */
+    const { signedUrlTtlSeconds } = await getStorageConfig();
+    return provider.signedGetUrl({
+      storage: asset.storage,
+      expiresIn: signedUrlTtlSeconds,
+    });
+  }
 
   return provider.url({ storage: asset.storage, url: asset.url });
 };
@@ -275,22 +290,47 @@ exports.activeProvider = activeProvider;
  *
  * ⚠️ These two are **S3-only**, unlike everything above them. `presign` is
  * built on `@aws-sdk/s3-presigned-post` and Cloudinary has no equivalent, so a
- * platform running on Cloudinary keeps using the multipart path until U-5
- * retires it. Reads and deletes stay provider-agnostic either way — see §0.5
- * of the execution plan for why production is S3-only from day one.
+ * platform running on Cloudinary keeps using the multipart path — and keeps it
+ * for good, not "until U-5". That sunset is X-4, and X-4 waits on Cloudinary
+ * growing a presign of its own, not on a date. Reads and deletes stay
+ * provider-agnostic either way — see §0.5 of the execution plan for why
+ * production is S3-only from day one.
+ *
+ * 🔴 So a platform on Cloudinary must leave `Setting.storage.upload
+ * .presignEnabled` off: these two would write to S3 while every multipart
+ * upload went to Cloudinary, and the same surface would hold rows on two
+ * providers.
  */
-const { createUploadIntent, PRESIGN_TTL_SECONDS } = require("./presign");
+const { createUploadIntent } = require("./presign");
 const { confirmUpload } = require("./confirm");
 
 exports.createUploadIntent = createUploadIntent;
 exports.confirmUpload = confirmUpload;
-exports.PRESIGN_TTL_SECONDS = PRESIGN_TTL_SECONDS;
+/**
+ * ⚠️ `PRESIGN_TTL_SECONDS` is gone from here. It was a constant re-exported to
+ * nobody, and the window is now `Setting.storage.upload.presignTtlMinutes` —
+ * `createUploadIntent` returns the value it actually signed as
+ * `expiresInSeconds`, which is the only number a client should ever act on.
+ */
 
 /**
  * The door every surface knocks on — one file or a list, multipart or
  * presigned, and the same shape back either way (U-1).
  */
-const { acceptUpload, acceptUploads } = require("./accept");
+const {
+  acceptUpload,
+  acceptUploads,
+  describeIncoming,
+  describeAllIncoming,
+} = require("./accept");
 
 exports.acceptUpload = acceptUpload;
 exports.acceptUploads = acceptUploads;
+
+/**
+ * "What is about to arrive?" — answered from either road, without spending the
+ * upload. A surface with rules of its own (how many, which exact mime types)
+ * has to refuse **before** confirm, or a refusal costs the vendor the file.
+ */
+exports.describeIncoming = describeIncoming;
+exports.describeAllIncoming = describeAllIncoming;

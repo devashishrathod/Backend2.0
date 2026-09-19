@@ -22,7 +22,9 @@ const {
   deleteMedia,
   deleteAllMedia,
   POSTER_FILE_FIELD,
+  POSTER_UPLOAD_FIELD,
 } = require("./upload");
+const { pairPosters } = require("./pairPosters");
 const { resolveSectionForActor } = require("./resolveSectionForActor");
 const { resequenceSections } = require("./resequenceSections");
 const {
@@ -52,6 +54,7 @@ const {
 } = require("./projections");
 
 module.exports = {
+  pairPosters,
   resolveSectionForActor,
   resequenceSections,
   // Write guards — the two floors, in one place (guards.js)
@@ -84,6 +87,7 @@ module.exports = {
   deleteMedia,
   deleteAllMedia,
   POSTER_FILE_FIELD,
+  POSTER_UPLOAD_FIELD,
   // Shared read shapes — see projections.js
   customerSectionMatch,
   visibleMediaCondition,

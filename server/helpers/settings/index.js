@@ -9,6 +9,7 @@ const {
   effectiveLimitMB,
 } = require("./getStorageConfig");
 const { getShowcaseConfig } = require("./getShowcaseConfig");
+const { getUploadLimit } = require("./getUploadLimit");
 const { getSubscriptionConfig } = require("./getSubscriptionConfig");
 const { getCustomerConfig } = require("./getCustomerConfig");
 const { getAdminConfig } = require("./getAdminConfig");
@@ -31,6 +32,12 @@ module.exports = {
   getStorageConfig,
   effectiveLimitMB,
   getShowcaseConfig,
+  /**
+   * One number for "how big may this file be, here" — the static ceiling, the
+   * platform setting and the surface override, resolved once. Both roads read
+   * it; before this the presigned one read only the constant.
+   */
+  getUploadLimit,
   getSubscriptionConfig,
   getCustomerConfig,
   // The admin audience's own channel toggles. ⚠️ Before this, admin alerts were

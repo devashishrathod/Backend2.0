@@ -1,3 +1,5 @@
+const fs = require("fs");
+
 const { MEDIA_KIND } = require("../../constants/storage");
 
 /**
@@ -30,6 +32,16 @@ const { MEDIA_KIND } = require("../../constants/storage");
  * everything else, including things that are perfectly valid files we simply do
  * not take.
  */
+
+/**
+ * How much of a file has to be read to answer either question below.
+ *
+ * ⚠️ Exported, and **both roads read exactly this much**. It used to be a
+ * private `1024` in `confirm.js` while the multipart road read nothing at all;
+ * a second copy of this number is how the two roads start disagreeing about
+ * what a file is, which is the one thing this module exists to prevent.
+ */
+const HEAD_BYTES = 1024;
 
 /** `true` when `bytes` begins with `sig`, skipping `null` as a wildcard. */
 const startsWith = (bytes, sig, offset = 0) => {
@@ -101,6 +113,45 @@ const SIGNATURES = [
 ];
 
 /**
+ * The four-character brand of an ISO base media file, or `null`.
+ *
+ * 🔴 This is what tells a photo from a video, and nothing else can.
+ *
+ * MP4, MOV, HEIC, HEIF and AVIF are **the same container**. All of them carry
+ * `ftyp` at offset 4, so a check that stops there calls an iPhone photo a video
+ * — and on a surface that accepts video it is then stored as one: `videos/`
+ * prefix, `video/mp4` mime, `kind: VIDEO`, and a player that cannot open it.
+ * Nothing errors. The brand at offset 8 is the only byte-level difference.
+ */
+const isoBrand = (bytes) =>
+  ascii(bytes, 4, 4) === "ftyp" ? ascii(bytes, 8, 4).toLowerCase() : null;
+
+/**
+ * ISO brands that mean **still image**, not video.
+ *
+ * ⚠️ The image family is allow-listed rather than the video one, because the
+ * two fail in opposite directions. A video brand nobody listed here is treated
+ * as video — which is right. An image brand nobody listed is treated as video —
+ * which is the bug above, and is why this list is the one that has to be kept
+ * current. `mif1`/`msf1` are the generic HEIF brands some cameras write instead
+ * of `heic`.
+ */
+const HEIF_BRANDS = new Set([
+  "heic",
+  "heix",
+  "heim",
+  "heis",
+  "hevc",
+  "hevx",
+  "hevm",
+  "hevs",
+  "mif1",
+  "msf1",
+]);
+
+const AVIF_BRANDS = new Set(["avif", "avis"]);
+
+/**
  * Things to refuse by name, so the reason can be specific.
  *
  * 🔴 SVG is the one that matters. It is an XML document that can carry a
@@ -108,10 +159,15 @@ const SIGNATURES = [
  * today only because these files are served from a different origin than the
  * panel. On our own CDN — especially a subdomain of a panel — it is stored XSS.
  * Falling through to "unrecognised" would say the same thing less usefully.
+ *
+ * ⚠️ `mimes` is the same refusal reached by **name** instead of by bytes, for
+ * the presign road — see `refusalForMime` below. One list, so the two roads
+ * cannot drift into refusing different things or saying it differently.
  */
 const REFUSED = [
   {
     name: "SVG",
+    mimes: ["image/svg+xml", "image/svg"],
     reason: "SVG files are not accepted — they can carry scripts.",
     test: (b) => {
       const head = ascii(b, 0, 512).trimStart().toLowerCase();
@@ -120,11 +176,36 @@ const REFUSED = [
   },
   {
     name: "HTML",
+    mimes: ["text/html", "application/xhtml+xml"],
     reason: "HTML files are not accepted.",
     test: (b) => {
       const head = ascii(b, 0, 512).trimStart().toLowerCase();
       return head.startsWith("<!doctype html") || head.startsWith("<html");
     },
+  },
+  {
+    /**
+     * 🔴 Refused **by name**, not left to fall through as a video.
+     *
+     * An iPhone shooting in "High Efficiency" writes these, so this is the one
+     * refusal an ordinary customer will actually meet. The reason therefore has
+     * to say what to do next, not just what went wrong — the setting that fixes
+     * it for good is three taps away and almost nobody knows it exists.
+     */
+    name: "HEIC",
+    mimes: ["image/heic", "image/heif", "image/heic-sequence"],
+    reason:
+      "HEIC photos are not supported yet — please send a JPEG or PNG. On an " +
+      "iPhone you can change this once for every photo: Settings → Camera → " +
+      "Formats → Most Compatible.",
+    test: (b) => HEIF_BRANDS.has(isoBrand(b)),
+  },
+  {
+    name: "AVIF",
+    mimes: ["image/avif", "image/avif-sequence"],
+    reason:
+      "AVIF images are not supported yet — please send a JPEG, PNG or WebP.",
+    test: (b) => AVIF_BRANDS.has(isoBrand(b)),
   },
 ];
 
@@ -251,5 +332,102 @@ const readDimensions = (head, name) => {
   return null;
 };
 
+/**
+ * The same refusal, reached by the **declared** type instead of the bytes.
+ *
+ * ### 🔴 Why the presign road needs this
+ *
+ * `confirm` reads the object's head and refuses an SVG or a HEIC there — which
+ * is correct, and far too late. By then the client has been handed a signature,
+ * has uploaded the whole file, and S3 has been paid to store it. On a phone
+ * that is a 4 MB photo pushed over mobile data to be told no.
+ *
+ * `createUploadIntent` already knows the declared `contentType`. It is only a
+ * claim — which is exactly why the bytes are still checked at confirm — but a
+ * caller who *correctly* says `image/heic` should be told no **before** the
+ * upload, not after. This is the same reasoning as G12: a refusal a surface was
+ * always going to make belongs before the bandwidth, not after it.
+ *
+ * ⚠️ A liar is not caught here, and is not meant to be. A HEIC announced as
+ * `image/jpeg` walks past this and is refused at confirm, by its bytes.
+ *
+ * @param {string} mime  the client's declared content type
+ * @returns {{ refused: true, name, reason } | null} — the identical shape
+ *          `identify` returns, so callers handle one thing, not two.
+ */
+exports.refusalForMime = (mime) => {
+  const value = String(mime || "")
+    .toLowerCase()
+    .trim();
+  if (!value) return null;
+
+  const entry = REFUSED.find((item) => item.mimes.includes(value));
+  return entry
+    ? { refused: true, name: entry.name, reason: entry.reason }
+    : null;
+};
+
 exports.readDimensions = readDimensions;
 exports.SIGNATURES = SIGNATURES;
+exports.REFUSED = REFUSED;
+exports.HEAD_BYTES = HEAD_BYTES;
+
+/**
+ * The same two answers, for a file that is already on this disk.
+ *
+ * 🔴 This is what the multipart road was missing entirely. `confirm` reads an
+ * uploaded object's head with a ranged GET and settles what it is; the file
+ * road handed `file.mimetype` — the client's own header — straight to the
+ * provider and stored it as fact.
+ *
+ * ⚠️ A local read, so it costs nothing worth measuring: the file is already
+ * written to `tempFileDir` by the time any surface sees it, and this opens it
+ * once for 1 KB. There is no reason the cheaper road was the one that checked
+ * less.
+ *
+ * @param {string} filePath  an `express-fileupload` `tempFilePath`
+ * @returns {{ identified, dimensions }} — `identified` is exactly what
+ *          `identify` returns, including `null` and the `refused` shape, so the
+ *          caller answers in its own words rather than this file guessing them.
+ */
+exports.inspectLocalFile = (filePath) => {
+  /**
+   * ⚠️ **Our** bug, and it has to say so.
+   *
+   * `express-fileupload` only writes a `tempFilePath` when `useTempFiles` is on
+   * — which it is, in `index.js`, and has to stay for the same reason the 100 MB
+   * limit exists. Turn it off and every file arrives as a `data` buffer instead,
+   * `filePath` is `undefined`, and `openSync` answers
+   * `ENOENT: no such file or directory, open 'undefined'` — a sentence that
+   * sends whoever reads it looking for a missing upload rather than a changed
+   * middleware option.
+   */
+  if (!filePath) {
+    const error = new Error(
+      "Cannot inspect an upload with no tempFilePath — express-fileupload must " +
+        "run with useTempFiles enabled.",
+    );
+    error.statusCode = 500;
+    throw error;
+  }
+
+  let head;
+  const handle = fs.openSync(filePath, "r");
+  try {
+    const buffer = Buffer.alloc(HEAD_BYTES);
+    const read = fs.readSync(handle, buffer, 0, HEAD_BYTES, 0);
+    head = buffer.subarray(0, read);
+  } finally {
+    // The handle closes whether or not the read worked — a refused upload must
+    // not also leak a descriptor.
+    fs.closeSync(handle);
+  }
+
+  const identified = exports.identify(head);
+  return {
+    identified,
+    dimensions: identified?.name
+      ? readDimensions(head, identified.name)
+      : null,
+  };
+};

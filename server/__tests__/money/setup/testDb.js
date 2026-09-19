@@ -229,6 +229,34 @@ exports.writeSetting = async (update) => {
 };
 
 /**
+ * Turn the presigned road on for a suite that exercises it.
+ *
+ * ### 🔴 Why a suite has to ask
+ *
+ * `Setting.storage.upload.presignEnabled` defaults to **`false`** (G5). Nothing
+ * is live on that road yet, and a capability that has to be turned on is cheaper
+ * to get wrong than one that has to be turned off — so `createUploadIntent`
+ * answers `503` until an admin says otherwise.
+ *
+ * A suite that presigns is therefore stating a precondition, exactly as it would
+ * for a plan or a role. That it has to say so is the point: if this helper
+ * disappeared and the tests still passed, the switch would not be doing
+ * anything.
+ *
+ * ⚠️ The provider goes with it. `presign` and `confirm` are S3-only, so leaving
+ * the platform on Cloudinary with presigning on is refused — the same surface
+ * would otherwise hold rows on two providers depending on the road. The two
+ * settings are one decision and this writes them as one.
+ */
+exports.enablePresign = async () =>
+  exports.writeSetting({
+    $set: {
+      "storage.provider": "AWS_S3",
+      "storage.upload.presignEnabled": true,
+    },
+  });
+
+/**
  * Re-exported so a test has one obvious place to reach for it.
  *
  * A test that writes settings any other way — `create`, `deleteMany`, a raw

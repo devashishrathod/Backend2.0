@@ -17,6 +17,7 @@ const mongoose = require("mongoose");
 
 const {
   connectTestDb,
+  enablePresign,
   disconnectTestDb,
   clearCollections,
 } = require("./setup/testDb");
@@ -26,9 +27,13 @@ const {
   createUploadIntent,
   acceptUpload,
   acceptUploads,
+  deleteAssets,
 } = require("../../services/storage");
 const { toMediaDocument } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
+const { localFile, cleanup: cleanupFixtures } = require("../support/localFile");
+
+afterAll(cleanupFixtures);
 
 const oid = () => new mongoose.Types.ObjectId();
 const actor = (userId = oid()) => ({ userId });
@@ -59,26 +64,76 @@ const readyUpload = async (who, purpose = UPLOAD_PURPOSE.CATEGORY_IMAGE) => {
   return intent.uploadId;
 };
 
+/**
+ * Run something that must be refused, and hand back the refusal.
+ *
+ * ⚠️ No `try`/`catch`. The obvious version puts the "it did not throw" error
+ * **inside** the try, where its own catch swallows it — and the test then fails
+ * on `expected 422, received undefined` instead of saying what actually
+ * happened.
+ */
+const NOTHING_THREW = Symbol("nothing threw");
 const failure = async (promise) => {
-  try {
-    await promise;
-    throw new Error("expected this to throw, and it did not");
-  } catch (error) {
-    return { statusCode: error.statusCode, message: error.message };
+  const error = await promise.then(
+    () => NOTHING_THREW,
+    (thrown) => thrown,
+  );
+  if (error === NOTHING_THREW) {
+    throw new Error("expected this to be refused, and it was not");
   }
+  return { statusCode: error.statusCode, message: error.message };
 };
 
+/**
+ * ⚠️ These tests write to the **real** bucket, so they have to take it back out.
+ *
+ * Without this, every run leaves behind one object per upload — forever. Nothing
+ * ever collects them: the `staging/` lifecycle rule only reaches uploads that
+ * were never confirmed, and a confirmed object has moved out of that prefix by
+ * definition. `scripts/auditOrphans.js` would eventually list them, as a growing
+ * list of things a human has to decide about.
+ *
+ * Collected **before** each clear rather than as the tests go, so a test that
+ * fails halfway still has its objects picked up.
+ */
+const littered = [];
+const rememberObjects = async () => {
+  const rows = await Upload.find({ "storage.key": { $exists: true } })
+    .select("storage")
+    .lean();
+  rows.forEach((row) => littered.push(row.storage));
+};
+
+/**
+ * ⚠️ 120s, not the config's 60.
+ *
+ * 🔴 This hook does three round trips to a shared M0 — connect, the settings
+ * write, and `createIndexes()` — and `createIndexes` costs seconds even when
+ * every index already exists, because the cost is *checking* them. Under a full
+ * suite run it competes with everything else on the same tier and crossed 60s
+ * the moment `enablePresign` was added: all three presign suites failed at
+ * **70.7 seconds**, every test at once, on correct assertions.
+ *
+ * A hook timeout does not read as "the cluster was busy" — it reads as a broken
+ * feature. CLAUDE.md records that exact false signal sending two earlier
+ * debugging sessions the wrong way.
+ */
 beforeAll(async () => {
   await connectTestDb();
+  // ⚠️ The presigned road is off by default (G5) — this suite uses it.
+  await enablePresign();
   await Upload.createIndexes();
-});
+}, 120000);
 
 afterAll(async () => {
+  await rememberObjects();
+  await deleteAssets(littered.map((ref) => ({ storage: ref, url: null })));
   await clearCollections(Upload);
   await disconnectTestDb();
-});
+}, 120000);
 
 beforeEach(async () => {
+  await rememberObjects();
   await clearCollections(Upload);
 });
 
@@ -150,7 +205,7 @@ describe("🔴 E1 — one road at a time", () => {
 
     const { statusCode, message } = await failure(
       acceptUpload(who, {
-        file: { tempFilePath: "/tmp/x.png", mimetype: "image/png" },
+        file: localFile("png", { name: "x.png" }),
         uploadId,
         purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
       }),
@@ -166,7 +221,7 @@ describe("🔴 E1 — one road at a time", () => {
 
     await failure(
       acceptUpload(who, {
-        file: { tempFilePath: "/tmp/x.png", mimetype: "image/png" },
+        file: localFile("png", { name: "x.png" }),
         uploadId,
         purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
       }),

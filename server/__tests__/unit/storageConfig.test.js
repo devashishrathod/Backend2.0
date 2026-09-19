@@ -152,6 +152,29 @@ describe("🔴 and a surface above the ceiling is refused on save", () => {
     expect(() => assertStorageLimitRule(withLimits(50, undefined))).not.toThrow();
   });
 
+  /**
+   * 🔴 Every showcase ceiling the **read path** narrows must also be guarded on
+   * **save**, and the two lists drifted: `getShowcaseConfig` returns a GIF
+   * ceiling and `validateMediaFiles` meters GIFs against it, while the rules
+   * covered only images and videos.
+   *
+   * The read path taking the smaller one keeps the platform safe whatever is
+   * stored. The rule keeps the panel honest. A ceiling with only the first is a
+   * number an admin can type, see saved, and watch do nothing.
+   */
+  test("🔴 every showcase size ceiling has a save-time rule", () => {
+    const guarded = new Set(
+      STORAGE_LIMIT_RULES.filter((rule) => rule.surfacePath[1] === "showcase")
+        .map((rule) => rule.surfacePath[2]),
+    );
+
+    expect([...guarded].sort()).toEqual([
+      "maxGifSizeMB",
+      "maxImageSizeMB",
+      "maxVideoSizeMB",
+    ]);
+  });
+
   test("every rule points at a field the schema really has", () => {
     // A rule naming a path that does not exist reads as "always fine" and
     // guards nothing — the same silent-200 failure the other settings lists
@@ -164,5 +187,53 @@ describe("🔴 and a surface above the ceiling is refused on save", () => {
       expect(read(setting, rule.surfacePath)).toEqual(expect.any(Number));
       expect(setting.storage.limits[rule.globalKey]).toEqual(expect.any(Number));
     }
+  });
+});
+
+/**
+ * 🔴 G5 — the two upload windows, and the one that has to be longer.
+ *
+ * `presignTtlMinutes` is how long a client may **start** an upload;
+ * `intentTtlMinutes` is how long the `Upload` row lives, and that row is what
+ * `confirm` loads to find out whose upload this is. The row is removed by a TTL
+ * index, which does not ask whether a signature is still valid.
+ *
+ * Both fields validate independently (1–60 and 1–1440), so neither validator can
+ * see this: it is only wrong **in relation to the other**. Until G5 nothing read
+ * either of them, so it could not go wrong — and the moment they became live it
+ * could.
+ */
+describe("🔴 the upload record has to outlive the permission", () => {
+  const ttls = (presignTtlMinutes, intentTtlMinutes) => ({
+    storage: { upload: { presignTtlMinutes, intentTtlMinutes } },
+  });
+
+  test("an intent shorter than the signature is refused", () => {
+    // A vendor on a slow connection finishes at minute eight, S3 takes every
+    // byte because the signature is good for an hour, and confirm answers
+    // "That upload was not found" — about a row a TTL index deleted.
+    expect(() => assertStorageLimitRule(ttls(60, 5))).toThrow(
+      /intentTtlMinutes \(5\) cannot be less than/,
+    );
+  });
+
+  test("the message names both numbers and says why", () => {
+    expect(() => assertStorageLimitRule(ttls(30, 10))).toThrow(/30/);
+    expect(() => assertStorageLimitRule(ttls(30, 10))).toThrow(
+      /outlive the permission/,
+    );
+  });
+
+  test("equal is allowed, and longer is the normal case", () => {
+    expect(() => assertStorageLimitRule(ttls(15, 15))).not.toThrow();
+    expect(() => assertStorageLimitRule(ttls(15, 60))).not.toThrow();
+  });
+
+  test("⚠️ a partial setting is left alone rather than guessed at", () => {
+    // `updateSetting` merges onto the stored document; a payload that names
+    // neither field must not be compared against a default nobody chose.
+    expect(() => assertStorageLimitRule(ttls(undefined, 5))).not.toThrow();
+    expect(() => assertStorageLimitRule(ttls(60, undefined))).not.toThrow();
+    expect(() => assertStorageLimitRule({})).not.toThrow();
   });
 });

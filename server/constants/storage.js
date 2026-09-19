@@ -20,9 +20,11 @@
  * `scripts/cleanupOrphans.js` sweeps rows but never storage. With the id in the
  * key, an orphan sweep becomes possible.
  *
- * ⚠️ `AUDIO` has a row here and will never have an object under it until
- * something calls `uploadAudio`, which nothing does. The row exists so the
- * table is complete, not because the folder is expected.
+ * ⚠️ There is no `AUDIO` purpose. There was one, and it existed only for
+ * `uploadAudio`, which nothing called — a folder that would never hold an
+ * object and a ceiling nothing would ever be measured against. Both went
+ * together (G10). `MEDIA_KIND.AUDIO` stays, because `kindFromMime` still has to
+ * be able to **name** an audio file in order for a surface to refuse it.
  */
 
 /**
@@ -120,11 +122,12 @@ const UPLOAD_PURPOSE = Object.freeze({
   SHOWCASE_MEDIA: "SHOWCASE_MEDIA",
   SHOWCASE_THUMBNAIL: "SHOWCASE_THUMBNAIL",
   BANNER_MEDIA: "BANNER_MEDIA",
+  BANNER_POSTER: "BANNER_POSTER",
   VOUCHER_IMAGE: "VOUCHER_IMAGE",
   VOUCHER_BANNER: "VOUCHER_BANNER",
+  VOUCHER_BANNER_POSTER: "VOUCHER_BANNER_POSTER",
   TICKER_ICON: "TICKER_ICON",
   DOCUMENT: "DOCUMENT",
-  AUDIO: "AUDIO",
   /**
    * Callers that have not been told what they are uploading yet.
    *
@@ -161,7 +164,7 @@ const MAX_BYTES = Object.freeze({
   IMAGE: 10 * MB,
   VIDEO: 50 * MB,
   DOCUMENT: 20 * MB,
-  AUDIO: 20 * MB,
+  // ⚠️ No `AUDIO` row: it went with the purpose it was the ceiling for (G10).
 });
 
 const UPLOAD_PURPOSES = Object.freeze({
@@ -224,10 +227,20 @@ const UPLOAD_PURPOSES = Object.freeze({
     kinds: [IMAGE, GIF, VIDEO],
     maxBytes: MAX_BYTES.VIDEO,
   },
+  /**
+   * ⚠️ `IMAGE` alone — a poster is a still, and every surface already said so.
+   *
+   * 🔴 This used to be `[IMAGE, GIF]` while `uploadSingleMedia` refused anything
+   * whose kind was not `IMAGE`. On the presigned road that difference costs the
+   * vendor real bytes: `presign` checks the **purpose**, so a GIF poster was
+   * handed a signature, uploaded in full, and only then refused by the surface
+   * with *"The poster has to be a still image"*. The refusal has to happen
+   * before the upload, and the purpose is the only thing presign can read.
+   */
   [UPLOAD_PURPOSE.SHOWCASE_THUMBNAIL]: {
     entity: "showcase",
     bucket: STORAGE_BUCKET.PUBLIC,
-    kinds: [IMAGE, GIF],
+    kinds: [IMAGE],
     maxBytes: MAX_BYTES.IMAGE,
   },
   [UPLOAD_PURPOSE.BANNER_MEDIA]: {
@@ -235,6 +248,25 @@ const UPLOAD_PURPOSES = Object.freeze({
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, VIDEO, GIF],
     maxBytes: MAX_BYTES.VIDEO,
+  },
+  /**
+   * A video banner's still (U-5) — the same bucket and prefix as the banner, and
+   * a deliberately narrower allowance.
+   *
+   * 🔴 Third of its kind, and for the third time the reason is the same: on the
+   * presigned road the purpose is the **only** thing telling a banner apart from
+   * its poster. Sharing one makes the two ids interchangeable, and of the two
+   * rules the poster's is the tighter — so sharing means the tighter rule is the
+   * one a caller can skip, by sending the ids the other way round.
+   *
+   * `SHOWCASE_THUMBNAIL` and `VOUCHER_BANNER_POSTER` are the same idea.
+   */
+  /** ⚠️ `IMAGE` alone — see `SHOWCASE_THUMBNAIL`; the same reason, same fix. */
+  [UPLOAD_PURPOSE.BANNER_POSTER]: {
+    entity: "banners",
+    bucket: STORAGE_BUCKET.PUBLIC,
+    kinds: [IMAGE],
+    maxBytes: MAX_BYTES.IMAGE,
   },
   [UPLOAD_PURPOSE.VOUCHER_IMAGE]: {
     entity: "vouchers",
@@ -248,6 +280,25 @@ const UPLOAD_PURPOSES = Object.freeze({
     kinds: [IMAGE, VIDEO, GIF],
     maxBytes: MAX_BYTES.VIDEO,
   },
+  /**
+   * A video banner's still (U-4) — the same bucket and prefix as the banner
+   * itself, and a deliberately narrower allowance.
+   *
+   * 🔴 It exists because on the presigned road the purpose is the **only** thing
+   * telling a banner apart from its poster. Sharing `VOUCHER_BANNER` would make
+   * the two ids interchangeable, and of the two rules the poster's is the
+   * tighter one — so sharing means the tighter rule is the one a caller can
+   * skip, by sending the ids the other way round.
+   *
+   * `SHOWCASE_THUMBNAIL` is the same idea for the gallery.
+   */
+  /** ⚠️ `IMAGE` alone — see `SHOWCASE_THUMBNAIL`; the same reason, same fix. */
+  [UPLOAD_PURPOSE.VOUCHER_BANNER_POSTER]: {
+    entity: "vouchers",
+    bucket: STORAGE_BUCKET.PUBLIC,
+    kinds: [IMAGE],
+    maxBytes: MAX_BYTES.IMAGE,
+  },
   [UPLOAD_PURPOSE.TICKER_ICON]: {
     entity: "tickers",
     bucket: STORAGE_BUCKET.PUBLIC,
@@ -260,12 +311,6 @@ const UPLOAD_PURPOSES = Object.freeze({
     bucket: STORAGE_BUCKET.PRIVATE,
     kinds: [DOCUMENT],
     maxBytes: MAX_BYTES.DOCUMENT,
-  },
-  [UPLOAD_PURPOSE.AUDIO]: {
-    entity: "misc",
-    bucket: STORAGE_BUCKET.PUBLIC,
-    kinds: [AUDIO],
-    maxBytes: MAX_BYTES.AUDIO,
   },
   [UPLOAD_PURPOSE.LEGACY]: {
     entity: "misc",

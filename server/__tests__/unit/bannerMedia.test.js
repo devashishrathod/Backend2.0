@@ -376,19 +376,40 @@ describe("the customer shape — the half that must NOT move", () => {
 describe("uploadBannerMedia — what it refuses before paying for an upload", () => {
   const { uploadBannerMedia } = require("../../helpers/banners/media");
   const storage = require("../../services/storage");
+  const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
-  const file = (mimetype) => ({ mimetype, tempFilePath: "/tmp/x" });
+  const who = { userId: "u1", role: "ADMIN" };
+
+  /**
+   * ⚠️ A `describeIncoming` result, not a raw file (U-5).
+   *
+   * The helper takes a description now — `{ name, mimetype, size }` plus exactly
+   * one of `file` or `uploadId` — so every rule below reads the same fields
+   * whichever road the banner came down.
+   */
+  const file = (mimetype) => ({
+    name: "b",
+    mimetype,
+    size: 1024,
+    uploadId: null,
+    file: { mimetype, tempFilePath: "/tmp/x" },
+  });
+  const presigned = (mimetype) => ({
+    ...file(mimetype),
+    uploadId: "68f1a2b3c4d5e6f7a8b9e001",
+    file: null,
+  });
 
   /**
    * ⚠️ The facade is stubbed, not reached.
    *
    * Every refusal below happens *before* any upload, which is the property being
    * tested — but one case is meant to get through, and without this it went all
-   * the way to a real Cloudinary call and hung the suite.
+   * the way to a real provider call and hung the suite.
    */
   let uploadSpy;
   beforeEach(() => {
-    uploadSpy = jest.spyOn(storage, "uploadFromPath").mockResolvedValue({
+    uploadSpy = jest.spyOn(storage, "acceptUpload").mockResolvedValue({
       url: "https://cdn.example.com/x.gif",
       storage: storageRef,
       metadata: { mimeType: "image/gif", size: 1024 },
@@ -407,14 +428,14 @@ describe("uploadBannerMedia — what it refuses before paying for an upload", ()
   };
 
   test("no file at all names the field to attach", async () => {
-    expect(await refusal(undefined, ADMIN)).toMatchObject({
+    expect(await refusal(who, undefined, ADMIN)).toMatchObject({
       status: 422,
       message: 'Please attach the banner file as "media".',
     });
   });
 
   test("a PDF is not a banner", async () => {
-    expect(await refusal(file("application/pdf"), ADMIN)).toMatchObject({
+    expect(await refusal(who, file("application/pdf"), ADMIN)).toMatchObject({
       status: 422,
       message: expect.stringMatching(/image, a video or a GIF/),
     });
@@ -428,7 +449,7 @@ describe("uploadBannerMedia — what it refuses before paying for an upload", ()
    * form field the caller has to fix.
    */
   test("a video with no poster is refused before the upload", async () => {
-    expect(await refusal(file("video/mp4"), ADMIN)).toMatchObject({
+    expect(await refusal(who, file("video/mp4"), ADMIN)).toMatchObject({
       status: 422,
       message: expect.stringMatching(/needs a poster image.*"poster"/s),
     });
@@ -436,7 +457,7 @@ describe("uploadBannerMedia — what it refuses before paying for an upload", ()
 
   test("a poster that is itself a video is refused", async () => {
     expect(
-      await refusal(file("video/mp4"), ADMIN, file("video/mp4")),
+      await refusal(who, file("video/mp4"), ADMIN, file("video/mp4")),
     ).toMatchObject({
       status: 422,
       message: expect.stringMatching(/poster has to be a still image/),
@@ -446,24 +467,88 @@ describe("uploadBannerMedia — what it refuses before paying for an upload", ()
   /**
    * 🔴 A GIF is an `image/*` file, so every "is this an image" check in the
    * codebase passes it — which is exactly how one ends up under `images/` and
-   * gets its animation flattened by the resize step. The kind is passed to the
-   * facade explicitly so it lands under `gifs/`, clear of the resizer.
+   * gets its animation flattened by the resize step.
+   *
+   * ⚠️ The kind is no longer handed to the provider by this helper; the facade
+   * derives it from the mime. So what this pins is the **stored** kind, which is
+   * what decides the prefix and what every reader downstream believes.
    */
   test("an animated GIF is a banner, needs no poster, and routes as a GIF", async () => {
-    const media = await uploadBannerMedia(file("image/gif"), ADMIN);
+    const media = await uploadBannerMedia(who, file("image/gif"), ADMIN);
 
     expect(media.kind).toBe(MEDIA_KIND.GIF);
     expect(media.poster).toBeUndefined();
+  });
+
+  /**
+   * 🔴 The banner under `BANNER_MEDIA`, the poster under `BANNER_POSTER`. Same
+   * bucket and prefix, different allowance: a poster is capped at 10 MB and
+   * refuses VIDEO outright. This path used to send the poster as `BANNER_MEDIA`
+   * and buy it a video's 50 MB — and on the presigned road a shared purpose
+   * makes the two ids interchangeable, which is the tighter rule becoming the
+   * skippable one.
+   */
+  test("a video banner and its poster go up under different purposes", async () => {
+    await uploadBannerMedia(who, file("video/mp4"), ADMIN, file("image/webp"));
+
+    expect(uploadSpy).toHaveBeenNthCalledWith(
+      1,
+      who,
+      expect.objectContaining({ purpose: UPLOAD_PURPOSE.BANNER_MEDIA }),
+    );
+    expect(uploadSpy).toHaveBeenNthCalledWith(
+      2,
+      who,
+      expect.objectContaining({ purpose: UPLOAD_PURPOSE.BANNER_POSTER }),
+    );
+  });
+
+  /**
+   * ⚠️ The actor reaches the facade. It looks an upload intent up by id **and**
+   * owner, so dropping it makes every presigned upload answer "not found" — and
+   * nothing on the multipart road would notice, because that road never reads it.
+   */
+  test("a presigned banner is handed to the facade as an id, with its actor", async () => {
+    await uploadBannerMedia(who, presigned("image/gif"), ADMIN);
+
     expect(uploadSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: MEDIA_KIND.GIF }),
+      who,
+      expect.objectContaining({
+        uploadId: "68f1a2b3c4d5e6f7a8b9e001",
+        file: null,
+        entityId: ADMIN,
+      }),
     );
   });
 
   test("nothing is uploaded when the guard refuses", async () => {
-    await refusal(file("application/pdf"), ADMIN);
-    await refusal(file("video/mp4"), ADMIN);
+    await refusal(who, file("application/pdf"), ADMIN);
+    await refusal(who, file("video/mp4"), ADMIN);
 
     expect(uploadSpy).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 🔴 A banner's poster is a narrower thing than the banner, and the constants
+ * have to say so — otherwise the purpose exists but grants the same allowance,
+ * which is the bug it was added to close.
+ */
+describe("BANNER_POSTER is narrower than BANNER_MEDIA", () => {
+  const { UPLOAD_PURPOSE, UPLOAD_PURPOSES } = require("../../constants/storage");
+
+  const banner = UPLOAD_PURPOSES[UPLOAD_PURPOSE.BANNER_MEDIA];
+  const poster = UPLOAD_PURPOSES[UPLOAD_PURPOSE.BANNER_POSTER];
+
+  test("same bucket, same prefix — the allowance is what differs", () => {
+    expect(poster.entity).toBe(banner.entity);
+    expect(poster.bucket).toBe(banner.bucket);
+  });
+
+  test("a poster is never a video, and is metered smaller", () => {
+    expect(banner.kinds).toContain(MEDIA_KIND.VIDEO);
+    expect(poster.kinds).not.toContain(MEDIA_KIND.VIDEO);
+    expect(poster.maxBytes).toBeLessThan(banner.maxBytes);
   });
 });
 

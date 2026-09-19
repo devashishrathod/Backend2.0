@@ -5,6 +5,7 @@ const { ROLES } = require("../../constants");
 const { DUPLICATE_KEY } = require("../../constants/mongo");
 const { throwError } = require("../../utils");
 const storage = require("../storage");
+const { describeIncoming } = storage;
 const { assertImageFile, toMediaDocument, toDeletable } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const { assertActiveSubscription } = require("../../helpers/subscribeds");
@@ -40,6 +41,8 @@ const IMAGE_SLOTS = Object.freeze([
     mediaField: "logoMedia",
     label: "Logo",
     purpose: UPLOAD_PURPOSE.SUB_BRAND_LOGO,
+    // 🆕 The presigned road's name for the same slot (U-5).
+    uploadIdField: "logoUploadId",
   },
   {
     file: "coverImage",
@@ -47,6 +50,7 @@ const IMAGE_SLOTS = Object.freeze([
     mediaField: "coverImageMedia",
     label: "Cover image",
     purpose: UPLOAD_PURPOSE.SUB_BRAND_COVER,
+    uploadIdField: "coverImageUploadId",
   },
 ]);
 
@@ -162,12 +166,22 @@ exports.updateSubBrand = async (actor, payload, files = null) => {
   /** `field → { previous, uploaded }`, so a failed save knows what to undo. */
   const replaced = new Map();
   for (const slot of IMAGE_SLOTS) {
-    const file = uploads[slot.file];
-    if (!file) continue;
+    /**
+     * ⚠️ Described before it is spent (U-5). Nothing below this point can
+     * refuse, so there is no upload to save here — but the shape has to match
+     * every other surface, and `describeIncoming` is also what refuses somebody
+     * else's `uploadId` before it reaches the facade.
+     */
+    const item = await describeIncoming(actor, {
+      file: uploads[slot.file],
+      uploadId: payload[slot.uploadIdField],
+      purpose: slot.purpose,
+    });
+    if (!item) continue;
 
-    const uploaded = await storage.uploadFromPath({
-      filePath: file.tempFilePath,
-      originalFile: file,
+    const uploaded = await storage.acceptUpload(actor, {
+      file: item.file,
+      uploadId: item.uploadId,
       purpose: slot.purpose,
       entityId: subBrand._id,
     });

@@ -9,8 +9,12 @@ const {
   BANNER_MEDIA_FILE_FIELD,
   BANNER_POSTER_FILE_FIELD,
 } = require("../../helpers/banners");
+const { describeIncoming } = require("../storage");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
-exports.updateBanner = async (userId, id, payload, files) => {
+/** ⚠️ `actor` where it used to be a bare `userId` — see `createBanner`. */
+exports.updateBanner = async (actor, id, payload, files) => {
+  const userId = actor.userId;
   const banner = await Banner.findOne({ _id: id, isDeleted: false });
   if (!banner) throwError(404, "Banner not found.");
 
@@ -77,9 +81,22 @@ exports.updateBanner = async (userId, id, payload, files) => {
    * change any more: a new file that happens to be a video where the old one was
    * an image simply arrives as one, and `media.kind` follows it.
    */
-  const file = files?.[BANNER_MEDIA_FILE_FIELD];
+  const file = await describeIncoming(actor, {
+    file: files?.[BANNER_MEDIA_FILE_FIELD],
+    uploadId: payload.mediaUploadId,
+    purpose: UPLOAD_PURPOSE.BANNER_MEDIA,
+  });
   const newMedia = file
-    ? await uploadBannerMedia(file, banner._id, files?.[BANNER_POSTER_FILE_FIELD])
+    ? await uploadBannerMedia(
+        actor,
+        file,
+        banner._id,
+        await describeIncoming(actor, {
+          file: files?.[BANNER_POSTER_FILE_FIELD],
+          uploadId: payload.posterUploadId,
+          purpose: UPLOAD_PURPOSE.BANNER_POSTER,
+        }),
+      )
     : null;
 
   const previousMedia = banner.media?.toObject

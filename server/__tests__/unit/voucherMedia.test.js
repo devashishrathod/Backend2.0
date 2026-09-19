@@ -19,7 +19,11 @@ const Voucher = require("../../models/Voucher");
 const VoucherVersion = require("../../models/VoucherVersion");
 const { pickVoucherBanner } = require("../../helpers/vouchers/pickVoucherBanner");
 const { pickOrphanImages } = require("../../helpers/vouchers/orphanImages");
-const { MEDIA_KIND, STORAGE_PROVIDER } = require("../../constants/storage");
+const {
+  MEDIA_KIND,
+  STORAGE_PROVIDER,
+  UPLOAD_PURPOSE,
+} = require("../../constants/storage");
 const {
   VOUCHER_BANNER_STATUS,
 } = require("../../constants/voucherBanner");
@@ -321,6 +325,112 @@ describe("pickVoucherBanner — the customer's flat view, and the fallback", () 
   });
 });
 
+/**
+ * U-4 — the gallery images, on either road.
+ *
+ * ⚠️ The money suite that covers the floor and the counts **mocks** this helper,
+ * because it is testing the rules around it. So what happens *inside* it — the
+ * actor reaching the facade, the id being spent instead of a file — has no cover
+ * there at all. Mutation found exactly that gap.
+ */
+describe("uploadVoucherImages — what reaches the facade", () => {
+  const {
+    uploadVoucherImages,
+  } = require("../../helpers/vouchers/validateImagesFiles");
+  const storageFacade = require("../../services/storage");
+
+  const who = { userId: "u1", role: "VENDOR" };
+  const attached = (name) => ({
+    name,
+    mimetype: "image/jpeg",
+    size: 1024,
+    uploadId: null,
+    file: { name, mimetype: "image/jpeg", tempFilePath: `/tmp/${name}` },
+  });
+  const named = (uploadId) => ({
+    name: "presigned.jpg",
+    mimetype: "image/jpeg",
+    size: 1024,
+    uploadId,
+    file: null,
+  });
+
+  let acceptSpy;
+  beforeEach(() => {
+    acceptSpy = jest
+      .spyOn(storageFacade, "acceptUpload")
+      .mockImplementation(async () => ({
+        url: "https://cdn.example.com/v.webp",
+        storage: storageRef,
+        metadata: { mimeType: "image/jpeg", size: 1024, width: 8, height: 6 },
+      }));
+  });
+  afterEach(() => acceptSpy.mockRestore());
+
+  /**
+   * ⚠️ The actor reaches the facade. It looks an upload intent up by id **and**
+   * owner, so dropping it makes every presigned upload answer "not found" — and
+   * nothing on the multipart road would notice, because that road never reads it.
+   */
+  test("the actor goes with every image", async () => {
+    await uploadVoucherImages(who, [attached("a.jpg"), attached("b.jpg")], "v1");
+
+    expect(acceptSpy).toHaveBeenCalledTimes(2);
+    expect(acceptSpy.mock.calls.every(([actor]) => actor === who)).toBe(true);
+  });
+
+  test("a named upload is spent as an id, not as a file", async () => {
+    await uploadVoucherImages(who, [named("68f1a2b3c4d5e6f7a8b9e001")], "v1");
+
+    expect(acceptSpy).toHaveBeenCalledWith(
+      who,
+      expect.objectContaining({
+        uploadId: "68f1a2b3c4d5e6f7a8b9e001",
+        file: null,
+        purpose: UPLOAD_PURPOSE.VOUCHER_IMAGE,
+        entityId: "v1",
+      }),
+    );
+  });
+
+  test("an attached file is spent as a file", async () => {
+    await uploadVoucherImages(who, [attached("a.jpg")], "v1");
+
+    const [, options] = acceptSpy.mock.calls[0];
+    expect(options.uploadId).toBeNull();
+    expect(options.file.name).toBe("a.jpg");
+  });
+
+  /**
+   * ⚠️ One failure takes the whole batch with it — a voucher that quietly
+   * stored three of five images would look like it worked, and the floor it
+   * cleared on the way in would no longer hold.
+   */
+  test("a failure rolls back everything already uploaded", async () => {
+    const deleteSpy = jest
+      .spyOn(storageFacade, "deleteAssets")
+      .mockResolvedValue({ deleted: 0, failed: 0 });
+    acceptSpy
+      .mockImplementationOnce(async () => ({
+        url: "https://cdn.example.com/one.webp",
+        storage: storageRef,
+        metadata: { mimeType: "image/jpeg", size: 1024 },
+      }))
+      .mockImplementationOnce(async () => {
+        throw new Error("the second one did not land");
+      });
+
+    await expect(
+      uploadVoucherImages(who, [attached("a.jpg"), attached("b.jpg")], "v1"),
+    ).rejects.toThrow();
+
+    expect(deleteSpy).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ storage: storageRef })]),
+    );
+    deleteSpy.mockRestore();
+  });
+});
+
 describe("uploadVoucherBannerMedia — what it refuses before paying for an upload", () => {
   const {
     uploadVoucherBannerMedia,
@@ -329,22 +439,43 @@ describe("uploadVoucherBannerMedia — what it refuses before paying for an uplo
   const settings = require("../../helpers/settings");
 
   const MB = 1024 * 1024;
+  const who = { userId: "u1", role: "VENDOR" };
+
+  /**
+   * ⚠️ A `describeIncoming` result, not a raw file (U-4).
+   *
+   * The helper takes a description now — `{ name, mimetype, size }` plus exactly
+   * one of `file` or `uploadId` — so every rule below reads the same fields
+   * whichever road the banner came down. `presigned()` is the same banner
+   * arriving as an id.
+   */
   const file = (mimetype, over = {}) => ({
     mimetype,
-    tempFilePath: "/tmp/x",
     name: "x",
     size: MB,
+    uploadId: null,
+    file: { mimetype, tempFilePath: "/tmp/x", name: "x" },
     ...over,
+  });
+  const presigned = (mimetype, over = {}) => ({
+    ...file(mimetype, over),
+    uploadId: "68f1a2b3c4d5e6f7a8b9e001",
+    file: null,
   });
 
   let uploadSpy;
   beforeEach(() => {
     uploadSpy = jest
-      .spyOn(storageFacade, "uploadFromPath")
-      .mockImplementation(async ({ kind }) => ({
-        url: `https://cdn.example.com/x.${kind === MEDIA_KIND.VIDEO ? "mp4" : "webp"}`,
+      .spyOn(storageFacade, "acceptUpload")
+      .mockImplementation(async ({ file: attached, purpose }) => ({
+        url: `https://cdn.example.com/x-${purpose}.webp`,
         storage: storageRef,
-        metadata: { mimeType: "image/webp", size: 10, width: 4, height: 3 },
+        metadata: {
+          mimeType: attached?.mimetype ?? "image/webp",
+          size: 10,
+          width: 4,
+          height: 3,
+        },
       }));
     settings.getStorageConfig.mockResolvedValue({
       allowedTypes: {
@@ -379,7 +510,7 @@ describe("uploadVoucherBannerMedia — what it refuses before paying for an uplo
   };
 
   test("no file at all names the field the caller has to send", async () => {
-    const result = await refusal(undefined, OID());
+    const result = await refusal(who, undefined, OID());
 
     expect(result.status).toBe(422);
     expect(result.message).toMatch(/"media"/);
@@ -391,14 +522,14 @@ describe("uploadVoucherBannerMedia — what it refuses before paying for an uplo
    * actually is, not for disagreeing with a label.
    */
   test("something that is not an image, GIF or video is refused", async () => {
-    const result = await refusal(file("application/pdf"), OID());
+    const result = await refusal(who, file("application/pdf"), OID());
 
     expect(result.status).toBe(422);
     expect(result.message).toMatch(/image, a GIF or a video/);
   });
 
   test("a mime outside the platform's list is refused", async () => {
-    const result = await refusal(file("image/bmp"), OID());
+    const result = await refusal(who, file("image/bmp"), OID());
 
     expect(result.status).toBe(422);
     expect(result.message).toMatch(/not a supported format/);
@@ -411,6 +542,7 @@ describe("uploadVoucherBannerMedia — what it refuses before paying for an uplo
    */
   test("an oversized banner is refused, and told the limit", async () => {
     const result = await refusal(
+      who,
       file("video/mp4", { size: 300 * MB, name: "huge.mp4" }),
       OID(),
       file("image/webp"),
@@ -422,6 +554,7 @@ describe("uploadVoucherBannerMedia — what it refuses before paying for an uplo
 
   test("nothing is uploaded when the size is refused", async () => {
     await refusal(
+      who,
       file("video/mp4", { size: 300 * MB }),
       OID(),
       file("image/webp"),
@@ -431,7 +564,7 @@ describe("uploadVoucherBannerMedia — what it refuses before paying for an uplo
   });
 
   test("a video banner with no poster is refused before the upload", async () => {
-    const result = await refusal(file("video/mp4"), OID());
+    const result = await refusal(who, file("video/mp4"), OID());
 
     expect(result.status).toBe(422);
     expect(result.message).toMatch(/"poster"/);
@@ -439,23 +572,29 @@ describe("uploadVoucherBannerMedia — what it refuses before paying for an uplo
   });
 
   test("a poster that is itself a video is refused", async () => {
-    const result = await refusal(file("video/mp4"), OID(), file("video/mp4"));
+    const result = await refusal(who, file("video/mp4"), OID(), file("video/mp4"));
 
     expect(result.status).toBe(422);
     expect(result.message).toMatch(/still image/);
   });
 
+  /**
+   * 🔴 A GIF is an `image/*` file, so every "is this an image" check passes it —
+   * which is how one ends up under `images/` and gets its animation flattened.
+   *
+   * ⚠️ The kind is no longer handed to the provider by this helper; the facade
+   * derives it from the mime. So what this pins is the **stored** kind, which is
+   * what decides the prefix and what every reader downstream believes.
+   */
   test("a GIF banner routes as a GIF and needs no poster", async () => {
-    const media = await uploadVoucherBannerMedia(file("image/gif"), OID());
+    const media = await uploadVoucherBannerMedia(who, file("image/gif"), OID());
 
     expect(media.kind).toBe(MEDIA_KIND.GIF);
-    expect(uploadSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: MEDIA_KIND.GIF }),
-    );
   });
 
   test("a video banner uploads its poster and stores it on the media", async () => {
     const media = await uploadVoucherBannerMedia(
+      who,
       file("video/mp4"),
       OID(),
       file("image/webp"),
@@ -463,7 +602,43 @@ describe("uploadVoucherBannerMedia — what it refuses before paying for an uplo
 
     expect(media.kind).toBe(MEDIA_KIND.VIDEO);
     expect(media.poster?.url).toBeTruthy();
-    expect(uploadSpy).toHaveBeenCalledTimes(2);
+
+    /**
+     * 🔴 The banner under `VOUCHER_BANNER`, the poster under
+     * `VOUCHER_BANNER_POSTER`. Same bucket and prefix, different allowance: a
+     * poster is capped at 10 MB and refuses VIDEO outright. This path used to
+     * send the poster as `VOUCHER_BANNER` and buy it the banner's 50 MB — and on
+     * the presigned road a shared purpose would make the two ids
+     * interchangeable, which is the tighter rule becoming the skippable one.
+     */
+    expect(uploadSpy).toHaveBeenNthCalledWith(
+      1,
+      who,
+      expect.objectContaining({ purpose: UPLOAD_PURPOSE.VOUCHER_BANNER }),
+    );
+    expect(uploadSpy).toHaveBeenNthCalledWith(
+      2,
+      who,
+      expect.objectContaining({ purpose: UPLOAD_PURPOSE.VOUCHER_BANNER_POSTER }),
+    );
+  });
+
+  /**
+   * ⚠️ The actor reaches the facade. It looks an upload intent up by id **and**
+   * owner, so dropping it makes every presigned upload answer "not found" — and
+   * nothing on the multipart road would notice, because that road never reads it.
+   */
+  test("a presigned banner is handed to the facade as an id, with its actor", async () => {
+    await uploadVoucherBannerMedia(who, presigned("image/webp"), "v1");
+
+    expect(uploadSpy).toHaveBeenCalledWith(
+      who,
+      expect.objectContaining({
+        uploadId: "68f1a2b3c4d5e6f7a8b9e001",
+        file: null,
+        entityId: "v1",
+      }),
+    );
   });
 });
 describe("orphanImages — identity on either shape", () => {
@@ -512,5 +687,95 @@ describe("orphanImages — identity on either shape", () => {
   test("an image with no identity at all is never a delete candidate", async () => {
     survivors([]);
     expect(await pickOrphanImages([{ media: {} }, {}], "v1")).toEqual([]);
+  });
+});
+
+describe("🔴 a banner's poster is a narrower thing than the banner", () => {
+  const { UPLOAD_PURPOSES } = require("../../constants/storage");
+
+  const banner = UPLOAD_PURPOSES[UPLOAD_PURPOSE.VOUCHER_BANNER];
+  const poster = UPLOAD_PURPOSES[UPLOAD_PURPOSE.VOUCHER_BANNER_POSTER];
+
+  /**
+   * ⚠️ These two land in the same bucket under the same `vouchers/<id>` prefix,
+   * so nothing about where the object goes distinguishes them. What has to
+   * differ is what they **accept** — and that is the whole reason the poster has
+   * a purpose of its own rather than sharing the banner's.
+   */
+  test("same bucket, same prefix — the allowance is what differs", () => {
+    expect(poster.entity).toBe(banner.entity);
+    expect(poster.bucket).toBe(banner.bucket);
+  });
+
+  test("a poster is never a video", () => {
+    expect(banner.kinds).toContain(MEDIA_KIND.VIDEO);
+    expect(poster.kinds).not.toContain(MEDIA_KIND.VIDEO);
+  });
+
+  /**
+   * 🔴 If these ever match, the poster has silently been given a video's
+   * allowance — which is exactly what sharing `VOUCHER_BANNER` did.
+   */
+  test("and it is metered smaller than the banner it belongs to", () => {
+    expect(poster.maxBytes).toBeLessThan(banner.maxBytes);
+  });
+});
+
+describe("🔴 the voucher validator refuses a malformed uploadId", () => {
+  const {
+    validateCreateVoucher,
+    validateUpdateVoucher,
+    validateSetVoucherBanner,
+  } = require("../../validator/vouchers");
+
+  const REAL = "68f1a2b3c4d5e6f7a8b9e001";
+  const messages = (schema, body) =>
+    schema.validate(body, { abortEarly: false }).error?.details.map(
+      (detail) => detail.message,
+    ) ?? [];
+
+  /**
+   * ⚠️ The first gate, and the only one that answers before anything is loaded —
+   * so a malformed id never becomes a database lookup, and never becomes a `404`
+   * that reads as if the upload had expired.
+   */
+  test("create refuses a bad image id and a bad banner id", () => {
+    expect(
+      messages(validateCreateVoucher.body, { imageUploadIds: ["nope"] }),
+    ).toContain("Image upload 1: Invalid uploadId.");
+    expect(
+      messages(validateCreateVoucher.body, { bannerUploadId: "nope" }),
+    ).toContain("Invalid bannerUploadId.");
+    expect(
+      messages(validateCreateVoucher.body, { bannerPosterUploadId: "nope" }),
+    ).toContain("Invalid bannerPosterUploadId.");
+  });
+
+  test("update and the banner endpoint refuse one too", () => {
+    expect(
+      messages(validateUpdateVoucher.body, { newImageUploadIds: ["nope"] }),
+    ).toContain("Image upload 1: Invalid uploadId.");
+    expect(
+      messages(validateSetVoucherBanner.body, { bannerUploadId: "nope" }),
+    ).toContain("Invalid bannerUploadId.");
+  });
+
+  /**
+   * ⚠️ These endpoints are multipart, so a list arrives either as repeated form
+   * fields or as one JSON string. Both have to work — `jsonTolerantArray` is
+   * what makes that true, and it is easy to drop by accident.
+   */
+  test("a real id is accepted, as an array or as a JSON string", () => {
+    expect(
+      messages(validateUpdateVoucher.body, { newImageUploadIds: [REAL] }),
+    ).toEqual([]);
+    expect(
+      messages(validateUpdateVoucher.body, {
+        newImageUploadIds: JSON.stringify([REAL]),
+      }),
+    ).toEqual([]);
+    expect(
+      messages(validateSetVoucherBanner.body, { bannerUploadId: REAL }),
+    ).toEqual([]);
   });
 });

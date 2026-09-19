@@ -2,6 +2,8 @@ const { throwError } = require("../../utils");
 const { showcaseTypeOf } = require("../../constants/showcase");
 const { MEDIA_KIND, kindFromMime } = require("../../constants/storage");
 const { getShowcaseConfig } = require("../../helpers/settings");
+const { describeIncoming } = require("../storage");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const {
   resolveSectionForActor,
   normalizeFiles,
@@ -31,6 +33,13 @@ const {
  * @param {{ userId: string, role: string, brandId?: string }} actor
  */
 exports.replaceSectionMedia = async (actor, payload, file, posterFile) => {
+  /**
+   * ⚠️ One item, either road (U-3). `describeIncoming` answers
+   * `{ name, mimetype, size }` from the file or from the intent row, so every
+   * check below reads the same fields it always did — and it runs **before**
+   * anything is confirmed, so "only photo replacement is allowed" does not cost
+   * the vendor the upload.
+   */
   const section = await resolveSectionForActor(actor, payload.sectionId, {
     projection: { medias: 1, coverImage: 1, coverImageMode: 1, coverMediaId: 1 },
   });
@@ -40,16 +49,20 @@ exports.replaceSectionMedia = async (actor, payload, file, posterFile) => {
     throwError(404, "Media not found.");
   }
 
-  const uploadedFiles = normalizeFiles(file);
-  if (uploadedFiles.length !== 1) {
+  const incoming = await describeIncoming(actor, {
+    file: normalizeFiles(file)[0],
+    uploadId: payload.uploadId,
+    purpose: UPLOAD_PURPOSE.SHOWCASE_MEDIA,
+  });
+  if (!incoming || normalizeFiles(file).length > 1) {
     throwError(400, "Please upload exactly one media file.");
   }
 
   const config = await getShowcaseConfig();
-  validateMediaFiles(uploadedFiles, config);
+  validateMediaFiles([incoming], config);
 
   const currentType = showcaseTypeOf(item.media?.kind);
-  const nextKind = kindFromMime(uploadedFiles[0].mimetype);
+  const nextKind = kindFromMime(incoming.mimetype);
   if (showcaseTypeOf(nextKind) !== currentType) {
     throwError(
       400,
@@ -65,18 +78,28 @@ exports.replaceSectionMedia = async (actor, payload, file, posterFile) => {
    * S3's did not exist, so a replaced video came back with a cover that was
    * either broken or the `.mp4` itself.
    */
+  const poster = await describeIncoming(actor, {
+    file: posterFile,
+    uploadId: payload.thumbnailUploadId,
+    purpose: UPLOAD_PURPOSE.SHOWCASE_THUMBNAIL,
+  });
+
   if (nextKind === MEDIA_KIND.VIDEO) {
-    if (!posterFile) {
-      throwError(422, 'A video needs a poster image. Attach one as "thumbnail".');
+    if (!poster) {
+      throwError(
+        422,
+        'A video needs a poster image. Attach one as "thumbnail", or name its ' +
+          'upload as "thumbnailUploadId".',
+      );
     }
-    validateThumbnailFile(posterFile, config);
+    validateThumbnailFile(poster, config);
   }
 
   const previous = item.media?.toObject?.() ?? item.media;
   let uploaded = null;
 
   try {
-    uploaded = await uploadSingleMedia(uploadedFiles[0], section._id, posterFile);
+    uploaded = await uploadSingleMedia(actor, incoming, section._id, poster);
 
     // One assignment where there used to be five, and no marker field to keep
     // in step with it.

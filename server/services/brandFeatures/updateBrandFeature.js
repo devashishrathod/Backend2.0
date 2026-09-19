@@ -3,6 +3,7 @@ const { toDisplayName } = require("../../helpers/common");
 const { resolveActorBrand } = require("../../helpers/brands");
 const { throwError } = require("../../utils");
 const storage = require("../storage");
+const { describeIncoming } = storage;
 const { assertImageFile, toMediaDocument, toDeletable } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
@@ -65,12 +66,18 @@ exports.updateBrandFeature = async (actor, payload, icon) => {
   if (isActive !== undefined) feature.isActive = requestedActive;
 
   assertImageFile(icon, "Feature icon");
+  // ⚠️ Described before it is spent (U-5) — see `addBrandFeature`.
+  const incoming = await describeIncoming(actor, {
+    file: icon,
+    uploadId: payload.iconUploadId,
+    purpose: UPLOAD_PURPOSE.BRAND_FEATURE_ICON,
+  });
 
-  if (icon) {
+  if (incoming) {
     const oldIcon = toDeletable(feature.iconMedia, feature.icon);
-    const uploaded = await storage.uploadFromPath({
-      filePath: icon.tempFilePath,
-      originalFile: icon,
+    const uploaded = await storage.acceptUpload(actor, {
+      file: incoming.file,
+      uploadId: incoming.uploadId,
       purpose: UPLOAD_PURPOSE.BRAND_FEATURE_ICON,
       entityId: feature._id,
     });

@@ -221,6 +221,29 @@ exports.validateReorderSections = {
 };
 
 // Media
+/**
+ * 🆕 The presigned road (U-3).
+ *
+ * ⚠️ **Index-aligned, and each road pairs within itself.** `thumbnails[2]` is
+ * the poster for the third attached **file**; `thumbnailUploadIds[0]` is the
+ * poster for the first **uploadId**. The stored order is files first, then ids —
+ * the same order `acceptUploads` uses — so sort order and pairing agree.
+ *
+ * A mixed request is allowed: during the migration a client may well have some
+ * files already on S3 and some not. What is refused is one *item* claiming to be
+ * both, which `acceptUpload` answers with a 422.
+ */
+const uploadIdList = (label) =>
+  Joi.array()
+    .items(
+      Joi.string().hex().length(24).messages({
+        "string.hex": `Invalid ${label}.`,
+        "string.length": `Invalid ${label}.`,
+      }),
+    )
+    .single()
+    .optional();
+
 exports.validateAddMedia = {
   params: {
     sectionId: objectId().required(),
@@ -231,6 +254,8 @@ exports.validateAddMedia = {
     isShowInVideoClips: Joi.boolean().default(true).messages({
       "boolean.base": "isShowInVideoClips must be true or false.",
     }),
+    uploadIds: uploadIdList("uploadId"),
+    thumbnailUploadIds: uploadIdList("thumbnailUploadId"),
   }),
 };
 
@@ -256,6 +281,12 @@ exports.validateUpdateMedia = {
     isActive: Joi.boolean().optional().messages({
       "boolean.base": "isActive must be true or false.",
     }),
+    // 🆕 A poster-only update on the presigned road — the body is no longer
+    // always empty when a poster is being replaced.
+    thumbnailUploadId: Joi.string().hex().length(24).optional().messages({
+      "string.hex": "Invalid thumbnailUploadId.",
+      "string.length": "Invalid thumbnailUploadId.",
+    }),
     // No `.min(1)` here: a thumbnail-only update arrives as a file with an
     // empty body, and that is a legitimate request.
   }),
@@ -266,6 +297,17 @@ exports.validateReplaceMedia = {
     sectionId: objectId().required(),
     mediaId: objectId().required(),
   },
+  // 🆕 One media, so one id each — and a video still brings its own poster.
+  body: Joi.object({
+    uploadId: Joi.string().hex().length(24).optional().messages({
+      "string.hex": "Invalid uploadId.",
+      "string.length": "Invalid uploadId.",
+    }),
+    thumbnailUploadId: Joi.string().hex().length(24).optional().messages({
+      "string.hex": "Invalid thumbnailUploadId.",
+      "string.length": "Invalid thumbnailUploadId.",
+    }),
+  }),
 };
 
 exports.validateDeleteMedia = {

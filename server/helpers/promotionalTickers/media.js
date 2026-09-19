@@ -22,9 +22,18 @@ const { throwError } = require("../../utils");
  * @param file      the icon file from `req.files`
  * @param tickerId  goes into the object key, so the file can be traced back to
  *                  its row
+ * ### ⚠️ It takes a **description**, not a file (U-5)
+ *
+ * `file` is what `describeIncoming` answered: `{ name, mimetype, size }` plus
+ * exactly one of `file` or `uploadId`. The allow-list above reads `mimetype`,
+ * which both roads carry.
+ *
+ * @param {object} actor  whose upload it is — the facade looks an intent up by
+ *                        id **and** owner, so a signed permission is not
+ *                        transferable
  * @returns {Promise<object>} a `mediaSchema` value
  */
-exports.uploadTickerIcon = async (file, tickerId) => {
+exports.uploadTickerIcon = async (actor, file, tickerId) => {
   if (!file) throwError(422, "Please upload an icon image.");
 
   if (!TICKER_ICON_ALLOWED_MIME_TYPES.includes(file.mimetype)) {
@@ -34,12 +43,11 @@ exports.uploadTickerIcon = async (file, tickerId) => {
     );
   }
 
-  const uploaded = await storage.uploadFromPath({
-    filePath: file.tempFilePath,
-    originalFile: file,
+  const uploaded = await storage.acceptUpload(actor, {
+    file: file.file,
+    uploadId: file.uploadId,
     purpose: UPLOAD_PURPOSE.TICKER_ICON,
     entityId: tickerId,
-    kind: MEDIA_KIND.IMAGE,
   });
 
   /**

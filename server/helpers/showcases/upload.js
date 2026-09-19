@@ -6,8 +6,18 @@ const { throwError } = require("../../utils");
 /** The form field a video's poster arrives under. */
 const POSTER_FILE_FIELD = "thumbnail";
 
+/** And the body field naming its upload, on the presigned road. */
+const POSTER_UPLOAD_FIELD = "thumbnailUploadIds";
+
 /**
- * Upload one gallery file, and a video's poster with it.
+ * Take one gallery item, and a video's poster with it.
+ *
+ * ### ⚠️ It takes a **description**, not a file (U-3)
+ *
+ * `item` is what `describeIncoming` answered: `{ name, mimetype, size }` plus
+ * exactly one of `file` or `uploadId`. Both roads produce the same shape, so
+ * every rule below reads the same fields it always did — and which road this
+ * item came down stops being this file's business.
  *
  * ### 🔴 A video arrives with its poster or it does not arrive
  *
@@ -29,50 +39,66 @@ const POSTER_FILE_FIELD = "thumbnail";
  * deleted the one the vendor was still looking at. Nothing derives a poster now,
  * so the question does not exist.
  *
- * @param file        the media file
+ * @param actor       whose upload it is — the facade looks an intent up by id
+ *                    **and** owner, so a signed permission is not transferable
+ * @param item        a `describeIncoming` result: `{ name, mimetype, size }`
+ *                    plus exactly one of `file` or `uploadId`
  * @param sectionId   goes into the object key, so an object can be traced back
  *                    to the section that owns it
- * @param posterFile  required when `file` is a video
+ * @param posterItem  the same shape, required when `item` is a video
  * @returns {Promise<object>} a `mediaSchema` value
  */
-exports.uploadSingleMedia = async (file, sectionId, posterFile) => {
-  if (!file) throwError(400, "Media file is required.");
+exports.uploadSingleMedia = async (actor, item, sectionId, posterItem) => {
+  if (!item) throwError(400, "Media file is required.");
 
-  const kind = kindFromMime(file.mimetype);
+  const kind = kindFromMime(item.mimetype);
   const isVideo = kind === MEDIA_KIND.VIDEO;
   const isImage = kind === MEDIA_KIND.IMAGE || kind === MEDIA_KIND.GIF;
   if (!isImage && !isVideo) throwError(400, "Unsupported media type.");
 
-  if (isVideo && !posterFile) {
+  if (isVideo && !posterItem) {
     throwError(
       422,
-      `A video needs a poster image. Attach one as "${POSTER_FILE_FIELD}".`,
+      `A video needs a poster image. Attach one as "${POSTER_FILE_FIELD}", ` +
+        `or name its upload as "${POSTER_UPLOAD_FIELD}".`,
     );
   }
 
-  if (posterFile && kindFromMime(posterFile.mimetype) !== MEDIA_KIND.IMAGE) {
+  if (posterItem && kindFromMime(posterItem.mimetype) !== MEDIA_KIND.IMAGE) {
     throwError(
       422,
-      `The poster has to be a still image — "${posterFile.mimetype || "unknown"}" is not one.`,
+      `The poster has to be a still image — "${posterItem.mimetype || "unknown"}" is not one.`,
     );
   }
 
-  const uploaded = await storage.uploadFromPath({
-    filePath: file.tempFilePath,
-    originalFile: file,
+  const uploaded = await storage.acceptUpload(actor, {
+    file: item.file,
+    uploadId: item.uploadId,
     purpose: UPLOAD_PURPOSE.SHOWCASE_MEDIA,
     entityId: sectionId,
-    kind,
   });
 
   let poster;
   if (isVideo) {
-    const uploadedPoster = await storage.uploadFromPath({
-      filePath: posterFile.tempFilePath,
-      originalFile: posterFile,
-      purpose: UPLOAD_PURPOSE.SHOWCASE_MEDIA,
+    /**
+     * ⚠️ `SHOWCASE_THUMBNAIL`, not `SHOWCASE_MEDIA` — and this is a fix, not a
+     * translation.
+     *
+     * Both purposes land in the same bucket under the same `showcase/<section>`
+     * prefix, so nothing moves. What differs is what they accept: a thumbnail is
+     * capped at 10 MB and refuses VIDEO outright, which is exactly right for a
+     * still. This path used to send the poster as `SHOWCASE_MEDIA` and buy it a
+     * video's 50 MB allowance; `updateSectionMedia` already named the right one.
+     *
+     * 🔴 On the presigned road it is load-bearing for a second reason: a video
+     * and its poster are two separate uploads, and an id issued for one must not
+     * be spendable as the other.
+     */
+    const uploadedPoster = await storage.acceptUpload(actor, {
+      file: posterItem.file,
+      uploadId: posterItem.uploadId,
+      purpose: UPLOAD_PURPOSE.SHOWCASE_THUMBNAIL,
       entityId: sectionId,
-      kind: MEDIA_KIND.IMAGE,
     });
 
     // ⚠️ The video is already in the bucket if this fails. No row is written
@@ -94,13 +120,15 @@ exports.uploadSingleMedia = async (file, sectionId, posterFile) => {
 };
 
 /**
- * @param files    the media files, in order
- * @param posters  posters by index — `posters[i]` belongs to `files[i]`
+ * @param items    the described media, in the order they will be stored
+ * @param posters  posters by index — `posters[i]` belongs to `items[i]`
  */
-exports.uploadMultipleMedia = async (files = [], sectionId, posters = []) => {
+exports.uploadMultipleMedia = async (actor, items = [], sectionId, posters = []) => {
   const uploaded = [];
-  for (const [index, file] of files.entries()) {
-    uploaded.push(await exports.uploadSingleMedia(file, sectionId, posters[index]));
+  for (const [index, item] of items.entries()) {
+    uploaded.push(
+      await exports.uploadSingleMedia(actor, item, sectionId, posters[index]),
+    );
   }
   return uploaded;
 };
@@ -152,3 +180,4 @@ exports.rollbackUploads = async (uploadedMedias = []) => {
 };
 
 exports.POSTER_FILE_FIELD = POSTER_FILE_FIELD;
+exports.POSTER_UPLOAD_FIELD = POSTER_UPLOAD_FIELD;

@@ -84,6 +84,7 @@ const {
 const {
   generateSubBrandStoreId,
 } = require("../../helpers/subBrands/generateSubBrandStoreId");
+const { localFile, cleanup: cleanupFixtures } = require("../support/localFile");
 
 const oid = () => new mongoose.Types.ObjectId();
 let seq = 0;
@@ -98,12 +99,15 @@ const offer = {
   sortOrder: 1,
 };
 
-const uploadFile = (index) => ({
-  name: `photo-${index}.jpg`,
-  mimetype: "image/jpeg",
-  size: 512 * 1024,
-  tempFilePath: `/tmp/photo-${index}.jpg`,
-});
+/**
+ * ⚠️ A real file on disk, not a made-up `tempFilePath`.
+ *
+ * `uploadVoucherImages` is mocked here, but `describeAllIncoming` is **not** —
+ * it runs before the transaction opens, which is the whole subject of this
+ * suite, and since G2 it reads the first kilobyte of every incoming file. A
+ * fake path used to work only because that road never opened anything.
+ */
+const uploadFile = (index) => localFile("jpeg", { name: `photo-${index}.jpg` });
 
 const storedImage = (index) => ({
   media: { url: `https://example.test/v${index}.webp`, kind: "IMAGE" },
@@ -144,6 +148,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  cleanupFixtures();
   startSessionSpy.mockRestore();
   await clearCollections(
     Voucher,
@@ -161,11 +166,13 @@ beforeEach(async () => {
   stateAtUpload.length = 0;
 
   validateVoucherSubBrands.mockResolvedValue([]);
-  uploadVoucherImages.mockImplementation(async (files = []) => {
+  // ⚠️ `(actor, items, voucherId)` since U-4 — the facade needs to know whose
+  // upload it is, because it looks an intent up by id **and** owner.
+  uploadVoucherImages.mockImplementation(async (_actor, items = []) => {
     // 🔴 The assertion's raw material: the state of every open session at the
     // exact moment bytes would be moving.
     stateAtUpload.push(sessions.map((session) => session.inTransaction()));
-    return files.map((_, index) => ({
+    return items.map((_, index) => ({
       url: `https://example.test/u${index}.webp`,
       kind: "IMAGE",
     }));
