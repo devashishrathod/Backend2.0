@@ -503,9 +503,27 @@ Ye errors kisi bhi protected endpoint pe aa sakte hain — har endpoint pe repea
 
 ### File upload — `413`
 
-Customer sirf do jagah file bhejta hai: `POST /auth/register` aur
-`PUT /users/update` (profile photo). Dono par platform ka ceiling lagta hai —
-aaj **100 MB**.
+⚠️ **Customer sirf EK jagah file bhejta hai: `PUT /users/update` (profile
+photo).** Pehle yahan `POST /auth/register` bhi likha tha — wo galat hai, wo
+endpoint `isAdmin` ke peeche hai aur customer use kabhi call nahi karta.
+
+Do alag ceiling hain, aur dono alag jagah se aate hain:
+
+| Ceiling | Kitna | Kaun lagata hai |
+|---|---|---|
+| Transport | **100 MB** (`MAX_UPLOAD_SIZE_MB`) | `express-fileupload` — ye disk bachane ke liye hai, kisi ka limit nahi |
+| Avatar ka apna | **5 MB** (`USER_AVATAR`) | **Dono raaste** — multipart par bhi, presigned par bhi |
+
+✅ **Ab dono raaste ek hi jawab dete hain.** Pehle multipart par avatar ka 5 MB
+cap lagta hi nahi tha — sirf 100 MB rukta tha — to ek 8 MB ki photo multipart se
+chadh jaati aur presigned se `413` khaati. Wo **band ho chuka hai** (plan me
+purana **O-4**, ab Block G ka **G1**). Aaj wahi photo dono taraf se `413` degi,
+aur message bhi bilkul ek hi hota hai.
+
+🔴 **Aur ek cheez dono taraf barabar ho gayi:** file ke **bytes** padhe jaate
+hain, `Content-Type` header nahi. Yaani ek video ko `image/jpeg` naam dekar
+bhejne se ab kuch nahi hota — dono raaste use pehchaan kar refuse karte hain,
+aur usi shabd me. Pehle ye sirf presigned raaste par hota tha.
 
 ⚠️ **App ke liye zaroori:** `413` par server connection **turant band** kar deta
 hai, poori file bheji nahi jaati. Upload library ise **network error / abort**
@@ -1203,7 +1221,15 @@ Profile update. JSON ya multipart dono chalta hai (image ke liye multipart).
 | `email` | string | Valid email | Change karne pe `isEmailVerified` reset ho jaata hai |
 | `dob` | string | ISO date (`YYYY-MM-DD`) | Age check commented out hai — 18+ validation abhi nahi lagti |
 | `appliedReferralCode` | string | Max 20 chars, `""` allowed | Kisi ka referral code apply karna |
-| `image` | file | – | **Sirf multipart me.** Field name exactly `image`. Cloudinary pe upload hoga, purani image delete |
+| `image` | file | – | **Sirf multipart me.** Field name exactly `image` |
+| `uploadId` | ObjectId 🆕 | – | Presigned raasta — `/uploads/presign` → S3 → `/uploads/confirm` se mila id. ⚠️ `image` ke saath **nahi**; dono bhejne par `422` |
+
+⚠️ **Purani photo nayi ke save hone ke BAAD delete hoti hai.** Pehle ulta tha —
+ek fail hua save purani photo le jaata aur profile ek dead URL par reh jaata.
+
+⚠️ Kahan upload hoti hai ye `Setting.storage.provider` tay karta hai (aaj **S3**),
+aur purani file hamesha us row ke apne provider se delete hoti hai — to provider
+badalne par purani photos strand nahi hotin.
 
 **JSON example:**
 ```json

@@ -1325,6 +1325,9 @@ WHATSAPP_REQUIRES_VERIFICATION`. Sirf ye flow, aur admin ka
 | `dob` | string | ISO date |
 | `appliedReferralCode` | string | Max 20 chars |
 | `image` | file | Multipart, field name `image` |
+| `uploadId` | ObjectId 🆕 | Presigned — purpose `USER_AVATAR`. `image` ke saath **nahi** |
+
+🔴 **Kram: upload → save → tab purani photo delete** (U-5).
 
 ### Success — `200`
 ```json
@@ -2383,6 +2386,14 @@ GET /brands/get?brandId=68f1a2b3c4d5e6f7a8b9c3a1
 | `isOnboarding` | boolean | Default `false` | `true` pe `subCategoryId` required |
 | `subCategoryId` | ObjectId | – | |
 | `logo` | file | Multipart, field `logo` | |
+| `coverImage` | file | Multipart, field `coverImage` | |
+| `logoUploadId` | ObjectId 🆕 | Presigned — purpose `BRAND_LOGO` | |
+| `coverImageUploadId` | ObjectId 🆕 | Presigned — purpose `BRAND_COVER` | |
+
+🔴 **Uploads ab transaction ke BAHAR hote hain** (U-5). Pehle wo
+`withTransaction` ke andar the — do file jitni der leti utni der ek Mongo
+transaction khuli rehti, aur Mongo ki 60-second seemaa paar hote hi poori edit
+chali jaati. Brand pehle check hota hai, to galat id ab bhi kuch nahi kharchti.
 
 **Brand suspend karna:**
 ```json
@@ -3152,6 +3163,19 @@ Ye 10 endpoints vendor ke liye banaye gaye hain, par admin bhi chala sakta hai �
 | 47 | DELETE | `/vouchers/:voucherId` | 🆕 Soft delete + slot wapas. 🔴 **Live claim par ADMIN bhi block** |
 | 48 | PUT | `/vouchers/versions/:versionId/images/reorder` | 🆕 Images ka kram. 🔴 Pehli image hi banner fallback hai. Sirf `DRAFT`/`REJECTED` — published par 409 |
 
+> ### 🆕 #39, #40, #44 ab `uploadId` bhi lete hain (U-4)
+>
+> Poora flow **#54 / #55 / #59** ([vendor doc](./vendor_panel_api_doc.md)) me hai.
+> Do baatein yahan dohrane layak hain:
+>
+> 🔴 **Banner ke poster ka apna purpose hai** — `VOUCHER_BANNER_POSTER`,
+> `VOUCHER_BANNER` nahi. Ek hi bucket aur `vouchers/<id>` prefix, par poster 10 MB
+> par capped hai aur video leta hi nahi. Banner ka id poster ki jagah bhejne par
+> `422`, aur koi upload jalta nahi.
+>
+> 🔴 **Image floor aur limits confirm se pehle chalte hain** — teen ki jagah do
+> bhejne par refusal aata hai aur uploads abhi bhi caller ke paas rehti hain.
+
 > 🔴 **`DELETE /vouchers/:voucherId/banner` yahan se hata diya gaya** — wo endpoint
 > ab maujood hi nahi hai. Banner ka slot kabhi khali nahi hota: approved banner na
 > ho to customer ko voucher ki pehli image dikhti hai, isliye "banner hata do" ek
@@ -3331,7 +3355,21 @@ ya delete karne ke liye kaafi tha — [Appendix B](#appendix-b--known-issues).)
 
 ## 46. POST /banners/create
 
-**Multipart** — ek hi file field: `media`.
+**Multipart** — ek hi file field: `media` — **ya** `uploadId` se (🆕 U-5).
+
+> ### 🆕 Presigned raasta
+>
+> `POST /uploads/presign` (#111) → S3 par POST → `POST /uploads/confirm` (#112),
+> phir yahan `mediaUploadId` (aur video par `posterUploadId`). File yahan aati hi
+> nahi.
+>
+> 🔴 **Poster ka purpose alag hai** — `BANNER_POSTER`, `BANNER_MEDIA` nahi. Ek hi
+> bucket aur `banners/<id>` prefix, par poster 10 MB par capped hai aur video leta
+> hi nahi. Banner ka id poster ki jagah bhejne par `422`, aur koi upload jalta
+> nahi.
+>
+> 🔴 **Capacity check upload se pehle chalta hai** — home screen bhari ho to
+> refusal aata hai aur aapka upload abhi bhi aapka hai.
 
 **Access:** Intended: ADMIN · Enforced: **ADMIN**
 
@@ -3352,8 +3390,10 @@ ya delete karne ke liye kaafi tha — [Appendix B](#appendix-b--known-issues).)
 | Field | Type | Required | Default | Validation |
 |---|---|---|---|---|
 | `title` | string | ✅ | – | 2–150 chars |
-| `media` | file | ✅ | – | image / video / gif — niche table |
+| `media` | file | ⚠️ | – | image / video / gif — niche table |
 | `poster` | file | ⚠️ | – | **VIDEO pe required**, aur khud still image hona chahiye |
+| `mediaUploadId` | ObjectId 🆕 | ⚠️ | – | Presigned raasta — purpose `BANNER_MEDIA` |
+| `posterUploadId` | ObjectId 🆕 | ⚠️ | – | Uska poster — purpose `BANNER_POSTER` |
 | `description` | string | ❌ | – | Max 1000, `""` allowed |
 | `redirect` | object | ❌ | – | JSON string bhi chalta hai |
 | `startDate` | ISO date | ⚠️ | `null` | **`endDate` ke saath hi** — akela bhejna `422` |
@@ -3789,7 +3829,7 @@ hain aur unpe koi count limit nahi hai — banners pe 10 ki limit hai (#46).
 
 ## 51. POST /promotionalTickers/create
 
-**Multipart** — `icon` mandatory.
+Icon zaroori hai — **multipart** `icon`, ya 🆕 `iconUploadId` (U-5).
 
 **Access:** Intended: ADMIN · Enforced: **Any authenticated** ⚠️
 
@@ -3902,6 +3942,7 @@ endDate:      2026-09-30T23:59:59.000Z
 | `startDate` · `endDate` | ISO date | `null` allowed |
 | `isActive` | boolean | |
 | `icon` | file | Multipart — replace ke liye |
+| `iconUploadId` | ObjectId 🆕 | Presigned raasta — purpose `TICKER_ICON`. `icon` ke saath **nahi** |
 
 ```json
 { "displayOrder": 3, "isActive": true }
@@ -4102,7 +4143,8 @@ nahi hota. Reads par koi gate nahi (customer app brand profile par dikhati hai).
 |---|---|---|---|---|
 | `brandId` | ObjectId | ✅ | – | Body me — **admin koi bhi brand** |
 | `title` | string | ✅ | – | 2–150 chars |
-| `icon` | file | ✅ | – | Field name `icon` |
+| `icon` | file | ⚠️ | – | Field name `icon` |
+| `iconUploadId` | ObjectId 🆕 | ⚠️ | – | Presigned — purpose `BRAND_FEATURE_ICON` |
 | `description` | string | ❌ | – | Max 500, `""` allowed |
 | `isActive` | boolean\|string | ❌ | `true` | |
 
@@ -4236,6 +4278,7 @@ nahi hota. Reads par koi gate nahi (customer app brand profile par dikhati hai).
 | `description` | string | Max 500, `""` allowed |
 | `isActive` | boolean\|string | |
 | `icon` | file | Multipart |
+| `iconUploadId` | ObjectId 🆕 | Presigned — purpose `BRAND_FEATURE_ICON` |
 
 ### Success — `200`
 ```json
@@ -4284,7 +4327,7 @@ Master data — customer home screen ka category grid aur vendor onboarding ka d
 
 ## 61. POST /categories/create
 
-**Multipart** (image optional).
+**Multipart** (image optional) **ya** `uploadId` 🆕 — dono me se ek.
 
 **Access:** Intended: ADMIN · Enforced: **ADMIN** ✅
 
@@ -4295,12 +4338,24 @@ Master data — customer home screen ka category grid aur vendor onboarding ka d
 | `description` | string | ❌ | Max 300, `""` allowed |
 | `isActive` | boolean | ❌ | |
 | `image` | file | ❌ | **Multipart**, field name `image` |
+| `uploadId` | ObjectId 🆕 | ❌ | Presigned raaste se — `/uploads/confirm` se mila id. ⚠️ `image` ke **saath nahi** |
 
+**Multipart (purana raasta — abhi bhi chalta hai):**
 ```
 name:        Food & Beverages
 description: Restaurants, cafes, and food outlets
 image:       <file>
 isActive:    true
+```
+
+**Presigned (naya raasta — file server tak aati hi nahi):**
+```json
+{
+  "name": "Food & Beverages",
+  "description": "Restaurants, cafes, and food outlets",
+  "uploadId": "68f1a2b3c4d5e6f7a8b9e001",
+  "isActive": true
+}
 ```
 
 ### Success — `201`
@@ -4326,6 +4381,12 @@ isActive:    true
 | `400` | `Category already exist with this name` | Duplicate (case-insensitive) |
 | `422` | `Name has minimum 3 characters` / `Name cannot exceed 120 characters` | |
 | `422` | `Description cannot exceed 300 characters` | |
+| `422` | `Invalid uploadId.` 🆕 | `uploadId` 24-char hex nahi |
+| `422` | `Category image must be an image — image/jpeg, …` | Multipart file image nahi (PDF, SVG, …) |
+| `422` | `Send either a file or an uploadId, not both — they are two ways to do the same thing.` 🆕 | Dono bheje |
+| `422` | `That upload was authorised for BRAND_LOGO, and this is CATEGORY_IMAGE. Upload it again for this one.` 🆕 | `uploadId` kisi aur surface ka. **Upload jalta nahi** — usi surface par abhi bhi chalega |
+| `404` | `That upload was not found.` 🆕 | Id galat, expire, **ya kisi aur ki**. 403 nahi — asli id ke baare me "tumhari nahi" kehna use asli bata dena hai |
+| `409` | `That upload has already been used.` 🆕 | Ek upload ek hi baar |
 | `403` | `Forbidden: You do not have permission to perform this action.` | Role ADMIN nahi |
 
 ### ⚠️ Notes
@@ -4337,6 +4398,8 @@ isActive:    true
 **3. `201` deta hai** (baaki create endpoints se consistent).
 
 **4. Duplicate check `name` pe hai** — same naam ki doosri category nahi ban sakti.
+
+**5. 🆕 `uploadId` ka poora flow** — `POST /uploads/presign` → S3 par POST → `POST /uploads/confirm` → wahi `uploadId` yahan. Teeno ka detail **#111–#112** me. Category pehli surface hai jo ise leti hai (U-2); baaki abhi sirf multipart leti hain.
 
 ---
 
@@ -4479,6 +4542,7 @@ Admin panel me `isActive` filter **na** lagayein — inactive categories bhi man
 | `description` | string | Max 300, `""` allowed |
 | `isActive` | boolean | |
 | `image` | file | Multipart |
+| `uploadId` | ObjectId 🆕 | Presigned raasta. ⚠️ `image` ke **saath nahi** |
 
 ### Success — `200`
 ```json
@@ -4495,10 +4559,42 @@ Admin panel me `isActive` filter **na** lagayein — inactive categories bhi man
 | `404` | `Category not found` | |
 | `400` | `Category already exist with this name` | Naya naam duplicate |
 | `422` | `Name has minimum 3 characters` | |
+| `422` | `Invalid uploadId.` 🆕 | 24-char hex nahi |
+| `422` | `Category image must be an image — image/jpeg, …` | Multipart file image nahi |
+| `422` | `Send either a file or an uploadId, not both …` 🆕 | Dono bheje |
+| `422` | `That upload was authorised for BRAND_LOGO, and this is CATEGORY_IMAGE. …` 🆕 | Kisi aur surface ka upload |
+| `404` | `That upload was not found.` 🆕 | Galat / expire / kisi aur ka `uploadId` |
+| `409` | `That upload has already been used.` 🆕 | Dobara wahi id |
 | `403` | `Forbidden: …` | Role check |
 
-### ⚠️ Note
-Image replace hone pe purana Cloudinary se delete hota hai.
+### ⚠️ Notes
+
+**1. Kram: upload → save → **tab** purani delete.** Teeno isi tarteeb me. Kuch bhi
+beech me fail ho — upload reject ho jaaye, ya save hi na chale — to purani tasveer
+S3 par bhi rehti hai aur row me bhi. Pehle delete save se pehle hota tha, aur tab
+ek fail hua save bytes le jaata jabki row purane URL par hi rehti: customer ki
+category list me toota hua tile, ek aise request se jo `500` deti thi aur retry
+karne layak lagti thi — aur row ko kisi aur tasveer par point karne ka koi tareeka
+nahi bachta tha.
+
+🔴 **Presigned raaste par ye aur zaroori hai, kam nahi.** Yahan reject hone ke do
+naye tareeke hain jo multipart par the hi nahi — galat purpose ka upload, aur kisi
+aur ka upload — aur purani tasveer in dono ko **bilkul salaamat** paar karti hai.
+
+⚠️ **Purani tasveer delete na ho paana request ko fail nahi karta.** Us waqt tak
+row nayi tasveer par point kar chuki hoti hai, yaani customer ko sahi cheez dikh
+rahi hai. `500` dena us update ke liye hoga jo ho chuka — aur aap ek save dobara
+karne jaate. Peechhe ek aisa object reh jaata hai jise koi reference nahi karta,
+aur wahi `scripts/auditOrphans.js` ka kaam hai.
+
+**2. Jis category ki apni tasveer kabhi thi hi nahi, uska `image` phir bhi ek URL
+hota hai** — schema use shared placeholder par default karta hai. Wo placeholder
+**kabhi delete nahi hota**: ek hi URL har aisi category par hai, aur use delete
+karna ek hi request se sabke tile blank kar deta.
+
+**3. Storage S3 hai, Cloudinary nahi** (prod S3-only). Purani rows jo Cloudinary
+par bani thi, wahin se delete hoti hain — delete row ke `storage.provider` ko
+follow karta hai, aaj ki setting ko nahi.
 
 ---
 
@@ -4543,7 +4639,8 @@ Delete se pehle kya rok raha hai dekhna ho to `GET /categories/get/:id` ka `stat
 
 ## 66. POST /subCategories/:categoryId/create
 
-**Multipart** (image optional). Note: `categoryId` **path me** hai, body me nahi.
+**Multipart** (image optional) **ya** `uploadId` 🆕 — dono me se ek. Note:
+`categoryId` **path me** hai, body me nahi.
 
 **Access:** Intended: ADMIN · Enforced: **ADMIN** ✅
 
@@ -4559,6 +4656,7 @@ Delete se pehle kya rok raha hai dekhna ho to `GET /categories/get/:id` ka `stat
 | `description` | string | ❌ | Max 300, `""` allowed |
 | `isActive` | boolean | ❌ | |
 | `image` | file | ❌ | Multipart |
+| `uploadId` | ObjectId 🆕 | ❌ | Presigned raasta — purpose `SUBCATEGORY_IMAGE`. `image` ke saath **nahi** |
 
 ```
 POST /subCategories/68f1a2b3c4d5e6f7a8b9c0e1/create
@@ -4710,7 +4808,12 @@ Same as [#62](#62-get-categoriesgetall), plus:
 | `id` | ObjectId | ✅ |
 
 ### Body — sab optional
-`name` (3–120) · `description` (max 300) · `categoryId` (ObjectId) · `isActive` · `image` (multipart)
+`name` (3–120) · `description` (max 300) · `categoryId` (ObjectId) · `isActive` ·
+`image` (multipart) · 🆕 `uploadId` (presigned, purpose `SUBCATEGORY_IMAGE`)
+
+🔴 **Kram: upload → save → tab purani delete.** Category (#64) jaisa hi — beech me
+kuch bhi fail ho to purani tasveer S3 par bhi rehti hai aur row me bhi. Delete ka
+fail hona request nahi giraata, sirf ek orphan chhodta hai.
 
 ### Success — `200`
 ```json
@@ -7103,22 +7206,76 @@ ka banner, generated invoice, sab.
 | `storage.limits.maxGifSizeMB` | `15` | GIF ki apni, image se zyada — animated GIF me har frame ek saath hota hai |
 | `storage.limits.maxVideoSizeMB` | `50` | |
 | `storage.limits.maxDocumentSizeMB` | `20` | Invoices |
-| `storage.limits.maxAudioSizeMB` | `20` | |
+| `storage.limits.maxAudioSizeMB` | `20` | ⚠️ Koi audio upload surface hai hi nahi (G10) — ye setting kisi cheez ko naapti nahi |
 | `storage.allowed.imageTypes` | jpeg/jpg/png/webp | ⚠️ GIF yahan **nahi** hai |
 | `storage.allowed.gifTypes` | `image/gif` | Alag, taaki koi surface "images haan, GIF nahi" keh sake |
 | `storage.allowed.videoTypes` | mp4/webm/quicktime | |
 | `storage.allowed.documentTypes` | `application/pdf` | |
 | `storage.allowed.audioTypes` | mpeg/mp4 | |
-| `storage.upload.presignEnabled` | `false` | Direct-to-S3 raasta, bina deploy ke on/off |
-| `storage.upload.presignTtlMinutes` | `15` | Client ke paas upload shuru karne ka waqt |
-| `storage.upload.intentTtlMinutes` | `60` | Unconfirmed intent kitna jeeta hai. Signature se **lamba** — minute 14 par khatam hone wala slow upload phir bhi confirm hona chahiye |
-| `storage.delivery.signedUrlTtlMinutes` | `5` | Private document ke presigned GET ki umar |
+| `storage.upload.presignEnabled` | `false` | ✅ **Kaam karta hai.** Off = `POST /uploads/presign` **503** deta hai. Neeche dekhein |
+| `storage.upload.presignTtlMinutes` | `15` | ✅ Client ko upload **shuru** karne ke liye itna waqt. 1–60 |
+| `storage.upload.intentTtlMinutes` | `60` | ✅ `Upload` row kitni der zinda rahegi. 1–1440. ⚠️ `presignTtlMinutes` se **kam nahi** ho sakta |
+| `storage.delivery.signedUrlTtlMinutes` | `5` | ✅ Document ka signed link kitni der chalega. 1–1440 |
+
+> #### ✅ Ye chaar knob ab sach me kaam karte hain (Block G · G5)
+>
+> Pehle chaaron ka schema, validator aur ye doc maujood tha — aur **koi reader
+> nahi**. `presignEnabled` off karne par bhi direct-to-S3 raasta chalta rehta
+> tha, aur teeno TTL ke liye `presign.js`/`s3.js` ke hardcoded number.
+>
+> 🔴 **Kill switch ka jhooth sabse mehenga hai.** Incident ke waqt log usi par
+> bharosa karke aage badh jaate hain — switch off, UI *"band ho gaya"*, aur
+> raasta chalta hua.
+>
+> **`presignEnabled: false` par kya hota hai:**
+>
+> ```json
+> POST /uploads/presign  →  503
+> {
+>   "success": false,
+>   "message": "Presigned upload is turned off for this platform. Turn it on in Admin → Settings → Storage, or send the file directly as a multipart field on the same request."
+> }
+> ```
+>
+> ⚠️ **`POST /uploads/confirm` ye flag jaanboojh kar NAHI padhta.** Switch off
+> karte waqt agar teen vendor ke paas valid signature hai aur unki file S3 par
+> ja chuki hai, to unka confirm chalega. Wo bytes kharch ho chuke hain; unhe
+> rokna matlab bucket me object aur vendor ke paas koi jawab nahi. **Switch
+> darwaza band karta hai, andar wale ko phansata nahi.**
+>
+> 🔴 **Provider S3 par na ho to presign 409 deta hai.** `presign`/`confirm` sirf
+> S3 par likhte hain (Cloudinary ke paas is shape ka kuch nahi). Cloudinary par
+> ise on chhodne se ek hi surface ke kuch row S3 par aur kuch Cloudinary par
+> baith jaate — sirf is hisaab se ki client ne kaunsa road liya.
+>
+> ```json
+> POST /uploads/presign  →  409
+> { "success": false,
+>   "message": "Presigned upload only works on S3, and this platform is set to CLOUDINARY. Either switch Admin → Settings → Storage → provider to AWS_S3, or turn presigned upload off so every file takes the same road." }
+> ```
+>
+> ⚠️ **`intentTtlMinutes` `presignTtlMinutes` se kam nahi ho sakta** — save par
+> **422**. Dono alag-alag valid range me hain (1–60 aur 1–1440), to koi validator
+> ise akela pakad nahi sakta; galat sirf ek doosre ke **rishte** me hai. Kam
+> rakhne par: vendor slow connection par minute aath me upload poora karta hai,
+> S3 sab bytes leta hai kyunki signature abhi valid hai, aur confirm kehta hai
+> *"That upload was not found"* — ek row ke baare me jo TTL index ne uda di.
 
 > #### ⚠️ Global ek **ceiling** hai — surface sirf ghata sakta hai
 >
 > `vendor.showcase.maxImageSizeMB` pehle se hai aur rahega. Dono ladte nahi:
 > global wo hai jo platform **zyada se zyada** lega, aur surface usse kam maang
 > sakta hai. Asli limit **chhoti wali** hoti hai.
+>
+> 🔴 **Aur ab ye direct-to-S3 raaste par bhi lagti hai (U-3).** Pehle `/uploads/presign`
+> apni policy ek **code ke constant** se banata tha aur `/uploads/confirm` size
+> dekhta hi nahi tha — to yahan number ghatane ka asar sirf panel wale raaste par
+> hota tha. Ab ek hi number teeno se banta hai (`min(code, global, surface)`), wahi
+> S3 ki policy me jaata hai, aur confirm use asli byte count se dobara naapta hai.
+>
+> ⚠️ **GIF ka rule ab save par bhi lagta hai.** `maxGifSizeMB` ki jodi pehle
+> chhooti thi — showcase ka GIF limit global se bada set ho jaata tha aur `200`
+> milta tha.
 >
 > Surface ko global se **bada** set karne par **422** aata hai, dono number ke
 > saath. Chup-chaap ignore nahi hota — warna aap 80 likhte, 200 milta, 80 wapas
@@ -8446,13 +8603,27 @@ Inke alawa `GET /showcase/section/get-all` (#36) aur `PUT /showcase/section/:bra
 | `GET /showcase/section/get/:sectionId` | Ek section, media ke saath |
 | `PUT /showcase/section/update/:sectionId` | Section ka naam/visibility |
 | `DELETE /showcase/section/delete/:sectionId` | Soft delete |
-| `POST /showcase/section/:sectionId/add-media` | **multipart** — file chahiye |
-| `PUT /showcase/section/:sectionId/media/replace/:mediaId` | **multipart** |
-| `PATCH /showcase/section/:sectionId/media/update/:mediaId` | Sirf caption/alt — file nahi |
+| `POST /showcase/section/:sectionId/add-media` | **multipart** `files[]`/`thumbnails[]`, **ya** 🆕 `uploadIds[]`/`thumbnailUploadIds[]` |
+| `PUT /showcase/section/:sectionId/media/replace/:mediaId` | **multipart** `file`/`thumbnail`, **ya** 🆕 `uploadId`/`thumbnailUploadId` |
+| `PATCH /showcase/section/:sectionId/media/update/:mediaId` | Caption/alt, aur video ka poster — file ya 🆕 `thumbnailUploadId` |
 | `PUT /showcase/section/:sectionId/media/reorder` | **Poora** order bhejein |
 | `DELETE /showcase/section/:sectionId/media/delete/:mediaId` | Soft delete |
 
 ⚠️ Reorder **poori list** maangta hai, sirf hile hue item nahi — `"2 sections expected, 1 received"` wahi refusal hai. Aadha order bhejna baaki ko `sortOrder: 0` par gira deta, aur gallery chup-chaap bikhar jaati.
+
+> ### 🆕 Presigned raasta in teeno par (U-3)
+>
+> Poora flow **#48–#50** ([vendor doc](./vendor_panel_api_doc.md)) me hai. Do
+> baatein yahan dohrane layak hain:
+>
+> 🔴 **Poster ka apna purpose hai** — `SHOWCASE_THUMBNAIL`, `SHOWCASE_MEDIA`
+> nahi. Ek hi bucket aur prefix, par thumbnail 10 MB par capped hai aur VIDEO
+> leta hi nahi. Gallery ka id poster ki jagah bhejne par `422`, aur koi upload
+> jalta nahi.
+>
+> 🔴 **Section ke apne rules confirm se pehle chalte hain** — kitni media, kaunsa
+> mime, photo ki jagah photo. Baad me chalte to jawab wahi rehta par caller ki
+> saari files jal jaatin, sirf ek extra chun lene par.
 
 ---
 
@@ -9197,6 +9368,186 @@ aur wo value **CI se inject** ho — repo me kabhi nahi.
 - [ ] **⚠️ Broadcast pe HAMESHA `dryRun: true` pehle** — audience size dekh kar hi bhejein
 - [ ] **`all: true` explicitly likhna padta hai**
 - [ ] **Logout pe `unregister` + `logout` dono**
+
+---
+
+# Uploads 🆕
+
+File seedha S3 par jaati hai — is server se hokar nahi. Panel do call pehle karta
+hai, aur phir surface endpoint ko file ki jagah ek `uploadId` deta hai.
+
+> ### Kyun
+>
+> Har file pehle is server par aati thi, disk par likhi jaati thi, phir provider
+> par jaati thi. Matlab har upload ka size is machine ki disk aur uske RAM ka
+> sawaal tha, aur ek 50 MB video ka matlab tha 50 MB upar aana, 50 MB disk par
+> baithna, aur 50 MB dobara upar jaana. Ab wo bytes yahan aate hi nahi.
+
+```
+1. POST /uploads/presign   → { uploadId, url, fields }
+2. POST <url>              → seedha S3 par, multipart form (browser se)
+3. POST /uploads/confirm   → { storage, metadata }
+4. surface endpoint        → body me { uploadId }   ← U-2 se: categories
+```
+
+⚠️ **Request aur captured examples vendor collection me hain** (`12 — Uploads`) —
+ek hi request do collection me rakhne ka matlab hai use do jagah maintain karna,
+aur jis din ek update hoti hai aur doosri nahi, wo doosri jhooth bolne lagti hai
+bina kisi ko pata chale. Endpoint har signed-in role ke liye ek jaisa hai.
+
+---
+
+## 111. POST /uploads/presign 🆕
+
+File S3 par bhejne ki **ijazat** maangta hai.
+
+**Access:** koi bhi signed-in caller · **Any auth** (role gate nahi)
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `purpose` | String | ✅ | Surface — bucket, allowed types aur size cap isi se tay hote hain. Category ke liye `CATEGORY_IMAGE` |
+| `contentType` | String | ✅ | Jo aap bhej rahe hain (`image/png`, `image/webp`, …) |
+| `sizeBytes` | Number ≥ 1 | ✅ | ⚠️ Sirf **padhne-layak 413** ke liye — asli limit S3 lagata hai |
+| `fileName` | String | ❌ | Sirf extension ke liye |
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Upload authorised.",
+  "data": {
+    "uploadId": "68f1a2b3c4d5e6f7a8b9e001",
+    "url": "https://trydood-nonprod-public.s3.ap-south-1.amazonaws.com/",
+    "fields": {
+      "key": "staging/68f1.../9f2c....png",
+      "Content-Type": "image/png",
+      "Policy": "eyJ…",
+      "X-Amz-Signature": "…"
+    },
+    "expiresInSeconds": 900,
+    "stagingKey": "staging/68f1.../9f2c....png",
+    "typePrefix": "images"
+  }
+}
+```
+
+### 🔴 Panel ko ab kya karna hai
+
+`url` par ek **multipart POST** — **`fields` ke saare field pehle, file sabse
+aakhir me**. S3 file part ke baad kuch padhta hi nahi, to baad me bheja gaya field
+laga hi nahi.
+
+```js
+const form = new FormData();
+Object.entries(data.fields).forEach(([k, v]) => form.append(k, v));
+form.append("file", file);            // sabse aakhir me
+await fetch(data.url, { method: "POST", body: form });
+```
+
+S3 seedha `204` deta hai, koi body nahi.
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `401` | Token nahi / invalid | |
+| `503` | `Presigned upload is turned off for this platform. …` | 🆕 `storage.upload.presignEnabled` off hai (default). **Multipart abhi bhi chalta hai** |
+| `409` | `Presigned upload only works on S3, and this platform is set to CLOUDINARY. …` | 🆕 Ye raasta sirf S3 par likhta hai; Cloudinary par on chhodne se do provider par row ban jaatin |
+| `422` | `CATEGORY_IMAGE does not accept video/mp4.` | Surface wo type nahi leti |
+| `413` | `That file is 12 MB. The limit here is 5 MB.` | Surface ke cap se bada. 🔴 Ye number **admin ka** hai — `min(code ka ceiling, Setting.storage.limits, surface override)` |
+| `422` | `Unknown upload purpose: …` | Galat purpose |
+
+> ### ⚠️ `expiresInSeconds` `storage.upload.presignTtlMinutes` se aata hai
+>
+> Default 15 minute. **Response wali value par chalein**, kisi constant par nahi.
+>
+> ### 🔴 Poster ke purpose sirf still lete hain
+>
+> `SHOWCASE_THUMBNAIL`, `BANNER_POSTER` aur `VOUCHER_BANNER_POSTER` ab **`GIF`
+> nahi** lete. Pehle presign GIF ko signature de deta aur surface uske baad `422`
+> deta — yaani bandwidth kharch hone ke baad. Ab refusal upload se pehle.
+
+---
+
+## 112. POST /uploads/confirm 🆕
+
+Upload hui file ko uski asli jagah le jaata hai, aur batata hai wo **sach me kya
+hai**.
+
+**Access:** koi bhi signed-in caller · **Any auth**
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `uploadId` | ObjectId | ✅ | Presign se mila |
+| `entityId` | ObjectId | ❌ | Kis row ki file hai. Surface endpoint ise khud bhar deta hai, to `uploadId` waale flow me panel ko dene ki zarurat nahi |
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Upload confirmed.",
+  "data": {
+    "storage": {
+      "provider": "AWS_S3",
+      "publicId": null,
+      "bucket": "trydood-nonprod-public",
+      "key": "images/categories/68f1a2b3c4d5e6f7a8b9c101/9f2c....png"
+    },
+    "metadata": {
+      "contentType": "image/png",
+      "kind": "IMAGE",
+      "sizeBytes": 184320,
+      "width": 1200,
+      "height": 800
+    }
+  }
+}
+```
+
+⚠️ Ye `storage` object panel ko kahin bhejna **nahi** hai. Agla step surface ka
+apna endpoint hai, aur use sirf `uploadId` chahiye — category ke liye
+**#61** (`POST /categories/create`) ya **#64** (`PUT /categories/update/:id`).
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `404` | `That upload was not found.` | Galat id, **ya kisi aur ki id** |
+| `409` | `That upload has already been used.` | Dobara confirm |
+| `400` | `That file was never uploaded, or has already expired.` | S3 par kuch hai hi nahi |
+| `400` | `That file type is not supported.` | Bytes kisi jaani-pehchani file ke nahi |
+| `422` | `CATEGORY_IMAGE does not accept MP4 files.` | Bytes surface ke hisaab se galat |
+| `413` 🆕 | `That file is 3 MB. The limit here is 2 MB.` | **Asli** size limit se bada. Object wahin delete ho jaata hai |
+
+### ⚠️ Notes
+
+**1. 🔴 Yahi ek jagah hai jahan file ki asli pehchaan hoti hai.** Is se pehle har
+check us `Content-Type` par tha jo **client ne chuna**. Yahan object ke apne pehle
+bytes padhe jaate hain, aur stored type unse aata hai. PNG ke naam par bheja gaya
+SVG yahin ruk jaata hai — aur apne CDN se serve hui SVG stored XSS hai.
+
+**2. Kisi aur ka `uploadId` `404` deta hai, `403` nahi.** Jo id maujood hai uske
+baare me *"ye aapki nahi"* keh dena, ye bata dena hai ki wo id asli hai.
+
+**3. Ek upload ek hi baar.** Warna ek hi file do rows par lag jaati.
+
+**4. 🔴 Size ki limit admin ki hai, aur wahi dono jagah lagti hai.** Ek hi number
+teen se banta hai — `min(code ka ceiling, Setting.storage.limits, surface
+override)` — aur wahi signed policy ke `content-length-range` me jaata hai, yaani
+**S3 khud** use lagata hai. Aapka bheja `sizeBytes` sirf padhne-layak `413` ke
+liye hai: size chhota bata kar bada file bhejna kaam nahi karega, wo S3 par hi
+ruk jaayega.
+
+⚠️ **`confirm` par ye dobara naapa jaata hai, asli byte count se.** Signature ek
+baar likhi jaati hai aur pandrah minute chalti hai; admin us beech limit ghata
+sakta hai aur aapke haath ki signature nahi badalti. Isliye jo file policy se nikal
+gayi wo bhi yahan ruk sakti hai — aur ruk jaaye to object wahin delete ho jaata hai.
+
+⚠️ Aur limit **verified kind** ki hoti hai, declared ki nahi. GIF ka apna bada
+ceiling hai, to PNG ko GIF bata kar bhejna warna GIF ka allowance muft me de deta.
+
+**5. Reject hui file wahin delete ho jaati hai**, aur jo `staging/` me pada reh
+gaya use bucket ka lifecycle rule uthata hai.
 
 ---
 

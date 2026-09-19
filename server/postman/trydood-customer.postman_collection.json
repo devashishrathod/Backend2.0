@@ -1808,6 +1808,13 @@
                   "src": [],
                   "description": "Optional profile photo — Cloudinary pe upload hoti hai. Enable karke file chunein; disabled isliye rakha hai ki Newman run me 'missing file source' warning na aaye.",
                   "disabled": true
+                },
+                {
+                  "key": "uploadId",
+                  "type": "text",
+                  "value": "",
+                  "description": "🆕 Presigned raasta — /uploads/confirm se mila id (purpose USER_AVATAR). `image` ke saath NAHI",
+                  "disabled": true
                 }
               ]
             },
@@ -1831,7 +1838,7 @@
                 }
               ]
             },
-            "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\n**Multipart** request hai (`image` file ke liye), JSON nahi. Sirf text fields\nbhejni hon to bhi form-data hi chalega.\n\n| Field | Rule |\n|---|---|\n| `fullName` | 2–100 chars. DB me **lowercase** store hota hai |\n| `dob` | ISO date (`YYYY-MM-DD`) |\n| `email` | Valid email. Badalne pe `isEmailVerified` **`false`** ho jaata hai |\n| `appliedReferralCode` | Max 20 chars |\n| `image` | File. Purani image Cloudinary se delete ho jaati hai |\n\n⚠️ Ye validator **unknown fields reject karta hai** (`stripUnknown` nahi lagta) —\nextra key bhejne pe `422`.\n\n⚠️ Har successful call `isSignUpCompleted: true` set kar deti hai, chahe aapne\nkuch bhi bheja ho.\n\nResponse me do blocks hain — `userData` aur `customerData`."
+            "description": "**Access:** `verifyJwtToken` — koi bhi signed-in role\n\n**Multipart** request hai (`image` file ke liye), JSON nahi. Sirf text fields\nbhejni hon to bhi form-data hi chalega.\n\n| Field | Rule |\n|---|---|\n| `fullName` | 2–100 chars. DB me **lowercase** store hota hai |\n| `dob` | ISO date (`YYYY-MM-DD`) |\n| `email` | Valid email. Badalne pe `isEmailVerified` **`false`** ho jaata hai |\n| `appliedReferralCode` | Max 20 chars |\n| `image` | File. Purani image Cloudinary se delete ho jaati hai |\n\n⚠️ Ye validator **unknown fields reject karta hai** (`stripUnknown` nahi lagta) —\nextra key bhejne pe `422`.\n\n⚠️ Har successful call `isSignUpCompleted: true` set kar deti hai, chahe aapne\nkuch bhi bheja ho.\n\nResponse me do blocks hain — `userData` aur `customerData`.\n\n🆕 **Presigned raasta (U-5):** photo seedha S3 par bhejiye (`/uploads/presign` → S3 → `/uploads/confirm`) aur yahan sirf `uploadId`. File yahan aati hi nahi.\n\n⚠️ `image` **ya** `uploadId` — dono ek saath bhejne par `422`.\n\n⚠️ Purani photo nayi ke **save hone ke baad** delete hoti hai."
           },
           "response": [
             {

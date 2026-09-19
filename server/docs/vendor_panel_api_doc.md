@@ -1014,7 +1014,10 @@ POST /auth/logout
 | `email` | string | Valid email | Change pe `isEmailVerified` reset |
 | `dob` | string | ISO date | |
 | `appliedReferralCode` | string | Max 20 chars | |
-| `image` | file | – | **Multipart only**, field name `image` |
+| `image` | file | – | **Multipart**, field name `image` |
+| `uploadId` | ObjectId 🆕 | – | Presigned raasta — purpose `USER_AVATAR`. `image` ke saath **nahi** |
+
+🔴 **Kram: upload → save → tab purani photo delete.** Pehle delete save se pehle hota tha, yaani ek fail hua save aapki purani photo le jaata aur row usi dead URL par reh jaati.
 
 ### Success — `200`
 ```json
@@ -2585,8 +2588,12 @@ Brand ki public profile update.
 | `isActive` | boolean\|string | – | |
 | `isOnboarding` | boolean | Default `false` | ⚠️ `true` pe `subCategoryId` **required** ho jaata hai |
 | `subCategoryId` | ObjectId | – | `isOnboarding: true` pe required |
-| `logo` | file | JPG · PNG · WebP · GIF | **Multipart only**, field name `logo` |
-| `coverImage` | file | JPG · PNG · WebP · GIF | 🆕 **Multipart only**, field name `coverImage` |
+| `logo` | file | JPG · PNG · WebP · GIF | **Multipart**, field name `logo` |
+| `coverImage` | file | JPG · PNG · WebP · GIF | 🆕 **Multipart**, field name `coverImage` |
+| `logoUploadId` | ObjectId 🆕 | – | Presigned — purpose `BRAND_LOGO` |
+| `coverImageUploadId` | ObjectId 🆕 | – | Presigned — purpose `BRAND_COVER`. Har slot ka apna purpose hai, to logo ka id cover ki jagah nahi chalega |
+
+🔴 **Uploads ab transaction ke BAHAR hote hain.** Pehle wo `withTransaction` ke andar the, yaani do file jitni der leti utni der ek Mongo transaction khuli rehti — aur Mongo ki apni 60-second seemaa paar hote hi aapki poori edit chali jaati, us wajah se jiska database se koi lena-dena nahi tha. Brand pehle check hota hai, to galat id ab bhi kuch nahi kharchti.
 
 **Cover image** — brand profile ke peeche wali chaudi tasveer. Pehle ye field
 model me thi aur 8 read pipelines use maangti thi, par **likhne ka koi raasta hi
@@ -2642,7 +2649,11 @@ nahi likha hota tha ki file ki wajah se hai.
 
 **1. `subCategoryId` set karne se `categoryId` bhi auto-set hota hai** — service parent category resolve karta hai.
 
-**2. Logo replace hone pe purana Cloudinary se delete** — transactional, fail pe rollback.
+**2. Logo replace hone pe purana delete hota hai** — aur delete us row ke **apne**
+`storage.provider` ko follow karta hai, aaj ki setting ko nahi, to provider badalne
+par purani files strand nahi hotin. Fail pe rollback.
+
+⚠️ **Uploads ab transaction ke bahar hote hain** (U-5) — dekhein upar.
 
 **3. `brandName` lowercase me store** — display pe capitalize karein.
 
@@ -2962,8 +2973,10 @@ Outlet details update.
 | `joinedDate` | date | – | |
 | `description` | string | – | |
 | `isActive` | boolean | – | ⚠️ **Sirf tab apply hota hai jab explicitly bhejo** |
-| `logo` | file | JPG · PNG · WebP · GIF | 🆕 **Multipart only**, field name `logo` |
-| `coverImage` | file | JPG · PNG · WebP · GIF | 🆕 **Multipart only**, field name `coverImage` |
+| `logo` | file | JPG · PNG · WebP · GIF | 🆕 **Multipart**, field name `logo` |
+| `coverImage` | file | JPG · PNG · WebP · GIF | 🆕 **Multipart**, field name `coverImage` |
+| `logoUploadId` | ObjectId 🆕 | – | Presigned — purpose `SUB_BRAND_LOGO` |
+| `coverImageUploadId` | ObjectId 🆕 | – | Presigned — purpose `SUB_BRAND_COVER` |
 
 ```json
 { "description": "Vijay Nagar flagship outlet", "email": "vn@cafemocha.in" }
@@ -4166,7 +4179,8 @@ Sections ka order badalta hai.
 
 ## 48. POST /showcase/section/:sectionId/add-media
 
-Photos/videos upload karta hai. **Multipart request.**
+Photos/videos add karta hai — **multipart**, ya `uploadId` se (🆕 U-3), ya dono
+mila-jula.
 
 **Access:** Intended: VENDOR · Enforced: **VENDOR+ADMIN + ownership** ⚠️
 
@@ -4184,15 +4198,47 @@ Photos/videos upload karta hai. **Multipart request.**
 ### Body (multipart)
 | Field | Type | Required | Default | Notes |
 |---|---|---|---|---|
-| `files` | file[] | ✅ | – | Ek ya multiple images/videos |
+| `files` | file[] | ⚠️ | – | Ek ya multiple images/videos |
 | `thumbnails` | file[] | ⚠️ | – | **Har video ke liye ek poster** — index se match hota hai |
+| `uploadIds` | ObjectId[] 🆕 | ⚠️ | – | Presigned raaste se — `SHOWCASE_MEDIA` purpose |
+| `thumbnailUploadIds` | ObjectId[] 🆕 | ⚠️ | – | Unke poster — `SHOWCASE_THUMBNAIL` purpose |
 | `isShowInVideoClips` | boolean | ❌ | `true` | **Sirf batch ki videos pe lagta hai.** Photos pe hamesha `false` store hota hai |
+
+⚠️ `files` **ya** `uploadIds` — kam se kam ek. Dono khali ho to `400`.
+
+### 🆕 Presigned raasta
+
+Har file ke liye pehle `POST /uploads/presign` (#94) → S3 par POST → `POST
+/uploads/confirm` (#95). Jo `uploadId` mile wo yahan bhejiye — file yahan aati hi
+nahi.
+
+```json
+{
+  "uploadIds": ["68f1…e001", "68f1…e002"],
+  "thumbnailUploadIds": ["68f1…e003"],
+  "isShowInVideoClips": true
+}
+```
+
+⚠️ **Poster ke liye purpose alag hai** — `SHOWCASE_THUMBNAIL`, `SHOWCASE_MEDIA`
+nahi. Dono ek hi bucket aur prefix me jaate hain; farq ye ki thumbnail 10 MB par
+capped hai aur video leta hi nahi. Gallery ka id poster ki jagah bhejne par `422`
+aata hai aur **koi upload jalta nahi** — dono abhi bhi apni jagah chal jaayenge.
+
+⚠️ **Mila-jula batch chalta hai** — kuch file attached, kuch pehle se S3 par.
+Store hone ka kram **files pehle, ids baad me**, aur section ki ginti **poore
+batch** par lagti hai, har raaste par alag nahi.
 
 > ### 🔴 Video ke saath poster ab mandatory hai
 >
-> `thumbnails[2]` `files[2]` ka poster hai — **index se jodte hain**. Jis index
-> par video hai aur poster nahi, wo request `422` se rukti hai, **upload se
-> pehle**.
+> `thumbnails[2]` `files[2]` ka poster hai, aur `thumbnailUploadIds[0]`
+> `uploadIds[0]` ka — **index se jodte hain, aur har raasta apne andar**. Jis
+> index par video hai aur poster nahi, wo request `422` se rukti hai, **upload se
+> pehle** — yaani presigned raaste par bhi aapka upload bacha rehta hai.
+>
+> 🔴 **Section ke apne rules bhi confirm se pehle chalte hain** — kitni media,
+> kaunsa mime. Baad me chalte to jawab wahi rehta, par ek extra file chun lene par
+> aapki **saari** files jal jaatin.
 >
 > Pehle poster provider khud bana deta tha — kam se kam theory me. Sach ye tha:
 > Cloudinary ka `getOptimizedImageUrl(publicId)` `/image/upload/` ka path banata
@@ -4276,7 +4322,7 @@ Photos/videos upload karta hai. **Multipart request.**
 
 **1. Limits **existing + naye** dono milakar check hote hain** — agar section me 13 images hain aur aap 3 aur bhejo, to `"Maximum 15 images are allowed."` aayega.
 
-**2. Rollback on failure** — koi bhi file fail ho to **saari** uploaded files Cloudinary se delete ho jaati hain. Partial upload nahi hota.
+**2. Rollback on failure** — koi bhi file fail ho to **saari** uploaded files delete ho jaati hain (har ek apne provider se). Partial upload nahi hota.
 
 **3. `isShowInVideoClips` sirf videos pe apply hota hai** (naya). Photos par hamesha `false` store hota hai — response me bhi `false` dikhega. Pehle har media pe `true` chala jaata tha, jiska koi asar nahi hota tha (clips feed type pe filter karta hai) par panel me ek bekaar toggle dikh jaata tha.
 
@@ -4316,6 +4362,10 @@ Media ka metadata update — **file nahi badalti**.
 | `isShowInVideoClips` | boolean | ⚠️ **Sirf VIDEO pe** — photo pe bhejne se `422` |
 | `isActive` | boolean | – |
 | *(file)* `thumbnail` | file | ⚠️ **Sirf VIDEO pe** — image format, max 10 MB |
+| `thumbnailUploadId` | ObjectId 🆕 | ⚠️ **Sirf VIDEO pe** — presigned raasta, purpose `SHOWCASE_THUMBNAIL` |
+
+⚠️ Poster ya to file ho ya `thumbnailUploadId` — dono raaste ek hi jagah aate
+hain. Photo par koi bhi bhejne par `422`, aur **upload kharch nahi hota**.
 
 > 🔴 **`sortOrder` hata diya gaya hai** (naya). Position ab sirf reorder endpoint (#51) badalta hai. Yahan se set karne pe do media ek hi `sortOrder` pe aa jaati thi aur order arbitrary ho jaata tha.
 
@@ -4393,8 +4443,12 @@ Media file replace karta hai. **Multipart.**
 ### Body (multipart)
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `file` | file | ✅ | **Exactly ek** file |
+| `file` | file | ⚠️ | **Exactly ek** file |
 | `thumbnail` | file | ⚠️ | **Video replace karte waqt required** — poster image |
+| `uploadId` | ObjectId 🆕 | ⚠️ | Presigned raasta — purpose `SHOWCASE_MEDIA` |
+| `thumbnailUploadId` | ObjectId 🆕 | ⚠️ | Uska poster — purpose `SHOWCASE_THUMBNAIL` |
+
+⚠️ `file` **ya** `uploadId` — ek chahiye, dono nahi.
 
 ### Success — `200`
 ```json
@@ -4430,7 +4484,9 @@ Media file replace karta hai. **Multipart.**
 | `404` | `Media not found.` | Section ya media nahi, ya media inactive/deleted hai |
 | `400` | `Please upload exactly one media file.` | Zero ya multiple files |
 | `400` | `Only photo replacement is allowed for this media.` | Type mismatch — **upload se pehle** check hota hai |
-| `422` | `A video needs a poster image. Attach one as "thumbnail".` | Video se replace kar rahe hain, poster nahi bheja |
+| `422` | `A video needs a poster image. Attach one as "thumbnail", or name its upload as "thumbnailUploadId".` | Video se replace kar rahe hain, poster nahi bheja |
+| `404` 🆕 | `That upload was not found.` | Galat / expire / **kisi aur ka** `uploadId` |
+| `422` 🆕 | `That upload was authorised for SHOWCASE_MEDIA, and this is SHOWCASE_THUMBNAIL. …` | Gallery ka id poster ki jagah (ya ulta) |
 | `400` | *(format/size errors)* | #48 jaise |
 | `500` | `Failed to replace media` | Upload fail — file rollback ho jaati hai |
 
@@ -4684,7 +4740,8 @@ Voucher ko ab kam se kam **`Setting.vendor.voucher.minImages`** (default **3**) 
 
 ## 54. POST /vouchers/create
 
-Naya voucher banata hai. **Multipart** (images mandatory).
+Naya voucher banata hai. Images zaroori hain — **multipart**, ya `uploadId` se
+(🆕 U-4), ya dono mila-jula.
 
 **Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** (`resolveActorBrand`)
 
@@ -4703,11 +4760,47 @@ Naya voucher banata hai. **Multipart** (images mandatory).
 | `endAt` | ISO date | ✅ | – | `startAt` se baad |
 | `offers` | array | ✅ | – | Min 1. JSON string bhi accept hota hai |
 | `subBrandIds` | ObjectId[] | ✅ | – | Min 1 — kaunse outlets pe valid |
-| `images` | file[] | ✅ | – | **Multipart**, field name `images`. Min 1 |
+| `images` | file[] | ⚠️ | – | **Multipart**, field name `images` |
+| `imageUploadIds` | ObjectId[] 🆕 | ⚠️ | – | Presigned raasta — purpose `VOUCHER_IMAGE` |
+| `media` | file | ❌ | – | Banner — image, GIF ya video |
+| `bannerUploadId` | ObjectId 🆕 | ❌ | – | Banner, presigned — purpose `VOUCHER_BANNER` |
+| `poster` | file | ⚠️ | – | **Video banner ke saath zaroori** |
+| `bannerPosterUploadId` | ObjectId 🆕 | ⚠️ | – | Wahi, presigned — purpose `VOUCHER_BANNER_POSTER` |
 | `description` | string | ❌ | – | Max 2000 chars |
 | `tags` | string[] | ❌ | – | Min 1 item agar bhejein |
 | `isSaveAsDraft` | boolean | ❌ | `true` | |
-| `bannerType` | string | ❌ | – | `IMAGE` \| `VIDEO` \| `GIF` — saath me matching file bhi chahiye |
+
+⚠️ `images` **ya** `imageUploadIds` — milakar `minImages` (default 3) poore hone
+chahiye. Dono khali ho to wahi refusal jo kam images par aata hai.
+
+⚠️ **`bannerType` ab nahi hai** (V-4). Banner `media` naam se aata hai aur wo kya
+hai ye uske **bytes** se tay hota hai — payload me type batana ek hi sawaal ka
+doosra jawab tha, aur stored wala jeet sakta tha.
+
+### 🆕 Presigned raasta
+
+Har file ke liye pehle `POST /uploads/presign` (#94) → S3 par POST → `POST
+/uploads/confirm` (#95). Jo `uploadId` mile wo yahan bhejiye.
+
+```json
+{
+  "brandId": "68f1…c3a1",
+  "name": "Flat 30% off on total bill",
+  "imageUploadIds": ["68f1…e001", "68f1…e002", "68f1…e003"],
+  "bannerUploadId": "68f1…e004",
+  "bannerPosterUploadId": "68f1…e005"
+}
+```
+
+🔴 **Poster ka purpose alag hai** — `VOUCHER_BANNER_POSTER`, `VOUCHER_BANNER`
+nahi. Ek hi bucket aur prefix, par poster 10 MB par capped hai aur video leta hi
+nahi. Banner ka id poster ki jagah bhejne par `422`, aur koi upload jalta nahi.
+
+🔴 **Image floor aur limits confirm se pehle chalte hain** — teen ki jagah do
+bhejne par refusal aata hai aur aapke uploads **abhi bhi aapke** hain.
+
+⚠️ **Mila-jula batch chalta hai**, aur floor poore batch par lagta hai: do
+attached + ek `uploadId` = teen.
 
 **Offer ka shape:**
 | Field | Type | Required | Default | Validation |
@@ -4886,6 +4979,7 @@ Voucher edit — **naya version banata hai**. Multipart.
 | `newSubBrandIds` | ObjectId[] | – | Naye outlets |
 | `removeSubBrandIds` | ObjectId[] | – | Hatane wale outlets |
 | `newImages` | file[] | – | **Multipart**, field name `newImages` |
+| `newImageUploadIds` | ObjectId[] 🆕 | – | Presigned raasta — purpose `VOUCHER_IMAGE`. Mila-jula batch chalta hai, aur floor **poore** batch par lagta hai |
 
 > #### ⚠️ `removeImageIds` file kab sach me delete karta hai
 >
@@ -5466,8 +5560,17 @@ Voucher ka promo banner **review ke liye bhejta** hai. **Multipart.**
 ### Body (multipart)
 | Field | Type | Required | Validation |
 |---|---|---|---|
-| `media` | file | ✅ | 🆕 **Ek hi field name**, chahe image ho, GIF ho ya video. Allowed types aur size cap `Setting.storage` se |
+| `media` | file | ⚠️ | 🆕 **Ek hi field name**, chahe image ho, GIF ho ya video. Allowed types aur size cap `Setting.storage` se |
 | `poster` | file | ⚠️ | 🆕 **Video par required** — poster image. Baaki par bhejna mana hai nahi, par zarurat bhi nahi |
+| `bannerUploadId` | ObjectId 🆕 | ⚠️ | Presigned raasta — purpose `VOUCHER_BANNER` |
+| `bannerPosterUploadId` | ObjectId 🆕 | ⚠️ | Uska poster — purpose `VOUCHER_BANNER_POSTER` |
+
+⚠️ `media` **ya** `bannerUploadId` — ek chahiye, dono nahi.
+
+🔴 **Poster ka purpose alag hai.** Ek hi bucket aur `vouchers/<id>` prefix, par
+poster 10 MB par capped hai aur video leta hi nahi. Banner ka id poster ki jagah
+bhejne par `422`, aur koi upload jalta nahi — dono abhi bhi apni jagah chal
+jaayenge.
 
 ```
 media: <banner.jpg>
@@ -5608,7 +5711,10 @@ Banner "hatane" ka koi matlab nahi raha: slot kabhi khali nahi hota, approved ba
 |---|---|---|---|---|
 | `brandId` | ObjectId | ✅ | – | Body me — token se resolve nahi hota |
 | `title` | string | ✅ | – | 2–150 chars |
-| `icon` | file | ✅ | – | **Multipart**, field name `icon` |
+| `icon` | file | ⚠️ | – | **Multipart**, field name `icon` |
+| `iconUploadId` | ObjectId 🆕 | ⚠️ | – | Presigned — purpose `BRAND_FEATURE_ICON`. `icon` ke saath **nahi** |
+
+⚠️ Dono me se ek zaroori hai. 🔴 Das-feature ki seemaa **upload se pehle** check hoti hai, to bhari hone par aapka upload bacha rehta hai.
 | `description` | string | ❌ | – | Max 500 chars, `""` allowed |
 | `isActive` | boolean\|string | ❌ | `true` | |
 
@@ -5786,6 +5892,7 @@ Practically vendor panel me shayad na chahiye — `get-all` (#62) me poora data 
 | `description` | string | Max 500, `""` allowed |
 | `isActive` | boolean\|string | – |
 | `icon` | file | **Multipart** — replace karne ke liye |
+| `iconUploadId` | ObjectId 🆕 | Presigned — purpose `BRAND_FEATURE_ICON` |
 
 ```json
 { "description": "High speed fibre internet, free for all guests", "isActive": true }
@@ -5819,7 +5926,7 @@ Practically vendor panel me shayad na chahiye — `get-all` (#62) me poora data 
 
 **1. `isActive: false` → `true` karne pe 10-limit check hota hai.** Agar already 10 active hain to `400` aayega.
 
-**2. Icon replace karne pe purana Cloudinary se delete hota hai.** Ownership check **upload se pehle** chalta hai, to refuse hui request kuch upload nahi karti aur purana icon chhuti nahi.
+**2. Icon replace karne pe purana delete hota hai** (us row ke apne provider se). Ownership check **upload se pehle** chalta hai, to refuse hui request kuch upload nahi karti aur purana icon chhuta nahi.
 
 **3. ✅ Ownership ab enforce hoti hai.** Feature ka `brandId` caller ke brand se match karna chahiye (admin koi bhi). Pehle sirf `featureId` se uthaya jaata tha.
 
@@ -7850,9 +7957,24 @@ S3 seedha `204` deta hai (koi body nahi). Uske baad `/uploads/confirm`.
 | Status | Message | Kab |
 |---|---|---|
 | `401` | Token nahi / invalid | |
+| `503` | `Presigned upload is turned off for this platform. …` | 🆕 Admin ne `storage.upload.presignEnabled` off rakha hai. **Multipart abhi bhi chalta hai** — wahi file usi request me file field me bhej dijiye |
+| `409` | `Presigned upload only works on S3, and this platform is set to CLOUDINARY. …` | 🆕 Platform Cloudinary par hai. Ye raasta sirf S3 par likhta hai, to isse do provider par row ban jaatin |
 | `422` | `CATEGORY_IMAGE does not accept video/mp4.` | Surface wo type nahi leta |
-| `413` | `That file is 12 MB. The limit here is 5 MB.` | Surface ke cap se bada |
+| `413` | `That file is 12 MB. The limit here is 5 MB.` | Surface ke cap se bada. 🔴 Ye number **admin ka** hai — `min(code ka ceiling, Setting.storage.limits, surface override)` |
 | `422` | `Unknown upload purpose. Allowed: …` | Galat purpose |
+
+> ### ⚠️ `expiresInSeconds` hardcoded nahi hai
+>
+> Wo `storage.upload.presignTtlMinutes` se aata hai (default 15 min). **Jo value
+> response me mile usi par chalein** — kisi constant par nahi, kyunki admin use
+> kabhi bhi badal sakta hai.
+>
+> ### 🔴 Poster ke purpose sirf still lete hain
+>
+> `SHOWCASE_THUMBNAIL`, `BANNER_POSTER` aur `VOUCHER_BANNER_POSTER` ab **`GIF`
+> nahi** lete — sirf still image. Pehle presign GIF ke liye signature de deta tha
+> aur surface uske baad `422` deta, yaani vendor ki bandwidth kharch hone ke
+> **baad**. Ab refusal presign par hi ho jaata hai, upload se pehle.
 
 ---
 
@@ -7891,7 +8013,13 @@ Upload hui file ko uski asli jagah par le jaata hai, aur batata hai wo **sach me
 }
 ```
 
-Ye `storage` object wahi hai jo surface endpoint ko `uploadId` ke badle milta hai — aap use seedha kahin bhejte nahi, agla step surface ka apna endpoint hai (U-2 se aage).
+Ye `storage` object aap kahin bhejte **nahi** — agla step surface ka apna endpoint
+hai, aur use sirf `uploadId` chahiye.
+
+⚠️ **Vendor panel ki koi surface abhi `uploadId` nahi leti.** Pehli surface
+category hai (U-2), jo admin-only hai — admin doc **#61 / #64**. Showcase U-3 me
+judta hai, voucher U-4 me, baaki U-5 me. Tab tak vendor panel ke liye ye dono
+endpoint **ready hain par kisi ke kaam ke nahi** — multipart hi chalu hai.
 
 ### Errors
 | Status | Message | Kab |
@@ -7901,6 +8029,7 @@ Ye `storage` object wahi hai jo surface endpoint ko `uploadId` ke badle milta ha
 | `400` | `That file was never uploaded, or has already expired.` | S3 par kuch hai hi nahi |
 | `400` | `That file type is not supported.` | Bytes kisi jaani-pehchani file ki nahi |
 | `422` | `USER_AVATAR does not accept MP4 files.` | Bytes surface ke hisaab se galat |
+| `413` 🆕 | `That file is 3 MB. The limit here is 2 MB.` | **Asli** size limit se bada. Object wahin delete ho jaata hai |
 
 ### ⚠️ Notes
 
@@ -7910,7 +8039,20 @@ Ye `storage` object wahi hai jo surface endpoint ko `uploadId` ke badle milta ha
 
 **3. Ek upload ek hi baar.** Warna ek hi file do alag rows par lag jaati, aur doosri wo file rakhti jiske liye usne kuch diya hi nahi.
 
-**4. Size ki asli limit S3 lagata hai.** Signed policy me `content-length-range` **surface ke ceiling** se banta hai — aapke bheje `sizeBytes` se nahi. Yaani size chhota bata kar bada file bhejna kaam nahi karega; wo S3 par hi ruk jaayega.
+**4. 🔴 Size ki limit admin ki hai, aur wahi dono jagah lagti hai.** Ek hi number
+teen se banta hai — `min(code ka ceiling, Setting.storage.limits, surface
+override)` — aur wahi signed policy ke `content-length-range` me jaata hai, yaani
+**S3 khud** use lagata hai. Aapka bheja `sizeBytes` sirf padhne-layak `413` ke
+liye hai: size chhota bata kar bada file bhejna kaam nahi karega, wo S3 par hi
+ruk jaayega.
+
+⚠️ **`confirm` par ye dobara naapa jaata hai, asli byte count se.** Signature ek
+baar likhi jaati hai aur pandrah minute chalti hai; admin us beech limit ghata
+sakta hai aur aapke haath ki signature nahi badalti. Isliye jo file policy se nikal
+gayi wo bhi yahan ruk sakti hai — aur ruk jaaye to object wahin delete ho jaata hai.
+
+⚠️ Aur limit **verified kind** ki hoti hai, declared ki nahi. GIF ka apna bada
+ceiling hai, to PNG ko GIF bata kar bhejna warna GIF ka allowance muft me de deta.
 
 **5. Reject hui file wahin delete ho jaati hai.** Aur jo `staging/` me pada reh gaya, use bucket ka apna lifecycle rule uthata hai.
 

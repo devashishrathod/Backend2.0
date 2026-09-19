@@ -1293,6 +1293,13 @@
                   "src": [],
                   "description": "Optional avatar — enable karke file chunein",
                   "disabled": true
+                },
+                {
+                  "key": "uploadId",
+                  "type": "text",
+                  "value": "",
+                  "description": "🆕 Presigned — purpose USER_AVATAR. `image` ke saath NAHI",
+                  "disabled": true
                 }
               ]
             },
@@ -5914,6 +5921,20 @@
                   "type": "file",
                   "src": [],
                   "disabled": true
+                },
+                {
+                  "key": "logoUploadId",
+                  "type": "text",
+                  "value": "",
+                  "description": "🆕 Presigned — purpose BRAND_LOGO",
+                  "disabled": true
+                },
+                {
+                  "key": "coverImageUploadId",
+                  "type": "text",
+                  "value": "",
+                  "description": "🆕 Presigned — purpose BRAND_COVER",
+                  "disabled": true
                 }
               ]
             },
@@ -6526,7 +6547,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n✅ **`isActive` ab default nahi hota.** Pehle `.default(true)` laga tha, matlab\nkoi bhi update — chahe usme `isActive` ho hi na — deactivated outlet ko\nchup-chaap **reactivate** kar deta tha.\n\nAb wo sirf tab apply hota hai jab explicitly bheja jaye.\n\n🔴 **`email` outlet ka apna field nahi hai** — wo us outlet ke **manager ke**\n**account** ka email hai, aur `SubBrand.email` uska mirror. Aap ye set kar sakte hain\n(apne hi outlet ka; doosre brand ke outlet par `403`), par flag **`false`** rehta hai —\nto isse us account me login nahi kiya ja sakta. Sirf manager khud verify kar sakta hai.\n\n🆕 **Outlet ki apni tasveerein.** `logo` aur `coverImage` model me pehle se\nthin aur koi endpoint unhe likhta hi nahi tha — outlet hamesha bina tasveer ke\nrehta tha.\n\n⚠️ File bhejni ho to body **form-data** karni padegi; ye request JSON bhejti\nhai kyunki wahi aam istemaal hai. Fields: `logo`, `coverImage` (type: File).\n\nJo tasveer replace hoti hai wahi delete hoti hai, **save ke baad**. Galat file\npar `422` milta hai jisme accepted types likhe hote hain."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n✅ **`isActive` ab default nahi hota.** Pehle `.default(true)` laga tha, matlab\nkoi bhi update — chahe usme `isActive` ho hi na — deactivated outlet ko\nchup-chaap **reactivate** kar deta tha.\n\nAb wo sirf tab apply hota hai jab explicitly bheja jaye.\n\n🔴 **`email` outlet ka apna field nahi hai** — wo us outlet ke **manager ke**\n**account** ka email hai, aur `SubBrand.email` uska mirror. Aap ye set kar sakte hain\n(apne hi outlet ka; doosre brand ke outlet par `403`), par flag **`false`** rehta hai —\nto isse us account me login nahi kiya ja sakta. Sirf manager khud verify kar sakta hai.\n\n🆕 **Outlet ki apni tasveerein.** `logo` aur `coverImage` model me pehle se\nthin aur koi endpoint unhe likhta hi nahi tha — outlet hamesha bina tasveer ke\nrehta tha.\n\n⚠️ File bhejni ho to body **form-data** karni padegi; ye request JSON bhejti\nhai kyunki wahi aam istemaal hai. Fields: `logo`, `coverImage` (type: File).\n\nJo tasveer replace hoti hai wahi delete hoti hai, **save ke baad**. Galat file\npar `422` milta hai jisme accepted types likhe hote hain.\n\n🆕 **Presigned raasta (U-5):** `logoUploadId` (purpose `SUB_BRAND_LOGO`) aur `coverImageUploadId` (purpose `SUB_BRAND_COVER`). Har slot ka apna purpose hai, to logo ka id cover ki jagah nahi chalega."
           },
           "response": [
             {
@@ -8256,11 +8277,32 @@
                   "value": "true"
                 },
                 {
-                  "key": "medias",
+                  "key": "files",
                   "type": "file",
-                  "src": [],
-                  "description": "Enable karke ek ya zyada photo/video chunein",
-                  "disabled": true
+                  "description": "🔴 Yahi naam service padhti hai. Enable karke ek ya zyada photo/video chunein",
+                  "disabled": true,
+                  "src": []
+                },
+                {
+                  "key": "thumbnails",
+                  "type": "file",
+                  "description": "Har video ka poster — index se jodta hai",
+                  "disabled": true,
+                  "src": []
+                },
+                {
+                  "key": "uploadIds",
+                  "type": "text",
+                  "description": "🆕 Presigned raasta — /uploads/confirm se mila id",
+                  "disabled": true,
+                  "value": ""
+                },
+                {
+                  "key": "thumbnailUploadIds",
+                  "type": "text",
+                  "description": "🆕 Unke poster ke id (purpose SHOWCASE_THUMBNAIL)",
+                  "disabled": true,
+                  "value": ""
                 }
               ]
             },
@@ -8286,7 +8328,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n**Multipart.** Media limits **combined** check hote hain — existing + naye milakar\nplan ki limit ke andar hone chahiye.\n\n⚠️ File attach kiye bina ye 4xx dega — wo expected hai. Success path dekhne ke\nliye `medias` field enable karke file chunein."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\nMedia limits **combined** check hote hain — existing + naye milakar plan ki limit\nke andar hone chahiye.\n\n🔴 **Field ka naam `files` hai, `medias` nahi.** Ye request pehle `medias`\nbhejti thi — ek aisa naam jo service padhti hi nahi. Request default par disabled\nhai, isliye wo kabhi chali nahi aur galti pakdi nahi gayi.\n\n### 🆕 Do raaste\n\n**Multipart:** `files` (ek ya zyada) aur `thumbnails` (har video ka poster,\nindex se jodta hai).\n\n**Presigned (U-3):** har file ke liye `/uploads/presign` → S3 → `/uploads/confirm`,\nphir yahan `uploadIds` aur `thumbnailUploadIds`. File yahan aati hi nahi.\n\n⚠️ **Poster ka purpose alag hai** — `SHOWCASE_THUMBNAIL`, `SHOWCASE_MEDIA` nahi.\nGallery ka id poster ki jagah bhejne par `422`, aur koi upload jalta nahi.\n\n⚠️ Mila-jula batch chalta hai; kram **files pehle, ids baad me**, aur section ki\nginti poore batch par lagti hai.\n\n⚠️ Kuch bhi attach ya name kiye bina ye `400` dega — wo expected hai."
           },
           "response": [
             {
@@ -8450,7 +8492,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\nSirf metadata — file replace karne ke liye alag endpoint hai.\n\n⚠️ `isShowInVideoClips` **sirf VIDEO** pe bheja ja sakta hai; photo pe `422`\naata hai. Custom `thumbnail` file bhi sirf video pe (image, max 10 MB).\n\n🔴 `sortOrder` yahan se hata diya gaya hai — position sirf reorder endpoint\nbadalta hai (warna do media ek hi position pe aa jaati thi)."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\nMetadata, aur video ka poster.\n\n⚠️ `isShowInVideoClips` **sirf VIDEO** pe bheja ja sakta hai; photo pe `422` aata\nhai. Poster bhi sirf video pe — `thumbnail` file, ya 🆕 `thumbnailUploadId`\n(purpose `SHOWCASE_THUMBNAIL`). Photo par bhejne par `422`, aur upload kharch nahi\nhota.\n\n🔴 `sortOrder` yahan se hata diya gaya hai — position sirf reorder endpoint\nbadalta hai (warna do media ek hi position pe aa jaati thi)."
           },
           "response": [
             {
@@ -8558,11 +8600,32 @@
               "mode": "formdata",
               "formdata": [
                 {
-                  "key": "media",
+                  "key": "file",
                   "type": "file",
-                  "src": [],
-                  "description": "Enable karke naya file chunein",
-                  "disabled": true
+                  "description": "🔴 Yahi naam service padhti hai. Enable karke naya file chunein",
+                  "disabled": true,
+                  "src": []
+                },
+                {
+                  "key": "thumbnail",
+                  "type": "file",
+                  "description": "Video replace karte waqt zaroori — poster image",
+                  "disabled": true,
+                  "src": []
+                },
+                {
+                  "key": "uploadId",
+                  "type": "text",
+                  "description": "🆕 Presigned raasta — purpose SHOWCASE_MEDIA",
+                  "disabled": true,
+                  "value": ""
+                },
+                {
+                  "key": "thumbnailUploadId",
+                  "type": "text",
+                  "description": "🆕 Uska poster — purpose SHOWCASE_THUMBNAIL",
+                  "disabled": true,
+                  "value": ""
                 }
               ]
             },
@@ -8590,7 +8653,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n**Multipart.** Purani file (aur video ka custom poster) Cloudinary se delete ho\njaate hain — sirf naya upload **aur** save succeed hone ke baad.\n\n`_id`, `sortOrder`, `isActive`, `isShowInVideoClips` wahi rehte hain. Type badal\nnahi sakta — photo ki jagah photo, video ki jagah video (check upload se pehle\nhi mime type pe hota hai, to reject hone pe file upload hi nahi hoti)."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\nPurani file (aur video ka poster) delete hoti hai — sirf naya upload **aur** save\nsucceed hone ke baad.\n\n🔴 **Field ka naam `file` hai, `media` nahi.** Ye request pehle `media` bhejti\nthi, jo service padhti hi nahi; disabled hone ki wajah se kabhi pakdi nahi gayi.\n\n### 🆕 Do raaste\n\n**Multipart:** `file`, aur video ke liye `thumbnail`.\n**Presigned (U-3):** `uploadId`, aur video ke liye `thumbnailUploadId`.\n\n`_id`, `sortOrder`, `isActive`, `isShowInVideoClips` wahi rehte hain. Type badal\nnahi sakta — photo ki jagah photo, video ki jagah video — aur wo check **upload se\npehle** hota hai, to reject hone par aapka upload bacha rehta hai."
           },
           "response": [
             {
@@ -9324,9 +9387,44 @@
                 {
                   "key": "images",
                   "type": "file",
-                  "src": [],
-                  "description": "**Required** — kam se kam 1 image. Enable karke file chunein",
-                  "disabled": true
+                  "description": "Enable karke ek ya zyada image chunein",
+                  "disabled": true,
+                  "src": []
+                },
+                {
+                  "key": "media",
+                  "type": "file",
+                  "description": "Banner — image, GIF ya video",
+                  "disabled": true,
+                  "src": []
+                },
+                {
+                  "key": "poster",
+                  "type": "file",
+                  "description": "Video banner ke saath zaroori",
+                  "disabled": true,
+                  "src": []
+                },
+                {
+                  "key": "imageUploadIds",
+                  "type": "text",
+                  "description": "🆕 Presigned — JSON array, purpose VOUCHER_IMAGE",
+                  "disabled": true,
+                  "value": ""
+                },
+                {
+                  "key": "bannerUploadId",
+                  "type": "text",
+                  "description": "🆕 Presigned banner — purpose VOUCHER_BANNER",
+                  "disabled": true,
+                  "value": ""
+                },
+                {
+                  "key": "bannerPosterUploadId",
+                  "type": "text",
+                  "description": "🆕 Uska poster — purpose VOUCHER_BANNER_POSTER",
+                  "disabled": true,
+                  "value": ""
                 }
               ]
             },
@@ -9350,7 +9448,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n**Multipart**, aur **kam se kam ek image required** hai — bina uske `422`.\n\n`offers` ek JSON string (ya strings ka array) hota hai. Har offer me:\n\n- `discountType`: PERCENTAGE | FIXED | FLAT — ✅ teeno kaam karte hain (`FIXED` ab `FLAT` ka alias hai)\n- `usageType`: ONCE_PER_USER | MULTIPLE — ⚠️ enforce nahi hota, redemption flow hai hi nahi\n- `discountApplicableOn`: SUBTOTAL | FINAL_BILL — ⚠️ calculation me use nahi hota, display only\n- `sortOrder` **required**, min 1\n\nTransactional hai — fail hone pe uploaded images rollback ho jaati hain.\n\nPlan ka voucher slot atomically reserve hota hai."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n**Multipart**, aur **kam se kam ek image required** hai — bina uske `422`.\n\n`offers` ek JSON string (ya strings ka array) hota hai. Har offer me:\n\n- `discountType`: PERCENTAGE | FIXED | FLAT — ✅ teeno kaam karte hain (`FIXED` ab `FLAT` ka alias hai)\n- `usageType`: ONCE_PER_USER | MULTIPLE — ⚠️ enforce nahi hota, redemption flow hai hi nahi\n- `discountApplicableOn`: SUBTOTAL | FINAL_BILL — ⚠️ calculation me use nahi hota, display only\n- `sortOrder` **required**, min 1\n\nTransactional hai — fail hone pe uploaded images rollback ho jaati hain.\n\nPlan ka voucher slot atomically reserve hota hai.\n\n### 🆕 Presigned raasta (U-4)\n\nHar file ke liye `/uploads/presign` → S3 → `/uploads/confirm`, phir yahan sirf id bhejiye — file yahan aati hi nahi.\n\n🔴 **Banner ke poster ka purpose alag hai** — `VOUCHER_BANNER_POSTER`, `VOUCHER_BANNER` nahi. Ek hi bucket aur prefix, par poster 10 MB par capped hai aur video leta hi nahi. Banner ka id poster ki jagah bhejne par `422`, aur koi upload jalta nahi.\n\n🔴 **Image floor aur limits confirm se PEHLE chalte hain** — teen ki jagah do bhejne par refusal aata hai aur aapke uploads abhi bhi aapke hain.\n\n⚠️ Mila-jula batch chalta hai, aur floor **poore** batch par lagta hai."
           },
           "response": [
             {
@@ -9518,10 +9616,18 @@
                   "disabled": true
                 },
                 {
-                  "key": "images",
+                  "key": "newImages",
                   "type": "file",
-                  "src": [],
-                  "disabled": true
+                  "description": "🔴 Yahi naam service padhti hai — `images` nahi",
+                  "disabled": true,
+                  "src": []
+                },
+                {
+                  "key": "newImageUploadIds",
+                  "type": "text",
+                  "description": "🆕 Presigned — JSON array, purpose VOUCHER_IMAGE",
+                  "disabled": true,
+                  "value": ""
                 }
               ]
             },
@@ -9546,7 +9652,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n⚠️ **Update delta-based hai** — `newOffers` / `removedOfferIds` bhejein, poori\noffers list nahi.\n\nHar update ek **naya version** banata hai. Status-wise editability:\n\n| Status | Edit? |\n|---|---|\n| `DRAFT` · `REJECTED` | ✅ |\n| `UNDER_REVIEW` · `EXPIRED` · `ARCHIVED` | ❌ blocked |\n\n**removeImageIds aur file delete:** published voucher edit karne par naya draft version fork hota hai, aur fork har kept image ko apne `storage` ke saath copy karta hai - do version ek hi file par point karte hain. Isliye draft se image hatane par server pehle dekhta hai ki koi doosra non-deleted version wo file to nahi use kar raha. Kar raha ho to row hat jaati hai par file rehti hai, warna live published voucher ki tasveer mar jaati."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n⚠️ **Update delta-based hai** — `newOffers` / `removedOfferIds` bhejein, poori\noffers list nahi.\n\nHar update ek **naya version** banata hai. Status-wise editability:\n\n| Status | Edit? |\n|---|---|\n| `DRAFT` · `REJECTED` | ✅ |\n| `UNDER_REVIEW` · `EXPIRED` · `ARCHIVED` | ❌ blocked |\n\n**removeImageIds aur file delete:** published voucher edit karne par naya draft version fork hota hai, aur fork har kept image ko apne `storage` ke saath copy karta hai - do version ek hi file par point karte hain. Isliye draft se image hatane par server pehle dekhta hai ki koi doosra non-deleted version wo file to nahi use kar raha. Kar raha ho to row hat jaati hai par file rehti hai, warna live published voucher ki tasveer mar jaati.\n\n🔴 **File field ka naam `newImages` hai, `images` nahi.** Ye request pehle `images` bhejti thi — ek naam jo service padhti hi nahi. Request default par disabled hai, isliye wo kabhi chali nahi aur galti pakdi nahi gayi.\n\n### 🆕 Presigned raasta (U-4)\n\nHar file ke liye `/uploads/presign` → S3 → `/uploads/confirm`, phir yahan sirf id bhejiye — file yahan aati hi nahi.\n\n🔴 **Banner ke poster ka purpose alag hai** — `VOUCHER_BANNER_POSTER`, `VOUCHER_BANNER` nahi. Ek hi bucket aur prefix, par poster 10 MB par capped hai aur video leta hi nahi. Banner ka id poster ki jagah bhejne par `422`, aur koi upload jalta nahi.\n\n🔴 **Image floor aur limits confirm se PEHLE chalte hain** — teen ki jagah do bhejne par refusal aata hai aur aapke uploads abhi bhi aapke hain.\n\n⚠️ Mila-jula batch chalta hai, aur floor **poore** batch par lagta hai."
           },
           "response": [
             {
@@ -10378,6 +10484,20 @@
                   "src": [],
                   "disabled": true,
                   "description": "Required only when the banner is a video."
+                },
+                {
+                  "key": "bannerUploadId",
+                  "type": "text",
+                  "description": "🆕 Presigned banner — purpose VOUCHER_BANNER",
+                  "disabled": true,
+                  "value": ""
+                },
+                {
+                  "key": "bannerPosterUploadId",
+                  "type": "text",
+                  "description": "🆕 Uska poster — purpose VOUCHER_BANNER_POSTER",
+                  "disabled": true,
+                  "value": ""
                 }
               ]
             },
@@ -10402,7 +10522,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\nMaster-level promo banner. **Version/approval flow se bilkul independent** —\nbanner add/replace/remove karne se voucher ka status, approval ya version kuch\nnahi badalta.\n\n| `bannerType` | File field |\n|---|---|\n| `IMAGE` | `bannerImage` |\n| `VIDEO` | `bannerVideo` |\n| `GIF` | `bannerGif` |\n\nCustomer ko ye `bannerType` + `bannerUrl` ke roop me dikhta hai — dono saath, ya dono `null`."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\nMaster-level promo banner. **Version/approval flow se bilkul independent** — banner add/replace karne se voucher ka status, approval ya version kuch nahi badalta.\n\n🔴 **`bannerType` aur teen file field ab nahi hain (V-4).** Pehle payload me `bannerType` jaata tha aur file `bannerImage` / `bannerVideo` / `bannerGif` me se kisi ek me — yaani client batata tha file kya hai aur server jaanchta tha ki dono baatein milti hain ya nahi. Ek sawaal ke do jawab, aur stored wala jeet sakta tha.\n\nAb file **`media`** me aati hai aur wo kya hai ye uski apni bytes se tay hota hai. Video ke saath **`poster`** zaroori hai — kuch bhi poster derive nahi karta.\n\n⚠️ **Banner seedha live nahi hota** — `pending` me jaata hai aur admin ke approve karne par hi customer ko dikhta hai. Purana approved banner us beech live rehta hai.\n\n### 🆕 Presigned raasta (U-4)\n\nHar file ke liye `/uploads/presign` → S3 → `/uploads/confirm`, phir yahan sirf id bhejiye — file yahan aati hi nahi.\n\n🔴 **Banner ke poster ka purpose alag hai** — `VOUCHER_BANNER_POSTER`, `VOUCHER_BANNER` nahi. Ek hi bucket aur prefix, par poster 10 MB par capped hai aur video leta hi nahi. Banner ka id poster ki jagah bhejne par `422`, aur koi upload jalta nahi.\n\n🔴 **Image floor aur limits confirm se PEHLE chalte hain** — teen ki jagah do bhejne par refusal aata hai aur aapke uploads abhi bhi aapke hain.\n\n⚠️ Mila-jula batch chalta hai, aur floor **poore** batch par lagta hai."
           },
           "response": [
             {
@@ -10555,6 +10675,13 @@
                   "type": "file",
                   "src": [],
                   "description": "Optional icon",
+                  "disabled": true
+                },
+                {
+                  "key": "iconUploadId",
+                  "type": "text",
+                  "value": "",
+                  "description": "🆕 Presigned — purpose BRAND_FEATURE_ICON",
                   "disabled": true
                 }
               ]
@@ -10982,6 +11109,13 @@
                   "key": "icon",
                   "type": "file",
                   "src": [],
+                  "disabled": true
+                },
+                {
+                  "key": "iconUploadId",
+                  "type": "text",
+                  "value": "",
+                  "description": "🆕 Presigned — purpose BRAND_FEATURE_ICON",
                   "disabled": true
                 }
               ]
@@ -19685,7 +19819,7 @@
                 }
               ]
             },
-            "description": "**Access:** koi bhi signed-in caller\n\n🆕 File seedha S3 par bhejne ki **ijazat** maangta hai — file is server tak aati hi nahi.\n\n🔴 **Iske baad kya karna hai:** `url` par ek multipart POST bhejiye, jisme `fields` ke **saare field pehle** aur **file sabse aakhir me** ho. S3 file part ke baad kuch nahi padhta, to baad me bheja gaya field laga hi nahi. S3 seedha `204` deta hai, koi body nahi.\n\n```js\nconst form = new FormData();\nObject.entries(data.fields).forEach(([k, v]) => form.append(k, v));\nform.append(\"file\", file);   // sabse aakhir me\nawait fetch(data.url, { method: \"POST\", body: form });\n```\n\n⚠️ `sizeBytes` sirf ek **padhne-layak 413** deta hai. Asli limit signed policy me hai aur wo **surface ke ceiling** se banti hai — size chhota bata kar bada file bhejna S3 par hi ruk jayega.\n\nPhir `/uploads/confirm`."
+            "description": "**Access:** koi bhi signed-in caller\n\n🆕 File seedha S3 par bhejne ki **ijazat** maangta hai — file is server tak aati hi nahi.\n\n🔴 **Iske baad kya karna hai:** `url` par ek multipart POST bhejiye, jisme `fields` ke **saare field pehle** aur **file sabse aakhir me** ho. S3 file part ke baad kuch nahi padhta, to baad me bheja gaya field laga hi nahi. S3 seedha `204` deta hai, koi body nahi.\n\n```js\nconst form = new FormData();\nObject.entries(data.fields).forEach(([k, v]) => form.append(k, v));\nform.append(\"file\", file);   // sabse aakhir me\nawait fetch(data.url, { method: \"POST\", body: form });\n```\n\n⚠️ `sizeBytes` sirf ek **padhne-layak 413** deta hai. Asli limit signed policy me hai — size chhota bata kar bada file bhejna S3 par hi ruk jayega.\n\n🔴 **Wo limit ab admin ki hai (U-3).** Ek hi number teen se banta hai: code ka ceiling, `Setting.storage.limits`, aur surface ka apna override — sabse chhota jeetta hai. Pehle policy me code ka constant jaata tha, yaani admin ka number is raaste par lagta hi nahi tha.\n\nPhir `/uploads/confirm`."
           },
           "response": [
             {
@@ -19792,6 +19926,76 @@
               ],
               "cookie": [],
               "body": "{\n  \"success\": false,\n  \"message\": \"CATEGORY_IMAGE does not accept video/mp4.\"\n}"
+            },
+            {
+              "name": "503 · Ijazat maango (presign) ⭐",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/uploads/presign",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "uploads",
+                    "presign"
+                  ]
+                }
+              },
+              "status": "Service Unavailable",
+              "code": 503,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Presigned upload is turned off for this platform. Turn it on in Admin → Settings → Storage, or send the file directly as a multipart field on the same request.\"\n}"
+            },
+            {
+              "name": "409 · Ijazat maango (presign) ⭐",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/uploads/presign",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "uploads",
+                    "presign"
+                  ]
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Presigned upload only works on S3, and this platform is set to CLOUDINARY. Either switch Admin → Settings → Storage → provider to AWS_S3, or turn presigned upload off so every file takes the same road.\"\n}"
             }
           ]
         },
@@ -19834,7 +20038,7 @@
                 }
               ]
             },
-            "description": "**Access:** koi bhi signed-in caller\n\n🔴 **Yahi ek jagah hai jahan file ki asli pehchaan hoti hai.** Is se pehle har check us `Content-Type` par tha jo client ne chuna. Yahan object ke apne pehle bytes padhe jaate hain, aur stored type unse aata hai — PNG ke naam par bheja gaya GIF `gifs/` me landta hai, theek us resize step se bahar jo uski animation khatam kar deta.\n\n`entityId` optional hai: logo ko apna brand pehle se pata hota hai, par voucher image us version ki hoti hai jo abhi bani hi nahi. Na ho to key me ek segment kam.\n\n⚠️ **Kisi aur ka `uploadId` `404` deta hai, `403` nahi** — jo id maujood hai uske baare me \"ye aapki nahi\" keh dena, ye bata dena hai ki wo id asli hai.\n\n⚠️ **Ek upload ek hi baar.** Warna ek hi file do rows par lag jaati, aur doosri wo file rakhti jiske liye usne kuch diya hi nahi."
+            "description": "**Access:** koi bhi signed-in caller\n\n🔴 **Yahi ek jagah hai jahan file ki asli pehchaan hoti hai.** Is se pehle har check us `Content-Type` par tha jo client ne chuna. Yahan object ke apne pehle bytes padhe jaate hain, aur stored type unse aata hai — PNG ke naam par bheja gaya GIF `gifs/` me landta hai, theek us resize step se bahar jo uski animation khatam kar deta.\n\n`entityId` optional hai: logo ko apna brand pehle se pata hota hai, par voucher image us version ki hoti hai jo abhi bani hi nahi. Na ho to key me ek segment kam.\n\n⚠️ **Kisi aur ka `uploadId` `404` deta hai, `403` nahi** — jo id maujood hai uske baare me \"ye aapki nahi\" keh dena, ye bata dena hai ki wo id asli hai.\n\n⚠️ **Ek upload ek hi baar.** Warna ek hi file do rows par lag jaati, aur doosri wo file rakhti jiske liye usne kuch diya hi nahi.\n\n🔴 **Asli size bhi yahin naapa jaata hai, aur `413` de sakta hai.** Signature ek baar likhi jaati hai aur 15 minute chalti hai; admin us beech limit ghata sakta hai aur aapke haath ki signature nahi badalti. Reject hui file wahin delete ho jaati hai.\n\n⚠️ Limit **verified kind** ki hoti hai, declared ki nahi. GIF ka apna bada ceiling hai, to PNG ko `image/gif` bata kar bhejna warna GIF ka allowance muft me de deta."
           },
           "response": [
             {
