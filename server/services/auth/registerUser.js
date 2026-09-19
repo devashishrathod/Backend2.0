@@ -1,11 +1,16 @@
 const mongoose = require("mongoose");
+const { toDisplayName } = require("../../helpers/common");
 
 const User = require("../../models/User");
 const { throwError } = require("../../utils");
 const { ROLES, LOGIN_TYPES } = require("../../constants");
 const { DUPLICATE_KEY } = require("../../constants/mongo");
-const storage = require("../../services/storage");
-const { assertImageFile } = require("../../helpers/media");
+const { acceptUpload } = require("../../services/storage");
+const {
+  assertImageFile,
+  toMediaDocument,
+  discardOnFailure,
+} = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const {
   generateUniqueUserId,
@@ -13,10 +18,16 @@ const {
   sanitizeUser,
 } = require("../../helpers/users");
 
-exports.registerUser = async (body, image) => {
+/**
+ * ⚠️ `actor` is the **admin** doing the creating (U-5), not the account being
+ * created — `POST /auth/register` sits behind `isAdmin`, so there is always a
+ * signed-in caller, and the presigned road needs one: the facade looks an upload
+ * intent up by id **and** owner.
+ */
+exports.registerUser = async (actor, body, image) => {
   let { name, email, password, mobile, whatsappNumber, username, role } = body;
+  name = toDisplayName(name);
   email = email?.toLowerCase();
-  name = name?.toLowerCase();
   username = username?.toLowerCase();
   role = role?.toUpperCase() || ROLES.ADMIN;
   let user;
@@ -40,17 +51,14 @@ exports.registerUser = async (body, image) => {
   // insert — so the id is minted here. Mongo generates ids client-side anyway.
   const _id = new mongoose.Types.ObjectId();
 
-  let uploaded = null;
   assertImageFile(image, "Profile photo");
 
-  if (image) {
-    uploaded = await storage.uploadFromPath({
-      filePath: image.tempFilePath,
-      originalFile: image,
-      purpose: UPLOAD_PURPOSE.USER_AVATAR,
-      entityId: _id,
-    });
-  }
+  const uploaded = await acceptUpload(actor, {
+    file: image,
+    uploadId: body.uploadId,
+    purpose: UPLOAD_PURPOSE.USER_AVATAR,
+    entityId: _id,
+  });
 
   const userData = {
     _id,
@@ -62,7 +70,7 @@ exports.registerUser = async (body, image) => {
     whatsappNumber,
     role,
     image: uploaded?.url,
-    imageStorage: uploaded?.storage,
+    imageMedia: toMediaDocument(uploaded),
     loginType: LOGIN_TYPES.PASSWORD,
     uniqueId: await generateUniqueUserId(),
     referralCode: await generateReferralCode(),
@@ -79,22 +87,31 @@ exports.registerUser = async (body, image) => {
    * refused, and this turns that into the same message the check above would
    * have given rather than a driver error naming an index.
    */
-  try {
-    user = await User.create(userData);
-  } catch (error) {
-    if (error?.code === DUPLICATE_KEY) {
-      const field = Object.keys(error.keyPattern || {}).find((k) => k !== "role");
-      const label =
-        {
-          email: "email",
-          whatsappNumber: "whatsapp contact",
-          mobile: "mobile number",
-          username: "username",
-        }[field] || "identifier";
-      throwError(400, `User with this ${label} already exists`);
+  /**
+   * ⚠️ Wrapped so the avatar goes back out when the insert loses that race. The
+   * object is already out of `staging/` by then — it carries `_id` in its key —
+   * so nothing else would ever collect it.
+   */
+  await discardOnFailure(uploaded, async () => {
+    try {
+      user = await User.create(userData);
+    } catch (error) {
+      if (error?.code === DUPLICATE_KEY) {
+        const field = Object.keys(error.keyPattern || {}).find(
+          (k) => k !== "role",
+        );
+        const label =
+          {
+            email: "email",
+            whatsappNumber: "whatsapp contact",
+            mobile: "mobile number",
+            username: "username",
+          }[field] || "identifier";
+        throwError(400, `User with this ${label} already exists`);
+      }
+      throw error;
     }
-    throw error;
-  }
+  });
   const token = user.getSignedJwtToken();
   /**
    * ⚠️ `User.create` returns the document it just wrote, hash included — a

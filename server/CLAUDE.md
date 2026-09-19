@@ -371,6 +371,32 @@ Strictly one direction. A controller never imports a model; a service never sees
 node scripts/verifyApiCoverage.js     # exits 1 if anything is uncovered
 ```
 
+## The four verify scripts, and what each one cannot see
+
+```bash
+npm run verify                        # imports + no-undef + env, in one go
+```
+
+| Script | Answers |
+|---|---|
+| `verifyImports.js` | does every module **load**, and is every destructured name really exported? |
+| `verifyNoUndef.js` | is every name a file **uses** actually in scope? |
+| `verifyEnvCoverage.js` | do the code, `.env.example` and `configs/env/schema.js` agree? |
+| `verifyApiCoverage.js` | is every route categorised, documented, requested and exemplified? |
+
+⚠️ **The first two sound alike and are not.** `verifyImports` loads a module and
+checks its imports resolve; it says nothing about whether a name *used inside a
+function* exists, because JavaScript does not resolve a free variable until the
+line runs. A service that calls a helper nobody imported loads cleanly, exports
+cleanly, passes `verifyImports` — and throws `ReferenceError` the first time a
+user reaches that branch.
+
+That shipped three times during the media migration. Each time a patch added a
+call and its "does this file already import from there?" guard saw an unrelated
+import from the same module and skipped. Each was caught by a test that happened
+to exercise the branch, which is luck. `verifyNoUndef.js` is the check that does
+not need luck; the pre-commit hook runs it on every JavaScript change.
+
 Order in a route: auth middleware → `validateSchema(...)` → controller.
 
 ```js
@@ -1001,6 +1027,42 @@ ready, list them and let the user choose which to commit and how to group them.
 
 ⚠️ The `.githooks/pre-commit` coverage gate is **not** permission. It checks a
 commit that is already happening; it does not decide that one should.
+
+### 🔴 Every report ends with what comes next
+
+A finished piece of work is reported with **three** things, not two:
+
+1. what changed and what the tests said,
+2. the file list waiting for a commit decision, and
+3. **the next phase — its id, its name, and what it will actually touch.**
+
+Named from [`docs/master_execution_plan.md`](./docs/master_execution_plan.md)'s
+phase order (Part 5), not invented. If the next phase is blocked, or the order
+has to change, say which one and why rather than silently picking a different
+one.
+
+**Why:** the user is reviewing each phase and deciding when it lands. Reporting
+only what is done leaves them to go re-read the plan to find out what they are
+approving next, and it hides the case where the plan and the work have drifted
+apart. Asked for on 2026-09-15.
+
+### 🔴 A running suite reports its progress, always
+
+Whenever a test suite runs — any suite, any session, asked for or not — keep
+reporting where it is while it runs. Never start one and go quiet until it ends.
+
+The money suite is the reason: ~79 files against real Atlas, the better part of
+an hour. A silent hour is indistinguishable from a hung run, and the first
+failure is worth knowing about at minute three rather than minute fifty.
+
+**What an update says:** how many files are done out of the total, which ones
+have failed so far, and — when something fails — whether it looks related to the
+change under test or not. A count with no triage is noise.
+
+**How:** run it backgrounded with output to a file, and read that file between
+other work rather than blocking on it. Report at natural pauses, not on a timer.
+
+This is a standing rule; it does not need to be asked for again.
 
 ### Databases here are disposable
 

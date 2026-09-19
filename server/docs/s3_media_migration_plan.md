@@ -1,10 +1,20 @@
 # AWS S3 Media Migration — Complete Flow & Design Plan
 
-> **Status:** ✅ Confirm ho chuka. Phase 0 aur Phase 1 ship ho chuke hain —
+> **Status — 2026-09-19:** ✅ Confirm ho chuka. **Phase 0–5 ship ho chuke hain**
+> (facade · S3 provider · 6 surfaces ka `storage` sibling · private bucket +
+> presigned GET · `/uploads/presign` + `/uploads/confirm`). Bacha **Block X** —
 > live progress [s3_migration_phases.md](./s3_migration_phases.md) me.
 >
+> ⚠️ **Ye line pehle "Phase 0 aur Phase 1" kehti thi.**
+>
+> 🔴 **D-1 abhi live nahi hai.** Presigned raasta likha aur test kiya hua hai, par
+> `storage.upload.presignEnabled` ka default **`false`** hai — aaj har upload
+> multipart se aata hai aur server bytes chhuta hai. Wo switch **X-3** ke saath
+> khulega. Neeche ka design us din ka hai, aaj ka nahi.
+>
 > Execution: [s3_migration_phases.md](./s3_migration_phases.md) ·
-> **AWS setup: [aws_s3_setup.md](./aws_s3_setup.md)**
+> **AWS setup: [aws_s3_setup.md](./aws_s3_setup.md)** ·
+> **Go-live: [production_go_live_runbook.md](./production_go_live_runbook.md)**
 > Related: [media_upload_map.md](./media_upload_map.md) ·
 > [environment_and_services_map.md](./environment_and_services_map.md) ·
 > [dead_code_audit.md](./dead_code_audit.md)
@@ -171,12 +181,12 @@ bilkul waisa hi rahega, uske bagal me ek naya internal field.
 
 | Surface | Model | Aaj | Baad me |
 |---|---|---|---|
-| User profile image | `User` | `image: String` | `image` waisa hi **+ `imageStorage`** |
+| User profile image | `User` | `image: String` | `image` waisa hi **+ `imageMedia`** |
 | Register image | `User` | same | same |
-| Category image | `Category` | `image: String` | **+ `imageStorage`** |
-| SubCategory image | `SubCategory` | `image: String` | **+ `imageStorage`** |
-| Brand logo | `Brand` | `logo: String` | **+ `logoStorage`** |
-| BrandFeature icon | `BrandFeatures` | `icon: String` | **+ `iconStorage`** |
+| Category image | `Category` | `image: String` | **+ `imageMedia`** |
+| SubCategory image | `SubCategory` | `image: String` | **+ `imageMedia`** |
+| Brand logo | `Brand` | `logo: String` | **+ `logoMedia`** |
+| BrandFeature icon | `BrandFeatures` | `icon: String` | **+ `iconMedia`** |
 | Showcase thumbnail | `ShowcaseSection` | `thumbnail: String` | **+ `thumbnailStorage`** |
 
 `storage` ka shape wahi jo already 5 models me hai:
@@ -284,8 +294,12 @@ const head = await s3.send(new GetObjectCommand({
 - `00 00 00 … 66 74 79 70` → MP4/MOV · `1A 45 DF A3` → WebM/MKV
 - `<?xml` / `<svg` → **reject** (F-13 — SVG me script chal sakta hai)
 
-Kharcha: ek 1 KB GET. **Aaj se behtar** — abhi mimetype client ka bheja hua
-string hai jispar koi check nahi.
+Kharcha: ek 1 KB GET. ✅ **Ship ho chuka, aur ab dono raaston par** — pehle
+`identify()` sirf `confirm` se bulaya jaata tha, yaani multipart file ka mimetype
+wahi rehta tha jo client ne header me likha. Block G (G2) ne wo band kiya:
+multipart road bhi local file ka pehla kilobyte padhta hai (wahan GET bhi nahi
+lagta, file already disk par hai), aur `HEAD_BYTES` ek hi jagah se aata hai taaki
+dono barabar padhein.
 
 Aur usi 1 KB se **image dimensions** bhi mil jaate hain (JPEG SOF0, PNG IHDR,
 WebP VP8X sab header me hain). Isliye image ke liye Lambda ki zaroorat hi nahi —
@@ -612,7 +626,7 @@ const UPLOAD_PURPOSES = {
 | **6** | CloudFront + resize Lambda (T1) | 🟡 URL shape | infra |
 | **7** | Metadata Lambda (M-1) | ❌ | infra |
 | **8** | Panel + app migrate karein | ✅ | **unka** |
-| **9** | `express-fileupload` + multipart path delete | ❌ | ✅ sunset ke baad |
+| **9** | `express-fileupload` + multipart path delete | ❌ | 🔄 Cloudinary presign ke **baad** — master §0.5 |
 
 **Phase 0-4 me panel team ko kuch nahi karna** — poora backend taiyaar ho jaata
 hai bina unka intezaar kiye. Phase 5 par unhe contract mil jaata hai aur wo apni
@@ -623,7 +637,11 @@ Phase 9. Big bang (C2) tab hi ho sakta tha jab panel bhi hamare paas hota.
 
 > ❓ **Q-8** — Phase 9 (multipart hatana) ke liye koi **deadline** rakhein? Bina
 > deadline ke dual mode hamesha ke liye reh jaata hai — aur wahi "legacy stale"
-> hai jo aap nahi chahte. Mera propose: Phase 5 ship hone se **6 hafte**.
+> hai jo aap nahi chahte. Mera propose tha: Phase 5 ship hone se **6 hafte**.
+>
+> 🔄 **Wo answer badal gaya (2026-09-18).** Sunset ab waqt par nahi hai — multipart
+> Cloudinary ka ekmatra upload raasta hai, to trigger Cloudinary ka apna presign
+> hai (master §0.5).
 
 ---
 
@@ -700,7 +718,7 @@ section + request + captured example chahiye).
 | **Q-5** | Video par `metadata.pending` flag + retry sweep? | ✅ **Haan** |
 | **Q-6** | Resize width presets kya? Allowlist? | ✅ **`160/400/800/1600`, strict allowlist** |
 | **Q-7** | Lambda@Edge kaun likhega/deploy karega? | ✅ Main **source + Terraform** dunga, deploy aap |
-| **Q-8** | Phase 9 (multipart sunset) ki deadline? | ✅ **Phase 5 + 6 hafte** |
+| **Q-8** | Phase 9 (multipart sunset) ki deadline? | 🔄 **Badla 2026-09-18** — waqt ki deadline nahi. Sunset **Cloudinary ka apna presign ship hone ke baad**, kyunki tab tak multipart hi Cloudinary ka upload raasta hai (master §0.5) |
 | **Q-9** | AWS resources main Terraform likhun, aap chalayen? | ✅ **Haan** |
 
 Naye sawaal (Q-10…Q-13) execution doc me hain —

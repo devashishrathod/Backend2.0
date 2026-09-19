@@ -20,14 +20,31 @@
  * `scripts/cleanupOrphans.js` sweeps rows but never storage. With the id in the
  * key, an orphan sweep becomes possible.
  *
- * ⚠️ `AUDIO` has a row here and will never have an object under it until
- * something calls `uploadAudio`, which nothing does. The row exists so the
- * table is complete, not because the folder is expected.
+ * ⚠️ There is no `AUDIO` purpose. There was one, and it existed only for
+ * `uploadAudio`, which nothing called — a folder that would never hold an
+ * object and a ceiling nothing would ever be measured against. Both went
+ * together (G10). `MEDIA_KIND.AUDIO` stays, because `kindFromMime` still has to
+ * be able to **name** an audio file in order for a surface to refuse it.
  */
 
+/**
+ * Who is holding the bytes.
+ *
+ * ⚠️ `AWS_S3`, not `S3`. The stored value says **whose** S3 this is, which is
+ * the question that matters the day anything else speaks the same protocol —
+ * and every other enum in this codebase is underscored and spelled out
+ * (`UNDER_REVIEW`, `BRAND_LOGO`, `SHOWCASE_MEDIA`), so a bare `S3` was the odd
+ * one out in more ways than one.
+ *
+ * 🔴 Four models used to write this list out by hand as `["CLOUDINARY", "S3"]`
+ * — Banner, PromotionalTicker, Voucher and VoucherVersion — so this constant
+ * was not the single source it looks like, and renaming a provider would have
+ * left four documents validating against a value nothing else used. They read
+ * it from here now.
+ */
 const STORAGE_PROVIDER = Object.freeze({
   CLOUDINARY: "CLOUDINARY",
-  S3: "S3",
+  AWS_S3: "AWS_S3",
 });
 
 /**
@@ -79,10 +96,13 @@ const kindFromMime = (mime) => {
  * GIF) still ends up under exactly one type prefix, chosen per file from the
  * verified mime type.
  *
- * ⚠️ `kinds` is routing and a sanity check, **not** the security boundary. The
- * mime allow-lists — `BANNER_ALLOWED_MIME_TYPES`, `SHOWCASE_MEDIA_CONFIG`,
- * `TICKER_ICON_ALLOWED_MIME_TYPES` and the per-surface validators — decide what
- * a caller may send. That is why every image surface lists `GIF` as well: a GIF
+ * ⚠️ `kinds` is routing and a sanity check, **not** the security boundary. What
+ * a caller may send is decided per surface — `BANNER_MEDIA_KINDS`,
+ * `SHOWCASE_MEDIA_CONFIG`, `TICKER_ICON_ALLOWED_MIME_TYPES` and the per-surface
+ * validators. (Banners used to carry their own hand-written mime allow-list;
+ * they now name the **kinds** they accept and let `kindFromMime` resolve the
+ * file, which is one list fewer to disagree with this one.) That is why every
+ * image surface lists `GIF` as well: a GIF
  * *is* an `image/*` file, several surfaces accept one today (voucher images
  * check only `startsWith("image/")`, and the logo and avatar paths check
  * nothing at all — see `media_upload_map.md` §8.4), and refusing to route one
@@ -102,11 +122,12 @@ const UPLOAD_PURPOSE = Object.freeze({
   SHOWCASE_MEDIA: "SHOWCASE_MEDIA",
   SHOWCASE_THUMBNAIL: "SHOWCASE_THUMBNAIL",
   BANNER_MEDIA: "BANNER_MEDIA",
+  BANNER_POSTER: "BANNER_POSTER",
   VOUCHER_IMAGE: "VOUCHER_IMAGE",
   VOUCHER_BANNER: "VOUCHER_BANNER",
+  VOUCHER_BANNER_POSTER: "VOUCHER_BANNER_POSTER",
   TICKER_ICON: "TICKER_ICON",
   DOCUMENT: "DOCUMENT",
-  AUDIO: "AUDIO",
   /**
    * Callers that have not been told what they are uploading yet.
    *
@@ -119,11 +140,39 @@ const UPLOAD_PURPOSE = Object.freeze({
 
 const { IMAGE, VIDEO, GIF, AUDIO, DOCUMENT } = MEDIA_KIND;
 
+const MB = 1024 * 1024;
+
+/**
+ * What a surface will accept, in bytes.
+ *
+ * ⚠️ This is the number S3 is asked to **enforce** on a presigned POST
+ * (`content-length-range`), so it is a real ceiling rather than something the
+ * server checks after the bytes have already arrived. It is per surface because
+ * a 50 MB showcase video and a 2 MB avatar are not the same question, and one
+ * global number has to be the larger of the two — which makes it no limit at
+ * all for the smaller one.
+ *
+ * These mirror `SHOWCASE_MEDIA_CONFIG`, which the multipart path already
+ * enforces. Where a surface had no stated limit, the number here is the first
+ * one it has ever had; the global `MAX_UPLOAD_SIZE_MB` stays above all of them
+ * as the thing that protects the disk.
+ */
+const MAX_BYTES = Object.freeze({
+  AVATAR: 5 * MB,
+  LOGO: 5 * MB,
+  ICON: 2 * MB,
+  IMAGE: 10 * MB,
+  VIDEO: 50 * MB,
+  DOCUMENT: 20 * MB,
+  // ⚠️ No `AUDIO` row: it went with the purpose it was the ceiling for (G10).
+});
+
 const UPLOAD_PURPOSES = Object.freeze({
   [UPLOAD_PURPOSE.BRAND_LOGO]: {
     entity: "brands",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.LOGO,
   },
   /**
    * The wide image behind a brand profile. Same entity folder as the logo — one
@@ -134,82 +183,140 @@ const UPLOAD_PURPOSES = Object.freeze({
     entity: "brands",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.IMAGE,
   },
   [UPLOAD_PURPOSE.SUB_BRAND_LOGO]: {
     entity: "outlets",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.LOGO,
   },
   [UPLOAD_PURPOSE.SUB_BRAND_COVER]: {
     entity: "outlets",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.IMAGE,
   },
   [UPLOAD_PURPOSE.BRAND_FEATURE_ICON]: {
     entity: "brand-features",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.ICON,
   },
   [UPLOAD_PURPOSE.CATEGORY_IMAGE]: {
     entity: "categories",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.IMAGE,
   },
   [UPLOAD_PURPOSE.SUBCATEGORY_IMAGE]: {
     entity: "subcategories",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.IMAGE,
   },
   [UPLOAD_PURPOSE.USER_AVATAR]: {
     entity: "users",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.AVATAR,
   },
   [UPLOAD_PURPOSE.SHOWCASE_MEDIA]: {
     entity: "showcase",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF, VIDEO],
+    maxBytes: MAX_BYTES.VIDEO,
   },
+  /**
+   * ⚠️ `IMAGE` alone — a poster is a still, and every surface already said so.
+   *
+   * 🔴 This used to be `[IMAGE, GIF]` while `uploadSingleMedia` refused anything
+   * whose kind was not `IMAGE`. On the presigned road that difference costs the
+   * vendor real bytes: `presign` checks the **purpose**, so a GIF poster was
+   * handed a signature, uploaded in full, and only then refused by the surface
+   * with *"The poster has to be a still image"*. The refusal has to happen
+   * before the upload, and the purpose is the only thing presign can read.
+   */
   [UPLOAD_PURPOSE.SHOWCASE_THUMBNAIL]: {
     entity: "showcase",
     bucket: STORAGE_BUCKET.PUBLIC,
-    kinds: [IMAGE, GIF],
+    kinds: [IMAGE],
+    maxBytes: MAX_BYTES.IMAGE,
   },
   [UPLOAD_PURPOSE.BANNER_MEDIA]: {
     entity: "banners",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, VIDEO, GIF],
+    maxBytes: MAX_BYTES.VIDEO,
+  },
+  /**
+   * A video banner's still (U-5) — the same bucket and prefix as the banner, and
+   * a deliberately narrower allowance.
+   *
+   * 🔴 Third of its kind, and for the third time the reason is the same: on the
+   * presigned road the purpose is the **only** thing telling a banner apart from
+   * its poster. Sharing one makes the two ids interchangeable, and of the two
+   * rules the poster's is the tighter — so sharing means the tighter rule is the
+   * one a caller can skip, by sending the ids the other way round.
+   *
+   * `SHOWCASE_THUMBNAIL` and `VOUCHER_BANNER_POSTER` are the same idea.
+   */
+  /** ⚠️ `IMAGE` alone — see `SHOWCASE_THUMBNAIL`; the same reason, same fix. */
+  [UPLOAD_PURPOSE.BANNER_POSTER]: {
+    entity: "banners",
+    bucket: STORAGE_BUCKET.PUBLIC,
+    kinds: [IMAGE],
+    maxBytes: MAX_BYTES.IMAGE,
   },
   [UPLOAD_PURPOSE.VOUCHER_IMAGE]: {
     entity: "vouchers",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.IMAGE,
   },
   [UPLOAD_PURPOSE.VOUCHER_BANNER]: {
     entity: "vouchers",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, VIDEO, GIF],
+    maxBytes: MAX_BYTES.VIDEO,
+  },
+  /**
+   * A video banner's still (U-4) — the same bucket and prefix as the banner
+   * itself, and a deliberately narrower allowance.
+   *
+   * 🔴 It exists because on the presigned road the purpose is the **only** thing
+   * telling a banner apart from its poster. Sharing `VOUCHER_BANNER` would make
+   * the two ids interchangeable, and of the two rules the poster's is the
+   * tighter one — so sharing means the tighter rule is the one a caller can
+   * skip, by sending the ids the other way round.
+   *
+   * `SHOWCASE_THUMBNAIL` is the same idea for the gallery.
+   */
+  /** ⚠️ `IMAGE` alone — see `SHOWCASE_THUMBNAIL`; the same reason, same fix. */
+  [UPLOAD_PURPOSE.VOUCHER_BANNER_POSTER]: {
+    entity: "vouchers",
+    bucket: STORAGE_BUCKET.PUBLIC,
+    kinds: [IMAGE],
+    maxBytes: MAX_BYTES.IMAGE,
   },
   [UPLOAD_PURPOSE.TICKER_ICON]: {
     entity: "tickers",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, GIF],
+    maxBytes: MAX_BYTES.ICON,
   },
   /** 🔴 The only PRIVATE one. Invoices carry name, address, GSTIN and amount. */
   [UPLOAD_PURPOSE.DOCUMENT]: {
     entity: "documents",
     bucket: STORAGE_BUCKET.PRIVATE,
     kinds: [DOCUMENT],
-  },
-  [UPLOAD_PURPOSE.AUDIO]: {
-    entity: "misc",
-    bucket: STORAGE_BUCKET.PUBLIC,
-    kinds: [AUDIO],
+    maxBytes: MAX_BYTES.DOCUMENT,
   },
   [UPLOAD_PURPOSE.LEGACY]: {
     entity: "misc",
     bucket: STORAGE_BUCKET.PUBLIC,
     kinds: [IMAGE, VIDEO, GIF, AUDIO, DOCUMENT],
+    maxBytes: MAX_BYTES.VIDEO,
   },
 });
 

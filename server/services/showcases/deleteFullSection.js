@@ -1,6 +1,8 @@
 const {
   deleteAllMedia,
   resolveSectionForActor,
+  resequenceSections,
+  assertBrandKeepsASection,
 } = require("../../helpers/showcases");
 const { releaseSlot } = require("../../helpers/brands");
 const { ENTITLEMENT_BUCKETS } = require("../../constants/subscription");
@@ -21,10 +23,21 @@ exports.deleteFullSection = async (actor, payload) => {
     projection: { medias: 1 },
   });
 
+  /**
+   * S-3 — a brand keeps at least one section.
+   *
+   * ⚠️ Before the storage delete, not after. The files are destroyed for real
+   * and cannot be restored, so a guard that ran later would refuse the request
+   * having already thrown the vendor's photographs away.
+   */
+  await assertBrandKeepsASection(section.brandId, { actor });
+
   try {
-    await deleteAllMedia(section.medias);
+    // The files, not the gallery entries — and `deleteAllMedia` takes each
+    // video's poster along with it.
+    await deleteAllMedia(section.medias.map((item) => item.media));
   } catch (err) {
-    console.error("Cloudinary delete failed:", err.message);
+    console.error("Storage delete failed:", err.message);
   }
 
   const deletedAt = new Date();
@@ -38,6 +51,11 @@ exports.deleteFullSection = async (actor, payload) => {
   section.isActive = false;
   section.isDeleted = true;
   await section.save();
+
+  // The hole this delete just made, closed — `1, 2, 3` minus the second is
+  // `1, 2`, not `1, 3`. Media inside a section have always been renumbered on
+  // delete; sections never were, which is where the drift came from.
+  await resequenceSections(section.brandId);
 
   // Deleting a section frees its slot in the plan's showcase pool.
   await releaseSlot(section.brandId, ENTITLEMENT_BUCKETS.SHOWCASE);

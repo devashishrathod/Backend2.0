@@ -66,12 +66,18 @@ exports.uploadDocument = async (pdfPath, documentNumber) => {
 exports.deleteDocument = async (asset) =>
   storage.deleteAsset({ ...asset, kind: MEDIA_KIND.DOCUMENT });
 
-/** ⚠️ No caller. Kept on purpose — see the note above. */
-exports.uploadAudio = async (audioPath) => {
-  const media = await storage.uploadFromPath({
-    filePath: audioPath,
-    purpose: UPLOAD_PURPOSE.LEGACY,
-    kind: MEDIA_KIND.AUDIO,
-  });
-  return media.url;
-};
+/**
+ * ⚠️ `uploadAudio` was here and is gone (G10).
+ *
+ * It had no caller anywhere in the app and was kept "on purpose" — which is a
+ * decision that gets harder to reverse the longer it sits, because every later
+ * reader has to work out whether something depends on it. It wrote under
+ * `UPLOAD_PURPOSE.LEGACY` rather than a purpose of its own, so it also had none
+ * of the scoping the rest of this migration is about.
+ *
+ * Nothing about audio is lost: `MEDIA_KIND.AUDIO` and `kindFromMime` still name
+ * an audio file, which is what lets `acceptUpload` **refuse** one for a surface
+ * that does not take it. When something genuinely needs to store audio it wants
+ * its own purpose, its own bucket row and its own ceiling — the same as every
+ * other surface — not this.
+ */

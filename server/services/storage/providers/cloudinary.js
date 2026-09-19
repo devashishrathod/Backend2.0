@@ -71,10 +71,19 @@ exports.upload = async ({
 
   return {
     url: delivery,
-    // A photo's thumbnail is its own delivery URL; a video's default poster is
-    // a transformation of the video's own public id. Neither is a separate
-    // object, which is exactly why neither may ever be deleted on its own.
-    thumbnail: getOptimizedImageUrl(result.public_id),
+    /**
+     * 🔴 `thumbnail` used to be here, and it was wrong on a video.
+     *
+     * It returned `getOptimizedImageUrl(result.public_id)` for everything. On a
+     * photo that is simply the delivery URL again — the same string twice. On a
+     * **video** it builds an `/image/upload/` path for an asset that lives under
+     * `/video/upload/`, so every poster this produced was a **404**. A real one
+     * needs `resource_type: "video"` and `format: "jpg"`.
+     *
+     * Nothing derives a poster now, on either provider (M-7). A video's poster
+     * is uploaded alongside it and stored in `mediaSchema.poster`, so there is
+     * no field here for a caller to trust.
+     */
     storage: {
       provider: STORAGE_PROVIDER.CLOUDINARY,
       publicId: result.public_id,

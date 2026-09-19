@@ -11,7 +11,14 @@ exports.deleteTicker = async (userId, id) => {
   ticker.isDeleted = true;
   ticker.isActive = false;
   ticker.updatedBy = userId;
-  await ticker.save();
+  /**
+   * ⚠️ Deleting does not touch the icon, so it must not be blocked by
+   * full-document validation. A row written before `icon` became a `mediaSchema`
+   * has a `url` and a `storage` but no `kind`, which is now required — and
+   * without this an admin could not delete exactly the stale rows they are
+   * trying to clear out. Same reasoning as `deleteBanner`.
+   */
+  await ticker.save({ validateBeforeSave: false });
 
   // Same reasoning as `deleteBanner`: the row is soft-deleted but unreachable
   // for ever — no restore endpoint, and every read filters `isDeleted: false`.

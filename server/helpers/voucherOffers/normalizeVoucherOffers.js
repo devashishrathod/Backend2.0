@@ -1,3 +1,4 @@
+const { toDisplayName } = require("../common");
 exports.normalizeVoucherOffers = (offers = []) => {
   return [...offers]
     .sort((a, b) => Number(a.minBillAmount) - Number(b.minBillAmount))
@@ -10,7 +11,7 @@ exports.normalizeVoucherOffers = (offers = []) => {
         offer.maxDiscountAmount === null
           ? null
           : Number(offer.maxDiscountAmount),
-      title: offer.title,
+      title: toDisplayName(offer.title),
       usageType:
         offer.usageType === undefined || offer.usageType === null
           ? null

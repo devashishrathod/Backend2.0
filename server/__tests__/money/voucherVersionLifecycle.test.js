@@ -102,7 +102,12 @@ const voucherAwaitingPublish = async ({
     name: "test voucher",
     // The schema refuses a version with neither, so both are the minimum a
     // publishable version can carry — nothing here depends on their contents.
-    images: [{ url: "https://example.test/v.webp", sortOrder: 1 }],
+    // ⚠️ The file sits inside `media` since M-5 — the same `mediaSchema`
+    // every other surface uses. `kind` is derived at upload and required
+    // by the schema, so a fixture without it will not save.
+    images: [
+      { media: { url: "https://example.test/v.webp", kind: "IMAGE" }, sortOrder: 1 },
+    ],
     offers: [
       {
         title: "flat 10%",

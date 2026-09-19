@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { toDisplayName } = require("../../helpers/common");
 const Brand = require("../../models/Brand");
 const User = require("../../models/User");
 const SubCategory = require("../../models/SubCategory");
@@ -6,7 +7,8 @@ const { SCREENS } = require("../../constants");
 const { DUPLICATE_KEY } = require("../../constants/mongo");
 const { throwError } = require("../../utils");
 const storage = require("../storage");
-const { assertImageFile } = require("../../helpers/media");
+const { describeIncoming } = storage;
+const { assertImageFile, toMediaDocument, toDeletable } = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 const {
   applyIdentityChange,
@@ -32,20 +34,28 @@ const IMAGE_SLOTS = Object.freeze([
   {
     file: "logo",
     field: "logo",
-    storageField: "logoStorage",
+    mediaField: "logoMedia",
     label: "Logo",
     purpose: UPLOAD_PURPOSE.BRAND_LOGO,
+    // 🆕 The presigned road's name for the same slot (U-5).
+    uploadIdField: "logoUploadId",
   },
   {
     file: "coverImage",
     field: "coverImage",
-    storageField: "coverImageStorage",
+    mediaField: "coverImageMedia",
     label: "Cover image",
     purpose: UPLOAD_PURPOSE.BRAND_COVER,
+    uploadIdField: "coverImageUploadId",
   },
 ]);
 
-exports.updateBrand = async (brandId, payload = {}, files = null, actor = null) => {
+exports.updateBrand = async (
+  brandId,
+  payload = {},
+  files = null,
+  actor = null,
+) => {
   /**
    * ⚠️ `files` used to be the logo itself. It is an object of files now, because
    * the brand has two pictures — a single positional file could never grow a
@@ -61,6 +71,63 @@ exports.updateBrand = async (brandId, payload = {}, files = null, actor = null) 
   // `withTransaction` would be rewritten as a 500 on the way out.
   for (const slot of IMAGE_SLOTS) {
     assertImageFile(uploads[slot.file], slot.label);
+  }
+
+  /**
+   * ---------------- the pictures go up **before** the transaction ----------
+   *
+   * 🔴 E5. They used to be uploaded inside `withTransaction`, which meant a
+   * Mongo transaction stayed open for as long as two files took to reach the
+   * provider. Mongo's own ceiling is 60 seconds and a slow connection can pass
+   * it — at which point the transaction aborts and the vendor's whole edit is
+   * lost, for a reason that has nothing to do with the database.
+   *
+   * ⚠️ The brand is checked for existence first, so a bad id still costs
+   * nothing. That check used to come free from the transaction's own read; with
+   * the upload moved ahead of it, a 404 would otherwise arrive **after** the
+   * vendor had paid for two uploads.
+   */
+  const incoming = new Map();
+  for (const slot of IMAGE_SLOTS) {
+    const described = await describeIncoming(actor, {
+      file: uploads[slot.file],
+      uploadId: payload[slot.uploadIdField],
+      purpose: slot.purpose,
+    });
+    if (described) incoming.set(slot.field, described);
+  }
+
+  if (incoming.size) {
+    const exists = await Brand.exists({ _id: brandId, isDeleted: false });
+    if (!exists) throwError(404, "Brand not found!");
+  }
+
+  /** `field → uploaded`, filled before the session opens. */
+  const uploadedBySlot = new Map();
+  try {
+    for (const slot of IMAGE_SLOTS) {
+      const item = incoming.get(slot.field);
+      if (!item) continue;
+      uploadedBySlot.set(
+        slot.field,
+        await storage.acceptUpload(actor, {
+          file: item.file,
+          uploadId: item.uploadId,
+          purpose: slot.purpose,
+          entityId: brandId,
+        }),
+      );
+    }
+  } catch (error) {
+    // One of two landed: the other is referenced by nothing, so it goes.
+    for (const uploaded of uploadedBySlot.values()) {
+      try {
+        await storage.deleteAsset(uploaded);
+      } catch (deleteError) {
+        console.error("Failed to clean up a brand upload:", deleteError);
+      }
+    }
+    throw error;
   }
 
   const session = await mongoose.startSession();
@@ -92,7 +159,7 @@ exports.updateBrand = async (brandId, payload = {}, files = null, actor = null) 
         isOnboarding,
       } = payload;
 
-      if (brandName) brand.brandName = brandName.trim().toLowerCase();
+      if (brandName) brand.brandName = toDisplayName(brandName);
 
       /**
        * ---------------- the contact keys go through the account ----------------
@@ -198,25 +265,16 @@ exports.updateBrand = async (brandId, payload = {}, files = null, actor = null) 
         await user.save({ session });
       }
       for (const slot of IMAGE_SLOTS) {
-        const file = uploads[slot.file];
-        if (!file) continue;
+        const uploaded = uploadedBySlot.get(slot.field);
+        if (!uploaded) continue;
 
-        const uploaded = await storage.uploadFromPath({
-          filePath: file.tempFilePath,
-          originalFile: file,
-          purpose: slot.purpose,
-          entityId: brand._id,
-        });
         // The previous pair, captured before it is overwritten.
         replaced.set(slot.field, {
-          previous: {
-            url: brand[slot.field] || null,
-            storage: brand[slot.storageField],
-          },
+          previous: toDeletable(brand[slot.mediaField], brand[slot.field]),
           uploaded,
         });
         brand[slot.field] = uploaded.url;
-        brand[slot.storageField] = uploaded.storage;
+        brand[slot.mediaField] = toMediaDocument(uploaded);
       }
       brand.updatedAt = new Date();
       await brand.save({ session });
@@ -227,7 +285,7 @@ exports.updateBrand = async (brandId, payload = {}, files = null, actor = null) 
     // an orphan is worth a log line, not a failed request for a change that has
     // already been saved.
     for (const [field, { previous }] of replaced) {
-      if (!previous.url) continue;
+      if (!previous?.url) continue;
       try {
         await storage.deleteAsset(previous);
       } catch (deleteError) {
@@ -236,13 +294,23 @@ exports.updateBrand = async (brandId, payload = {}, files = null, actor = null) 
     }
     return brandResult;
   } catch (error) {
-    // The transaction rolled back, so the row never pointed at these. Without
-    // this they would sit in storage referenced by nothing.
-    for (const [field, { uploaded }] of replaced) {
+    /**
+     * The transaction rolled back, so the row never pointed at these. Without
+     * this they would sit in storage referenced by nothing.
+     *
+     * ⚠️ Read from `uploadedBySlot`, not from `replaced` — the uploads now
+     * happen before the session, so a transaction that fails **before** the
+     * assignment loop leaves `replaced` empty while the objects are already in
+     * the bucket.
+     */
+    for (const [field, uploaded] of uploadedBySlot) {
       try {
         await storage.deleteAsset(uploaded);
       } catch (deleteError) {
-        console.error(`Failed to cleanup uploaded brand ${field}:`, deleteError);
+        console.error(
+          `Failed to cleanup uploaded brand ${field}:`,
+          deleteError,
+        );
       }
     }
     throw error;

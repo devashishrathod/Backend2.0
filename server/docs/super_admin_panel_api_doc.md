@@ -227,7 +227,8 @@ if (role === ROLES.ADMIN) {
 |---|---|
 | `POST /vouchers/create` | Body (already required) |
 | `PUT /vouchers/update/:voucherId` | Voucher se resolve |
-| `POST\|DELETE /vouchers/:voucherId/banner` | Voucher se resolve |
+| `POST /vouchers/:voucherId/banner` | Voucher se resolve |
+| `DELETE /vouchers/:voucherId` | Voucher se resolve — 🆕 aur live claim ho to ADMIN bhi nahi |
 | `POST /transactions/subscribe/preview` | **Body — admin ke liye required** |
 | `POST /transactions/subscribe/create-order` | **Body — admin ke liye required** |
 | `GET /subscribeds/get` | **Query — admin ke liye required** |
@@ -346,7 +347,8 @@ Admin ke liye `brandId` ek query filter hai — omit karein to data **platform-w
 `express-fileupload` apne options `app.use()` ke waqt build karta hai, har
 request par nahi. Isliye ise badalne ke liye **restart chahiye**, aur wo admin
 panel se badla **nahi** ja sakta. Showcase ki per-surface limits `Setting` me
-hain aur `PUT /settings/update` se turant badal jaati hain.
+hain aur `PUT /settings/update` se badalti hain — **restart ke bina**, par har
+instance par **30 second tak** lag sakta hai (neeche #100 ka cache note).
 
 ⚠️ `413` par connection **turant band** ho jaata hai — poori file bheji nahi
 jaati. Admin panel ko `fetch`/`XHR` ke abort ko error ki tarah handle karna
@@ -498,8 +500,20 @@ Max recipients per dispatch: **5000** · Max tokens per push batch: **500**
 ### NOTIFICATION_CHANNELS
 `IN_APP` (hamesha) · `EMAIL` · `PUSH` · `WHATSAPP` *(reserved)*
 
-### BANNER_TYPE / VOUCHER_BANNER_TYPE
+### MEDIA_KIND
+`IMAGE` · `VIDEO` · `GIF` · `AUDIO` · `DOCUMENT`
+> Har stored file yahi batati hai ki wo kya hai. Banner ke liye pehle teen hi
+> valid hain (`BANNER_MEDIA_KINDS`), ticker ke liye sirf `IMAGE`.
+>
+> ⚠️ Banner ka apna `BANNER_TYPE` enum **hata** — wo `MEDIA_KIND` ki hi ek
+> chhoti copy thi. Banner response me ab `media.kind` aata hai, aur
+> `GET /banners/get-all` ka `?type=` filter isi par match karta hai (param ka
+> naam jaan-boojh kar nahi badla).
+
+### VOUCHER_BANNER_TYPE
 `IMAGE` · `VIDEO` · `GIF`
+> Voucher banner abhi apna enum rakhta hai — wo **M-5** me `mediaSchema` par
+> aayega.
 
 ### BANNER_REDIRECT_TYPE / TICKER_REDIRECT_TYPE
 `NONE` · `CATEGORY` · `DEAL` · `BRAND` · `OFFER` · `EXTERNAL_URL`
@@ -1311,6 +1325,9 @@ WHATSAPP_REQUIRES_VERIFICATION`. Sirf ye flow, aur admin ka
 | `dob` | string | ISO date |
 | `appliedReferralCode` | string | Max 20 chars |
 | `image` | file | Multipart, field name `image` |
+| `uploadId` | ObjectId 🆕 | Presigned — purpose `USER_AVATAR`. `image` ke saath **nahi** |
+
+🔴 **Kram: upload → save → tab purani photo delete** (U-5).
 
 ### Success — `200`
 ```json
@@ -2369,6 +2386,14 @@ GET /brands/get?brandId=68f1a2b3c4d5e6f7a8b9c3a1
 | `isOnboarding` | boolean | Default `false` | `true` pe `subCategoryId` required |
 | `subCategoryId` | ObjectId | – | |
 | `logo` | file | Multipart, field `logo` | |
+| `coverImage` | file | Multipart, field `coverImage` | |
+| `logoUploadId` | ObjectId 🆕 | Presigned — purpose `BRAND_LOGO` | |
+| `coverImageUploadId` | ObjectId 🆕 | Presigned — purpose `BRAND_COVER` | |
+
+🔴 **Uploads ab transaction ke BAHAR hote hain** (U-5). Pehle wo
+`withTransaction` ke andar the — do file jitni der leti utni der ek Mongo
+transaction khuli rehti, aur Mongo ki 60-second seemaa paar hote hi poori edit
+chali jaati. Brand pehle check hota hai, to galat id ab bhi kuch nahi kharchti.
 
 **Brand suspend karna:**
 ```json
@@ -2785,7 +2810,17 @@ Koi ownership check nahi — admin ke liye theek, par sabke liye khula hai.
 
 # Showcase APIs
 
-Admin showcase ke **saare 11 endpoints** chala sakta hai — section/media CRUD samet. Sab `routes/showcase.js` me `isVendorOrAdmin` ke peeche hain, aur `helpers/showcases/resolveSectionForActor.js:46` admin ke liye ownership check chhod deta hai (*"Admins moderate every brand's content"*).
+Admin showcase ke **saare 11 endpoints** chala sakta hai — section/media CRUD samet. Sab `routes/showcase.js` me `isVendorOrAdmin` ke peeche hain, aur `helpers/showcases/resolveSectionForActor.js:62` admin ke liye ownership check chhod deta hai (*"Admins moderate every brand's content"*).
+
+> 🆕 **Vendor ke do floors admin par lagte hi nahi.** Vendor ko ab rok hai: media delete/hide jo section ko `minItemsPerSection` (default 3) se neeche le jaaye, brand ka aakhri section delete karna, aur aakhri dikhne wale section ko hide karna. **Admin ke liye chaaron rok band hain** — admin media hata raha hai matlab wo moderate kar raha hai, aur floor use rokta to platform kisi galat content ko sirf isliye nahi utaar paata kyunki utaarne se section chhota ho jaata. Floor vendor ko apni galti se bachane ke liye hai, content ko platform se nahi. Poori table [vendor doc](./vendor_panel_api_doc.md) ke Showcase floors block me.
+
+> 🆕 **`409` — koi aur usi section par kaam kar raha tha.** Admin aur vendor ek hi
+> section par ek saath likhein to **dusre ko `409`** milta hai aur uski write hoti
+> hi nahi: *"Somebody else changed this while you were editing it. Reload and try
+> again."* Admin ke liye ye khaas tarah se mumkin hai — moderation ke waqt vendor
+> apni gallery edit kar raha ho sakta hai. Section dobara fetch karke action
+> repeat kijiye; apne aap retry mat kijiye. Poora explanation aur affected
+> endpoints ki list [vendor doc](./vendor_panel_api_doc.md) ke Showcase block me.
 
 Neeche sirf do ke apne section hain — `get-all` (#36) aur `reorder` (#37), kyunki baaki nau ki request aur saved example [vendor collection](./vendor_panel_api_doc.md) ke `10 — Showcase` folder me hain. Unki list [Showcase — admin bhi kar sakta hai](#showcase--admin-bhi-kar-sakta-hai) me hai.
 
@@ -2842,13 +2877,13 @@ Neeche sirf do ke apne section hain — `get-all` (#36) aur `reorder` (#37), kyu
 
 ### ⚠️ Notes
 
-**1. Ye platform-wide list hai** — admin ke liye by design theek. Service me brand filter commented out hai.
+**1. Ye platform-wide list hai** — `brandId` na dein to har brand ke sections aate hain.
 
-**2. ⚠️ `brandId` filter kaam nahi karta.** Na service usko read karta hai, na validator me defined hai (aur `stripUnknown` usko hata deta hai). **Brand-wise moderation abhi possible nahi.**
+**2. ✅ `brandId` filter ab kaam karta hai** (doc yahan purana pada tha). Validator use accept karta hai ([validator/showcase.js:85](../validator/showcase.js#L85)) aur service admin ke liye use `$match` me daalta hai ([getAllSections.js:73](../services/showcases/getAllSections.js#L73)). **Brand-wise moderation ab possible hai.** Response me `brandId` bhi project hota hai.
 
-Response me `brandId` bhi project nahi hota, to client-side filter bhi nahi kar sakte — sirf `GET /brands/get?brandId=` se us brand ka showcase dekh sakte hain.
+> ⚠️ Vendor ke liye wahi param alag matlab rakhta hai: `resolveActorBrand` use unke apne brand par pin karta hai, to koi vendor ise chaudha nahi kar sakta.
 
-Ye security finding #4 hai ([Appendix B](#appendix-b--known-issues)).
+**3. 🆕 `customerVisibility` har row par aata hai** — section customer ko dikh raha hai ya nahi, aur kyun nahi (`HIDDEN` / `INACTIVE` / `NOT_ENOUGH_MEDIA`). Poora shape aur samjhauta [vendor doc](./vendor_panel_api_doc.md) ke #44 par. Moderation ke liye seedha kaam ka: `isLive: false` wale sections wo hain jo bane hue hain par customer tak pahunch hi nahi rahe.
 
 ---
 
@@ -2915,6 +2950,16 @@ Vendor: DRAFT → submit-review → UNDER_REVIEW
 🔴 **Admin-exclusive.** Voucher approve ya reject.
 
 **Access:** Intended: ADMIN · Enforced: **ADMIN**
+
+> ### 🆕 `vendor.voucher.minImages` yahan **nahi** lagta — aur ye jaanboojh kar hai
+>
+> Vendor side par naya floor teen jagah lagta hai: voucher banate waqt, images edit karte waqt, aur submit-for-review par. Yahan **nahi**. Approve par sirf structural check hai — 0 images corrupt hai, wo phir bhi rukta hai.
+>
+> Wajah: aap `minImages` 3 se 5 kar dein, aur queue me pade wo vouchers jo 3 ke saath **sahi tareeke se submit** hue the, approve hone band ho jaate. Vendor unhe theek bhi nahi kar sakta — wo bhej chuka hai, ab uske paas koi request bachi hi nahi jo images jode. Na aap approve kar sakte, na wo sudhaar sakta.
+>
+> Isliye floor **andar aane ke raaste par** hai, bahar jaane ke par nahi. `minImages` badhane ka asar agli baar dikhega jab vendor us voucher ko chhuega.
+>
+> Yahi soch `minImages` ke poore design me hai — published voucher bhi peeche se retire nahi hota. Poora explanation [Settings block](#19--platform-settings) me.
 
 ### Path Params
 | Param | Type | Required | Notes |
@@ -2999,9 +3044,111 @@ GET /vouchers/versions/get-all?status=UNDER_REVIEW&sortBy=NEWEST
 
 ---
 
-## 39–45. Vendor Toolkit (admin bhi use kar sakta hai)
+## 38a. POST /vouchers/:voucherId/banner/review 🆕
 
-Ye 7 endpoints vendor ke liye banaye gaye hain, par admin bhi chala sakta hai — **`resolveActorBrand` admin ko koi bhi brand chunne deta hai** (aur `brandId` mandatory kar deta hai).
+🔴 **Admin-exclusive.** Voucher ka **banner** approve ya reject.
+
+**Access:** Intended: ADMIN · Enforced: **ADMIN**
+
+> ### ⚠️ Ye #38 se alag review hai
+>
+> #38 voucher ke **version** ko approve karta hai. Ye uske **banner** ko. Dono ek
+> doosre se swatantra hain aur alag-alag ho sakte hain: ek PUBLISHED voucher ka
+> banner REJECTED ho sakta hai, aur ye galat state nahi hai — bilkul normal hai.
+>
+> Isliye banner reject karne se **voucher ka status nahi badalta**. Wo published
+> rehta hai aur customer ko uski pehli image banner ki jagah dikhti hai.
+
+### Path Params
+| Param | Type | Required | Notes |
+|---|---|---|---|
+| `voucherId` | ObjectId | ✅ | ⚠️ **Voucher ka id**, version ka nahi — banner master-level hai |
+
+### Body
+| Field | Type | Required | Validation |
+|---|---|---|---|
+| `action` | string | ✅ | `APPROVED` \| `REJECTED` |
+| `rejectionReason` | string | reject par ✅ | Max 1000 chars. **Approve par bhejna mana hai** |
+
+```json
+{ "action": "REJECTED", "rejectionReason": "Text card size par padha nahi ja raha." }
+```
+
+> Reason approve ke saath bhejenge to `422` — wo store ho jaata aur vendor ko aisa
+> dikhta jaise use mana kiya gaya ho.
+
+### Approve par kya hota hai
+
+```
+pending  →  current      naya banner live
+purana current → delete  ab use koi point nahi karta
+status   →  null         review me ab kuch nahi hai
+```
+
+> ⚠️ Purani file **save ke baad** delete hoti hai, pehle nahi. Ulta karte aur save
+> fail ho jaata, to voucher ek aise object par point karta jo ab hai hi nahi —
+> yaani ek live banner ek failed write se broken image ban jaata.
+
+### Reject par kya hota hai
+
+File `pending` me hi rehti hai, reason ke saath. Vendor use apne reason ke bagal me
+dekhega — delete kar dete to use *"aapka banner reject hua kyunki text padha nahi
+ja raha"* ke saath dikhane ko kuch bhi nahi hota. Wo file tab hatti hai jab vendor
+agla banner bhejta hai.
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Voucher banner approved.",
+  "data": {
+    "voucherId": "68f1a2b3c4d5e6f7a8b9c2a1",
+    "banner": {
+      "current": {
+        "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg",
+        "kind": "IMAGE",
+        "mimeType": "image/jpeg",
+        "sizeBytes": 184320,
+        "storage": { "provider": "CLOUDINARY", "publicId": "vouchers/banner-451" }
+      },
+      "status": null,
+      "rejectionReason": null,
+      "reviewedBy": "68f1a2b3c4d5e6f7a8b9c001",
+      "reviewedAt": "2026-09-17T10:15:00.000Z"
+    }
+  }
+}
+```
+
+> ⚠️ Approve ke baad `status` **`null`** hota hai, `APPROVED` nahi. `status` ye
+> batata hai ki **review me kya hai** — approve ke baad review me kuch hai hi
+> nahi. Customer ko `bannerStatus: "APPROVED"` phir bhi milta hai, wo `current`
+> ke hone se derive hota hai.
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `404` | `Voucher not found.` | |
+| `409` | `This voucher has no banner waiting for review.` | `pending` khali hai |
+| `409` | `This banner has already been reviewed — it is REJECTED.` | Stale queue row par click |
+| `400` | `A reason is required when rejecting a banner.` | |
+| `400` | `The reason cannot exceed 1000 characters.` | |
+| `422` | `A reason is not allowed when approving a banner.` | |
+| `422` | `Action must be either APPROVED or REJECTED.` | |
+
+### ⚠️ Notes
+
+**1. Queue kahan se milegi** — abhi banner ke liye alag listing endpoint nahi hai. `GET /vouchers/versions/get-all` voucher versions deta hai, banner nahi. Filhaal banner wahan se dikhta hai jahan voucher khula ho.
+
+**2. Reject karna vendor ko rokta nahi** — wo turant naya banner bhej sakta hai (#59). Naya aate hi reason clear ho jaata hai, kyunki purana faisla nayi file par nahi chipakna chahiye.
+
+**3. Customer par asar** — approve karte hi naya banner dikhne lagta hai. Reject par kuch nahi badalta: customer ko pehle bhi voucher ki pehli image dikh rahi thi, wahi dikhti rahegi.
+
+---
+
+## 39–48. Vendor Toolkit (admin bhi use kar sakta hai)
+
+Ye 10 endpoints vendor ke liye banaye gaye hain, par admin bhi chala sakta hai — **`resolveActorBrand` admin ko koi bhi brand chunne deta hai** (aur `brandId` mandatory kar deta hai).
 
 | # | Method | Endpoint | Admin ke liye khaas |
 |---|---|---|---|
@@ -3010,10 +3157,39 @@ Ye 7 endpoints vendor ke liye banaye gaye hain, par admin bhi chala sakta hai �
 | 41 | POST | `/vouchers/submit-review/:voucherId` | ⚠️ Admin apna hi voucher submit karke khud approve kar sakta hai |
 | 42 | POST | `/vouchers/publish/:versionId` | Approved version live karna |
 | 43 | GET | `/vouchers/versions/get-all` | **Approval queue** — `?status=UNDER_REVIEW` |
-| 44 | POST | `/vouchers/:voucherId/banner` | Featured/promoted vouchers ke liye |
-| 45 | DELETE | `/vouchers/:voucherId/banner` | |
+| 44 | POST | `/vouchers/:voucherId/banner` | Featured/promoted vouchers ke liye. Faisla #38a par |
+| 45 | POST | `/vouchers/pause/:versionId` | 🆕 Live voucher feed se hataana, bina khatam kiye |
+| 46 | POST | `/vouchers/resume/:versionId` | 🆕 Wapas live karna |
+| 47 | DELETE | `/vouchers/:voucherId` | 🆕 Soft delete + slot wapas. 🔴 **Live claim par ADMIN bhi block** |
+| 48 | PUT | `/vouchers/versions/:versionId/images/reorder` | 🆕 Images ka kram. 🔴 Pehli image hi banner fallback hai. Sirf `DRAFT`/`REJECTED` — published par 409 |
 
-**Access (39, 40, 41, 42, 44, 45):** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** (39/40/44/45 pe **+ ownership**)
+> ### 🆕 #39, #40, #44 ab `uploadId` bhi lete hain (U-4)
+>
+> Poora flow **#54 / #55 / #59** ([vendor doc](./vendor_panel_api_doc.md)) me hai.
+> Do baatein yahan dohrane layak hain:
+>
+> 🔴 **Banner ke poster ka apna purpose hai** — `VOUCHER_BANNER_POSTER`,
+> `VOUCHER_BANNER` nahi. Ek hi bucket aur `vouchers/<id>` prefix, par poster 10 MB
+> par capped hai aur video leta hi nahi. Banner ka id poster ki jagah bhejne par
+> `422`, aur koi upload jalta nahi.
+>
+> 🔴 **Image floor aur limits confirm se pehle chalte hain** — teen ki jagah do
+> bhejne par refusal aata hai aur uploads abhi bhi caller ke paas rehti hain.
+
+> 🔴 **`DELETE /vouchers/:voucherId/banner` yahan se hata diya gaya** — wo endpoint
+> ab maujood hi nahi hai. Banner ka slot kabhi khali nahi hota: approved banner na
+> ho to customer ko voucher ki pehli image dikhti hai, isliye "banner hata do" ek
+> state hi nahi rahi. Badalna ho to #44 se naya bhej dijiye.
+
+**Access (39, 40, 41, 42, 44, 45, 46, 47, 48):** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** (39/40/44/45/46/47/48 pe **+ ownership**)
+
+> 🔴 **47 ek apwaad hai: ADMIN ko chhoot nahi milti.** Har doosre guard me
+> admin vendor ke rule ke upar ja sakta hai — wahi to admin hona hai. Yahan jise
+> bachaya ja raha hai wo in dono me se koi nahi: jis customer ne paisa de diya
+> hai (`PAID`) ya jo abhi checkout par khada hai (`PENDING`), use wo discount
+> milna hi chahiye. Refusal ke saath `liveClaims`, `breakdown` aur
+> `suggestedAction` aata hai — aur suggestion pause hai (45), jo turant customer
+> se hata deta hai par claims ko chhoota nahi.
 **Access (43):** Intended: Vendor + Admin · Enforced: **Any authenticated** ⚠️
 
 ### 43. GET /vouchers/versions/get-all — approval queue
@@ -3031,6 +3207,7 @@ Admin ke liye ye sabse important hai.
 | `versionNumber` | number | ❌ | – | |
 | `versionCode` | string | ❌ | – | |
 | `isImmutable` · `isActive` | boolean | ❌ | – | |
+| `includeDeleted` | boolean | ❌ | `false` | 🆕 **Sirf aapke liye.** Deleted versions bhi dikhne lagti hain, apne `deletedAt`/`deletedBy`/`deleteReason` ke saath. Vendor bheje to **403** |
 | `fromDate` · `toDate` | ISO date | ❌ | – | |
 | `sortBy` | string | ❌ | `NEWEST` | `DISTANCE` \| `NEWEST` \| `EXPIRING_SOON` \| `RELEVANCE` |
 | `sortOrder` | string | ❌ | – | `asc` \| `desc` |
@@ -3039,6 +3216,21 @@ Admin ke liye ye sabse important hai.
 ```http
 GET /vouchers/versions/get-all?status=UNDER_REVIEW&sortBy=NEWEST&limit=50
 ```
+
+**🆕 Jo voucher delete ho chuke hain:**
+```http
+GET /vouchers/versions/get-all?includeDeleted=true&status=DELETED
+```
+
+> ⚠️ **Default off hai, aur ye jaan-bujh kar hai.** Deleted rows aam listing
+> me aane se aapki approval queue me retire ho chuke vouchers ghus jaate.
+> `includeDeleted=true` list ko **chauda** karta hai, badalta nahi — live rows
+> saath hi rehte hain. Sirf deleted chahiye to `status=DELETED` bhi lagayein.
+
+> 🔴 **Vendor ke bhejne par 403 aata hai, flag chupke se gira nahi jaata.**
+> Use ignore karna us vendor ko *"koi deleted nahi hai"* jawab dena hota jise
+> ye sawaal poochhne hi nahi diya — do galat jawabon me se bura, kyunki wo
+> jawab jaisa dikhta hai.
 
 **Ek admin ne kya approve kiya:**
 ```http
@@ -3103,11 +3295,14 @@ Poori request/response detail vendor doc me hai (identical behaviour); admin ke 
 | `POST /vouchers/create` | `brandId` ✅, `name`, `startAt`, `endAt`, `offers[]`, `subBrandIds[]`, `images` (multipart) | ⚠️ Brand ka subscription gate lagta hai — bina plan ke voucher nahi banega |
 | `PUT /vouchers/update/:voucherId` | Delta-based: `newOffers`/`removedOfferIds`/`newTags`/`removedTags`/`newImages` | Status-wise editability lagti hai |
 | `POST /vouchers/submit-review/:voucherId` | — | ⚠️ Self-approval possible — audit trail me dono actions dikhenge |
-| `POST /vouchers/publish/:versionId` | — | Sirf `APPROVED` version; publish pe `isImmutable: true` |
-| `POST /vouchers/:voucherId/banner` | `bannerType` + matching file (`bannerImage`/`bannerVideo`/`bannerGif`) | Approval flow ko touch nahi karta |
-| `DELETE /vouchers/:voucherId/banner` | — | Idempotent |
+| `POST /vouchers/publish/:versionId` | — | Sirf `APPROVED` version; publish pe `isImmutable: true`. 🆕 Master ab `PUBLISHED` bolta hai |
+| `POST /vouchers/:voucherId/banner` | `media` (file) + `poster` (video par mandatory) | 🆕 Version/approval flow ko touch nahi karta, par banner ka **apna** review hai (#38a) |
+| `POST /vouchers/pause/:versionId` | `reason` (optional, max 1000) | 🆕 Sirf `PUBLISHED` version. Customer se turant gayab, version jaisa ka waisa |
+| `POST /vouchers/resume/:versionId` | — | 🆕 Beech me doosra version live ho gaya to **saaf 409**, `E11000` nahi. Validity nikal chuki ho to bhi 409 |
+| `PUT /vouchers/versions/:versionId/images/reorder` | `images[]` — **poori list**, har item `{ id, sortOrder }` | 🆕 Sirf `DRAFT`/`REJECTED`. Published par **409**, naya version apne aap nahi banta. 🔴 Pehli image hi banner fallback hai |
+| `DELETE /vouchers/:voucherId` | `reason` (optional, max 500) | 🆕 Soft — `status: DELETED` + `isDeleted` saath, saari versions bhi, slot wapas. 🔴 Live claim par 409, admin par bhi |
 
-**Common errors (39–45):**
+**Common errors (39–48):**
 | Status | Message |
 |---|---|
 | `403` | `Access denied. This feature requires an active subscription. …` *(create)* |
@@ -3160,28 +3355,62 @@ ya delete karne ke liye kaafi tha — [Appendix B](#appendix-b--known-issues).)
 
 ## 46. POST /banners/create
 
-**Multipart** — type ke hisaab se file field.
+**Multipart** — ek hi file field: `media` — **ya** `uploadId` se (🆕 U-5).
+
+> ### 🆕 Presigned raasta
+>
+> `POST /uploads/presign` (#111) → S3 par POST → `POST /uploads/confirm` (#112),
+> phir yahan `mediaUploadId` (aur video par `posterUploadId`). File yahan aati hi
+> nahi.
+>
+> 🔴 **Poster ka purpose alag hai** — `BANNER_POSTER`, `BANNER_MEDIA` nahi. Ek hi
+> bucket aur `banners/<id>` prefix, par poster 10 MB par capped hai aur video leta
+> hi nahi. Banner ka id poster ki jagah bhejne par `422`, aur koi upload jalta
+> nahi.
+>
+> 🔴 **Capacity check upload se pehle chalta hai** — home screen bhari ho to
+> refusal aata hai aur aapka upload abhi bhi aapka hai.
 
 **Access:** Intended: ADMIN · Enforced: **ADMIN**
+
+> ### 🔴 Breaking change — `type` hata, file field ab ek hai
+>
+> Pehle body me `type` (`IMAGE`/`VIDEO`/`GIF`) bhejna padta tha **aur** file ko
+> usi naam wale field (`image`/`video`/`gif`) me — ek hi baat do jagah, aur dono
+> aapas me na milein to `422`. Isse ek document aisa bhi ban sakta tha jiska
+> `type: "VIDEO"` ho aur bytes `image` me padi hon.
+>
+> Ab file hamesha **`media`** field me jaati hai, aur server uske **verified mime
+> type** se khud tay karta hai ki ye IMAGE hai, VIDEO hai ya GIF. `type` body me
+> bhejne ki zarurat nahi — bhej diya to chup-chaap ignore ho jayega.
+>
+> ⚠️ **VIDEO ke saath `poster` file bhi mandatory hai.**
 
 ### Body (multipart)
 | Field | Type | Required | Default | Validation |
 |---|---|---|---|---|
 | `title` | string | ✅ | – | 2–150 chars |
-| `type` | string | ✅ | – | `IMAGE` \| `VIDEO` \| `GIF` |
-| *(file)* | file | ✅ | – | **`type` ke hisaab se field name** — niche table |
+| `media` | file | ⚠️ | – | image / video / gif — niche table |
+| `poster` | file | ⚠️ | – | **VIDEO pe required**, aur khud still image hona chahiye |
+| `mediaUploadId` | ObjectId 🆕 | ⚠️ | – | Presigned raasta — purpose `BANNER_MEDIA` |
+| `posterUploadId` | ObjectId 🆕 | ⚠️ | – | Uska poster — purpose `BANNER_POSTER` |
 | `description` | string | ❌ | – | Max 1000, `""` allowed |
 | `redirect` | object | ❌ | – | JSON string bhi chalta hai |
 | `startDate` | ISO date | ⚠️ | `null` | **`endDate` ke saath hi** — akela bhejna `422` |
 | `endDate` | ISO date | ⚠️ | `null` | **`startDate` ke saath hi**, aur usse baad ka |
 | `isActive` | boolean | ❌ | `true` | |
 
-**File field naam:**
-| `type` | File field | Allowed MIME |
+**`media` me kya ja sakta hai:**
+| Ban'ne wala kind | Mime | `poster` chahiye? |
 |---|---|---|
-| `IMAGE` | `image` | jpeg, jpg, png, webp |
-| `VIDEO` | `video` | mp4, webm, quicktime |
-| `GIF` | `gif` | gif |
+| `IMAGE` | koi bhi `image/*` (gif ke alawa) — jpeg, png, webp… | ❌ |
+| `GIF` | `image/gif` | ❌ |
+| `VIDEO` | koi bhi `video/*` — mp4, webm, quicktime… | ✅ |
+
+> ⚠️ Mime ki hand-written list ab nahi hai. Pehle `BANNER_ALLOWED_MIME_TYPES` me
+> chaar-paanch mime hardcode the (aur codebase me aisi **chaar** alag-alag lists
+> thin jo aapas me match nahi karti thin). Ab `kindFromMime` file padhkar kind
+> nikaalta hai, aur banner sirf ye kehta hai ki uske teen kinds kaunse hain.
 
 **`redirect` object:**
 | Field | Type | Required | Validation |
@@ -3193,12 +3422,19 @@ ya delete karne ke liye kaafi tha — [Appendix B](#appendix-b--known-issues).)
 ```
 title:       Monsoon Mega Sale
 description: Up to 50% off at partner outlets
-type:        IMAGE
-image:       <file>
+media:       <file>
 redirect:    {"type":"CATEGORY","targetId":"68f1a2b3c4d5e6f7a8b9c0e1"}
 startDate:   2026-09-01T00:00:00.000Z
 endDate:     2026-09-30T23:59:59.000Z
 isActive:    true
+```
+
+Video ke liye:
+
+```
+title:       Diwali Teaser
+media:       <teaser.mp4>
+poster:      <teaser-cover.jpg>
 ```
 
 ### Success — `200`
@@ -3208,23 +3444,61 @@ isActive:    true
   "message": "Banner created successfully.",
   "data": {
     "_id": "68f1a2b3c4d5e6f7a8b9c1a1",
-    "title": "monsoon mega sale",
+    "title": "Monsoon Mega Sale",
     "description": "Up to 50% off at partner outlets",
-    "type": "IMAGE",
+    "media": {
+      "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/monsoon.jpg",
+      "kind": "IMAGE",
+      "width": null,
+      "height": null,
+      "mimeType": "image/jpeg",
+      "sizeBytes": 184320,
+      "originalName": "monsoon.jpg",
+      "provider": "CLOUDINARY"
+    },
     "redirect": { "type": "CATEGORY", "targetId": "68f1a2b3c4d5e6f7a8b9c0e1", "url": null },
     "startDate": "2026-09-01T00:00:00.000Z",
     "endDate": "2026-09-30T23:59:59.000Z",
-    "image": {
-      "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/banners/monsoon.jpg",
-      "storage": { "provider": "CLOUDINARY", "publicId": "banners/monsoon" }
-    },
     "isActive": true,
-    "isDeleted": false,
     "createdBy": "68f1a2b3c4d5e6f7a8b9c000",
-    "createdAt": "2026-08-22T21:00:00.000Z"
+    "updatedBy": null,
+    "createdAt": "2026-08-22T21:00:00.000Z",
+    "updatedAt": "2026-08-22T21:00:00.000Z"
   }
 }
 ```
+
+VIDEO par `media` me do field aur aate hain:
+
+```json
+"media": {
+  "url": "https://res.cloudinary.com/.../teaser.mp4",
+  "kind": "VIDEO",
+  "duration": 12,
+  "thumbnail": "https://res.cloudinary.com/.../teaser-cover.jpg"
+}
+```
+
+> ⚠️ **Request me field ka naam `poster` hai, response me key `thumbnail` hai** —
+> aur ye jaan-boojh kar hai. Database me field `poster` hai (wo hai bhi wahi:
+> player ka pehla frame), par har client-facing surface — showcase media,
+> customer banner, vendor ka managed view — `thumbnail` naam pehle se use karta
+> hai. Wire par do naam rakhne ka matlab hota har client ka ye sochna ki wo kis
+> endpoint se baat kar raha hai.
+
+> ### 🔴 Response me kya badla
+>
+> | Pehle | Ab |
+> |---|---|
+> | `type: "IMAGE"` top-level | **gaya** — `media.kind` padhiye |
+> | `image` \| `video` \| `gif` object | ek **`media`** object |
+> | `image.storage.publicId` / `bucket` / `key` | **nahi aata** — sirf `provider` |
+> | `isDeleted: false` | **gaya** — har admin read pehle se `isDeleted: false` filter karti hai, to ye column hamesha ek hi jawab deta tha |
+> | `title` lowercase (`"monsoon mega sale"`) | `toDisplayName` ke baad jaisa dikhna chahiye waisa |
+>
+> ⚠️ `bucket` / `key` / `publicId` jaan-boojh kar nikale gaye hain — wo file ka
+> **pata** hain, extra detail nahi. `provider` ye batata hai ki file kahan rehti
+> hai, bina ye bataye ki use seedha kaise kheencha ja sakta hai.
 
 ### Errors
 | Status | Message | Kab |
@@ -3232,9 +3506,11 @@ isActive:    true
 | `409` | `Only 10 active banners without a date range are allowed. Deactivate one first.` | Evergreen pool bhar chuka |
 | `409` | `Only 10 banners can be active at once, and 10 already are on <ISO timestamp>. Shift this banner's dates or deactivate one of those.` | Scheduled pool us instant pe bhara hua |
 | `422` | `Please provide both startDate and endDate, or neither — a banner with only one of them is never shown.` | Sirf ek date bheji |
-| `422` | `Please upload a image file for this banner type.` | File field naam galat/missing |
+| `422` | `Please attach the banner file as "media".` | File nahi bheji, ya galat field naam me bheji |
+| `422` | `A banner has to be an image, a video or a GIF — "application/pdf" is none of those.` | PDF/audio/koi aur file |
+| `422` | `A video banner needs a poster image. Attach one as "poster".` | Video bheja, poster nahi |
+| `422` | `The poster has to be a still image — "video/mp4" is not one.` | Poster ki jagah video/gif |
 | `422` | `Title is required.` | |
-| `422` | `Banner type is required.` / `Type must be one of: IMAGE, VIDEO, GIF.` | |
 | `422` | `Target ID is required for this redirect type.` | |
 | `422` | `URL is required for EXTERNAL_URL redirect type.` | |
 | `422` | `End date must be after start date.` | |
@@ -3258,15 +3534,24 @@ nahi. Ek din ka gap chhod dijiye agar dono ko alag rakhna hai.
 **4. `isActive: false` ke saath create karne pe koi capacity check nahi hota** —
 draft banaya ja sakta hai. Check tab lagega jab #47 se use activate karenge.
 
-**5. File field ka naam `type` se match karna chahiye** — `type: "VIDEO"` ke saath `image` field bhejoge to `422`.
+**5. File field ka naam hamesha `media` hai** — kisi bhi kind ke liye. `type` se
+match karane ka sawaal hi nahi bachta, kyunki `type` ab hai hi nahi.
 
-**6. Create fail hone pe uploaded media delete ho jaata hai** (rollback).
+**6. Create fail hone pe uploaded media delete ho jaata hai** (rollback). Video
+ka poster bhi — dono saath jaate hain.
 
 **7. `redirect` JSON string ho sakta hai** — multipart me object bhejna mushkil
 hai, validator parse kar leta hai. Na bhejein to `redirect.type` **`NONE`** set
 hota hai (pehle `null` set hota tha, jo enum ki koi value hi nahi thi).
 
-**8. Legacy lowercase types handle hote hain** — model me setter hai jo `"image"` ko `"IMAGE"` bana deta hai.
+**8. Poster upload fail hua to video bhi hata diya jaata hai.** Row tabhi banti
+hai jab dono halves maujood hon, isliye adhoora video bucket me chhodne ka koi
+matlab nahi — use koi reference karne wala hi nahi hoga. `502` aata hai.
+
+**9. Poster kabhi derive nahi hota.** Cloudinary ka purana derivation galat URL
+banata tha (`getOptimizedImageUrl(publicId)` `/image/upload/` path banata hai ek
+aise asset ke liye jo `/video/upload/` me rehta hai — wo URL 404 deta hai), aur
+S3 poster banata hi nahi. Isliye poster hamesha alag se upload hota hai.
 
 ---
 
@@ -3279,27 +3564,56 @@ hota hai (pehle `null` set hota tha, jo enum ki koi value hi nahi thi).
 |---|---|---|
 | `id` | ObjectId | ✅ |
 
-### Body — sab optional, **kam se kam ek field**
+### Body — sab optional, **kam se kam ek field _ya_ ek nayi file**
 | Field | Type | Validation |
 |---|---|---|
 | `title` | string | 2–150 chars |
 | `description` | string | Max 1000, `""` allowed |
-| `type` | string | `IMAGE` \| `VIDEO` \| `GIF` — ⚠️ badalne pe nayi file chahiye |
 | `redirect` | object | Create jaisa |
 | `startDate` · `endDate` | ISO date | ⚠️ **jodi me** — dono bhejein ya dono `null`, akela `422` |
 | `isActive` | boolean | |
-| *(file)* | file | `type` ke hisaab se field name |
+| `media` | file | Nayi file — kind apne aap iske mime se |
+| `poster` | file | ⚠️ Nayi file agar VIDEO hai to **required** |
+
+> ### 🔴 `type` gaya — aur iska ek accha side effect hai
+>
+> Pehle kind badalne ke liye `type` bhejna padta tha **aur** nayi file bhi,
+> kyunki bytes ko doosre field me jaana hota tha. Ab sirf nayi file bhejiye —
+> image ki jagah video aaya to `media.kind` apne aap `VIDEO` ho jaata hai.
+>
+> ⚠️ **Sirf file bhejna ab valid request hai.** Pehle body me `.min(1)` laga tha,
+> to khali body wali request "Please provide at least one field to update" se
+> reject ho jaati thi — aur banner ki tasveer badalna sabse common edit hai
+> jisme koi body field jaata hi nahi. Wo check ab service me hai, jahan body aur
+> file dono dikhte hain.
 
 ```json
 { "isActive": false }
 ```
 
+Ya sirf nayi tasveer (koi body field nahi):
+
+```
+media: <file>
+```
+
 ### Success — `200`
+
+`data` poora banner hai, **#46 ke response jaisa hi shape** — `media` object,
+koi `type`, koi `storage`, koi `isDeleted` nahi.
+
 ```json
 {
   "success": true,
   "message": "Banner updated successfully.",
-  "data": { "_id": "68f1a2b3c4d5e6f7a8b9c1a1", "title": "monsoon mega sale", "isActive": false }
+  "data": {
+    "_id": "68f1a2b3c4d5e6f7a8b9c1a1",
+    "title": "Monsoon Mega Sale",
+    "media": { "url": "…/monsoon.jpg", "kind": "IMAGE", "provider": "CLOUDINARY", "…": "…" },
+    "isActive": false,
+    "updatedBy": "68f1a2b3c4d5e6f7a8b9c000",
+    "updatedAt": "2026-09-15T10:00:00.000Z"
+  }
 }
 ```
 
@@ -3311,9 +3625,10 @@ hota hai (pehle `null` set hota tha, jo enum ki koi value hi nahi thi).
 | `409` | `Only 10 banners can be active at once, and 10 already are on <ISO timestamp>.` | Activate/re-schedule karne pe scheduled pool bhara |
 | `422` | `Please provide both startDate and endDate, or clear both — a banner with only one of them is never shown.` | Merge ke baad sirf ek date bachi |
 | `422` | `Please provide both startDate and endDate, or neither — …` | Body me hi sirf ek date bheji |
-| `422` | `Please upload a <field> file for this banner type.` | Type badla par file nahi |
+| `422` | `A video banner needs a poster image. Attach one as "poster".` | Nayi file video hai, poster nahi bheja |
+| `422` | `A banner has to be an image, a video or a GIF — "<mime>" is none of those.` | Nayi file koi aur kind ki |
 | `422` | `End date must be after start date.` | |
-| `422` | *(min-1 message)* | Body khali |
+| `422` | `Please provide at least one field to update, or attach a new media file.` | Body bhi khali aur file bhi nahi |
 
 ### ⚠️ Notes
 
@@ -3336,9 +3651,12 @@ nahi dikhta. Isliye service **merge ke baad** dubara check karti hai. Purane
 half-open documents bhi isi tarah pakde jaate hain — unhe theek karne ke liye
 dono dates bhejein, ya dono `null`.
 
-**5. `type` badalne pe nayi file mandatory hai** — purana media field khali ho jaayega.
+**5. Kind badalne ke liye bas nayi file bhejiye.** Image ki jagah video bhej
+diya to `media.kind` `VIDEO` ho jaayega (poster ke saath). Koi `type` field
+bhejne ki zarurat nahi — wo hai hi nahi.
 
-**6. Media replace hone pe purana Cloudinary se delete hota hai.**
+**6. Media replace hone pe purana storage se delete hota hai** — video ka poster
+bhi saath jaata hai. Naya pehle likha jaata hai, purana uske baad hatta hai.
 
 ---
 
@@ -3352,7 +3670,7 @@ dono dates bhejein, ya dono `null`.
 | `page` | number | ❌ | `1` | Integer ≥ 1 |
 | `limit` | number | ❌ | `10` | Integer 1–100 |
 | `search` | string | ❌ | – | `title` + `description`, `""` allowed |
-| `type` | string | ❌ | – | `IMAGE` \| `VIDEO` \| `GIF` |
+| `type` | string | ❌ | – | `IMAGE` \| `VIDEO` \| `GIF` — ⚠️ naam wahi, andar ab `media.kind` pe match |
 | `isActive` | boolean | ❌ | – | |
 | `fromDate` · `toDate` | ISO date | ❌ | – | `createdAt` filter |
 | `sortBy` | string | ❌ | `createdAt` | `createdAt` \| `startDate` \| `endDate` \| `title` |
@@ -3375,15 +3693,26 @@ GET /banners/get-all?isActive=true&sortBy=startDate&sortOrder=desc
     "data": [
       {
         "_id": "68f1a2b3c4d5e6f7a8b9c1a1",
-        "title": "monsoon mega sale",
-        "type": "IMAGE",
+        "title": "Monsoon Mega Sale",
+        "description": "Up to 50% off at partner outlets",
+        "media": {
+          "url": "https://res.cloudinary.com/…/monsoon.jpg",
+          "kind": "IMAGE",
+          "width": null,
+          "height": null,
+          "mimeType": "image/jpeg",
+          "sizeBytes": 184320,
+          "originalName": "monsoon.jpg",
+          "provider": "CLOUDINARY"
+        },
         "redirect": { "type": "CATEGORY", "targetId": "…", "url": null },
         "startDate": "2026-09-01T00:00:00.000Z",
         "endDate": "2026-09-30T23:59:59.000Z",
-        "image": { "url": "https://res.cloudinary.com/…/monsoon.jpg" },
         "isActive": true,
         "createdBy": "68f1a2b3c4d5e6f7a8b9c000",
-        "createdAt": "2026-08-22T21:00:00.000Z"
+        "updatedBy": null,
+        "createdAt": "2026-08-22T21:00:00.000Z",
+        "updatedAt": "2026-08-22T21:00:00.000Z"
       }
     ]
   }
@@ -3417,24 +3746,45 @@ GET /banners/get-all?isActive=true&sortBy=startDate&sortOrder=desc
   "message": "Banner fetched successfully.",
   "data": {
     "_id": "68f1a2b3c4d5e6f7a8b9c1a1",
-    "title": "monsoon mega sale",
+    "title": "Monsoon Mega Sale",
     "description": "Up to 50% off at partner outlets",
-    "type": "IMAGE",
+    "media": {
+      "url": "https://res.cloudinary.com/…/monsoon.jpg",
+      "kind": "IMAGE",
+      "width": null,
+      "height": null,
+      "mimeType": "image/jpeg",
+      "sizeBytes": 184320,
+      "originalName": "monsoon.jpg",
+      "provider": "CLOUDINARY"
+    },
     "redirect": { "type": "CATEGORY", "targetId": "…", "url": null },
-    "image": { "url": "…", "storage": { "provider": "CLOUDINARY", "publicId": "banners/monsoon" } },
+    "startDate": null,
+    "endDate": null,
     "isActive": true,
-    "isDeleted": false,
     "createdBy": "68f1a2b3c4d5e6f7a8b9c000",
-    "updatedBy": null
+    "updatedBy": null,
+    "createdAt": "2026-08-22T21:00:00.000Z",
+    "updatedAt": "2026-08-22T21:00:00.000Z"
   }
 }
 ```
+
+VIDEO par `media` me `duration` aur `thumbnail` (poster ka URL) bhi aate hain.
 
 ### Errors
 | Status | Message |
 |---|---|
 | `404` | `Banner not found.` |
 | `422` | `Banner ID is required.` / `Invalid banner ID.` |
+
+### ⚠️ Note — `isDeleted` ab response me nahi hai
+
+Ye endpoint pehle se `isDeleted: false` filter karta hai, to wo field hamesha
+`false` hi hoti thi — ek aisa column jispe panel filter bana le aur wo kabhi kuch
+na kare. Wahi `image.storage` ke saath: `publicId`/`bucket`/`key` file ka **pata**
+hain, aur wo ab kisi admin response me nahi jaate. `media.provider` ye bata deta
+hai ki file kahan rehti hai.
 
 ---
 
@@ -3479,7 +3829,7 @@ hain aur unpe koi count limit nahi hai — banners pe 10 ki limit hai (#46).
 
 ## 51. POST /promotionalTickers/create
 
-**Multipart** — `icon` mandatory.
+Icon zaroori hai — **multipart** `icon`, ya 🆕 `iconUploadId` (U-5).
 
 **Access:** Intended: ADMIN · Enforced: **Any authenticated** ⚠️
 
@@ -3509,10 +3859,16 @@ endDate:      2026-09-30T23:59:59.000Z
   "message": "Promotional ticker created successfully.",
   "data": {
     "_id": "68f1a2b3c4d5e6f7a8b9c1b1",
-    "title": "flat 30% off on cafes today",
+    "title": "Flat 30% Off On Cafes Today",
     "icon": {
       "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/tickers/coffee.png",
-      "storage": { "provider": "CLOUDINARY", "publicId": "tickers/coffee" }
+      "kind": "IMAGE",
+      "width": null,
+      "height": null,
+      "mimeType": "image/png",
+      "sizeBytes": 9214,
+      "originalName": "coffee.png",
+      "provider": "CLOUDINARY"
     },
     "redirect": { "type": "CATEGORY", "targetId": "…", "url": null },
     "displayOrder": 1,
@@ -3520,10 +3876,28 @@ endDate:      2026-09-30T23:59:59.000Z
     "endDate": "2026-09-30T23:59:59.000Z",
     "isActive": true,
     "createdBy": "68f1a2b3c4d5e6f7a8b9c000",
-    "createdAt": "2026-08-22T21:15:00.000Z"
+    "updatedBy": null,
+    "createdAt": "2026-08-22T21:15:00.000Z",
+    "updatedAt": "2026-08-22T21:15:00.000Z"
   }
 }
 ```
+
+> ### 🔴 `icon` ka shape badla
+>
+> | Pehle | Ab |
+> |---|---|
+> | `icon.storage.publicId` / `bucket` / `key` | **nahi aata** — sirf `icon.provider` |
+> | `icon` = `{url, storage}` | poora media shape — `kind`, `mimeType`, `sizeBytes`, `originalName` bhi |
+> | `isDeleted: false` | **gaya** — har admin read pehle se filter karti hai |
+>
+> Ye wahi leak hai jo A-3 me public ticker feed par pakda gaya tha. Wahan urgent
+> tha kyunki route par koi auth hi nahi thi; yahan admin gate ke peeche hai —
+> kam urgent, utna hi galat.
+>
+> ⚠️ Ticker icon **sirf still image** ho sakta hai. Strip me inline scroll hota
+> hai, wahan na player hai na poster frame — to video ya animated GIF ke liye
+> jagah hi nahi. `icon.kind` hamesha `IMAGE` hoga.
 
 ### Errors
 | Status | Message | Kab |
@@ -3568,6 +3942,7 @@ endDate:      2026-09-30T23:59:59.000Z
 | `startDate` · `endDate` | ISO date | `null` allowed |
 | `isActive` | boolean | |
 | `icon` | file | Multipart — replace ke liye |
+| `iconUploadId` | ObjectId 🆕 | Presigned raasta — purpose `TICKER_ICON`. `icon` ke saath **nahi** |
 
 ```json
 { "displayOrder": 3, "isActive": true }
@@ -3578,9 +3953,20 @@ endDate:      2026-09-30T23:59:59.000Z
 {
   "success": true,
   "message": "Promotional ticker updated successfully.",
-  "data": { "_id": "…", "title": "flat 30% off on cafes today", "displayOrder": 3, "isActive": true }
+  "data": {
+    "_id": "…",
+    "title": "Flat 30% Off On Cafes Today",
+    "icon": { "url": "…/coffee.png", "kind": "IMAGE", "provider": "CLOUDINARY", "…": "…" },
+    "displayOrder": 3,
+    "isActive": true,
+    "updatedBy": "68f1a2b3c4d5e6f7a8b9c000",
+    "updatedAt": "2026-09-15T10:00:00.000Z"
+  }
 }
 ```
+
+`data` poora ticker hai, **#51 ke response jaisa hi shape** — `icon.storage` aur
+`isDeleted` kisi me nahi.
 
 ### Errors
 | Status | Message |
@@ -3626,14 +4012,26 @@ GET /promotionalTickers/get-all?isActive=true&sortBy=displayOrder&sortOrder=asc
     "data": [
       {
         "_id": "68f1a2b3c4d5e6f7a8b9c1b1",
-        "title": "flat 30% off on cafes today",
-        "icon": { "url": "https://res.cloudinary.com/…/coffee.png" },
+        "title": "Flat 30% Off On Cafes Today",
+        "icon": {
+          "url": "https://res.cloudinary.com/…/coffee.png",
+          "kind": "IMAGE",
+          "width": null,
+          "height": null,
+          "mimeType": "image/png",
+          "sizeBytes": 9214,
+          "originalName": "coffee.png",
+          "provider": "CLOUDINARY"
+        },
         "redirect": { "type": "CATEGORY", "targetId": "…", "url": null },
         "displayOrder": 1,
         "startDate": "2026-09-01T00:00:00.000Z",
         "endDate": "2026-09-30T23:59:59.000Z",
         "isActive": true,
-        "createdAt": "2026-08-22T21:15:00.000Z"
+        "createdBy": "68f1a2b3c4d5e6f7a8b9c000",
+        "updatedBy": null,
+        "createdAt": "2026-08-22T21:15:00.000Z",
+        "updatedAt": "2026-08-22T21:15:00.000Z"
       }
     ]
   }
@@ -3667,15 +4065,31 @@ GET /promotionalTickers/get-all?isActive=true&sortBy=displayOrder&sortOrder=asc
   "message": "Promotional ticker fetched successfully.",
   "data": {
     "_id": "68f1a2b3c4d5e6f7a8b9c1b1",
-    "title": "flat 30% off on cafes today",
-    "icon": { "url": "…", "storage": { "provider": "CLOUDINARY", "publicId": "tickers/coffee" } },
+    "title": "Flat 30% Off On Cafes Today",
+    "icon": {
+      "url": "https://res.cloudinary.com/…/coffee.png",
+      "kind": "IMAGE",
+      "width": null,
+      "height": null,
+      "mimeType": "image/png",
+      "sizeBytes": 9214,
+      "originalName": "coffee.png",
+      "provider": "CLOUDINARY"
+    },
+    "redirect": { "type": "NONE", "targetId": null, "url": null },
     "displayOrder": 1,
+    "startDate": null,
+    "endDate": null,
     "isActive": true,
-    "isDeleted": false,
-    "createdBy": "68f1a2b3c4d5e6f7a8b9c000"
+    "createdBy": "68f1a2b3c4d5e6f7a8b9c000",
+    "updatedBy": null,
+    "createdAt": "2026-08-22T21:15:00.000Z",
+    "updatedAt": "2026-08-22T21:15:00.000Z"
   }
 }
 ```
+
+⚠️ `icon.storage` aur `isDeleted` ab nahi aate — #51 ka note dekhiye.
 
 ### Errors
 | Status | Message |
@@ -3729,7 +4143,8 @@ nahi hota. Reads par koi gate nahi (customer app brand profile par dikhati hai).
 |---|---|---|---|---|
 | `brandId` | ObjectId | ✅ | – | Body me — **admin koi bhi brand** |
 | `title` | string | ✅ | – | 2–150 chars |
-| `icon` | file | ✅ | – | Field name `icon` |
+| `icon` | file | ⚠️ | – | Field name `icon` |
+| `iconUploadId` | ObjectId 🆕 | ⚠️ | – | Presigned — purpose `BRAND_FEATURE_ICON` |
 | `description` | string | ❌ | – | Max 500, `""` allowed |
 | `isActive` | boolean\|string | ❌ | `true` | |
 
@@ -3863,6 +4278,7 @@ nahi hota. Reads par koi gate nahi (customer app brand profile par dikhati hai).
 | `description` | string | Max 500, `""` allowed |
 | `isActive` | boolean\|string | |
 | `icon` | file | Multipart |
+| `iconUploadId` | ObjectId 🆕 | Presigned — purpose `BRAND_FEATURE_ICON` |
 
 ### Success — `200`
 ```json
@@ -3911,7 +4327,7 @@ Master data — customer home screen ka category grid aur vendor onboarding ka d
 
 ## 61. POST /categories/create
 
-**Multipart** (image optional).
+**Multipart** (image optional) **ya** `uploadId` 🆕 — dono me se ek.
 
 **Access:** Intended: ADMIN · Enforced: **ADMIN** ✅
 
@@ -3922,12 +4338,24 @@ Master data — customer home screen ka category grid aur vendor onboarding ka d
 | `description` | string | ❌ | Max 300, `""` allowed |
 | `isActive` | boolean | ❌ | |
 | `image` | file | ❌ | **Multipart**, field name `image` |
+| `uploadId` | ObjectId 🆕 | ❌ | Presigned raaste se — `/uploads/confirm` se mila id. ⚠️ `image` ke **saath nahi** |
 
+**Multipart (purana raasta — abhi bhi chalta hai):**
 ```
 name:        Food & Beverages
 description: Restaurants, cafes, and food outlets
 image:       <file>
 isActive:    true
+```
+
+**Presigned (naya raasta — file server tak aati hi nahi):**
+```json
+{
+  "name": "Food & Beverages",
+  "description": "Restaurants, cafes, and food outlets",
+  "uploadId": "68f1a2b3c4d5e6f7a8b9e001",
+  "isActive": true
+}
 ```
 
 ### Success — `201`
@@ -3953,6 +4381,12 @@ isActive:    true
 | `400` | `Category already exist with this name` | Duplicate (case-insensitive) |
 | `422` | `Name has minimum 3 characters` / `Name cannot exceed 120 characters` | |
 | `422` | `Description cannot exceed 300 characters` | |
+| `422` | `Invalid uploadId.` 🆕 | `uploadId` 24-char hex nahi |
+| `422` | `Category image must be an image — image/jpeg, …` | Multipart file image nahi (PDF, SVG, …) |
+| `422` | `Send either a file or an uploadId, not both — they are two ways to do the same thing.` 🆕 | Dono bheje |
+| `422` | `That upload was authorised for BRAND_LOGO, and this is CATEGORY_IMAGE. Upload it again for this one.` 🆕 | `uploadId` kisi aur surface ka. **Upload jalta nahi** — usi surface par abhi bhi chalega |
+| `404` | `That upload was not found.` 🆕 | Id galat, expire, **ya kisi aur ki**. 403 nahi — asli id ke baare me "tumhari nahi" kehna use asli bata dena hai |
+| `409` | `That upload has already been used.` 🆕 | Ek upload ek hi baar |
 | `403` | `Forbidden: You do not have permission to perform this action.` | Role ADMIN nahi |
 
 ### ⚠️ Notes
@@ -3964,6 +4398,8 @@ isActive:    true
 **3. `201` deta hai** (baaki create endpoints se consistent).
 
 **4. Duplicate check `name` pe hai** — same naam ki doosri category nahi ban sakti.
+
+**5. 🆕 `uploadId` ka poora flow** — `POST /uploads/presign` → S3 par POST → `POST /uploads/confirm` → wahi `uploadId` yahan. Teeno ka detail **#111–#112** me. Category pehli surface hai jo ise leti hai (U-2); baaki abhi sirf multipart leti hain.
 
 ---
 
@@ -4106,6 +4542,7 @@ Admin panel me `isActive` filter **na** lagayein — inactive categories bhi man
 | `description` | string | Max 300, `""` allowed |
 | `isActive` | boolean | |
 | `image` | file | Multipart |
+| `uploadId` | ObjectId 🆕 | Presigned raasta. ⚠️ `image` ke **saath nahi** |
 
 ### Success — `200`
 ```json
@@ -4122,10 +4559,42 @@ Admin panel me `isActive` filter **na** lagayein — inactive categories bhi man
 | `404` | `Category not found` | |
 | `400` | `Category already exist with this name` | Naya naam duplicate |
 | `422` | `Name has minimum 3 characters` | |
+| `422` | `Invalid uploadId.` 🆕 | 24-char hex nahi |
+| `422` | `Category image must be an image — image/jpeg, …` | Multipart file image nahi |
+| `422` | `Send either a file or an uploadId, not both …` 🆕 | Dono bheje |
+| `422` | `That upload was authorised for BRAND_LOGO, and this is CATEGORY_IMAGE. …` 🆕 | Kisi aur surface ka upload |
+| `404` | `That upload was not found.` 🆕 | Galat / expire / kisi aur ka `uploadId` |
+| `409` | `That upload has already been used.` 🆕 | Dobara wahi id |
 | `403` | `Forbidden: …` | Role check |
 
-### ⚠️ Note
-Image replace hone pe purana Cloudinary se delete hota hai.
+### ⚠️ Notes
+
+**1. Kram: upload → save → **tab** purani delete.** Teeno isi tarteeb me. Kuch bhi
+beech me fail ho — upload reject ho jaaye, ya save hi na chale — to purani tasveer
+S3 par bhi rehti hai aur row me bhi. Pehle delete save se pehle hota tha, aur tab
+ek fail hua save bytes le jaata jabki row purane URL par hi rehti: customer ki
+category list me toota hua tile, ek aise request se jo `500` deti thi aur retry
+karne layak lagti thi — aur row ko kisi aur tasveer par point karne ka koi tareeka
+nahi bachta tha.
+
+🔴 **Presigned raaste par ye aur zaroori hai, kam nahi.** Yahan reject hone ke do
+naye tareeke hain jo multipart par the hi nahi — galat purpose ka upload, aur kisi
+aur ka upload — aur purani tasveer in dono ko **bilkul salaamat** paar karti hai.
+
+⚠️ **Purani tasveer delete na ho paana request ko fail nahi karta.** Us waqt tak
+row nayi tasveer par point kar chuki hoti hai, yaani customer ko sahi cheez dikh
+rahi hai. `500` dena us update ke liye hoga jo ho chuka — aur aap ek save dobara
+karne jaate. Peechhe ek aisa object reh jaata hai jise koi reference nahi karta,
+aur wahi `scripts/auditOrphans.js` ka kaam hai.
+
+**2. Jis category ki apni tasveer kabhi thi hi nahi, uska `image` phir bhi ek URL
+hota hai** — schema use shared placeholder par default karta hai. Wo placeholder
+**kabhi delete nahi hota**: ek hi URL har aisi category par hai, aur use delete
+karna ek hi request se sabke tile blank kar deta.
+
+**3. Storage S3 hai, Cloudinary nahi** (prod S3-only). Purani rows jo Cloudinary
+par bani thi, wahin se delete hoti hain — delete row ke `storage.provider` ko
+follow karta hai, aaj ki setting ko nahi.
 
 ---
 
@@ -4170,7 +4639,8 @@ Delete se pehle kya rok raha hai dekhna ho to `GET /categories/get/:id` ka `stat
 
 ## 66. POST /subCategories/:categoryId/create
 
-**Multipart** (image optional). Note: `categoryId` **path me** hai, body me nahi.
+**Multipart** (image optional) **ya** `uploadId` 🆕 — dono me se ek. Note:
+`categoryId` **path me** hai, body me nahi.
 
 **Access:** Intended: ADMIN · Enforced: **ADMIN** ✅
 
@@ -4186,6 +4656,7 @@ Delete se pehle kya rok raha hai dekhna ho to `GET /categories/get/:id` ka `stat
 | `description` | string | ❌ | Max 300, `""` allowed |
 | `isActive` | boolean | ❌ | |
 | `image` | file | ❌ | Multipart |
+| `uploadId` | ObjectId 🆕 | ❌ | Presigned raasta — purpose `SUBCATEGORY_IMAGE`. `image` ke saath **nahi** |
 
 ```
 POST /subCategories/68f1a2b3c4d5e6f7a8b9c0e1/create
@@ -4337,7 +4808,12 @@ Same as [#62](#62-get-categoriesgetall), plus:
 | `id` | ObjectId | ✅ |
 
 ### Body — sab optional
-`name` (3–120) · `description` (max 300) · `categoryId` (ObjectId) · `isActive` · `image` (multipart)
+`name` (3–120) · `description` (max 300) · `categoryId` (ObjectId) · `isActive` ·
+`image` (multipart) · 🆕 `uploadId` (presigned, purpose `SUBCATEGORY_IMAGE`)
+
+🔴 **Kram: upload → save → tab purani delete.** Category (#64) jaisa hi — beech me
+kuch bhi fail ho to purani tasveer S3 par bhi rehti hai aur row me bhi. Delete ka
+fail hona request nahi giraata, sirf ek orphan chhodta hai.
 
 ### Success — `200`
 ```json
@@ -6574,14 +7050,17 @@ Platform-wide configuration. **Ek singleton document.**
   "data": {
     "_id": "68f1a2b3c4d5e6f7a8b9s001",
     "vendor": {
-      "voucher": { "maxOffers": 10, "maxImages": 5, "maxDistanceKm": 25 },
+      "voucher": { "maxOffers": 10, "maxImages": 5, "minImages": 3, "maxDistanceKm": 25 },
       "showcase": {
         "maxItemsPerSection": 15,
         "maxImagesPerSection": 15,
         "maxVideosPerSection": 5,
+        "minItemsPerSection": 3,
+        "minSectionsPerBrand": 1,
         "maxImageSizeMB": 10,
+        "maxGifSizeMB": 15,
         "maxVideoSizeMB": 50,
-        "allowedImages": ["image/jpeg", "image/jpg", "image/png", "image/webp"],
+        "allowedImages": ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"],
         "allowedVideos": ["video/mp4", "video/webm", "video/quicktime"],
         "isActive": true
       },
@@ -6698,18 +7177,220 @@ Sirf [common auth errors](#common-errors) + `403` role check.
 
 ## 100. PUT /settings/update
 
+> #### ⚠️ Badlaav turant nahi, **30 second** ke andar pahunchta hai
+>
+> `Setting` ab har read par DB se nahi aati — wo ek **30 second ka in-process
+> snapshot** hai. (Pehle har read ek `findOneAndUpdate` + `upsert` thi, yaani ek
+> **write** — aur 15 config helper usi par chalte hain, checkout samet.)
+>
+> Save hote hi **us instance** ka snapshot gir jaata hai, to wahan asar turant
+> dikhta hai. Render par doosre instance apne TTL ke khatam hone par nayi value
+> uthate hain — **zyada se zyada 30 second**.
+>
+> Testing karte waqt isi wajah se kabhi purani value dikhti hai. Wo bug nahi hai;
+> 30 second ruk kar dobara dekhein.
+>
+> Ye commercial knobs ke liye theek hai (fee slab, upload ceiling, limits). Koi
+> paisa 30 second purane number se reconcile nahi hota.
+
+### `storage` — platform-wide (naya)
+
+Ye `vendor` / `customer` ke andar nahi, **top-level** hai — kyunki isme kuch bhi
+vendor-specific nahi. Provider har upload ke liye hai: customer ka avatar, admin
+ka banner, generated invoice, sab.
+
+| Field | Default | Kya |
+|---|---|---|
+| `storage.provider` | `CLOUDINARY` | `CLOUDINARY` ❘ `AWS_S3`. **Naye** uploads kahan jayein. Purani file delete hamesha us row ke apne `storage.provider` se hoti hai, isse nahi — to switch karne se purani files strand nahi hotin |
+| `storage.limits.maxImageSizeMB` | `10` | Platform ki **ceiling** |
+| `storage.limits.maxGifSizeMB` | `15` | GIF ki apni, image se zyada — animated GIF me har frame ek saath hota hai |
+| `storage.limits.maxVideoSizeMB` | `50` | |
+| `storage.limits.maxDocumentSizeMB` | `20` | Invoices |
+| `storage.limits.maxAudioSizeMB` | `20` | ⚠️ Koi audio upload surface hai hi nahi (G10) — ye setting kisi cheez ko naapti nahi |
+| `storage.allowed.imageTypes` | jpeg/jpg/png/webp | ⚠️ GIF yahan **nahi** hai |
+| `storage.allowed.gifTypes` | `image/gif` | Alag, taaki koi surface "images haan, GIF nahi" keh sake |
+| `storage.allowed.videoTypes` | mp4/webm/quicktime | |
+| `storage.allowed.documentTypes` | `application/pdf` | |
+| `storage.allowed.audioTypes` | mpeg/mp4 | |
+| `storage.upload.presignEnabled` | `false` | ✅ **Kaam karta hai.** Off = `POST /uploads/presign` **503** deta hai. Neeche dekhein |
+| `storage.upload.presignTtlMinutes` | `15` | ✅ Client ko upload **shuru** karne ke liye itna waqt. 1–60 |
+| `storage.upload.intentTtlMinutes` | `60` | ✅ `Upload` row kitni der zinda rahegi. 1–1440. ⚠️ `presignTtlMinutes` se **kam nahi** ho sakta |
+| `storage.delivery.signedUrlTtlMinutes` | `5` | ✅ Document ka signed link kitni der chalega. 1–1440 |
+
+> #### ✅ Ye chaar knob ab sach me kaam karte hain (Block G · G5)
+>
+> Pehle chaaron ka schema, validator aur ye doc maujood tha — aur **koi reader
+> nahi**. `presignEnabled` off karne par bhi direct-to-S3 raasta chalta rehta
+> tha, aur teeno TTL ke liye `presign.js`/`s3.js` ke hardcoded number.
+>
+> 🔴 **Kill switch ka jhooth sabse mehenga hai.** Incident ke waqt log usi par
+> bharosa karke aage badh jaate hain — switch off, UI *"band ho gaya"*, aur
+> raasta chalta hua.
+>
+> **`presignEnabled: false` par kya hota hai:**
+>
+> ```json
+> POST /uploads/presign  →  503
+> {
+>   "success": false,
+>   "message": "Presigned upload is turned off for this platform. Turn it on in Admin → Settings → Storage, or send the file directly as a multipart field on the same request."
+> }
+> ```
+>
+> ⚠️ **`POST /uploads/confirm` ye flag jaanboojh kar NAHI padhta.** Switch off
+> karte waqt agar teen vendor ke paas valid signature hai aur unki file S3 par
+> ja chuki hai, to unka confirm chalega. Wo bytes kharch ho chuke hain; unhe
+> rokna matlab bucket me object aur vendor ke paas koi jawab nahi. **Switch
+> darwaza band karta hai, andar wale ko phansata nahi.**
+>
+> 🔴 **Provider S3 par na ho to presign 409 deta hai.** `presign`/`confirm` sirf
+> S3 par likhte hain (Cloudinary ke paas is shape ka kuch nahi). Cloudinary par
+> ise on chhodne se ek hi surface ke kuch row S3 par aur kuch Cloudinary par
+> baith jaate — sirf is hisaab se ki client ne kaunsa road liya.
+>
+> ```json
+> POST /uploads/presign  →  409
+> { "success": false,
+>   "message": "Presigned upload only works on S3, and this platform is set to CLOUDINARY. Either switch Admin → Settings → Storage → provider to AWS_S3, or turn presigned upload off so every file takes the same road." }
+> ```
+>
+> ⚠️ **`intentTtlMinutes` `presignTtlMinutes` se kam nahi ho sakta** — save par
+> **422**. Dono alag-alag valid range me hain (1–60 aur 1–1440), to koi validator
+> ise akela pakad nahi sakta; galat sirf ek doosre ke **rishte** me hai. Kam
+> rakhne par: vendor slow connection par minute aath me upload poora karta hai,
+> S3 sab bytes leta hai kyunki signature abhi valid hai, aur confirm kehta hai
+> *"That upload was not found"* — ek row ke baare me jo TTL index ne uda di.
+
+> #### ⚠️ Global ek **ceiling** hai — surface sirf ghata sakta hai
+>
+> `vendor.showcase.maxImageSizeMB` pehle se hai aur rahega. Dono ladte nahi:
+> global wo hai jo platform **zyada se zyada** lega, aur surface usse kam maang
+> sakta hai. Asli limit **chhoti wali** hoti hai.
+>
+> 🔴 **Aur ab ye direct-to-S3 raaste par bhi lagti hai (U-3).** Pehle `/uploads/presign`
+> apni policy ek **code ke constant** se banata tha aur `/uploads/confirm` size
+> dekhta hi nahi tha — to yahan number ghatane ka asar sirf panel wale raaste par
+> hota tha. Ab ek hi number teeno se banta hai (`min(code, global, surface)`), wahi
+> S3 ki policy me jaata hai, aur confirm use asli byte count se dobara naapta hai.
+>
+> ⚠️ **GIF ka rule ab save par bhi lagta hai.** `maxGifSizeMB` ki jodi pehle
+> chhooti thi — showcase ka GIF limit global se bada set ho jaata tha aur `200`
+> milta tha.
+>
+> Surface ko global se **bada** set karne par **422** aata hai, dono number ke
+> saath. Chup-chaap ignore nahi hota — warna aap 80 likhte, 200 milta, 80 wapas
+> render hota, aur 50 se badi har file phir bhi reject hoti, bina kisi wajah ke.
+>
+> Check **merged document** par chalta hai, payload par nahi: global aur surface
+> alag-alag request me aa sakte hain, to global ko 50 se 20 karna bhi pakda jaata
+> hai jab showcase abhi 50 par hai.
+
+> #### 🔴 `AWS_S3` par switch karne se pehle server **rehearsal** karta hai
+>
+> Ye ek dropdown poore platform ke **har upload** ka rukh badal deta hai — avatar,
+> banner, voucher images, generated invoice. Agar key galat ho ya policy attach hi
+> na ho, to yahan kuch fail nahi hota — fail **agle upload par** hota hai, ek saath
+> har user ke liye, aur stack trace me ek ghante purane settings change ka koi
+> zikr nahi hota.
+>
+> Env var ke liye kam se kam deploy access chahiye tha. Dropdown ke liye nahi. To
+> dropdown ko rehearsal se guzarna padta hai: **dono bucket** me ek asli
+> write → read → delete (`staging/` me, jahan lifecycle rule waise bhi saaf karta
+> hai). Fail hua to **422**, aur switch save hi nahi hota — message me bucket ka
+> naam aur kaunsi permission check karni hai, dono.
+>
+> **Sirf badalne par.** Wahi provider dobara save karna (kisi aur edit ke saath)
+> na probe chalata hai, na uski wajah se fail ho sakta hai. Cloudinary par wapas
+> jaane par bhi koi rehearsal nahi.
+>
+> ⚠️ **Koi halka check kaam nahi karta**, aur wajah likhne layak hai:
+> `HeadBucket` ko `s3:ListBucket` chahiye jo ye policy jaan-boojh kar nahi deti —
+> to wo **sahi** setup par fail hota hai. `HeadObject` ka jawab body-less hota hai,
+> to SDK error code padh hi nahi pata. Aur missing key par `GetObject`
+> `s3:ListBucket` ke bina `NoSuchKey` ki jagah **`AccessDenied`** deta hai — wahi
+> jo ek tooti policy deti hai, yaani dono me farak hi nahi kiya ja sakta.
+>
+> **CloudFront na ho to block nahi hota**, warning aati hai. S3 uske bina bhi
+> chalta hai — upload, delete, delivery sab — bas images original size me jaati
+> hain. Block karne se wahi testing ruk jaati jo CloudFront lagane se pehle honi
+> hai. Warning response ke **message** me aati hai; `data` wahi settings document
+> rehta hai.
+
+
+
+
 **Access:** Intended: ADMIN · Enforced: **ADMIN** ✅
 
 ### Body — **partial merge**, kam se kam ek field
 | Block | Fields |
 |---|---|
-| `vendor.voucher` | `maxOffers` (1–100) · `maxImages` (≥1) · `maxDistanceKm` (≥1) |
-| `vendor.showcase` | `maxItemsPerSection` · `maxImagesPerSection` · `maxVideosPerSection` · `maxImageSizeMB` · `maxVideoSizeMB` (sab ≥1) · `allowedImages[]` · `allowedVideos[]` (min 1 item) · `isActive` (showcase **edit** ka kill switch — neeche) |
+| `vendor.voucher` | `maxOffers` (1–100) · `maxImages` (≥1) · 🆕 `minImages` (≥1, **≤ `maxImages`**) · `maxDistanceKm` (≥1) |
+| `vendor.showcase` | `maxItemsPerSection` · `maxImagesPerSection` · `maxVideosPerSection` · 🆕 `minItemsPerSection` · 🆕 `minSectionsPerBrand` · `maxImageSizeMB` · 🆕 `maxGifSizeMB` · `maxVideoSizeMB` (sab ≥1) · `allowedImages[]` · `allowedVideos[]` (min 1 item) · `isActive` (showcase **edit** ka kill switch — neeche) |
 | `vendor.subscription` | Niche full table |
 | `customer` | Niche full table — **naya**, pehle pahunch me hi nahi tha |
 | `admin.notification` | 🆕 `isEmailNotificationEnabled` · `isPushNotificationEnabled` · `isWhatsAppNotificationEnabled` |
 | `app` | 🆕 `minVersion` · `latestVersion` · `support` · `features` — niche |
 | `isActive` | boolean |
+
+### 🆕 `vendor.showcase` ke naye field — floors aur GIF
+
+| Field | Default | Kya karta hai |
+|---|---|---|
+| `minItemsPerSection` | `3` | Section ko customer ke saamne rehne ke liye itni **visible media** chahiye |
+| `minSectionsPerBrand` | `1` | Brand ke paas kam se kam itne section rahein — delete guard isse padhega |
+| `maxGifSizeMB` | `15` | GIF ka apna ceiling, image se alag |
+
+> ### 🔴 `minItemsPerSection` badhana sections ko **turant** chhupa deta hai
+>
+> 3 se 5 karte hi har wo section jisme 3 ya 4 media hain, customer ke view se usi
+> second gayab ho jaata hai — koi write nahi hota, kisi log me kuch nahi aata.
+> Code isse narm nahi kar sakta: **number hi rule hai.**
+>
+> Badhane se pehle dekh lijiye ki kitne sections us line ke neeche hain. Vendor ko
+> unme media add karne padenge, warna unka gallery chhota ho jayega aur unhe pata
+> bhi nahi chalega.
+
+> ⚠️ **Floor ceiling se upar nahi ja sakta.** `minItemsPerSection` ko
+> `maxItemsPerSection` se bada karne par `422`:
+>
+> ```
+> vendor.showcase.minItemsPerSection (6) cannot be more than
+> maxItemsPerSection (5). A section cannot be required to hold more media
+> than it is allowed to hold.
+> ```
+>
+> Wo state har section ko ek saath **dikhane ke liye bahut chhota** aur **theek
+> karne ke liye bahut bhara** bana deti — vendor ke paas koi raasta nahi bachta.
+> Check dono taraf hai: ek hi request me dono number aayein to Joi rokta hai, aur
+> alag-alag request me aayein to merge ke baad wala check.
+
+> ### 🆕 `vendor.voucher.minImages` — showcase floor jaisa **nahi** hai
+>
+> Voucher ka image floor bhi ceiling se upar nahi ja sakta (wahi `422`, wahi
+> dono-taraf check), par **badhane ka asar bilkul ulta hai**:
+>
+> | | `showcase.minItemsPerSection` | `voucher.minImages` |
+> |---|---|---|
+> | Badhane par | Chhote sections **turant** customer se gayab | Published vouchers **chalte rehte hain** |
+> | Kab padha jaata hai | Customer read par, har baar | Sirf write par — create, image edit, submit-for-review |
+>
+> Wajah: published voucher ek waada hai jo customer ne shayad claim bhi kar liya
+> ho. Use peeche se retire karna order aur claim dono ko todta. Section sirf
+> dikhna band karta hai — koi kisi ne use "khareeda" nahi hota.
+>
+> Iska matlab: `minImages` badhane par aapko purane vouchers ki chinta nahi
+> karni. Vendor ko agli baar us voucher ko edit karte waqt naya floor poora
+> karna padega.
+
+> ### 🆕 GIF ab showcase me chalta hai
+>
+> `allowedImages` me `image/gif` juda hai, aur uska cap `maxGifSizeMB` (15 MB) hai,
+> `maxImageSizeMB` (10 MB) nahi. Wajah: animated GIF har frame poora store karta
+> hai, to usi tasveer ka GIF photo se kai guna bhaari hota hai. Photo wale cap par
+> naapte to platform GIF ko "supported" kehta aur practice me reject karta.
+>
+> ⚠️ `media.kind` GIF ko `IMAGE` nahi, **`GIF`** hi likhta hai — isi se wo `gifs/`
+> prefix me jaata hai, resize step se door jo uski animation flatten kar deta.
 
 ### 🆕 `vendor.showcase.isActive` — showcase **edit** ka kill switch
 
@@ -7145,6 +7826,7 @@ Dono taraf se block hota hai:
 |---|---|
 | `voucher.maxDistanceKm` | Customer listing radius — **turant** |
 | `voucher.maxOffers`/`maxImages` | Naye vouchers pe — turant |
+| 🆕 `voucher.minImages` | **Sirf naye aur edit hone wale vouchers pe** — jo pehle se published hain wo chalte rehte hain |
 | `showcase.*` | Naye media uploads pe — turant |
 | `subscription.gstPercentage` | Naye orders pe — purane invoices unaffected |
 | `expiryJobIntervalMinutes` | ⚠️ **Server restart ke baad** — jobs boot pe schedule hote hain |
@@ -7921,13 +8603,27 @@ Inke alawa `GET /showcase/section/get-all` (#36) aur `PUT /showcase/section/:bra
 | `GET /showcase/section/get/:sectionId` | Ek section, media ke saath |
 | `PUT /showcase/section/update/:sectionId` | Section ka naam/visibility |
 | `DELETE /showcase/section/delete/:sectionId` | Soft delete |
-| `POST /showcase/section/:sectionId/add-media` | **multipart** — file chahiye |
-| `PUT /showcase/section/:sectionId/media/replace/:mediaId` | **multipart** |
-| `PATCH /showcase/section/:sectionId/media/update/:mediaId` | Sirf caption/alt — file nahi |
+| `POST /showcase/section/:sectionId/add-media` | **multipart** `files[]`/`thumbnails[]`, **ya** 🆕 `uploadIds[]`/`thumbnailUploadIds[]` |
+| `PUT /showcase/section/:sectionId/media/replace/:mediaId` | **multipart** `file`/`thumbnail`, **ya** 🆕 `uploadId`/`thumbnailUploadId` |
+| `PATCH /showcase/section/:sectionId/media/update/:mediaId` | Caption/alt, aur video ka poster — file ya 🆕 `thumbnailUploadId` |
 | `PUT /showcase/section/:sectionId/media/reorder` | **Poora** order bhejein |
 | `DELETE /showcase/section/:sectionId/media/delete/:mediaId` | Soft delete |
 
 ⚠️ Reorder **poori list** maangta hai, sirf hile hue item nahi — `"2 sections expected, 1 received"` wahi refusal hai. Aadha order bhejna baaki ko `sortOrder: 0` par gira deta, aur gallery chup-chaap bikhar jaati.
+
+> ### 🆕 Presigned raasta in teeno par (U-3)
+>
+> Poora flow **#48–#50** ([vendor doc](./vendor_panel_api_doc.md)) me hai. Do
+> baatein yahan dohrane layak hain:
+>
+> 🔴 **Poster ka apna purpose hai** — `SHOWCASE_THUMBNAIL`, `SHOWCASE_MEDIA`
+> nahi. Ek hi bucket aur prefix, par thumbnail 10 MB par capped hai aur VIDEO
+> leta hi nahi. Gallery ka id poster ki jagah bhejne par `422`, aur koi upload
+> jalta nahi.
+>
+> 🔴 **Section ke apne rules confirm se pehle chalte hain** — kitni media, kaunsa
+> mime, photo ki jagah photo. Baad me chalte to jawab wahi rehta par caller ki
+> saari files jal jaatin, sirf ek extra chun lene par.
 
 ---
 
@@ -8672,6 +9368,186 @@ aur wo value **CI se inject** ho — repo me kabhi nahi.
 - [ ] **⚠️ Broadcast pe HAMESHA `dryRun: true` pehle** — audience size dekh kar hi bhejein
 - [ ] **`all: true` explicitly likhna padta hai**
 - [ ] **Logout pe `unregister` + `logout` dono**
+
+---
+
+# Uploads 🆕
+
+File seedha S3 par jaati hai — is server se hokar nahi. Panel do call pehle karta
+hai, aur phir surface endpoint ko file ki jagah ek `uploadId` deta hai.
+
+> ### Kyun
+>
+> Har file pehle is server par aati thi, disk par likhi jaati thi, phir provider
+> par jaati thi. Matlab har upload ka size is machine ki disk aur uske RAM ka
+> sawaal tha, aur ek 50 MB video ka matlab tha 50 MB upar aana, 50 MB disk par
+> baithna, aur 50 MB dobara upar jaana. Ab wo bytes yahan aate hi nahi.
+
+```
+1. POST /uploads/presign   → { uploadId, url, fields }
+2. POST <url>              → seedha S3 par, multipart form (browser se)
+3. POST /uploads/confirm   → { storage, metadata }
+4. surface endpoint        → body me { uploadId }   ← U-2 se: categories
+```
+
+⚠️ **Request aur captured examples vendor collection me hain** (`12 — Uploads`) —
+ek hi request do collection me rakhne ka matlab hai use do jagah maintain karna,
+aur jis din ek update hoti hai aur doosri nahi, wo doosri jhooth bolne lagti hai
+bina kisi ko pata chale. Endpoint har signed-in role ke liye ek jaisa hai.
+
+---
+
+## 111. POST /uploads/presign 🆕
+
+File S3 par bhejne ki **ijazat** maangta hai.
+
+**Access:** koi bhi signed-in caller · **Any auth** (role gate nahi)
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `purpose` | String | ✅ | Surface — bucket, allowed types aur size cap isi se tay hote hain. Category ke liye `CATEGORY_IMAGE` |
+| `contentType` | String | ✅ | Jo aap bhej rahe hain (`image/png`, `image/webp`, …) |
+| `sizeBytes` | Number ≥ 1 | ✅ | ⚠️ Sirf **padhne-layak 413** ke liye — asli limit S3 lagata hai |
+| `fileName` | String | ❌ | Sirf extension ke liye |
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Upload authorised.",
+  "data": {
+    "uploadId": "68f1a2b3c4d5e6f7a8b9e001",
+    "url": "https://trydood-nonprod-public.s3.ap-south-1.amazonaws.com/",
+    "fields": {
+      "key": "staging/68f1.../9f2c....png",
+      "Content-Type": "image/png",
+      "Policy": "eyJ…",
+      "X-Amz-Signature": "…"
+    },
+    "expiresInSeconds": 900,
+    "stagingKey": "staging/68f1.../9f2c....png",
+    "typePrefix": "images"
+  }
+}
+```
+
+### 🔴 Panel ko ab kya karna hai
+
+`url` par ek **multipart POST** — **`fields` ke saare field pehle, file sabse
+aakhir me**. S3 file part ke baad kuch padhta hi nahi, to baad me bheja gaya field
+laga hi nahi.
+
+```js
+const form = new FormData();
+Object.entries(data.fields).forEach(([k, v]) => form.append(k, v));
+form.append("file", file);            // sabse aakhir me
+await fetch(data.url, { method: "POST", body: form });
+```
+
+S3 seedha `204` deta hai, koi body nahi.
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `401` | Token nahi / invalid | |
+| `503` | `Presigned upload is turned off for this platform. …` | 🆕 `storage.upload.presignEnabled` off hai (default). **Multipart abhi bhi chalta hai** |
+| `409` | `Presigned upload only works on S3, and this platform is set to CLOUDINARY. …` | 🆕 Ye raasta sirf S3 par likhta hai; Cloudinary par on chhodne se do provider par row ban jaatin |
+| `422` | `CATEGORY_IMAGE does not accept video/mp4.` | Surface wo type nahi leti |
+| `413` | `That file is 12 MB. The limit here is 5 MB.` | Surface ke cap se bada. 🔴 Ye number **admin ka** hai — `min(code ka ceiling, Setting.storage.limits, surface override)` |
+| `422` | `Unknown upload purpose: …` | Galat purpose |
+
+> ### ⚠️ `expiresInSeconds` `storage.upload.presignTtlMinutes` se aata hai
+>
+> Default 15 minute. **Response wali value par chalein**, kisi constant par nahi.
+>
+> ### 🔴 Poster ke purpose sirf still lete hain
+>
+> `SHOWCASE_THUMBNAIL`, `BANNER_POSTER` aur `VOUCHER_BANNER_POSTER` ab **`GIF`
+> nahi** lete. Pehle presign GIF ko signature de deta aur surface uske baad `422`
+> deta — yaani bandwidth kharch hone ke baad. Ab refusal upload se pehle.
+
+---
+
+## 112. POST /uploads/confirm 🆕
+
+Upload hui file ko uski asli jagah le jaata hai, aur batata hai wo **sach me kya
+hai**.
+
+**Access:** koi bhi signed-in caller · **Any auth**
+
+### Body
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `uploadId` | ObjectId | ✅ | Presign se mila |
+| `entityId` | ObjectId | ❌ | Kis row ki file hai. Surface endpoint ise khud bhar deta hai, to `uploadId` waale flow me panel ko dene ki zarurat nahi |
+
+### Success — `200`
+```json
+{
+  "success": true,
+  "message": "Upload confirmed.",
+  "data": {
+    "storage": {
+      "provider": "AWS_S3",
+      "publicId": null,
+      "bucket": "trydood-nonprod-public",
+      "key": "images/categories/68f1a2b3c4d5e6f7a8b9c101/9f2c....png"
+    },
+    "metadata": {
+      "contentType": "image/png",
+      "kind": "IMAGE",
+      "sizeBytes": 184320,
+      "width": 1200,
+      "height": 800
+    }
+  }
+}
+```
+
+⚠️ Ye `storage` object panel ko kahin bhejna **nahi** hai. Agla step surface ka
+apna endpoint hai, aur use sirf `uploadId` chahiye — category ke liye
+**#61** (`POST /categories/create`) ya **#64** (`PUT /categories/update/:id`).
+
+### Errors
+| Status | Message | Kab |
+|---|---|---|
+| `404` | `That upload was not found.` | Galat id, **ya kisi aur ki id** |
+| `409` | `That upload has already been used.` | Dobara confirm |
+| `400` | `That file was never uploaded, or has already expired.` | S3 par kuch hai hi nahi |
+| `400` | `That file type is not supported.` | Bytes kisi jaani-pehchani file ke nahi |
+| `422` | `CATEGORY_IMAGE does not accept MP4 files.` | Bytes surface ke hisaab se galat |
+| `413` 🆕 | `That file is 3 MB. The limit here is 2 MB.` | **Asli** size limit se bada. Object wahin delete ho jaata hai |
+
+### ⚠️ Notes
+
+**1. 🔴 Yahi ek jagah hai jahan file ki asli pehchaan hoti hai.** Is se pehle har
+check us `Content-Type` par tha jo **client ne chuna**. Yahan object ke apne pehle
+bytes padhe jaate hain, aur stored type unse aata hai. PNG ke naam par bheja gaya
+SVG yahin ruk jaata hai — aur apne CDN se serve hui SVG stored XSS hai.
+
+**2. Kisi aur ka `uploadId` `404` deta hai, `403` nahi.** Jo id maujood hai uske
+baare me *"ye aapki nahi"* keh dena, ye bata dena hai ki wo id asli hai.
+
+**3. Ek upload ek hi baar.** Warna ek hi file do rows par lag jaati.
+
+**4. 🔴 Size ki limit admin ki hai, aur wahi dono jagah lagti hai.** Ek hi number
+teen se banta hai — `min(code ka ceiling, Setting.storage.limits, surface
+override)` — aur wahi signed policy ke `content-length-range` me jaata hai, yaani
+**S3 khud** use lagata hai. Aapka bheja `sizeBytes` sirf padhne-layak `413` ke
+liye hai: size chhota bata kar bada file bhejna kaam nahi karega, wo S3 par hi
+ruk jaayega.
+
+⚠️ **`confirm` par ye dobara naapa jaata hai, asli byte count se.** Signature ek
+baar likhi jaati hai aur pandrah minute chalti hai; admin us beech limit ghata
+sakta hai aur aapke haath ki signature nahi badalti. Isliye jo file policy se nikal
+gayi wo bhi yahan ruk sakti hai — aur ruk jaaye to object wahin delete ho jaata hai.
+
+⚠️ Aur limit **verified kind** ki hoti hai, declared ki nahi. GIF ka apna bada
+ceiling hai, to PNG ko GIF bata kar bhejna warna GIF ka allowance muft me de deta.
+
+**5. Reject hui file wahin delete ho jaati hai**, aur jo `staging/` me pada reh
+gaya use bucket ka lifecycle rule uthata hai.
 
 ---
 

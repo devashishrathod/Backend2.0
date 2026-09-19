@@ -1,5 +1,31 @@
 # Media Upload / Delete / Replace — Complete Map
 
+> # 🔴 Ye **migration se pehle** ka snapshot hai — aaj ka sach nahi
+>
+> Ye doc tab likha gaya tha jab media ka poora kaam Cloudinary par tha, aur uska
+> kaam yahi tha: har upload/delete/replace call site ek jagah gin dena, taaki
+> migration ka plan poori list par ban sake. Us kaam ke liye wo aaj bhi sahi hai
+> — **call sites ki list** ab bhi kaam ki hai.
+>
+> Jo ab sahi **nahi** hai wo neeche §0 ka pehla vaakya hai aur uske jaisi har
+> line:
+>
+> | Ye doc kya kehta hai | Aaj kya hai |
+> |---|---|
+> | *"Ek hi provider hai — Cloudinary"* | Provider `Setting.storage.provider` se aata hai, aur **prod S3-only** hai (§0.5, master plan) |
+> | *"S3 kahin implement nahi — sirf enum + commented `case`"* | `services/storage/providers/s3.js` poora provider hai — upload, delete, public URL, presigned GET |
+> | *"MongoDB me sirf URL string"* | Har surface ek `mediaSchema` sibling bhi rakhti hai (`storage.provider` + `key`), taaki delete URL se guess na kare |
+> | *"Files browser se `express-fileupload` ke through aati hain"* | Multipart ab bhi chalta hai, par `/uploads/presign` + `/uploads/confirm` par file **is server tak aati hi nahi**. Category (U-2) pehli surface hai jo `uploadId` leti hai |
+> | *"L3 = `services/uploads/index.js` — sabka single entry point"*, neeche **nau** function ki table | 🔴 Us file me ab **do** hain: `uploadDocument` aur `deleteDocument`. Baaki saat ja chuke — `uploadVideo` Phase 2 me, `uploadAudio` Block G (G10) me, aur baaki `services/storage` ke facade me chale gaye. Naya single entry point **`services/storage/accept.js`** hai (`acceptUpload` / `acceptUploads` / `describeIncoming` / `describeAllIncoming`) |
+> | *"L2 me mime-type check hota hai"* | Wo check `file.mimetype` padhta tha, jo **client likhta hai**. Block G (G2) ke baad dono road file ka **pehla kilobyte** padhte hain — `services/storage/inspect.js` — aur `kind` un bytes se banta hai, header se nahi |
+>
+> **Aaj ka sach kahan hai:** [master_execution_plan.md](./master_execution_plan.md)
+> (§0.5 storage ka locked faisla, Part 4B har phase ka kaam) ·
+> [endpoints_category.md §35](./endpoints_category.md) (uploads) · role docs.
+>
+> ⚠️ Is doc ko line-by-line update **nahi** kiya gaya. Wo apna kaam hai, aur uske
+> bina ise *"aaj ka flow"* ki tarah padhna hi asli khatra tha — isliye ye banner.
+
 Poore project me **jahan bhi** koi file (image, gif, video, audio, PDF, koi bhi
 media) upload, replace, delete ya generate hoti hai — sab kuch yahan ek jagah.
 
@@ -192,37 +218,49 @@ auto-mount karta hai.
 
 | # | Method + Path | Gate | Form field | Operation |
 |---|---|---|---|---|
-| 13 | `POST /banners/create` | `isAdmin` | `image` \| `video` \| `gif` | **upload** |
-| 14 | `PUT /banners/update/:id` | `isAdmin` | `image` \| `video` \| `gif` | **replace** |
-| 15 | `DELETE /banners/delete/:id` | `isAdmin` | — | soft delete — **media delete NAHI hota** |
+| 13 | `POST /banners/create` | `isAdmin` | `media` (+ `poster` video par) | **upload** |
+| 14 | `PUT /banners/update/:id` | `isAdmin` | `media` (+ `poster` video par) | **replace** |
+| 15 | `DELETE /banners/delete/:id` | `isAdmin` | — | soft delete — **media bhi delete hota hai** |
 
-Form field ka naam `type` par depend karta hai — [constants/banner.js:9-13](../constants/banner.js#L9-L13):
+> ### 🔴 Ek form field, aur `type` khatam
+>
+> Pehle field ka naam `type` par depend karta tha (`image`/`video`/`gif`) aur
+> `BANNER_MEDIA_FIELD` ek lookup table thi jiska kaam sirf enum ko wapas field
+> naam me badalna tha. Uske saath `BANNER_ALLOWED_MIME_TYPES` bhi thi — codebase
+> ki **chaar** hand-written mime lists me se ek, jo baaki teen se match nahi
+> karti thi.
+>
+> Ab file hamesha `media` me aati hai aur `kindFromMime` uske verified mime type
+> se kind nikaalta hai. Banner sirf itna kehta hai ki uske teen kinds kaunse hain
+> — [`BANNER_MEDIA_KINDS`](../constants/banner.js).
 
-| `type` | form field | Allowed mime types |
+| Ban'ne wala `media.kind` | mime | `poster` |
 |---|---|---|
-| `IMAGE` | `image` | `image/jpeg`, `image/jpg`, `image/png`, `image/webp` |
-| `VIDEO` | `video` | `video/mp4`, `video/webm`, `video/quicktime` |
-| `GIF` | `gif` | `image/gif` |
+| `IMAGE` | koi bhi `image/*` (gif ke alawa) | ❌ |
+| `GIF` | `image/gif` | ❌ |
+| `VIDEO` | koi bhi `video/*` | ✅ **mandatory** |
 
 Helper: [helpers/banners/media.js](../helpers/banners/media.js) →
-`uploadBannerMedia(type, file)` / `deleteBannerMedia(type, media)`.
-`VIDEO` → `uploadVideoWithMetadata`, baaki dono → `uploadImageWithMetadata`.
-**Yahan mime-type check hai** aur galat type par `422` milta hai.
+`uploadBannerMedia(file, bannerId, posterFile)` / `deleteBannerMedia(media)`.
+Dono facade se jaate hain; kind hi tay karta hai object `images/`, `videos/` ya
+`gifs/` me jaayega.
 
-**Update ka order** ([services/banners/updateBanner.js:51-78](../services/banners/updateBanner.js#L51-L78)) — ye pattern important hai:
+> ⚠️ **Video ka poster kabhi derive nahi hota.** Cloudinary ka purana derivation
+> `getOptimizedImageUrl(publicId)` se `/image/upload/` path banata tha ek aise
+> asset ke liye jo `/video/upload/` me rehta hai — wo URL 404 deta hai. S3 poster
+> banata hi nahi. Isliye poster alag file hai, aur `mediaSchema` use VIDEO par
+> mandatory rakhta hai.
+
+**Update ka order** ([services/banners/updateBanner.js](../services/banners/updateBanner.js)) — ye pattern important hai:
 
 ```
-1. naya file upload  →  newMedia
+1. naya file upload  →  newMedia (video ho to poster bhi)
 2. document me newMedia set + save()
-3. save fail ho     →  newMedia ko Cloudinary se delete, error rethrow
-4. save success     →  purana media delete
+3. save fail ho     →  newMedia (+ poster) storage se delete, error rethrow
+4. save success     →  purana media (+ uska poster) delete
 ```
 
 Yaani **kabhi bhi purana asset naye ke safely save hone se pehle nahi hatta.**
-
-> ⚠️ **Banner delete media clean nahi karta.** [services/banners/deleteBanner.js](../services/banners/deleteBanner.js)
-> sirf `isDeleted: true` set karta hai. Cloudinary par file rah jaati hai. Ye
-> brandFeatures/showcase ke behaviour se ulta hai — §8.8.
 
 ### 3.6 Promotional ticker (icon)
 
@@ -230,13 +268,19 @@ Yaani **kabhi bhi purana asset naye ke safely save hone se pehle nahi hatta.**
 |---|---|---|---|---|
 | 16 | `POST /promotionalTickers/create` | `isAdmin` | `icon` | **upload** (required) |
 | 17 | `PUT /promotionalTickers/update/:id` | `isAdmin` | `icon` | **replace** |
-| 18 | `DELETE /promotionalTickers/delete/:id` | `isAdmin` | — | soft delete — **media delete NAHI hota** |
+| 18 | `DELETE /promotionalTickers/delete/:id` | `isAdmin` | — | soft delete — **icon bhi delete hota hai** |
 
 Helper: [helpers/promotionalTickers/media.js](../helpers/promotionalTickers/media.js).
 Allowed: `image/jpeg`, `image/jpg`, `image/png`, `image/webp`
 ([constants/promotionalTicker.js:16-21](../constants/promotionalTicker.js#L16-L21)).
 Create par icon **mandatory** hai — file na ho to `422`.
 Update ka order banner jaisa hi hai (upload → save → purana delete).
+
+> ⚠️ Ticker ki mime list jaan-boojh kar bachi hai, banner ki tarah kind par nahi
+> gayi. Icon strip me inline chhote size par render hota hai — wahan na player
+> hai na poster frame, to video ki jagah hi nahi, aur animated GIF ek distraction
+> hai jo kisi ne maanga nahi. `icon.kind` hamesha `IMAGE` hota hai, aur model bhi
+> yahi enforce karta hai.
 
 ### 3.7 Brand showcase — sabse bada media surface
 
@@ -245,32 +289,80 @@ Yahi ek jagah hai jahan **multi-file upload**, **replace**, **thumbnail
 
 | # | Method + Path | Gate | Form field | Operation |
 |---|---|---|---|---|
-| 19 | `POST /showcase/section/:sectionId/add-media` | `isVendorOrAdmin` | `files` (multiple) | **bulk upload** |
-| 20 | `PATCH /showcase/section/:sectionId/media/update/:mediaId` | `isVendorOrAdmin` | `thumbnail` | **poster upload / replace** |
-| 21 | `PUT /showcase/section/:sectionId/media/replace/:mediaId` | `isVendorOrAdmin` | `file` (exactly 1) | **replace** |
+| 19 | `POST /showcase/section/:sectionId/add-media` | `isVendorOrAdmin` | `files` (multiple) + `thumbnails` (video ke poster) | **bulk upload** |
+| 20 | `PATCH /showcase/section/:sectionId/media/update/:mediaId` | `isVendorOrAdmin` | `thumbnail` | **poster replace** |
+| 21 | `PUT /showcase/section/:sectionId/media/replace/:mediaId` | `isVendorOrAdmin` | `file` (exactly 1) + `thumbnail` (video par) | **replace** |
 | 22 | `DELETE /showcase/section/:sectionId/media/delete/:mediaId` | `isVendorOrAdmin` | — | **delete** |
 | 23 | `DELETE /showcase/section/delete/:sectionId` | `isVendorOrAdmin` | — | **bulk delete (poora album)** |
 
 Helper: [helpers/showcases/upload.js](../helpers/showcases/upload.js) +
 [helpers/showcases/validateMedia.js](../helpers/showcases/validateMedia.js).
 
+> ### 🔴 M-4: item ke andar ab ek `media` hai, aur poster mandatory hai
+>
+> Gallery item pehle ek hi flat shape me do cheezein rakhta tha: **file**
+> (`type`/`url`/`thumbnail`/`thumbnailStorage`/`storage`/`metadata`) aur
+> **album me uski jagah** (`title`/`altText`/`sortOrder`/`isShowInVideoClips`).
+> Isi mixing ki wajah se file-metadata ki platform par ekmatra per-surface copy
+> yahan bani — `metadata.size`, `metadata.width` sirf yahan the, baaki har jagah
+> sirf URL store hota tha.
+>
+> Ab file `media` me hai — wahi `mediaSchema` — aur gallery ke apne field uske
+> bagal me.
+>
+> **`thumbnails[]` index se `files[]` ke saath jodta hai.** `thumbnails[2]`
+> `files[2]` ka poster hai. Video bina poster ke **upload se pehle** `422`.
+>
+> `isCustomThumbnail` / `deleteCustomThumbnail` dono **hate** — wo poochhte the
+> "poster vendor ne diya ya derive hua?", aur S3 par wo sawaal galat jawab deta
+> tha (`publicId` null → comparison skip → har auto poster custom, yaani poster
+> badalne par wahi delete jo vendor dekh raha tha). Ab derive kuch hota hi nahi.
+
 #### Limits — ye **admin-configurable** hain
 
 `getShowcaseConfig()` pehle `Setting.showcase` padhta hai, na mile to
 `constants/showcase.js` ke defaults:
 
-| Limit | Default | Setting field |
+Baayen `getShowcaseConfig()` ka naam, daayen us Setting field ka jisse wo aata
+hai — dono alag hain, aur ye table hi unhe jodti hai.
+
+| Config key | Default | Setting field |
 |---|---|---|
-| `maxItems` (ek section me total) | 15 | `Setting.showcase.maxItems` |
-| `maxImages` | 15 | `Setting.showcase.maxImagesPerSection` |
-| `maxVideos` | 5 | `Setting.showcase.maxVideos` |
-| `maxImageSizeMB` | **10 MB** | `Setting.showcase.maxImageSizeMB` |
-| `maxVideoSizeMB` | **50 MB** | `Setting.showcase.maxVideoSizeMB` |
-| `allowedImages` | jpeg, jpg, png, webp | `Setting.showcase.allowedImages` |
-| `allowedVideos` | mp4, webm, quicktime | `Setting.showcase.allowedVideos` |
+| `maxItems` (ek section me total) | 15 | `vendor.showcase.maxItemsPerSection` |
+| `maxImages` | 15 | `vendor.showcase.maxImagesPerSection` |
+| `maxVideos` | 5 | `vendor.showcase.maxVideosPerSection` |
+| `minItems` 🆕 | **3** | `vendor.showcase.minItemsPerSection` |
+| `minSections` 🆕 | **1** | `vendor.showcase.minSectionsPerBrand` |
+| `maxImageSizeMB` | **10 MB** | `vendor.showcase.maxImageSizeMB` |
+| `maxGifSizeMB` 🆕 | **15 MB** | `vendor.showcase.maxGifSizeMB` |
+| `maxVideoSizeMB` | **50 MB** | `vendor.showcase.maxVideoSizeMB` |
+| `allowedImages` | jpeg, jpg, png, webp, **gif** 🆕 | `vendor.showcase.allowedImages` |
+| `allowedVideos` | mp4, webm, quicktime | `vendor.showcase.allowedVideos` |
+
+> ⚠️ Teen naam pehle galat likhe the — `Setting.showcase.maxItems` aur
+> `.maxVideos` jaisi koi field hai hi nahi, aur block `vendor.showcase` ke andar
+> hai. Jo doc field ka naam galat bole, wo us doc se bura hai jo use likhta hi
+> nahi.
 
 > **Poore project me size limit sirf yahan hai.** Baaki har media endpoint
 > unlimited size accept karta hai — §8.1.
+
+> ### 🆕 S-1: do floor, aur GIF ka apna cap
+>
+> Upar ke sab **ceiling** hain; `minItems` aur `minSections` akele **floor** hain
+> — wo batate hain ki kya bacha rehna chahiye, kitna zyada nahi ho sakta.
+>
+> `minItems` tay karta hai ki section customer tak pahunchega ya nahi, isliye use
+> **badhate hi** us line se neeche ke sections chhup jaate hain — bina kisi write
+> ke. Floor ko ceiling se upar le jaana `422` se rukta hai (teen jagah check:
+> model path validator, Joi payload, aur merged document).
+>
+> `maxGifSizeMB` alag isliye ki GIF `image/*` hai par har frame poora store karta
+> hai. Photo wale cap par naapte to platform GIF ko allow-list me rakhta aur
+> practice me reject karta — wahi "knob jo kuch nahi karta" wala pattern.
+>
+> ⚠️ `minItems`/`minSections` abhi **koi nahi padhta** — write guards S-3 me hain,
+> customer filter S-4 me.
 
 #### 19 — add-media (bulk)
 
@@ -292,17 +384,26 @@ par baaki nahi rukte.
 Mime type se hi decide hota hai ki PHOTO hai ya VIDEO — `file.mimetype.startsWith("image")`
 / `("video")`. Kuch aur ho to `400 "Unsupported media type."`.
 
-#### 20 — media update (custom video poster)
+#### 20 — media update (video poster replace)
 
 [services/showcases/updateSectionMedia.js](../services/showcases/updateSectionMedia.js)
 
 - `thumbnail` sirf **VIDEO** par allowed — photo par `422`.
 - `validateThumbnailFile()` — image hona chahiye, `allowedImages` me hona chahiye, `maxImageSizeMB` se chhota.
-- Upload → `save()` → tab purana poster delete. Save fail ho to naya poster rollback.
-- Purana poster tabhi delete hota hai jab wo **vendor ne khud upload kiya tha** — `isCustomThumbnail()` check karta hai:
-  - PHOTO ka thumbnail uska apna `url` hota hai → delete karne se media hi mar jaayega
-  - VIDEO ka default poster video ke apne `publicId` ka transformation hota hai → wahi baat
-  - Sirf alag se upload kiya gaya poster delete hota hai
+- Upload → `media.poster` set → `save()` → tab purana poster delete. Save fail ho to naya poster rollback.
+- **Purana poster hamesha delete hota hai**, bina koi "ye custom hai ya auto?" sawaal poochhe.
+
+> 🔴 **`isCustomThumbnail()` ka check yahan se gaya, aur wo apne aap me ek bug tha.**
+>
+> Wo poochhta tha ki poster vendor ne upload kiya ya derive hua, kyunki derived
+> poster delete karne se media ka apna asset chala jaata. Jawab bharosemand tha
+> hi nahi: S3 par `publicId` null hone se URL comparison **skip** ho jaata aur
+> har derived poster "custom" padha jaata — yaani poster badalne par wahi poster
+> delete ho jaata jo vendor abhi dekh raha tha, aur section me kaala tile bach
+> jaata.
+>
+> Ab koi poster derive hota hi nahi (M-7), to har stored poster ek alag file hai
+> jise sirf wahi media reference karta hai — aur sawaal khatam.
 
 #### 21 — media replace
 
@@ -428,9 +529,19 @@ Ye design decision important hai:
   snapshot + 32-byte random `documentToken` record par likha jaata hai. **Koi PDF
   nahi banti, Cloudinary par kuch nahi jaata.**
 - **Pehli baar** koi `GET /documents/:token` hit karta hai, tab PDF render + upload
-  hoti hai aur URL record par cache ho jaata hai
-  ([services/documents/getDocumentByToken.js:134-146](../services/documents/getDocumentByToken.js#L134-L146)).
-- Uske baad har request cached URL return karti hai — dobara upload nahi.
+  hoti hai aur record par **`documentMedia`** likh diya jaata hai — `mediaSchema`
+  ka wahi generic shape jo baaki har media surface use karti hai
+  ([services/documents/getDocumentByToken.js:167-190](../services/documents/getDocumentByToken.js#L167-L190)).
+- Uske baad dobara upload nahi hota, **par URL dobara stored bhi nahi milta**:
+  link har request par `storage.documentUrl()` se banta hai
+  ([services/storage/index.js:260](../services/storage/index.js#L260)). S3 par wo
+  ek presigned GET hai jo 5 min me mar jaata hai; Cloudinary par wahi permanent
+  delivery URL hai, kyunki uske paas short-lived kuch hai hi nahi.
+- 🔴 Private bucket me document ka **koi lasting URL hota hi nahi** — isliye
+  `documentMedia.url` wahan `null` hota hai aur `mediaSchema` ka locatable
+  invariant key se satisfy hota hai, URL se nahi.
+- Purani rows jinke paas sirf `invoiceUrl` / `documentUrl` string hai, wo waise hi
+  chalti hain — kuch migrate nahi hua, file jahan hai wahin hai.
 
 Wajah: har claim/payout/refund ki PDF banana scale par nahi chalta aur zyadatar
 kabhi khuli hi nahi jaati. Number pehle allot hota hai taaki series me gap na ho.
@@ -439,7 +550,7 @@ kabhi khuli hi nahi jaati. Number pehle allot hota hai taaki series me gap na ho
 
 | # | Method + Path | Gate | Operation |
 |---|---|---|---|
-| 28 | `GET /documents/:token` | **PUBLIC — koi JWT nahi** | lazy render + upload + cache |
+| 28 | `GET /documents/:token` | **PUBLIC — koi JWT nahi** | lazy render + upload + `documentMedia` cache; link har baar naya |
 | 29 | `POST /transactions/invoice/regenerate` | `isVendorOrAdmin` | **forced re-render + re-upload** |
 
 - **28** — deliberately unauthenticated. Link WhatsApp/email se khulta hai jahan
@@ -494,35 +605,72 @@ WhatsApp (`configs/whatsapp.js`, `helpers/whatsapp/`) aur email
 
 | Model | Field | Shape | Kis endpoint se likha jaata hai |
 |---|---|---|---|
-| `User` | `image` | `String` (URL) | `POST /auth/register`, `PUT /users/update` |
-| `Customer` | `image` | `String` | `PUT /users/update` (User se mirror) |
-| `Brand` | `logo` | `String` | `PUT /brands/update` |
-| `Brand` | `coverImage` | `String` | ⚠️ **kahin se nahi** — §8.7 |
-| `SubBrand` | `logo`, `coverImage` | `String` | ⚠️ **kahin se nahi** — §8.7 |
-| `BrandFeatures` | `icon` | `String` | `POST/PUT /brandFeatures/*` |
-| `Category` | `image` | `String` (default set) | `POST/PUT /categories/*` |
-| `SubCategory` | `image` | `String` (default set) | `POST/PUT /subCategories/*` |
-| `Banner` | `image` / `video` / `gif` | `{url, storage}` subdoc | `POST/PUT /banners/*` |
-| `PromotionalTicker` | `icon` | `{url, storage}` subdoc | `POST/PUT /promotionalTickers/*` |
-| `ShowcaseSection` | `medias[]` | `{type, url, thumbnail, storage, metadata, title, altText, sortOrder, ...}` | `/showcase/section/:id/*` |
+| `User` | `image` + `imageMedia` | sidecar — `String` + `mediaSchema` | `POST /auth/register`, `PUT /users/update` |
+| `Customer` | `image` + `imageMedia` | sidecar | `PUT /users/update` (CUSTOMER role ka apna row) |
+| `Brand` | `logo` + `logoMedia`, `coverImage` + `coverImageMedia` | sidecar | `PUT /brands/update`, `POST /brands/images` |
+| `SubBrand` | `logo` + `logoMedia`, `coverImage` + `coverImageMedia` | sidecar | `PUT /brands/outlets/:id/images` |
+| `BrandFeatures` | `icon` + `iconMedia` | sidecar | `POST/PUT /brandFeatures/*` |
+| `Category` | `image` + `imageMedia` | sidecar (default set) | `POST/PUT /categories/*` |
+| `SubCategory` | `image` + `imageMedia` | sidecar (default set) | `POST/PUT /subCategories/*` |
+| `Banner` | **`media`** | **`mediaSchema`** — M-3 | `POST/PUT /banners/*` |
+| `PromotionalTicker` | **`icon`** | **`mediaSchema`** — M-3 | `POST/PUT /promotionalTickers/*` |
+| `ShowcaseSection` | `medias[]` | `{ media: mediaSchema, title, altText, sortOrder, isShowInVideoClips, ... }` — M-4 | `/showcase/section/:id/*` |
 | `ShowcaseSection` | `coverImage` | `String` | auto — `syncSectionCoverImage()` |
-| `VoucherVersion` | `images[]` | `{url, storage, sortOrder}` | `POST /vouchers/create`, `PUT /vouchers/update/:id` |
-| `Voucher` | `banner.{image,video,gif}` | `{url, storage}` subdoc | `POST/DELETE /vouchers/:id/banner` |
-| `Transaction` | `invoiceUrl` | `String` (PDF) | lazy render / regenerate |
-| `RefundRequest` | `documentUrl` | `String` (PDF) | lazy render |
-| `Settlement` | `documentUrl` | `String` (PDF) | lazy render |
-| `Dispute` | `documentUrl` | `String` (PDF) | lazy render |
+| `VoucherVersion` | `images[]` | `{url, storage, sortOrder}` — **M-5** | `POST /vouchers/create`, `PUT /vouchers/update/:id` |
+| `Voucher` | `banner.{image,video,gif}` | `{url, storage}` subdoc — **M-5** | `POST/DELETE /vouchers/:id/banner` |
+| `Transaction` | `documentMedia` (+ legacy `invoiceUrl`) | `mediaSchema` — M-2 | lazy render / regenerate |
+| `RefundRequest` | `documentMedia` (+ legacy `documentUrl`) | `mediaSchema` — M-2 | lazy render |
+| `Settlement` | `documentMedia` (+ legacy `documentUrl`) | `mediaSchema` — M-2 | lazy render |
+| `Dispute` | `documentMedia` (+ legacy `documentUrl`) | `mediaSchema` — M-2 | lazy render |
+
+> **Sidecar** ka matlab: delivery URL apni purani `String` field me hi rehta hai
+> (taaki 55 read sites aur har `$project: { logo: 1 }` waisa ka waisa chale), aur
+> uske bagal me `<field>Media` ek poora `mediaSchema` hota hai. Dono hamesha ek
+> hi service me, ek saath likhe jaate hain — M-1a ka locked decision.
+
+### `mediaSchema` ka shape
+
+```js
+{
+  url:       String | null,   // private bucket me null — link har request par banta hai
+  storage:   { provider, publicId, bucket, key },
+  kind:      "IMAGE" | "VIDEO" | "GIF" | "AUDIO" | "DOCUMENT",
+  mimeType, sizeBytes, width, height, duration, originalName,
+  poster:    { url, storage, width, height },   // VIDEO par mandatory
+}
+```
 
 ### `storage` subdocument ka shape
 
 ```js
 storage: {
-  provider: "CLOUDINARY" | "S3",   // hamesha CLOUDINARY likha jaata hai
-  publicId: String,                 // Cloudinary public id
-  bucket:   null,                   // S3 ke liye reserved
-  key:      null,                   // S3 ke liye reserved
+  provider: "CLOUDINARY" | "AWS_S3",
+  publicId: String,   // Cloudinary ka handle; S3 par null
+  bucket:   String,   // S3
+  key:      String,   // S3
 }
 ```
+
+> ⚠️ `AWS_S3`, `S3` nahi. Chaar model apni list khud likhte the
+> (`["CLOUDINARY", "S3"]`), to `STORAGE_PROVIDER` single source lagta tha par tha
+> nahi — ab sab wahin se padhte hain.
+>
+> 🔴 **`storage` kabhi kisi response me nahi jaata.** Kya bahar jaayega wo
+> [`helpers/media/toMediaResponse.js`](../helpers/media/toMediaResponse.js) tay
+> karta hai: default sirf URL string, `withMeta` par kind/size/dimensions, aur
+> `forAdmin` par uske saath `provider` — par `bucket`/`key`/`publicId` kisi bhi
+> mode me nahi.
+>
+> ⚠️ **DB me `poster`, wire par `thumbnail`.** Field ka naam `poster` hai kyunki
+> wo hai wahi — player ka pehla frame. Par har client-facing surface (showcase
+> customer map, vendor managed view, clips feed, customer banner) `thumbnail`
+> naam pehle se use karti hai, isliye helper wahi naam nikaalta hai. Ek idea, ek
+> naam — warna har client ko sochna padta ki wo kis endpoint se baat kar raha hai.
+>
+> 🔴 **Jahan bhi VIDEO client tak jaata hai, poster uske saath jaata hai.** Poster
+> `mediaSchema` me VIDEO par mandatory hai, aur usko store karke na bhejna
+> mandatory rakhne ka matlab hi khatam kar deta hai — app phir bhi `.mp4` buffer
+> hone tak khali rectangle dikhati hai.
 
 `deleteMedia()` isi `provider` par switch karta hai; `S3` case abhi **khaali
 `return`** hai ([helpers/showcases/upload.js:53](../helpers/showcases/upload.js#L53)).
@@ -583,14 +731,13 @@ Ye sab **verify kiye gaye** hain, guess nahi. Har ek ke saath file:line diya hai
 | ✅ **Fixed — Phase 0** | §8.1 (no size limit) · §8.9 (`/tmp` galat jagah) · §8.10 (temp files kabhi delete nahi) · §8.11 (🔴 ownership hole, + 2 aur bug) |
 | ✅ **Fixed — Phase 2** | §8.2 (har delete chup-chaap skip) · §8.3 (delete pehle, upload baad me) |
 | ✅ **Fixed — chhote fix** | §8.4 (6 endpoint par koi mime check nahi) · §8.6 (shared default delete ho sakta tha) · §8.8 (banner/ticker delete par asset reh jaata tha) · §8.13 (voucher images me SVG) |
-| 🟡 **Aadha** | §8.5 (`uploadVideo` hata; `uploadAudio` rakha, `deletePDF` ka caller abhi bhi nahi) |
-| ⏳ **Abhi khula** | §8.7 · §8.12 · §8.14 · §8.15 · §8.16 |
+| ✅ **Fixed — Block G** | 🔴 **§8.12** (mimetype client ka tha — ab dono road bytes padhte hain) · §8.5 poora (`uploadAudio` bhi gaya) |
+| ⏳ **Abhi khula** | §8.7 · §8.14 · §8.15 · §8.16 |
 
 **Khule findings, asar ke hisaab se:**
 
 | # | Kya | Kab theek hoga |
 |---|---|---|
-| 🔴 §8.12 | `mimetype` **client ka bheja hua** hai — bytes kabhi padhe nahi jaate. Aaj Cloudinary bacha raha hai, **S3 par wo bachav nahi rahega**. §8.4/§8.13 ne saamne ka darwaaza band kiya hai; ye poora taala hai | Phase 5 — magic bytes |
 | 🟠 §8.14 | PDF ka URL public + permanent + `Math.random()` se guessable | Phase 4 — private bucket |
 | 🟡 §8.7 | `Brand.coverImage`, `SubBrand.logo/coverImage` — padhe jaate hain, likhta koi nahi | faisla chahiye |
 | 🟡 §8.15 | Uploads serial — 15 image = 15 round trip | Phase 5 ke saath |
@@ -737,7 +884,13 @@ kabhi nahi milta.
 Compare karein: banner/ticker/showcase/voucher-banner sab clean `422` dete hain
 expected mime types ki list ke saath.
 
-### 8.5 🟡 PARTLY FIXED — 3 dead functions
+### 8.5 ✅ FIXED — ~~3 dead functions~~
+
+> ✅ **Poora band, Block G (G10).** `uploadAudio` bhi hata diya gaya — uske 0
+> caller the. Uska `UPLOAD_PURPOSE.AUDIO` aur `MAX_BYTES.AUDIO` bhi saath gaye:
+> wo sirf isi function ke liye the. `MEDIA_KIND.AUDIO` raha, kyunki
+> `kindFromMime` ko audio file ko **naam** dena aata rehna chahiye — tabhi koi
+> surface use refuse kar sakta hai.
 
 > **Phase 2:** `uploadVideo` hata diya gaya. `uploadAudio` aur `deletePDF`
 > jaan-boojh kar rakhe gaye — neeche wajah.
@@ -748,7 +901,7 @@ codebase me **0 call sites**:
 | Function | Ab |
 |---|---|
 | `uploadVideo` | ✅ **hata** — `helpers/showcases` aur `helpers/banners` ab seedha facade se jaate hain |
-| `uploadAudio` | 🟡 **rakha gaya** — faisla liya gaya ki aage audio aa sakta hai. Koi `audio/` prefix S3 par tab tak banega hi nahi jab tak koi ise call na kare |
+| `uploadAudio` | ✅ **hata — Block G (G10)** — 0 caller. Uska `UPLOAD_PURPOSE.AUDIO` aur `MAX_BYTES.AUDIO` bhi saath gaye; wo sirf isi ke liye the. `MEDIA_KIND.AUDIO` raha, taaki `kindFromMime` ek audio file ko **naam** de sake aur surface use refuse kar sake |
 | `deletePDF` | 🟠 **rakha gaya, par abhi bhi koi caller nahi** — Phase 4 ka kaam |
 
 Iska practical matlab: **project me kahin bhi audio (mp3, wav) upload nahi
@@ -800,7 +953,7 @@ Par active cloud `.env` me **`dtpy1lbmf`** hai. Do nateeje:
 defaults ko current cloud par migrate karna. Dono karne padenge — sirf migrate
 karna problem #2 ko live kar dega.
 
-> 🟢 **Phase 3 me ye saaf ho gaya.** `imageStorage` aa chuka hai, aur ek shared
+> 🟢 **Phase 3 me ye saaf ho gaya.** `imageMedia` aa chuka hai, aur ek shared
 > default ke paas wo hota hi nahi — to "ye hamara upload hai ya shared
 > placeholder" ka jawab ab ek **field** hai, URL ke host ka andaaza nahi.
 >
@@ -1025,15 +1178,25 @@ Panel multipart bhejta hai isliye wahan kaam karta dikhta tha; JSON se update
 karne par feature switch off karne ka koi tarika hi nahi tha — aur response
 success bolta tha.
 
-### 8.12 🔴 `mimetype` client ka bheja hua hai, file ka nahi
+### 8.12 ✅ FIXED — ~~`mimetype` client ka bheja hua hai, file ka nahi~~
+
+> ✅ **Fixed in Block G (G2/G3).** `identify()` pehle sirf `confirm` se bulaya
+> jaata tha — yaani **sirf presigned road** par. Ab `acceptUpload` aur
+> `describeIncoming` dono multipart file ka pehla kilobyte padhte hain, aur jo
+> mime aage jaata hai wo **bytes ka** hai, header ka nahi. `HEAD_BYTES` bhi ek hi
+> jagah se aata hai, to dono road barabar padhte hain.
+>
+> ⚠️ Saath me: SVG/HTML ka naam-se-refusal ab dono road par chalta hai, `kind`
+> verified bytes se banta hai (to GIF `gifs/` me hi girta hai), aur dimensions
+> bhi dono road par aati hain — pehle multipart par hamesha `null` thi.
 
 `express-fileupload` busboy se `info.mimeType` leta hai
 (`lib/processMultipart.js:63`), jo multipart part ke **client-supplied
 `Content-Type` header** se aata hai. File ke bytes kabhi padhe nahi jaate.
 
-Yaani `BANNER_ALLOWED_MIME_TYPES`, `SHOWCASE_MEDIA_CONFIG.allowedImages`,
-`TICKER_ICON_ALLOWED_MIME_TYPES` — **teenon allowlists ko caller bypass kar
-sakta hai** bas header badal kar:
+Yaani `SHOWCASE_MEDIA_CONFIG.allowedImages`, `TICKER_ICON_ALLOWED_MIME_TYPES`
+aur banner ka `kindFromMime` — **inme se kisi ko bhi caller bypass kar sakta
+hai** bas header badal kar:
 
 ```
 Content-Disposition: form-data; name="image"; filename="x.png"
@@ -1177,8 +1340,8 @@ services/uploads/
 helpers/banners/media.js           ← uploadBannerMedia, deleteBannerMedia
 helpers/promotionalTickers/media.js← uploadTickerIcon, deleteTickerIcon
 helpers/showcases/upload.js        ← uploadSingleMedia, uploadMultipleMedia,
-                                     deleteMedia, deleteAllMedia, rollbackUploads,
-                                     isCustomThumbnail, deleteCustomThumbnail
+                                     deleteMedia, deleteAllMedia, rollbackUploads
+helpers/showcases/projections.js   ← customerMediaFields, formatManagedMedia
 helpers/showcases/validateMedia.js ← normalizeFiles, validateMediaFiles,
                                      validateThumbnailFile, syncSectionCoverImage
 helpers/vouchers/validateImagesFiles.js  ← uploadVoucherImages, rollbackVoucherImages
@@ -1191,7 +1354,7 @@ helpers/documents/
   layout.js, format.js             ← PDFKit primitives
 
 constants/
-  banner.js                        ← BANNER_TYPE, MEDIA_FIELD, ALLOWED_MIME_TYPES
+  banner.js                        ← BANNER_MEDIA_KINDS, REDIRECT_TYPE, SORT_BY, ACTIVE_LIMIT
   voucherBanner.js                 ← VOUCHER_BANNER_* (independent from banner.js)
   promotionalTicker.js             ← TICKER_ICON_ALLOWED_MIME_TYPES
   showcase.js                      ← SHOWCASE_MEDIA_CONFIG, STORAGE_PROVIDER

@@ -8,6 +8,55 @@ exports.errorHandler = (err, req, res, next) => {
     const cleanMessage = Object.values(err.errors)[0].message;
     return sendError(res, 422, cleanMessage);
   }
+  /**
+   * ⭐ Two people edited the same document at once.
+   *
+   * 🔴 Without this branch a `VersionError` fell through to the 500 below, so a
+   * vendor reordering media while a colleague deleted one was told
+   * "Something went wrong" — an answer that reads as a broken server and invites
+   * exactly the wrong response, which is to try something else. It is not broken
+   * and the fix is simply to reload: the request was refused **because** the
+   * document moved, which is the guarantee working.
+   *
+   * `409 Conflict` is what a client can act on, and the message says the one
+   * thing that resolves it.
+   */
+  if (err.name === "VersionError") {
+    return sendError(
+      res,
+      409,
+      "Somebody else changed this while you were editing it. Reload and try again.",
+    );
+  }
+  /**
+   * ⭐ Two transactions touched the same document at the same instant.
+   *
+   * 🔴 Mongo raises `WriteConflict` (code 112) when two transactions write the
+   * same row concurrently, and labels it `TransientTransactionError` — its own
+   * way of saying "this was not wrong, just unlucky; do it again". Without this
+   * branch it fell through to the 500 below and the caller was shown
+   * *"Write conflict during plan execution and yielding is disabled"*, which
+   * names an internal storage-engine detail and reads as a crash.
+   *
+   * ⚠️ Found by a mutation on voucher delete (V-6): two deletes fired together —
+   * an ordinary double click — and the losing one got a 500. The same is
+   * reachable from every transactional service in this codebase, which is why it
+   * is fixed here beside `VersionError` rather than in one of them.
+   *
+   * The label is the condition rather than the bare code, because Mongo uses it
+   * for the whole retriable family and says to key on it.
+   */
+  if (
+    err.code === 112 ||
+    err.codeName === "WriteConflict" ||
+    err.errorLabels?.includes("TransientTransactionError")
+  ) {
+    return sendError(
+      res,
+      409,
+      "Somebody else was changing this at the same moment. Nothing was saved — try again.",
+    );
+  }
   // ⭐ Handle Duplicate Key Error
   if (err.code === 11000) {
     const field = Object.keys(err.keyValue)[0];

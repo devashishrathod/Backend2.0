@@ -7,7 +7,9 @@ const { escapeRegex } = require("../../validator/common");
 const { resolveActorBrand } = require("../../helpers/brands");
 const {
   managedMediaCondition,
+  visibleMediaCondition,
   countMediaOfType,
+  attachCustomerVisibility,
 } = require("../../helpers/showcases");
 
 /** Media the vendor manages — everything that has not been soft-deleted. */
@@ -16,6 +18,23 @@ const managedMedias = {
     input: "$medias",
     as: "m",
     cond: managedMediaCondition("m"),
+  },
+};
+
+/**
+ * Media a customer would see — the narrower set, and the one the floor counts.
+ *
+ * ⚠️ Not the same as `managedMedias` above: a switched-off media is still
+ * managed and is not visible. Counting the wrong one here would report a section
+ * as live while the customer pipeline refuses to serve it.
+ */
+const visibleMediaCount = {
+  $size: {
+    $filter: {
+      input: "$medias",
+      as: "m",
+      cond: visibleMediaCondition("m"),
+    },
   },
 };
 
@@ -111,6 +130,12 @@ exports.getAllSections = async (actor, query) => {
           },
         },
       },
+      /**
+       * Carried out of the pipeline so `customerVisibility` can be built in JS
+       * without re-reading the media array — which this projection has already
+       * dropped by the time the rows come back (S-5).
+       */
+      visibleMediaCount,
     },
   });
 
@@ -121,5 +146,15 @@ exports.getAllSections = async (actor, query) => {
     },
   });
 
-  return pagination(ShowcaseSection, pipeline, page, limit);
+  const result = await pagination(ShowcaseSection, pipeline, page, limit);
+
+  /**
+   * S-5 — one line per section saying whether a customer can see it, and why
+   * not.
+   *
+   * ⚠️ After paging, so the settings cache is read once for the page rather than
+   * once per section — and only the rows actually being returned are described.
+   */
+  await attachCustomerVisibility(result.data);
+  return result;
 };

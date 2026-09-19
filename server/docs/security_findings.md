@@ -1,11 +1,17 @@
 # Security & Correctness Findings — server2.0
 
-**Last verified:** 2026-09-13 against current code (223 endpoints — 220 versioned + 3 utility)
+**Last verified:** 2026-09-18 against current code (**229 endpoints** — 226 versioned + 3 utility). Pehle yahan 223 likha tha; Block S, V aur U ke naye endpoints ke baad wo purana ho chuka tha.
 **Scope:** Ye dedicated security audit nahi hai — API documentation scan ka by-product hai.
 
 > Jo findings fix ho chuke hain wo is doc se hata diye gaye hain. Kya-kya fix hua uska record → [security_fix_plan.md](./security_fix_plan.md)
 
 **Open:** 2 findings — dono aapke decision pe deferred hain
+
+> ⚠️ **Upload/storage ke findings yahan nahi hain.** Wo master plan ke **Block O**
+> me hain (O-1 OTP throttle, O-2 suite isolation, O-3 dead storage knobs, O-4
+> multipart ka missing size cap) — [master_execution_plan.md](./master_execution_plan.md).
+> Do jagah ek hi list rakhna wahi galti hai jisse ek copy chup-chaap purani ho
+> jaati hai.
 
 ---
 
@@ -15,6 +21,48 @@
 |---|---|---|---|
 | 7 | WhatsApp OTP verify hota hi nahi — auth bypass | 🔴 High | ⏸ **DEFERRED** — aapka decision, patch ready |
 | 5 | `DELETE /users/delete` no-op stub | 🟡 Low | ⏸ **DEFERRED** — plan ready, full flow ke baad |
+| G2 | Multipart raasta file ke bytes dekhta hi nahi tha | 🟠 Medium | ✅ **FIXED** — Block G, neeche |
+
+---
+
+## G2. ✅ FIXED — multipart raasta file ke bytes dekhta hi nahi tha
+
+`services/storage/accept.js` · `services/storage/inspect.js`
+
+`inspect.js` apne header me khud likhta hai ki har *"is this an image?"* check
+`file.mimetype` padhta hai, aur wo value **client likhta hai** —
+`express-fileupload` use multipart part ke `Content-Type` header se uthata hai
+aur file kabhi kholta nahi.
+
+🔴 Us file ka `identify()` poore repo me **ek hi jagah** se bulaya jaata tha:
+`confirm`, yaani **sirf presigned road**. Multipart par:
+
+| | Pehle | Ab |
+|---|---|---|
+| Stored `Content-Type` | client ka header | file ke bytes |
+| SVG / HTML ka refusal | ❌ chalta hi nahi tha | ✅ dono road par |
+| `kind` (prefix decide karta hai) | claim se | verified bytes se |
+| Dimensions | hamesha `null` | padhi jaati hain |
+
+### ⚠️ Asar — imaandari se
+
+**XSS ka risk kam tha.** Ek SVG ko `image/png` bol kar bhejne par wo `image/png`
+content-type ke saath store hota, aur browser use SVG ki tarah render nahi
+karta. Jo sach me khula tha:
+
+- 🔴 **Koi bhi bytes** — EXE, ZIP, kuch bhi — aapke CDN domain se serve ho sakte
+  the, ek bharose-mand `.png` naam ke peeche. Wo apne aap me ek distribution
+  vector hai.
+- 🟠 Ek animated GIF ko `image/png` bol kar bhejne par wo `images/` me girta,
+  `gifs/` me nahi — aur X-1 ka resize step uski animation **flatten** kar deta,
+  bina kisi log ke.
+
+### Aur ek cheez jo saath me theek hui
+
+`inspect.js` ka SVG wala comment kehta hai ki ye aaj sirf isliye harmless hai ki
+media ek **alag origin** se serve hota hai — *"On our own CDN, especially a
+subdomain of a panel, it is stored XSS."* Hamara CDN `cdn.trydood.com` hai, yaani
+panel ka hi subdomain. To wo bachav waise bhi khatam hone wala tha.
 
 ---
 

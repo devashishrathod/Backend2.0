@@ -1,22 +1,33 @@
 const PromotionalTicker = require("../../models/PromotionalTicker");
+const { toDisplayName } = require("../../helpers/common");
 const { throwError } = require("../../utils");
 const {
   uploadTickerIcon,
   deleteTickerIcon,
+  toAdminTickerShape,
 } = require("../../helpers/promotionalTickers");
+const { describeIncoming } = require("../storage");
+const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
-exports.updateTicker = async (userId, id, payload, files) => {
+/** ⚠️ `actor` where it used to be a bare `userId` — see `createBanner`. */
+exports.updateTicker = async (actor, id, payload, files) => {
+  const userId = actor.userId;
   const ticker = await PromotionalTicker.findOne({ _id: id, isDeleted: false });
   if (!ticker) throwError(404, "Promotional ticker not found.");
 
   let newIcon = null;
-  if (files?.icon) newIcon = await uploadTickerIcon(files.icon, ticker._id);
+  const incoming = await describeIncoming(actor, {
+    file: files?.icon,
+    uploadId: payload.iconUploadId,
+    purpose: UPLOAD_PURPOSE.TICKER_ICON,
+  });
+  if (incoming) newIcon = await uploadTickerIcon(actor, incoming, ticker._id);
 
   const previousIcon = ticker.icon?.toObject
     ? ticker.icon.toObject()
     : ticker.icon;
 
-  if (payload.title !== undefined) ticker.title = payload.title;
+  if (payload.title !== undefined) ticker.title = toDisplayName(payload.title);
   if (payload.redirect !== undefined) ticker.redirect = payload.redirect;
   if (payload.displayOrder !== undefined)
     ticker.displayOrder = payload.displayOrder;
@@ -39,5 +50,5 @@ exports.updateTicker = async (userId, id, payload, files) => {
 
   if (newIcon) await deleteTickerIcon(previousIcon);
 
-  return ticker;
+  return toAdminTickerShape(ticker);
 };

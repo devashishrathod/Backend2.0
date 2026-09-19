@@ -2,6 +2,10 @@ require("dotenv").config();
 const dns = require("dns");
 const mongoose = require("mongoose");
 
+const {
+  invalidateSettingCache,
+} = require("../../../helpers/settings/getSetting");
+
 /**
  * The connection every money test uses — and the guard that stops it eating the
  * development database.
@@ -187,7 +191,79 @@ exports.clearCollections = async (...models) => {
     throw new Error(`Refusing to clear collections on "${name}".`);
   }
   await Promise.all(models.map((model) => model.deleteMany({})));
+
+  /**
+   * 🔴 The settings cache does not know the database was just emptied.
+   *
+   * `getSetting()` holds a snapshot for 30 seconds (F-1). The real write path,
+   * `updateSetting`, invalidates it — but clearing collections goes straight to
+   * the models, so the next read answers from a snapshot of documents that no
+   * longer exist. The failures that produces are the worst kind: a test that
+   * switches a platform toggle off, asserts the code honours it, and is told the
+   * toggle is still on, because the code is reading what the *previous* test set
+   * up.
+   *
+   * Emptying the database invalidates any cached view of it by definition, so
+   * this belongs here rather than in each test that remembers to call it.
+   */
+  invalidateSettingCache();
 };
+
+/**
+ * Write a setting mid-test, and drop the cache after it.
+ *
+ * ⚠️ `clearCollections` above only covers the setup. A test that flips a toggle
+ * **inside** an `it` is writing after that invalidation, so it needs its own —
+ * and `Setting.findOneAndUpdate` on its own will not be read.
+ *
+ * Use this instead of touching the model directly.
+ */
+exports.writeSetting = async (update) => {
+  const Setting = require("../../../models/Setting");
+  const result = await Setting.findOneAndUpdate({}, update, {
+    upsert: true,
+    new: true,
+  });
+  invalidateSettingCache();
+  return result;
+};
+
+/**
+ * Turn the presigned road on for a suite that exercises it.
+ *
+ * ### 🔴 Why a suite has to ask
+ *
+ * `Setting.storage.upload.presignEnabled` defaults to **`false`** (G5). Nothing
+ * is live on that road yet, and a capability that has to be turned on is cheaper
+ * to get wrong than one that has to be turned off — so `createUploadIntent`
+ * answers `503` until an admin says otherwise.
+ *
+ * A suite that presigns is therefore stating a precondition, exactly as it would
+ * for a plan or a role. That it has to say so is the point: if this helper
+ * disappeared and the tests still passed, the switch would not be doing
+ * anything.
+ *
+ * ⚠️ The provider goes with it. `presign` and `confirm` are S3-only, so leaving
+ * the platform on Cloudinary with presigning on is refused — the same surface
+ * would otherwise hold rows on two providers depending on the road. The two
+ * settings are one decision and this writes them as one.
+ */
+exports.enablePresign = async () =>
+  exports.writeSetting({
+    $set: {
+      "storage.provider": "AWS_S3",
+      "storage.upload.presignEnabled": true,
+    },
+  });
+
+/**
+ * Re-exported so a test has one obvious place to reach for it.
+ *
+ * A test that writes settings any other way — `create`, `deleteMany`, a raw
+ * `updateOne` — has to drop the cache itself, and importing it from the same
+ * module as `clearCollections` is what makes that findable.
+ */
+exports.invalidateSettingCache = invalidateSettingCache;
 
 exports.TEST_DB_SUFFIX = TEST_DB_SUFFIX;
 exports.toTestUri = toTestUri;

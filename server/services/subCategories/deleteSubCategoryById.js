@@ -13,7 +13,7 @@ exports.deleteSubCategoryById = async (id) => {
   await assertSubCategoryDeletable(subCategory._id);
   await storage.deleteAsset({
     url: subCategory?.image,
-    storage: subCategory?.imageStorage,
+    storage: subCategory?.imageMedia?.storage,
   });
   subCategory.image = null;
   subCategory.isDeleted = true;

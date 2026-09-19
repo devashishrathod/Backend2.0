@@ -3,12 +3,21 @@ const { updateVoucher } = require("./updateVoucher");
 const { submitVoucherForReview } = require("./submitVoucherForReview");
 const { reviewVoucher } = require("./reviewVoucher");
 const { publishVoucher } = require("./publishVoucher");
+const { deleteVoucher } = require("./deleteVoucher");
+const {
+  reorderVoucherImages,
+} = require("./reorderVoucherImages");
+const {
+  pauseVoucher,
+  resumeVoucher,
+} = require("./pauseResumeVoucher");
 const { getAllVoucherVersions } = require("./getAllVoucherVersions");
 const { getCustomerVouchers } = require("./getCustomerVouchers");
 const { getCustomerSingleVoucher } = require("./getCustomerSingleVoucher");
 const { previewCustomerVoucher } = require("./previewCustomerVoucher");
 const { setVoucherBanner } = require("./setVoucherBanner");
-const { deleteVoucherBanner } = require("./deleteVoucherBanner");
+const { reviewVoucherBanner } = require("./reviewVoucherBanner");
+
 const { reviewVoucherSuggestion } = require("./reviewVoucherSuggestion");
 const { getSuggestedVouchers } = require("./getSuggestedVouchers");
 const { expireVouchers } = require("./expireVouchers");
@@ -20,12 +29,17 @@ module.exports = {
   submitVoucherForReview,
   reviewVoucher,
   publishVoucher,
+  deleteVoucher,
+  reorderVoucherImages,
+  pauseVoucher,
+  resumeVoucher,
   getAllVoucherVersions,
   getCustomerVouchers,
   getCustomerSingleVoucher,
   previewCustomerVoucher,
   setVoucherBanner,
-  deleteVoucherBanner,
+  reviewVoucherBanner,
+
   reviewVoucherSuggestion,
   getSuggestedVouchers,
 };

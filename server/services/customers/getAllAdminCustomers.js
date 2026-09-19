@@ -132,7 +132,10 @@ exports.getAllAdminCustomers = async (query = {}) => {
         uniqueId: 1,
         role: 1,
         loginType: 1,
-        image: 1,
+        // ⚠️ `image` is deliberately absent. A customer's photo lives on the
+        // `Customer` row — projected at the top level below — and `User.image`
+        // is empty for them. Carrying it here would be a key that is always
+        // null, on the one screen where it looks like it should not be.
         walletBalance: 1,
         tCoinsBalance: 1,
         referralCode: 1,

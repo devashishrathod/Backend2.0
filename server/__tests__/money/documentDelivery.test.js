@@ -34,7 +34,7 @@ jest.mock("../../helpers/documents", () => {
     generateAndUploadDocument: jest.fn(async () => ({
       url: null,
       storage: {
-        provider: "S3",
+        provider: "AWS_S3",
         publicId: null,
         bucket: "trydood-nonprod-private",
         key: UPLOADED_KEY,
@@ -131,22 +131,50 @@ describe("the key a document lands on", () => {
 describe("a document that already has a file", () => {
   const withStorage = () =>
     seedTransaction({
-      documentStorage: {
-        provider: "S3",
-        bucket: "trydood-nonprod-private",
-        key: UPLOADED_KEY,
+      documentMedia: {
+        url: null,
+        kind: "DOCUMENT",
+        storage: {
+          provider: "AWS_S3",
+          bucket: "trydood-nonprod-private",
+          key: UPLOADED_KEY,
+        },
       },
     });
 
-  test("🔴 the link is minted fresh, never the same string twice", async () => {
+  /**
+   * ⚠️ This asserted `first.url !== second.url`, and that is not a property a
+   * presigned URL has.
+   *
+   * `X-Amz-Date` is stamped to the **second**, so two calls inside the same
+   * second sign byte-identical strings. The test passed only when the two
+   * happened to straddle a tick — flaky by construction, and it failed here on a
+   * machine that was simply quick enough.
+   *
+   * 🔴 The guarantee that actually matters is not "a different string each
+   * time". It is that **no URL is ever stored**: what outlived the permission
+   * behind it was a cached link on the row, and `documentToken` can be revoked
+   * while a URL already in somebody's WhatsApp history cannot. So that is what
+   * this checks — the row holds a key and no link, and every request signs a new
+   * one with an expiry.
+   */
+  test("🔴 no link is ever stored — it is signed per request, with an expiry", async () => {
     const txn = await withStorage();
 
     const first = await getDocumentByToken(txn.documentToken);
     const second = await getDocumentByToken(txn.documentToken);
 
-    // Different signatures — a stored URL would be identical, and a stored URL
-    // is exactly what outlived the permission behind it.
-    expect(first.url).not.toBe(second.url);
+    for (const answer of [first, second]) {
+      expect(answer.url).toContain("X-Amz-Signature");
+      expect(answer.url).toContain("X-Amz-Expires");
+    }
+
+    // Nothing was written back: the row still carries the key and no URL.
+    const saved = await Transaction.findById(txn._id);
+    expect(saved.documentMedia.storage.key).toBe(UPLOADED_KEY);
+    expect(saved.documentMedia.url).toBeNull();
+    expect(saved.invoiceUrl ?? null).toBeNull();
+
     expect(generateAndUploadDocument).not.toHaveBeenCalled();
   });
 
@@ -197,10 +225,14 @@ describe("rows written before any of this", () => {
     // URL is whatever it used to be.
     const txn = await seedTransaction({
       invoiceUrl: "https://res.cloudinary.com/x/image/upload/v1/Documents/old.pdf",
-      documentStorage: {
-        provider: "S3",
-        bucket: "trydood-nonprod-private",
-        key: UPLOADED_KEY,
+      documentMedia: {
+        url: null,
+        kind: "DOCUMENT",
+        storage: {
+          provider: "AWS_S3",
+          bucket: "trydood-nonprod-private",
+          key: UPLOADED_KEY,
+        },
       },
     });
 
@@ -219,7 +251,7 @@ describe("the first time anybody asks", () => {
 
     expect(generateAndUploadDocument).toHaveBeenCalledTimes(1);
     const saved = await Transaction.findById(txn._id);
-    expect(saved.documentStorage.key).toBe(UPLOADED_KEY);
+    expect(saved.documentMedia.storage.key).toBe(UPLOADED_KEY);
     expect(url).toContain("X-Amz-Signature");
   });
 

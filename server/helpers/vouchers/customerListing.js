@@ -156,6 +156,9 @@ exports.buildCustomerVoucherPipeline = ({
     $unwind: "$version",
   });
 
+  // Storage internals go no further than this line. See the constant.
+  pipeline.push(NARROW_VERSION_IMAGES);
+
   /**
    * ------------------------------------------------
    * 4. Voucher Master
@@ -704,6 +707,9 @@ exports.buildCustomerVoucherDetailPipeline = ({
     {
       $unwind: "$version",
     },
+
+    // Storage internals go no further than this line. See the constant.
+    NARROW_VERSION_IMAGES,
 
     /**
      * -----------------------------------------
@@ -1293,23 +1299,114 @@ exports.mapCustomerVoucherOutlet = (outlet) => {
 // "Best" offer = the active offer with the highest discountValue. A list
 // view has no bill-amount context to compute a true per-customer discount,
 // so this is a display heuristic, not a personalized calculation.
+/**
+ * The customer's view of one voucher image.
+ *
+ * 🔴 A whitelist, and it has to be. The stored image carries `storage` —
+ * Cloudinary's `publicId`, or the S3 `bucket` and `key` — and
+ * `GET /vouchers/customer/get/:voucherId` is a **public** route. Handing those
+ * out tells a stranger exactly where every file lives and under what name.
+ *
+ * The list row was written this way from the start; the detail screen sent
+ * `version.images` straight through. Both read this function now, so the two
+ * cannot drift again — which is the only reason one of them was wrong.
+ */
+/**
+ * ⚠️ Same three keys as before — `url` just reads one level deeper now.
+ *
+ * The file moved into `media` in M-5; the customer's view of it did not move at
+ * all. A voucher image is always a still (video is refused at upload), so there
+ * is no poster to report here.
+ */
+const toCustomerImage = (image) => ({
+  _id: image._id,
+  url: image.media?.url ?? image.url ?? null,
+  sortOrder: image.sortOrder,
+});
+
+/**
+ * The customer's view of one offer.
+ *
+ * `_id` stays: it is what the claim is placed against
+ * (`createVoucherClaimOrder` takes an `offerId`), so dropping it would break
+ * claiming. Everything else is the offer as the app renders it.
+ *
+ * ⚠️ `isActive` / `isDeleted` deliberately do **not** ship. They are the
+ * vendor's own switches, and the customer has no use for a flag they cannot
+ * act on — see `toCustomerOffers` for why the rows behind them never arrive
+ * either.
+ */
+const toCustomerOffer = (offer) => ({
+  _id: offer._id,
+  title: offer.title,
+  minBillAmount: offer.minBillAmount,
+  discountType: offer.discountType,
+  discountValue: offer.discountValue,
+  maxDiscountAmount: offer.maxDiscountAmount ?? null,
+  usageType: offer.usageType,
+  discountApplicableOn: offer.discountApplicableOn,
+});
+
+/**
+ * Every offer a customer may actually claim, in the order the vendor set.
+ *
+ * 🔴 Deleted and switched-off offers are dropped. The detail screen used to
+ * send the whole array — so a vendor who removed an offer still had it on the
+ * customer's screen, and tapping it failed at `buildClaimPreview`, which
+ * requires `offer.isActive !== false`. An offer that cannot be claimed is worse
+ * than no offer: the customer reads it as a price and finds out at payment.
+ */
+const toCustomerOffers = (offers = []) =>
+  offers
+    .filter((offer) => !offer.isDeleted && offer.isActive !== false)
+    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+    .map(toCustomerOffer);
+
+/**
+ * Drop `storage` from a version's images, at the source.
+ *
+ * The JS mappers below are what actually decide the response, so this is not
+ * the guard — it is the reason the guard never has to work hard. Without it,
+ * every customer request pulls each image's Cloudinary `publicId` (or S3
+ * `bucket` and `key`) out of Mongo and across the wire, for fields that are
+ * deleted a moment later.
+ *
+ * ⚠️ Only images are narrowed. An offer holds nothing but numbers and strings —
+ * there is no secret in it — and the `isActive` / `isDeleted` flags have to
+ * survive this stage because `toCustomerOffers` filters on them afterwards.
+ *
+ * Placed straight after `$unwind: "$version"` in both pipelines, so a later
+ * `version: 1` carries the already-narrowed array.
+ */
+const NARROW_VERSION_IMAGES = {
+  $addFields: {
+    "version.images": {
+      $map: {
+        input: { $ifNull: ["$version.images", []] },
+        as: "i",
+        in: {
+          _id: "$$i._id",
+          // ⚠️ `media.url` only. Naming `media` whole would carry `storage`
+          // across the wire again, which is the exact thing this stage exists
+          // to stop.
+          url: "$$i.media.url",
+          sortOrder: "$$i.sortOrder",
+        },
+      },
+    },
+  },
+};
+
 const pickBestOffer = (offers = []) => {
-  const pool = offers.filter((offer) => offer.isActive !== false);
-  const source = pool.length ? pool : offers;
+  const pool = offers.filter(
+    (offer) => !offer.isDeleted && offer.isActive !== false,
+  );
+  const source = pool.length ? pool : offers.filter((offer) => !offer.isDeleted);
   if (!source.length) return null;
   const best = [...source].sort(
     (a, b) => (b.discountValue || 0) - (a.discountValue || 0),
   )[0];
-  return {
-    _id: best._id,
-    title: best.title,
-    minBillAmount: best.minBillAmount,
-    discountType: best.discountType,
-    discountValue: best.discountValue,
-    maxDiscountAmount: best.maxDiscountAmount ?? null,
-    usageType: best.usageType,
-    discountApplicableOn: best.discountApplicableOn,
-  };
+  return toCustomerOffer(best);
 };
 
 /**
@@ -1353,17 +1450,15 @@ exports.mapCustomerVoucherListItem = (item) => {
     categoryId: item.categoryId,
     subCategoryId: item.subCategoryId,
     createdAt: item.createdAt,
-    ...pickVoucherBanner(item.banner),
+    // The version's images come along so the banner slot can fall back to the
+    // first one when there is no approved banner (V-4a).
+    ...pickVoucherBanner(item.banner, version.images),
     brand: exports.mapCustomerBrandBlock(item.brand),
     version: {
       id: version._id,
       versionNumber: version.versionNumber,
       description: version.description || null,
-      images: (version.images || []).map((image) => ({
-        _id: image._id,
-        url: image.url,
-        sortOrder: image.sortOrder,
-      })),
+      images: (version.images || []).map(toCustomerImage),
       bestOffer: pickBestOffer(version.offers),
       startAt: version.startAt,
       endAt: version.endAt,
@@ -1410,16 +1505,27 @@ exports.mapCustomerVoucherDetail = (data) => {
     name: data.name,
     categoryId: data.categoryId,
     subCategoryId: data.subCategoryId,
-    ...pickVoucherBanner(data.banner),
+    // Same fallback as the list row — see `pickVoucherBanner`.
+    ...pickVoucherBanner(data.banner, data.version?.images),
     // Same shape as a list row's, so one brand card renders on both screens.
     brand: exports.mapCustomerBrandBlock(data.brand),
     version: data.version
       ? {
           id: data.version._id,
           versionNumber: data.version.versionNumber,
-          images: data.version.images || [],
+          /**
+           * 🔴 Both of these were `data.version.images` and
+           * `data.version.offers` — the stored arrays, sent as they are.
+           *
+           * The pipeline projects the whole version subdocument, so `images`
+           * arrived carrying `storage`: a Cloudinary `publicId`, or an S3
+           * `bucket` and `key`. This route is public. The list row next door
+           * had always whitelisted; only the detail screen did not, and nothing
+           * made the two agree until they shared these functions.
+           */
+          images: (data.version.images || []).map(toCustomerImage),
           description: data.version.description || null,
-          offers: data.version.offers || [],
+          offers: toCustomerOffers(data.version.offers),
           startAt: data.version.startAt,
           endAt: data.version.endAt,
         }

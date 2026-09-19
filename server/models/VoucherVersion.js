@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { mediaSchema } = require("./mediaSchema");
 const { isValidateVoucherVersionCode } = require("../validator/common");
 const { userField, brandField } = require("./validObjectId");
 const {
@@ -8,7 +9,10 @@ const {
   VOUCHER_USAGE_TYPE,
   DISCOUNT_APPLICABLE_ON,
 } = require("../constants/voucher");
-const { required } = require("joi");
+// 🔴 `const { required } = require("joi")` used to sit here (P10). Nothing in
+// this file ever used it — a model has no business importing a request
+// validator, and the name it pulled in shadows nothing, so it was dead weight
+// that made the dependency graph read as though Mongoose and Joi were coupled.
 
 const voucherVersionOfferSchema = new mongoose.Schema(
   {
@@ -61,28 +65,36 @@ const voucherVersionOfferSchema = new mongoose.Schema(
   { _id: true, versionKey: false },
 );
 
+/**
+ * One picture in a voucher's gallery.
+ *
+ * ### 🔴 What this replaces
+ *
+ * `url` + an inline `storage` object that wrote the provider enum out by hand —
+ * one of **five** such copies across the models, which is why `STORAGE_PROVIDER`
+ * looked like a single source without being one (P11). Renaming `S3` to `AWS_S3`
+ * would have left these documents validating against a value nothing else used.
+ *
+ * The file now sits in `media`, exactly the `mediaSchema` every other surface
+ * uses, and the gallery's own field — `sortOrder` — sits beside it.
+ */
 const voucherImageSchema = new mongoose.Schema(
   {
-    url: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    storage: {
-      provider: {
-        type: String,
-        enum: ["CLOUDINARY", "S3"],
-        default: "CLOUDINARY",
-      },
-      publicId: { type: String },
-      bucket: { type: String },
-      key: { type: String },
-    },
+    media: { type: mediaSchema, required: [true, "An image file is required."] },
+    /**
+     * ⚠️ No `max` any more (P4).
+     *
+     * It was `max: 5`, hard-coded, while the actual ceiling lives in
+     * `VOUCHER_OFFER_LIMITS.MAX_IMAGES` and is heading for the Setting (V-1).
+     * The two could disagree the moment either moved, and the model's copy would
+     * win — refusing a sixth image with a schema error that named no limit the
+     * vendor had ever been shown. The array validators below hold the count; a
+     * position just has to be a position.
+     */
     sortOrder: {
       type: Number,
       required: true,
       min: 1,
-      max: 5,
     },
   },
   { _id: true, versionKey: false },
@@ -218,9 +230,59 @@ const voucherVersionSchema = new mongoose.Schema(
     archivedAt: {
       type: Date,
     },
+    /**
+     * When the vendor took this version out of the feed, and why (V-5).
+     *
+     * ⚠️ Cleared on resume, unlike `archivedAt` and `expiredAt`. Those two
+     * record something that happened and stays happened; a pause is a state the
+     * version is *in*, and it ends. Leaving the stamp behind would tell a report
+     * a live voucher is paused, and leave the reason sitting beside a voucher
+     * that is back up.
+     *
+     * The reason is the vendor's own note — "out of stock until Monday" — not a
+     * moderation verdict. `rejectionReason` is the other kind and is deliberately
+     * a different field: one is something they chose, the other something that
+     * was done to them, and collapsing the two would show an admin's refusal in
+     * the place a vendor expects to see their own words.
+     */
+    pausedAt: {
+      type: Date,
+      default: null,
+    },
+    pausedBy: {
+      ...userField,
+    },
+    pauseReason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     isImmutable: {
       type: Boolean,
       default: false,
+    },
+    /**
+     * 🔴 Kaun, kab, aur kyun (V-6).
+     *
+     * `isDeleted` akela ye nahi bata sakta ki voucher gaya kahan. Admin panel ko
+     * deleted vouchers dikhane ka matlab hi tab hai jab ye teen saath hon —
+     * warna wo ek aisi list hai jisme har row par ek hi jawab hai: "gayab".
+     *
+     * ⚠️ Teeno `voucherDeletionFields()` se hi likhe jaate hain, usi `$set` me
+     * jo `isDeleted` aur `status: DELETED` set karta hai.
+     */
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    deletedBy: {
+      ...userField,
+    },
+    deleteReason: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: null,
     },
     isActive: {
       type: Boolean,

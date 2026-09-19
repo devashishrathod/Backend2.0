@@ -10,9 +10,7 @@ const {
   prepareMediaDocuments,
   getExistingMediaCounts,
   getNextMediaSortOrder,
-  normalizeSortOrder,
-  validateUniqueIds,
-  validateUniqueSortOrders,
+  resequenceMedias,
   getMediaCoverImage,
   pickCoverMedia,
   syncSectionCoverImage,
@@ -23,10 +21,22 @@ const {
   rollbackUploads,
   deleteMedia,
   deleteAllMedia,
-  isCustomThumbnail,
-  deleteCustomThumbnail,
+  POSTER_FILE_FIELD,
+  POSTER_UPLOAD_FIELD,
 } = require("./upload");
+const { pairPosters } = require("./pairPosters");
 const { resolveSectionForActor } = require("./resolveSectionForActor");
+const { resequenceSections } = require("./resequenceSections");
+const {
+  countVisibleMedia,
+  assertSectionKeepsItsFloor,
+  assertBrandKeepsASection,
+  assertBrandKeepsAVisibleSection,
+} = require("./guards");
+const {
+  describeCustomerVisibility,
+  attachCustomerVisibility,
+} = require("./customerVisibility");
 const {
   customerSectionMatch,
   visibleMediaCondition,
@@ -38,12 +48,23 @@ const {
   mediaCounts,
   customerMediaFields,
   customerMediaMap,
+  applyDisplayPositions,
   formatSectionSummary,
   formatManagedMedia,
 } = require("./projections");
 
 module.exports = {
+  pairPosters,
   resolveSectionForActor,
+  resequenceSections,
+  // Write guards — the two floors, in one place (guards.js)
+  countVisibleMedia,
+  assertSectionKeepsItsFloor,
+  assertBrandKeepsASection,
+  assertBrandKeepsAVisibleSection,
+  // The read side of the same rule (customerVisibility.js)
+  describeCustomerVisibility,
+  attachCustomerVisibility,
   generateSlug,
   generateUniqueSlug,
   normalizeFiles,
@@ -56,9 +77,7 @@ module.exports = {
   prepareMediaDocuments,
   getExistingMediaCounts,
   getNextMediaSortOrder,
-  normalizeSortOrder,
-  validateUniqueIds,
-  validateUniqueSortOrders,
+  resequenceMedias,
   getMediaCoverImage,
   pickCoverMedia,
   syncSectionCoverImage,
@@ -67,8 +86,8 @@ module.exports = {
   rollbackUploads,
   deleteMedia,
   deleteAllMedia,
-  isCustomThumbnail,
-  deleteCustomThumbnail,
+  POSTER_FILE_FIELD,
+  POSTER_UPLOAD_FIELD,
   // Shared read shapes — see projections.js
   customerSectionMatch,
   visibleMediaCondition,
@@ -80,6 +99,7 @@ module.exports = {
   mediaCounts,
   customerMediaFields,
   customerMediaMap,
+  applyDisplayPositions,
   formatSectionSummary,
   formatManagedMedia,
 };

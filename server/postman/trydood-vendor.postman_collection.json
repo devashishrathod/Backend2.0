@@ -1293,6 +1293,13 @@
                   "src": [],
                   "description": "Optional avatar — enable karke file chunein",
                   "disabled": true
+                },
+                {
+                  "key": "uploadId",
+                  "type": "text",
+                  "value": "",
+                  "description": "🆕 Presigned — purpose USER_AVATAR. `image` ke saath NAHI",
+                  "disabled": true
                 }
               ]
             },
@@ -5914,6 +5921,20 @@
                   "type": "file",
                   "src": [],
                   "disabled": true
+                },
+                {
+                  "key": "logoUploadId",
+                  "type": "text",
+                  "value": "",
+                  "description": "🆕 Presigned — purpose BRAND_LOGO",
+                  "disabled": true
+                },
+                {
+                  "key": "coverImageUploadId",
+                  "type": "text",
+                  "value": "",
+                  "description": "🆕 Presigned — purpose BRAND_COVER",
+                  "disabled": true
                 }
               ]
             },
@@ -6526,7 +6547,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n✅ **`isActive` ab default nahi hota.** Pehle `.default(true)` laga tha, matlab\nkoi bhi update — chahe usme `isActive` ho hi na — deactivated outlet ko\nchup-chaap **reactivate** kar deta tha.\n\nAb wo sirf tab apply hota hai jab explicitly bheja jaye.\n\n🔴 **`email` outlet ka apna field nahi hai** — wo us outlet ke **manager ke**\n**account** ka email hai, aur `SubBrand.email` uska mirror. Aap ye set kar sakte hain\n(apne hi outlet ka; doosre brand ke outlet par `403`), par flag **`false`** rehta hai —\nto isse us account me login nahi kiya ja sakta. Sirf manager khud verify kar sakta hai.\n\n🆕 **Outlet ki apni tasveerein.** `logo` aur `coverImage` model me pehle se\nthin aur koi endpoint unhe likhta hi nahi tha — outlet hamesha bina tasveer ke\nrehta tha.\n\n⚠️ File bhejni ho to body **form-data** karni padegi; ye request JSON bhejti\nhai kyunki wahi aam istemaal hai. Fields: `logo`, `coverImage` (type: File).\n\nJo tasveer replace hoti hai wahi delete hoti hai, **save ke baad**. Galat file\npar `422` milta hai jisme accepted types likhe hote hain."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n✅ **`isActive` ab default nahi hota.** Pehle `.default(true)` laga tha, matlab\nkoi bhi update — chahe usme `isActive` ho hi na — deactivated outlet ko\nchup-chaap **reactivate** kar deta tha.\n\nAb wo sirf tab apply hota hai jab explicitly bheja jaye.\n\n🔴 **`email` outlet ka apna field nahi hai** — wo us outlet ke **manager ke**\n**account** ka email hai, aur `SubBrand.email` uska mirror. Aap ye set kar sakte hain\n(apne hi outlet ka; doosre brand ke outlet par `403`), par flag **`false`** rehta hai —\nto isse us account me login nahi kiya ja sakta. Sirf manager khud verify kar sakta hai.\n\n🆕 **Outlet ki apni tasveerein.** `logo` aur `coverImage` model me pehle se\nthin aur koi endpoint unhe likhta hi nahi tha — outlet hamesha bina tasveer ke\nrehta tha.\n\n⚠️ File bhejni ho to body **form-data** karni padegi; ye request JSON bhejti\nhai kyunki wahi aam istemaal hai. Fields: `logo`, `coverImage` (type: File).\n\nJo tasveer replace hoti hai wahi delete hoti hai, **save ke baad**. Galat file\npar `422` milta hai jisme accepted types likhe hote hain.\n\n🆕 **Presigned raasta (U-5):** `logoUploadId` (purpose `SUB_BRAND_LOGO`) aur `coverImageUploadId` (purpose `SUB_BRAND_COVER`). Har slot ka apna purpose hai, to logo ka id cover ki jagah nahi chalega."
           },
           "response": [
             {
@@ -7590,7 +7611,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"message\": \"Showcase sections fetched successfully.\",\n  \"data\": {\n    \"total\": 2,\n    \"totalPages\": 1,\n    \"page\": 1,\n    \"limit\": 50,\n    \"data\": [\n      {\n        \"_id\": \"{{section_id}}\",\n        \"brandId\": \"{{brand_id}}\",\n        \"title\": \"interiors\",\n        \"slug\": \"interiors\",\n        \"description\": \"seeded gallery\",\n        \"coverImage\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n        \"coverImageMode\": \"AUTO\",\n        \"sectionType\": \"CUSTOM\",\n        \"sortOrder\": 1,\n        \"isVisible\": true,\n        \"isShowVideosInClips\": true,\n        \"isActive\": true,\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"updatedAt\": \"2026-08-27T10:00:00.000Z\",\n        \"mediaCount\": 8,\n        \"photoCount\": 7,\n        \"videoCount\": 1,\n        \"inactiveMediaCount\": 0\n      },\n      {\n        \"_id\": \"6aa6ddb46fd8c36058cfc887\",\n        \"brandId\": \"{{brand_id}}\",\n        \"title\": \"staff only\",\n        \"slug\": \"staff-only\",\n        \"coverImageMode\": \"AUTO\",\n        \"sectionType\": \"CUSTOM\",\n        \"sortOrder\": 2,\n        \"isVisible\": false,\n        \"isShowVideosInClips\": true,\n        \"isActive\": true,\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"updatedAt\": \"2026-08-27T10:00:00.000Z\",\n        \"mediaCount\": 1,\n        \"photoCount\": 1,\n        \"videoCount\": 0,\n        \"inactiveMediaCount\": 0\n      }\n    ]\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"message\": \"Showcase sections fetched successfully.\",\n  \"data\": {\n    \"total\": 2,\n    \"totalPages\": 1,\n    \"page\": 1,\n    \"limit\": 50,\n    \"data\": [\n      {\n        \"_id\": \"{{section_id}}\",\n        \"brandId\": \"{{brand_id}}\",\n        \"title\": \"interiors\",\n        \"slug\": \"interiors\",\n        \"description\": \"seeded gallery\",\n        \"coverImage\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n        \"coverImageMode\": \"AUTO\",\n        \"sectionType\": \"CUSTOM\",\n        \"sortOrder\": 1,\n        \"isVisible\": true,\n        \"isShowVideosInClips\": true,\n        \"customerVisibility\": {\n          \"isLive\": true,\n          \"reasons\": [],\n          \"visibleMediaCount\": 8,\n          \"minItemsRequired\": 3\n        },\n        \"isActive\": true,\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"updatedAt\": \"2026-08-27T10:00:00.000Z\",\n        \"mediaCount\": 8,\n        \"photoCount\": 7,\n        \"videoCount\": 1,\n        \"inactiveMediaCount\": 0,\n        \"visibleMediaCount\": 8\n      },\n      {\n        \"_id\": \"6aa6ddb46fd8c36058cfc887\",\n        \"brandId\": \"{{brand_id}}\",\n        \"title\": \"staff only\",\n        \"slug\": \"staff-only\",\n        \"coverImageMode\": \"AUTO\",\n        \"sectionType\": \"CUSTOM\",\n        \"sortOrder\": 2,\n        \"isVisible\": false,\n        \"isShowVideosInClips\": true,\n        \"customerVisibility\": {\n          \"isLive\": false,\n          \"reasons\": [\n            \"HIDDEN\",\n            \"NOT_ENOUGH_MEDIA\"\n          ],\n          \"visibleMediaCount\": 1,\n          \"minItemsRequired\": 3\n        },\n        \"isActive\": true,\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"updatedAt\": \"2026-08-27T10:00:00.000Z\",\n        \"mediaCount\": 1,\n        \"photoCount\": 1,\n        \"videoCount\": 0,\n        \"inactiveMediaCount\": 0,\n        \"visibleMediaCount\": 1\n      }\n    ]\n  }\n}"
             }
           ],
           "event": [
@@ -7759,7 +7780,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"message\": \"Section fetched successfully.\",\n  \"data\": {\n    \"_id\": \"{{section_id}}\",\n    \"brandId\": \"{{brand_id}}\",\n    \"title\": \"interiors\",\n    \"slug\": \"interiors\",\n    \"description\": \"seeded gallery\",\n    \"coverImage\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n    \"coverImageMode\": \"AUTO\",\n    \"sectionType\": \"CUSTOM\",\n    \"sortOrder\": 1,\n    \"isActive\": true,\n    \"isVisible\": true,\n    \"isShowVideosInClips\": true,\n    \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n    \"updatedAt\": \"2026-08-27T10:00:00.000Z\",\n    \"mediaCount\": 8,\n    \"photoCount\": 7,\n    \"videoCount\": 1,\n    \"inactiveMediaCount\": 0,\n    \"media\": {\n      \"page\": 1,\n      \"limit\": 50,\n      \"total\": 8,\n      \"totalPages\": 1,\n      \"data\": [\n        {\n          \"_id\": \"{{media_id}}\",\n          \"type\": \"PHOTO\",\n          \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg#1\",\n          \"thumbnail\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"title\": \"photo 1\",\n          \"altText\": \"seeded photo 1\",\n          \"sortOrder\": 1,\n          \"isActive\": true,\n          \"storage\": {\n            \"provider\": \"CLOUDINARY\"\n          },\n          \"metadata\": {\n            \"width\": 1080,\n            \"height\": 1920,\n            \"duration\": 0,\n            \"size\": 0\n          },\n          \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n          \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n        },\n        {\n          \"_id\": \"6aa6ddb46fd8c36058cfc880\",\n          \"type\": \"PHOTO\",\n          \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg#2\",\n          \"thumbnail\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"title\": \"photo 2\",\n          \"altText\": \"seeded photo 2\",\n          \"sortOrder\": 2,\n          \"isActive\": true,\n          \"storage\": {\n            \"provider\": \"CLOUDINARY\"\n          },\n          \"metadata\": {\n            \"width\": 1080,\n            \"height\": 1920,\n            \"duration\": 0,\n            \"size\": 0\n          },\n          \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n          \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n        },\n        {\n          \"_id\": \"6aa6ddb46fd8c36058cfc881\",\n          \"type\": \"PHOTO\",\n          \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg#3\",\n          \"thumbnail\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"title\": \"photo 3\",\n          \"altText\": \"seeded photo 3\",\n          \"sortOrder\": 3,\n          \"isActive\": true,\n          \"storage\": {\n            \"provider\": \"CLOUDINARY\"\n          },\n          \"metadata\": {\n            \"width\": 1080,\n            \"height\": 1920,\n            \"duration\": 0,\n            \"size\": 0\n          },\n          \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n          \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n        },\n        {\n          \"_id\": \"6aa6ddb46fd8c36058cfc882\",\n          \"type\": \"PHOTO\",\n          \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg#4\",\n          \"thumbnail\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"title\": \"photo 4\",\n          \"altText\": \"seeded photo 4\",\n          \"sortOrder\": 4,\n          \"isActive\": true,\n          \"storage\": {\n            \"provider\": \"CLOUDINARY\"\n          },\n          \"metadata\": {\n            \"width\": 1080,\n            \"height\": 1920,\n            \"duration\": 0,\n            \"size\": 0\n          },\n          \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n          \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n        },\n        {\n          \"_id\": \"6aa6ddb46fd8c36058cfc883\",\n          \"type\": \"PHOTO\",\n          \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg#5\",\n          \"thumbnail\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"title\": \"photo 5\",\n          \"altText\": \"seeded photo 5\",\n          \"sortOrder\": 5,\n          \"isActive\": true,\n          \"storage\": {\n            \"provider\": \"CLOUDINARY\"\n          },\n          \"metadata\": {\n            \"width\": 1080,\n            \"height\": 1920,\n            \"duration\": 0,\n            \"size\": 0\n          },\n          \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n          \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n        },\n        {\n          \"_id\": \"6aa6ddb46fd8c36058cfc884\",\n          \"type\": \"PHOTO\",\n          \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg#6\",\n          \"thumbnail\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"title\": \"photo 6\",\n          \"altText\": \"seeded photo 6\",\n          \"sortOrder\": 6,\n          \"isActive\": true,\n          \"storage\": {\n            \"provider\": \"CLOUDINARY\"\n          },\n          \"metadata\": {\n            \"width\": 1080,\n            \"height\": 1920,\n            \"duration\": 0,\n            \"size\": 0\n          },\n          \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n          \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n        },\n        {\n          \"_id\": \"6aa6ddb46fd8c36058cfc885\",\n          \"type\": \"PHOTO\",\n          \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg#7\",\n          \"thumbnail\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"title\": \"photo 7\",\n          \"altText\": \"seeded photo 7\",\n          \"sortOrder\": 7,\n          \"isActive\": true,\n          \"storage\": {\n            \"provider\": \"CLOUDINARY\"\n          },\n          \"metadata\": {\n            \"width\": 1080,\n            \"height\": 1920,\n            \"duration\": 0,\n            \"size\": 0\n          },\n          \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n          \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n        },\n        {\n          \"_id\": \"6aa6ddb46fd8c36058cfc886\",\n          \"type\": \"VIDEO\",\n          \"url\": \"https://res.cloudinary.com/demo/video/upload/dog.mp4\",\n          \"thumbnail\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"title\": \"video 8\",\n          \"altText\": \"seeded video 8\",\n          \"sortOrder\": 8,\n          \"isActive\": true,\n          \"storage\": {\n            \"provider\": \"CLOUDINARY\"\n          },\n          \"metadata\": {\n            \"width\": 1080,\n            \"height\": 1920,\n            \"duration\": 24,\n            \"size\": 0\n          },\n          \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n          \"updatedAt\": \"2026-08-27T10:00:00.000Z\",\n          \"isShowInVideoClips\": true\n        }\n      ]\n    }\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"message\": \"Section fetched successfully.\",\n  \"data\": {\n    \"_id\": \"{{section_id}}\",\n    \"brandId\": \"{{brand_id}}\",\n    \"title\": \"interiors\",\n    \"slug\": \"interiors\",\n    \"description\": \"seeded gallery\",\n    \"coverImage\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n    \"coverImageMode\": \"AUTO\",\n    \"sectionType\": \"CUSTOM\",\n    \"sortOrder\": 1,\n    \"isActive\": true,\n    \"isVisible\": true,\n    \"isShowVideosInClips\": true,\n    \"customerVisibility\": {\n      \"isLive\": true,\n      \"reasons\": [],\n      \"visibleMediaCount\": 8,\n      \"minItemsRequired\": 3\n    },\n    \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n    \"updatedAt\": \"2026-08-27T10:00:00.000Z\",\n    \"mediaCount\": 8,\n    \"photoCount\": 7,\n    \"videoCount\": 1,\n    \"inactiveMediaCount\": 0,\n    \"media\": {\n      \"page\": 1,\n      \"limit\": 50,\n      \"total\": 8,\n      \"totalPages\": 1,\n      \"data\": [\n        {\n          \"_id\": \"{{media_id}}\",\n          \"type\": \"PHOTO\",\n          \"media\": {\n            \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg#1\",\n            \"kind\": \"IMAGE\",\n            \"width\": 1080,\n            \"height\": 1920,\n            \"mimeType\": null,\n            \"sizeBytes\": 0,\n            \"originalName\": null,\n            \"provider\": \"CLOUDINARY\"\n          },\n          \"title\": \"photo 1\",\n          \"altText\": \"seeded photo 1\",\n          \"sortOrder\": 1,\n          \"isActive\": true,\n          \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n          \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n        },\n        {\n          \"_id\": \"6aa6ddb46fd8c36058cfc880\",\n          \"type\": \"PHOTO\",\n          \"media\": {\n            \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg#2\",\n            \"kind\": \"IMAGE\",\n            \"width\": 1080,\n            \"height\": 1920,\n            \"mimeType\": null,\n            \"sizeBytes\": 0,\n            \"originalName\": null,\n            \"provider\": \"CLOUDINARY\"\n          },\n          \"title\": \"photo 2\",\n          \"altText\": \"seeded photo 2\",\n          \"sortOrder\": 2,\n          \"isActive\": true,\n          \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n          \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n        },\n        {\n          \"_id\": \"6aa6ddb46fd8c36058cfc881\",\n          \"type\": \"PHOTO\",\n          \"media\": {\n            \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg#3\",\n            \"kind\": \"IMAGE\",\n            \"width\": 1080,\n            \"height\": 1920,\n            \"mimeType\": null,\n            \"sizeBytes\": 0,\n            \"originalName\": null,\n            \"provider\": \"CLOUDINARY\"\n          },\n          \"title\": \"photo 3\",\n          \"altText\": \"seeded photo 3\",\n          \"sortOrder\": 3,\n          \"isActive\": true,\n          \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n          \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n        },\n        {\n          \"_id\": \"6aa6ddb46fd8c36058cfc882\",\n          \"type\": \"PHOTO\",\n          \"media\": {\n            \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg#4\",\n            \"kind\": \"IMAGE\",\n            \"width\": 1080,\n            \"height\": 1920,\n            \"mimeType\": null,\n            \"sizeBytes\": 0,\n            \"originalName\": null,\n            \"provider\": \"CLOUDINARY\"\n          },\n          \"title\": \"photo 4\",\n          \"altText\": \"seeded photo 4\",\n          \"sortOrder\": 4,\n          \"isActive\": true,\n          \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n          \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n        },\n        {\n          \"_id\": \"6aa6ddb46fd8c36058cfc883\",\n          \"type\": \"PHOTO\",\n          \"media\": {\n            \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg#5\",\n            \"kind\": \"IMAGE\",\n            \"width\": 1080,\n            \"height\": 1920,\n            \"mimeType\": null,\n            \"sizeBytes\": 0,\n            \"originalName\": null,\n            \"provider\": \"CLOUDINARY\"\n          },\n          \"title\": \"photo 5\",\n          \"altText\": \"seeded photo 5\",\n          \"sortOrder\": 5,\n          \"isActive\": true,\n          \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n          \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n        },\n        {\n          \"_id\": \"6aa6ddb46fd8c36058cfc884\",\n          \"type\": \"PHOTO\",\n          \"media\": {\n            \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg#6\",\n            \"kind\": \"IMAGE\",\n            \"width\": 1080,\n            \"height\": 1920,\n            \"mimeType\": null,\n            \"sizeBytes\": 0,\n            \"originalName\": null,\n            \"provider\": \"CLOUDINARY\"\n          },\n          \"title\": \"photo 6\",\n          \"altText\": \"seeded photo 6\",\n          \"sortOrder\": 6,\n          \"isActive\": true,\n          \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n          \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n        },\n        {\n          \"_id\": \"6aa6ddb46fd8c36058cfc885\",\n          \"type\": \"PHOTO\",\n          \"media\": {\n            \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg#7\",\n            \"kind\": \"IMAGE\",\n            \"width\": 1080,\n            \"height\": 1920,\n            \"mimeType\": null,\n            \"sizeBytes\": 0,\n            \"originalName\": null,\n            \"provider\": \"CLOUDINARY\"\n          },\n          \"title\": \"photo 7\",\n          \"altText\": \"seeded photo 7\",\n          \"sortOrder\": 7,\n          \"isActive\": true,\n          \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n          \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n        },\n        {\n          \"_id\": \"6aa6ddb46fd8c36058cfc886\",\n          \"type\": \"VIDEO\",\n          \"media\": {\n            \"url\": \"https://res.cloudinary.com/demo/video/upload/dog.mp4\",\n            \"kind\": \"VIDEO\",\n            \"width\": 1080,\n            \"height\": 1920,\n            \"mimeType\": null,\n            \"sizeBytes\": 0,\n            \"originalName\": null,\n            \"provider\": \"CLOUDINARY\",\n            \"duration\": 24,\n            \"thumbnail\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\"\n          },\n          \"title\": \"video 8\",\n          \"altText\": \"seeded video 8\",\n          \"sortOrder\": 8,\n          \"isActive\": true,\n          \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n          \"updatedAt\": \"2026-08-27T10:00:00.000Z\",\n          \"isShowInVideoClips\": true\n        }\n      ]\n    }\n  }\n}"
             }
           ],
           "event": [
@@ -8256,11 +8277,32 @@
                   "value": "true"
                 },
                 {
-                  "key": "medias",
+                  "key": "files",
                   "type": "file",
-                  "src": [],
-                  "description": "Enable karke ek ya zyada photo/video chunein",
-                  "disabled": true
+                  "description": "🔴 Yahi naam service padhti hai. Enable karke ek ya zyada photo/video chunein",
+                  "disabled": true,
+                  "src": []
+                },
+                {
+                  "key": "thumbnails",
+                  "type": "file",
+                  "description": "Har video ka poster — index se jodta hai",
+                  "disabled": true,
+                  "src": []
+                },
+                {
+                  "key": "uploadIds",
+                  "type": "text",
+                  "description": "🆕 Presigned raasta — /uploads/confirm se mila id",
+                  "disabled": true,
+                  "value": ""
+                },
+                {
+                  "key": "thumbnailUploadIds",
+                  "type": "text",
+                  "description": "🆕 Unke poster ke id (purpose SHOWCASE_THUMBNAIL)",
+                  "disabled": true,
+                  "value": ""
                 }
               ]
             },
@@ -8286,7 +8328,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n**Multipart.** Media limits **combined** check hote hain — existing + naye milakar\nplan ki limit ke andar hone chahiye.\n\n⚠️ File attach kiye bina ye 4xx dega — wo expected hai. Success path dekhne ke\nliye `medias` field enable karke file chunein."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\nMedia limits **combined** check hote hain — existing + naye milakar plan ki limit\nke andar hone chahiye.\n\n🔴 **Field ka naam `files` hai, `medias` nahi.** Ye request pehle `medias`\nbhejti thi — ek aisa naam jo service padhti hi nahi. Request default par disabled\nhai, isliye wo kabhi chali nahi aur galti pakdi nahi gayi.\n\n### 🆕 Do raaste\n\n**Multipart:** `files` (ek ya zyada) aur `thumbnails` (har video ka poster,\nindex se jodta hai).\n\n**Presigned (U-3):** har file ke liye `/uploads/presign` → S3 → `/uploads/confirm`,\nphir yahan `uploadIds` aur `thumbnailUploadIds`. File yahan aati hi nahi.\n\n⚠️ **Poster ka purpose alag hai** — `SHOWCASE_THUMBNAIL`, `SHOWCASE_MEDIA` nahi.\nGallery ka id poster ki jagah bhejne par `422`, aur koi upload jalta nahi.\n\n⚠️ Mila-jula batch chalta hai; kram **files pehle, ids baad me**, aur section ki\nginti poore batch par lagti hai.\n\n⚠️ Kuch bhi attach ya name kiye bina ye `400` dega — wo expected hai."
           },
           "response": [
             {
@@ -8450,7 +8492,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\nSirf metadata — file replace karne ke liye alag endpoint hai.\n\n⚠️ `isShowInVideoClips` **sirf VIDEO** pe bheja ja sakta hai; photo pe `422`\naata hai. Custom `thumbnail` file bhi sirf video pe (image, max 10 MB).\n\n🔴 `sortOrder` yahan se hata diya gaya hai — position sirf reorder endpoint\nbadalta hai (warna do media ek hi position pe aa jaati thi)."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\nMetadata, aur video ka poster.\n\n⚠️ `isShowInVideoClips` **sirf VIDEO** pe bheja ja sakta hai; photo pe `422` aata\nhai. Poster bhi sirf video pe — `thumbnail` file, ya 🆕 `thumbnailUploadId`\n(purpose `SHOWCASE_THUMBNAIL`). Photo par bhejne par `422`, aur upload kharch nahi\nhota.\n\n🔴 `sortOrder` yahan se hata diya gaya hai — position sirf reorder endpoint\nbadalta hai (warna do media ek hi position pe aa jaati thi)."
           },
           "response": [
             {
@@ -8531,7 +8573,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"message\": \"Media info updated successfully.\",\n  \"data\": {\n    \"_id\": \"{{media_id}}\",\n    \"type\": \"PHOTO\",\n    \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg#1\",\n    \"thumbnail\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n    \"title\": \"postman media title\",\n    \"altText\": \"postman alt text\",\n    \"sortOrder\": 1,\n    \"isActive\": true,\n    \"storage\": {\n      \"provider\": \"CLOUDINARY\"\n    },\n    \"metadata\": {\n      \"width\": 1080,\n      \"height\": 1920,\n      \"duration\": 0,\n      \"size\": 0\n    },\n    \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n    \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"message\": \"Media info updated successfully.\",\n  \"data\": {\n    \"_id\": \"{{media_id}}\",\n    \"type\": \"PHOTO\",\n    \"media\": {\n      \"url\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg#1\",\n      \"kind\": \"IMAGE\",\n      \"width\": 1080,\n      \"height\": 1920,\n      \"mimeType\": null,\n      \"sizeBytes\": 0,\n      \"originalName\": null,\n      \"provider\": \"CLOUDINARY\"\n    },\n    \"title\": \"postman media title\",\n    \"altText\": \"postman alt text\",\n    \"sortOrder\": 1,\n    \"isActive\": true,\n    \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n    \"updatedAt\": \"2026-08-27T10:00:00.000Z\"\n  }\n}"
             }
           ],
           "event": [
@@ -8558,11 +8600,32 @@
               "mode": "formdata",
               "formdata": [
                 {
-                  "key": "media",
+                  "key": "file",
                   "type": "file",
-                  "src": [],
-                  "description": "Enable karke naya file chunein",
-                  "disabled": true
+                  "description": "🔴 Yahi naam service padhti hai. Enable karke naya file chunein",
+                  "disabled": true,
+                  "src": []
+                },
+                {
+                  "key": "thumbnail",
+                  "type": "file",
+                  "description": "Video replace karte waqt zaroori — poster image",
+                  "disabled": true,
+                  "src": []
+                },
+                {
+                  "key": "uploadId",
+                  "type": "text",
+                  "description": "🆕 Presigned raasta — purpose SHOWCASE_MEDIA",
+                  "disabled": true,
+                  "value": ""
+                },
+                {
+                  "key": "thumbnailUploadId",
+                  "type": "text",
+                  "description": "🆕 Uska poster — purpose SHOWCASE_THUMBNAIL",
+                  "disabled": true,
+                  "value": ""
                 }
               ]
             },
@@ -8590,7 +8653,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n**Multipart.** Purani file (aur video ka custom poster) Cloudinary se delete ho\njaate hain — sirf naya upload **aur** save succeed hone ke baad.\n\n`_id`, `sortOrder`, `isActive`, `isShowInVideoClips` wahi rehte hain. Type badal\nnahi sakta — photo ki jagah photo, video ki jagah video (check upload se pehle\nhi mime type pe hota hai, to reject hone pe file upload hi nahi hoti)."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\nPurani file (aur video ka poster) delete hoti hai — sirf naya upload **aur** save\nsucceed hone ke baad.\n\n🔴 **Field ka naam `file` hai, `media` nahi.** Ye request pehle `media` bhejti\nthi, jo service padhti hi nahi; disabled hone ki wajah se kabhi pakdi nahi gayi.\n\n### 🆕 Do raaste\n\n**Multipart:** `file`, aur video ke liye `thumbnail`.\n**Presigned (U-3):** `uploadId`, aur video ke liye `thumbnailUploadId`.\n\n`_id`, `sortOrder`, `isActive`, `isShowInVideoClips` wahi rehte hain. Type badal\nnahi sakta — photo ki jagah photo, video ki jagah video — aur wo check **upload se\npehle** hota hai, to reject hone par aapka upload bacha rehta hai."
           },
           "response": [
             {
@@ -9121,6 +9184,12 @@
                   "value": "",
                   "disabled": true,
                   "description": "DRAFT | UNDER_REVIEW | APPROVED | PUBLISHED | REJECTED | EXPIRED | PAUSED | ARCHIVED"
+                },
+                {
+                  "key": "includeDeleted",
+                  "value": "true",
+                  "disabled": true,
+                  "description": "🆕 ADMIN-only. Deleted versions bhi list me le aata hai (deletedAt / deletedBy / deleteReason ke saath). Vendor token se bhejne par 403 — flag chupke se ignore nahi hota. Ye request vendor_token par chalti hai, to ise chalane ke liye admin token chahiye; details admin doc #43 me."
                 }
               ]
             },
@@ -9134,7 +9203,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n✅ Ab gated hai. ⚠️ Phir bhi **`brandId` hamesha bhejein** — endpoint khud scope\nnahi karta, bina uske platform ke saare vouchers aa jaate hain.\n\n`status`: DRAFT | UNDER_REVIEW | APPROVED | PUBLISHED | REJECTED | EXPIRED | PAUSED | ARCHIVED"
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n✅ Ab gated hai. ⚠️ Phir bhi **`brandId` hamesha bhejein** — endpoint khud scope\nnahi karta, bina uske platform ke saare vouchers aa jaate hain.\n\n`status`: DRAFT | UNDER_REVIEW | APPROVED | PUBLISHED | REJECTED | EXPIRED | PAUSED | ARCHIVED\n\n🆕 **includeDeleted (ADMIN-only).** Default off — deleted rows aam listing me aane se approval queue me retire ho chuke vouchers ghus jaate. Wo list ko **chauda** karta hai, badalta nahi: live rows saath hi rehte hain. Vendor ke bhejne par **403**, kyunki flag ko chupke se gira dena us vendor ko \"koi deleted nahi hai\" jawab dena hota jise ye sawaal poochhne hi nahi diya."
           },
           "response": [
             {
@@ -9318,9 +9387,44 @@
                 {
                   "key": "images",
                   "type": "file",
-                  "src": [],
-                  "description": "**Required** — kam se kam 1 image. Enable karke file chunein",
-                  "disabled": true
+                  "description": "Enable karke ek ya zyada image chunein",
+                  "disabled": true,
+                  "src": []
+                },
+                {
+                  "key": "media",
+                  "type": "file",
+                  "description": "Banner — image, GIF ya video",
+                  "disabled": true,
+                  "src": []
+                },
+                {
+                  "key": "poster",
+                  "type": "file",
+                  "description": "Video banner ke saath zaroori",
+                  "disabled": true,
+                  "src": []
+                },
+                {
+                  "key": "imageUploadIds",
+                  "type": "text",
+                  "description": "🆕 Presigned — JSON array, purpose VOUCHER_IMAGE",
+                  "disabled": true,
+                  "value": ""
+                },
+                {
+                  "key": "bannerUploadId",
+                  "type": "text",
+                  "description": "🆕 Presigned banner — purpose VOUCHER_BANNER",
+                  "disabled": true,
+                  "value": ""
+                },
+                {
+                  "key": "bannerPosterUploadId",
+                  "type": "text",
+                  "description": "🆕 Uska poster — purpose VOUCHER_BANNER_POSTER",
+                  "disabled": true,
+                  "value": ""
                 }
               ]
             },
@@ -9344,7 +9448,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n**Multipart**, aur **kam se kam ek image required** hai — bina uske `422`.\n\n`offers` ek JSON string (ya strings ka array) hota hai. Har offer me:\n\n- `discountType`: PERCENTAGE | FIXED | FLAT — ✅ teeno kaam karte hain (`FIXED` ab `FLAT` ka alias hai)\n- `usageType`: ONCE_PER_USER | MULTIPLE — ⚠️ enforce nahi hota, redemption flow hai hi nahi\n- `discountApplicableOn`: SUBTOTAL | FINAL_BILL — ⚠️ calculation me use nahi hota, display only\n- `sortOrder` **required**, min 1\n\nTransactional hai — fail hone pe uploaded images rollback ho jaati hain.\n\nPlan ka voucher slot atomically reserve hota hai."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n**Multipart**, aur **kam se kam ek image required** hai — bina uske `422`.\n\n`offers` ek JSON string (ya strings ka array) hota hai. Har offer me:\n\n- `discountType`: PERCENTAGE | FIXED | FLAT — ✅ teeno kaam karte hain (`FIXED` ab `FLAT` ka alias hai)\n- `usageType`: ONCE_PER_USER | MULTIPLE — ⚠️ enforce nahi hota, redemption flow hai hi nahi\n- `discountApplicableOn`: SUBTOTAL | FINAL_BILL — ⚠️ calculation me use nahi hota, display only\n- `sortOrder` **required**, min 1\n\nTransactional hai — fail hone pe uploaded images rollback ho jaati hain.\n\nPlan ka voucher slot atomically reserve hota hai.\n\n### 🆕 Presigned raasta (U-4)\n\nHar file ke liye `/uploads/presign` → S3 → `/uploads/confirm`, phir yahan sirf id bhejiye — file yahan aati hi nahi.\n\n🔴 **Banner ke poster ka purpose alag hai** — `VOUCHER_BANNER_POSTER`, `VOUCHER_BANNER` nahi. Ek hi bucket aur prefix, par poster 10 MB par capped hai aur video leta hi nahi. Banner ka id poster ki jagah bhejne par `422`, aur koi upload jalta nahi.\n\n🔴 **Image floor aur limits confirm se PEHLE chalte hain** — teen ki jagah do bhejne par refusal aata hai aur aapke uploads abhi bhi aapke hain.\n\n⚠️ Mila-jula batch chalta hai, aur floor **poore** batch par lagta hai."
           },
           "response": [
             {
@@ -9512,10 +9616,18 @@
                   "disabled": true
                 },
                 {
-                  "key": "images",
+                  "key": "newImages",
                   "type": "file",
-                  "src": [],
-                  "disabled": true
+                  "description": "🔴 Yahi naam service padhti hai — `images` nahi",
+                  "disabled": true,
+                  "src": []
+                },
+                {
+                  "key": "newImageUploadIds",
+                  "type": "text",
+                  "description": "🆕 Presigned — JSON array, purpose VOUCHER_IMAGE",
+                  "disabled": true,
+                  "value": ""
                 }
               ]
             },
@@ -9540,7 +9652,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n⚠️ **Update delta-based hai** — `newOffers` / `removedOfferIds` bhejein, poori\noffers list nahi.\n\nHar update ek **naya version** banata hai. Status-wise editability:\n\n| Status | Edit? |\n|---|---|\n| `DRAFT` · `REJECTED` | ✅ |\n| `UNDER_REVIEW` · `EXPIRED` · `ARCHIVED` | ❌ blocked |"
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n⚠️ **Update delta-based hai** — `newOffers` / `removedOfferIds` bhejein, poori\noffers list nahi.\n\nHar update ek **naya version** banata hai. Status-wise editability:\n\n| Status | Edit? |\n|---|---|\n| `DRAFT` · `REJECTED` | ✅ |\n| `UNDER_REVIEW` · `EXPIRED` · `ARCHIVED` | ❌ blocked |\n\n**removeImageIds aur file delete:** published voucher edit karne par naya draft version fork hota hai, aur fork har kept image ko apne `storage` ke saath copy karta hai - do version ek hi file par point karte hain. Isliye draft se image hatane par server pehle dekhta hai ki koi doosra non-deleted version wo file to nahi use kar raha. Kar raha ho to row hat jaati hai par file rehti hai, warna live published voucher ki tasveer mar jaati.\n\n🔴 **File field ka naam `newImages` hai, `images` nahi.** Ye request pehle `images` bhejti thi — ek naam jo service padhti hi nahi. Request default par disabled hai, isliye wo kabhi chali nahi aur galti pakdi nahi gayi.\n\n### 🆕 Presigned raasta (U-4)\n\nHar file ke liye `/uploads/presign` → S3 → `/uploads/confirm`, phir yahan sirf id bhejiye — file yahan aati hi nahi.\n\n🔴 **Banner ke poster ka purpose alag hai** — `VOUCHER_BANNER_POSTER`, `VOUCHER_BANNER` nahi. Ek hi bucket aur prefix, par poster 10 MB par capped hai aur video leta hi nahi. Banner ka id poster ki jagah bhejne par `422`, aur koi upload jalta nahi.\n\n🔴 **Image floor aur limits confirm se PEHLE chalte hain** — teen ki jagah do bhejne par refusal aata hai aur aapke uploads abhi bhi aapke hain.\n\n⚠️ Mila-jula batch chalta hai, aur floor **poore** batch par lagta hai."
           },
           "response": [
             {
@@ -9781,7 +9893,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n⚠️ **Ye `versionId` leta hai, `voucherId` nahi.** Sabse common galti yahi hai.\n\nSirf `APPROVED` version publish ho sakta hai. Seeder ek aisa version banata hai (`approved_version_id`).\n\n🔴 **Ownership check nahi hai** — koi bhi vendor kisi bhi brand ka approved\nversion publish kar sakta hai. Ye abhi khuli hui gap hai."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\n⚠️ **Ye `versionId` leta hai, `voucherId` nahi.** Sabse common galti yahi hai.\n\nSirf `APPROVED` version publish ho sakta hai. Seeder ek aisa version banata hai (`approved_version_id`).\n\n✅ **Ownership ab check hoti hai** — service voucher ka `brandId` load karke\n`resolveActorBrand` chalati hai. Ye zaruri tha: publish sirf status nahi badalta,\nwo **jo version live hai use archive** kar deta hai — yaani koi bhi vendor doosre\nbrand ka chalta hua voucher hata sakta tha, aur approval history me uska apna\nnaam darj hota.\n\n🆕 Publish ab master `Voucher.status` ko bhi `PUBLISHED` kar deta hai (pehle wo\n`APPROVED` par pada reh jaata tha)."
           },
           "response": [
             {
@@ -9868,7 +9980,492 @@
           ]
         },
         {
-          "name": "Set voucher banner (file)",
+          "name": "Pause a live voucher",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Stock khatam, Monday tak\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/vouchers/pause/{{published_version_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "pause",
+                "{{published_version_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `isVendorOrAdmin` + ownership — vendor sirf apne brand ka\n\n🆕 Live voucher ko customer feed se hataata hai **bina khatam kiye**. Version jaisa tha waisa hi rehta hai — dates, offers, images sab — aur resume karte hi wahi voucher wapas live ho jaata hai.\n\n⚠️ **Ye `versionId` leta hai, `voucherId` nahi.**\n\nSirf `PUBLISHED` version pause ho sakta hai. `reason` optional hai aur customer ko kabhi nahi dikhta — wo aapka apna note hai, approval history me darj hota hai.\n\n🔴 Pause karne se published slot khali ho jaata hai, to aap paused rehte hue doosra version publish kar sakte hain — par phir purana wapas nahi aayega (resume par 409)."
+          },
+          "response": [
+            {
+              "name": "200 · Pause a live voucher",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/pause/6aa6ddb76fd8c36058cfc8a4",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "pause",
+                    "6aa6ddb76fd8c36058cfc8a4"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Voucher paused. Customers will not see it until you resume it.\",\n  \"data\": {\n    \"voucherId\": \"{{voucher_id}}\",\n    \"versionId\": \"{{published_version_id}}\",\n    \"voucherCode\": \"VCH-10000042\",\n    \"versionCode\": \"VCH-10000042-V1\",\n    \"versionNo\": 1,\n    \"action\": \"PAUSED\",\n    \"voucherStatus\": \"PAUSED\",\n    \"versionStatus\": \"PAUSED\",\n    \"pausedAt\": \"2026-09-17T10:15:00.000Z\",\n    \"reason\": \"Stock khatam, Monday tak\"\n  }\n}"
+            },
+            {
+              "name": "409 · Pause a live voucher",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/pause/6aa6ddb76fd8c36058cfc8a4",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "pause",
+                    "6aa6ddb76fd8c36058cfc8a4"
+                  ]
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Only a published voucher can be paused — this one is APPROVED.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Resume a paused voucher",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/vouchers/resume/{{published_version_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "resume",
+                "{{published_version_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `isVendorOrAdmin` + ownership — vendor sirf apne brand ka\n\n🆕 Paused voucher ko wapas customer feed me laata hai.\n\n🔴 **Sabse zaruri error yahan hai.** Ek voucher par ek hi live version ho sakta hai (partial unique index `{voucherId, status: PUBLISHED}`). Agar aapne pause ke dauraan doosra version publish kar diya, to resume par **saaf 409** milta hai jisme likha hota hai kaunsa version live hai aur ab kya karna hai. Pehle ye `E11000 dup key` banke **500** girta — ek aise index ka naam leta hua jo vendor ne kabhi dekha hi nahi.\n\n⚠️ Paused rehne se ghadi nahi rukti. `endAt` nikal gayi to resume nahi hoga — naya version banana padega."
+          },
+          "response": [
+            {
+              "name": "200 · Resume a paused voucher",
+              "originalRequest": {
+                "method": "POST",
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/resume/6aa6ddb76fd8c36058cfc8a4",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "resume",
+                    "6aa6ddb76fd8c36058cfc8a4"
+                  ]
+                },
+                "header": []
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Voucher is live again.\",\n  \"data\": {\n    \"voucherId\": \"{{voucher_id}}\",\n    \"versionId\": \"{{published_version_id}}\",\n    \"voucherCode\": \"VCH-10000042\",\n    \"versionCode\": \"VCH-10000042-V1\",\n    \"versionNo\": 1,\n    \"action\": \"RESUMED\",\n    \"voucherStatus\": \"PUBLISHED\",\n    \"versionStatus\": \"PUBLISHED\",\n    \"pausedAt\": null,\n    \"reason\": null\n  }\n}"
+            },
+            {
+              "name": "409 · Resume a paused voucher",
+              "originalRequest": {
+                "method": "POST",
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/resume/6aa6ddb76fd8c36058cfc8a4",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "resume",
+                    "6aa6ddb76fd8c36058cfc8a4"
+                  ]
+                },
+                "header": []
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Version 2 went live while this one was paused, and a voucher can only have one live version. Pause version 2 first, or leave this one paused.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Delete a voucher",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Galti se bana diya tha\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/vouchers/{{voucher_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "{{voucher_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `isVendorOrAdmin` + ownership — vendor sirf apne brand ka\n\n🆕 Soft delete. Row rehti hai — `VoucherClaim` apne saath snapshots rakhta hai, to customer ki order history poori rehti hai, par claim `voucherId` par point karta hai aur hard delete un sabko khali jagah par chhod deta.\n\n`status: DELETED` aur `isDeleted: true` hamesha ek saath likhe jaate hain, ek hi jagah se. Saari versions bhi deleted hoti hain — warna ek deleted voucher ki `PUBLISHED` version reh jaati jise customer listing serve karti rehti.\n\n⚠️ **Voucher ka id, version ka nahi.**\n\n🔴 **Live claim par 409 — admin ke liye bhi.** `PENDING` (customer checkout par khada hai) ya `PAID` (paisa gaya, discount abhi mila nahi) ho to delete nahi hota. Har doosre guard me admin ko chhoot hai; yahan jise bachaya ja raha hai wo in dono me se koi nahi. Refusal ke saath `liveClaims`, `breakdown` aur `suggestedAction` aata hai.\n\nSlot turant wapas milta hai — brand ka `vouchersUsed` ek kam."
+          },
+          "response": [
+            {
+              "name": "200 · Delete a voucher",
+              "originalRequest": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/6aa6ddb76fd8c36058cfc8a4",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "6aa6ddb76fd8c36058cfc8a4"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Voucher deleted.\",\n  \"data\": {\n    \"voucherId\": \"{{voucher_id}}\",\n    \"voucherCode\": \"VCH-10000042\",\n    \"status\": \"DELETED\",\n    \"deletedAt\": \"2026-09-17T10:15:00.000Z\",\n    \"deletedBy\": \"{{vendor_user_id}}\",\n    \"deleteReason\": \"Galti se bana diya tha\",\n    \"versionsDeleted\": 2,\n    \"previousStatus\": \"DRAFT\"\n  }\n}"
+            },
+            {
+              "name": "409 · Delete a voucher",
+              "originalRequest": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/6aa6ddb76fd8c36058cfc8a4",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "6aa6ddb76fd8c36058cfc8a4"
+                  ]
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"2 customers are holding this voucher right now (1 already paid, 1 still checking out), so it cannot be deleted.\",\n  \"details\": {\n    \"liveClaims\": 2,\n    \"breakdown\": {\n      \"PAID\": 1,\n      \"PENDING\": 1\n    },\n    \"suggestedAction\": \"Pause it instead — that takes it off the customer app immediately and leaves these claims intact. You can delete it once they are settled.\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reorder a version's images",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"images\": [\n    {\n      \"id\": \"68f1a2b3c4d5e6f7a8b9d003\",\n      \"sortOrder\": 1\n    },\n    {\n      \"id\": \"68f1a2b3c4d5e6f7a8b9d001\",\n      \"sortOrder\": 2\n    },\n    {\n      \"id\": \"68f1a2b3c4d5e6f7a8b9d002\",\n      \"sortOrder\": 3\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/vouchers/versions/{{draft_version_id}}/images/reorder",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "vouchers",
+                "versions",
+                "{{draft_version_id}}",
+                "images",
+                "reorder"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** `isVendorOrAdmin` + ownership — vendor sirf apne brand ka\n\n🆕 Images ka kram badalta hai. **Poori list bhejni hoti hai** — positions 1..n me dobara number hoti hain, to adhoori list unse takrati jo bheji hi nahi gayi.\n\nAapke bheje number sirf **kram** batate hain: `10, 20, 30` bhejein to `1, 2, 3` ban jaate hain.\n\n⚠️ **Version ka id**, voucher ka nahi — images version ki hoti hain.\n\n🔴 **Pehli image hi banner ka fallback hai.** Approved banner na ho to customer ko `sortOrder: 1` wali image dikhti hai, aur claim ka snapshot bhi wahi freeze karta hai. Yaani ye list ki safai nahi — ye wo badalta hai jo customer sabse pehle dekhta hai.\n\n🔴 **Sirf `DRAFT` ya `REJECTED` version.** Published `isImmutable` hoti hai, aur yahan naya version **apne aap nahi banta** — ek drag-and-drop jo chupke se approval queue me kuch daal de wo aapne maanga hi nahi tha. Published ka kram badalna ho to pehle naya version banaiye.\n\nKram pehle se wahi ho to `updated: 0` aata hai aur koi write nahi hoti."
+          },
+          "response": [
+            {
+              "name": "200 · Reorder a version's images",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/versions/6aa6ddb76fd8c36058cfc8a4/images/reorder",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "versions",
+                    "6aa6ddb76fd8c36058cfc8a4",
+                    "images",
+                    "reorder"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Voucher images reordered.\",\n  \"data\": {\n    \"versionId\": \"{{draft_version_id}}\",\n    \"voucherCode\": \"VCH-10000042\",\n    \"updated\": 3,\n    \"images\": [\n      {\n        \"id\": \"68f1a2b3c4d5e6f7a8b9d003\",\n        \"sortOrder\": 1,\n        \"url\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/image-3.jpg\"\n      },\n      {\n        \"id\": \"68f1a2b3c4d5e6f7a8b9d001\",\n        \"sortOrder\": 2,\n        \"url\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/image-1.jpg\"\n      },\n      {\n        \"id\": \"68f1a2b3c4d5e6f7a8b9d002\",\n        \"sortOrder\": 3,\n        \"url\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/image-2.jpg\"\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "409 · Reorder a version's images",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/versions/6aa6ddb76fd8c36058cfc8a4/images/reorder",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "versions",
+                    "6aa6ddb76fd8c36058cfc8a4",
+                    "images",
+                    "reorder"
+                  ]
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"A published version cannot be reordered — its images are part of what was approved. Create a new version to change the order.\"\n}"
+            },
+            {
+              "name": "400 · Reorder a version's images",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/vouchers/versions/6aa6ddb76fd8c36058cfc8a4/images/reorder",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "vouchers",
+                    "versions",
+                    "6aa6ddb76fd8c36058cfc8a4",
+                    "images",
+                    "reorder"
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Please send the complete image order — 3 images expected, 2 received.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Submit voucher banner for review (file)",
           "request": {
             "method": "POST",
             "header": [],
@@ -9876,16 +10473,31 @@
               "mode": "formdata",
               "formdata": [
                 {
-                  "key": "bannerType",
-                  "type": "text",
-                  "value": "IMAGE"
-                },
-                {
-                  "key": "bannerImage",
+                  "key": "media",
                   "type": "file",
                   "src": [],
-                  "description": "Field name bannerType pe depend karta hai — neeche table dekhein",
-                  "disabled": true
+                  "description": "The banner — image, GIF or video. Its kind comes from the file itself."
+                },
+                {
+                  "key": "poster",
+                  "type": "file",
+                  "src": [],
+                  "disabled": true,
+                  "description": "Required only when the banner is a video."
+                },
+                {
+                  "key": "bannerUploadId",
+                  "type": "text",
+                  "description": "🆕 Presigned banner — purpose VOUCHER_BANNER",
+                  "disabled": true,
+                  "value": ""
+                },
+                {
+                  "key": "bannerPosterUploadId",
+                  "type": "text",
+                  "description": "🆕 Uska poster — purpose VOUCHER_BANNER_POSTER",
+                  "disabled": true,
+                  "value": ""
                 }
               ]
             },
@@ -9910,7 +10522,7 @@
                 }
               ]
             },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\nMaster-level promo banner. **Version/approval flow se bilkul independent** —\nbanner add/replace/remove karne se voucher ka status, approval ya version kuch\nnahi badalta.\n\n| `bannerType` | File field |\n|---|---|\n| `IMAGE` | `bannerImage` |\n| `VIDEO` | `bannerVideo` |\n| `GIF` | `bannerGif` |\n\nCustomer ko ye `bannerType` + `bannerUrl` ke roop me dikhta hai — dono saath, ya dono `null`."
+            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\nMaster-level promo banner. **Version/approval flow se bilkul independent** — banner add/replace karne se voucher ka status, approval ya version kuch nahi badalta.\n\n🔴 **`bannerType` aur teen file field ab nahi hain (V-4).** Pehle payload me `bannerType` jaata tha aur file `bannerImage` / `bannerVideo` / `bannerGif` me se kisi ek me — yaani client batata tha file kya hai aur server jaanchta tha ki dono baatein milti hain ya nahi. Ek sawaal ke do jawab, aur stored wala jeet sakta tha.\n\nAb file **`media`** me aati hai aur wo kya hai ye uski apni bytes se tay hota hai. Video ke saath **`poster`** zaroori hai — kuch bhi poster derive nahi karta.\n\n⚠️ **Banner seedha live nahi hota** — `pending` me jaata hai aur admin ke approve karne par hi customer ko dikhta hai. Purana approved banner us beech live rehta hai.\n\n### 🆕 Presigned raasta (U-4)\n\nHar file ke liye `/uploads/presign` → S3 → `/uploads/confirm`, phir yahan sirf id bhejiye — file yahan aati hi nahi.\n\n🔴 **Banner ke poster ka purpose alag hai** — `VOUCHER_BANNER_POSTER`, `VOUCHER_BANNER` nahi. Ek hi bucket aur prefix, par poster 10 MB par capped hai aur video leta hi nahi. Banner ka id poster ki jagah bhejne par `422`, aur koi upload jalta nahi.\n\n🔴 **Image floor aur limits confirm se PEHLE chalte hain** — teen ki jagah do bhejne par refusal aata hai aur aapke uploads abhi bhi aapke hain.\n\n⚠️ Mila-jula batch chalta hai, aur floor **poore** batch par lagta hai."
           },
           "response": [
             {
@@ -10023,111 +10635,6 @@
               }
             }
           ]
-        },
-        {
-          "name": "Delete voucher banner",
-          "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/vouchers/{{voucher_id}}/banner",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "vouchers",
-                "{{voucher_id}}",
-                "banner"
-              ]
-            },
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{vendor_token}}",
-                  "type": "string"
-                }
-              ]
-            },
-            "description": "**Access:** `isVendorOrAdmin` — vendor or admin\n\nBanner hata deta hai. Customer response me `bannerType` aur `bannerUrl` dono `null` ho jaate hain — keys gayab nahi hoti."
-          },
-          "response": [
-            {
-              "name": "404 · Delete voucher banner",
-              "originalRequest": {
-                "method": "DELETE",
-                "header": [
-                  {
-                    "key": "User-Agent",
-                    "value": "PostmanRuntime/7.39.1"
-                  },
-                  {
-                    "key": "Accept",
-                    "value": "*/*"
-                  },
-                  {
-                    "key": "Cache-Control",
-                    "value": "no-cache"
-                  },
-                  {
-                    "key": "Postman-Token",
-                    "value": "e589e227-b0b6-47cb-84d9-c2888008c3c3"
-                  },
-                  {
-                    "key": "Host",
-                    "value": "localhost:8080"
-                  },
-                  {
-                    "key": "Accept-Encoding",
-                    "value": "gzip, deflate, br"
-                  },
-                  {
-                    "key": "Connection",
-                    "value": "keep-alive"
-                  }
-                ],
-                "url": {
-                  "raw": "http://localhost:8080/trydood/v1/vouchers/6aa6ddb76fd8c36058cfc89e/banner",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "trydood",
-                    "v1",
-                    "vouchers",
-                    "6aa6ddb76fd8c36058cfc89e",
-                    "banner"
-                  ]
-                }
-              },
-              "status": "Not Found",
-              "code": 404,
-              "_postman_previewlanguage": "json",
-              "header": [
-                {
-                  "key": "Content-Type",
-                  "value": "application/json"
-                }
-              ],
-              "cookie": [],
-              "body": "{\n  \"success\": false,\n  \"message\": \"This voucher has no banner to delete.\"\n}"
-            }
-          ],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"200 ya 404 (banner tha hi nahi)\", function () {",
-                  "  pm.expect([200, 400, 404]).to.include(pm.response.code);",
-                  "});",
-                  ""
-                ]
-              }
-            }
-          ]
         }
       ]
     },
@@ -10168,6 +10675,13 @@
                   "type": "file",
                   "src": [],
                   "description": "Optional icon",
+                  "disabled": true
+                },
+                {
+                  "key": "iconUploadId",
+                  "type": "text",
+                  "value": "",
+                  "description": "🆕 Presigned — purpose BRAND_FEATURE_ICON",
                   "disabled": true
                 }
               ]
@@ -10595,6 +11109,13 @@
                   "key": "icon",
                   "type": "file",
                   "src": [],
+                  "disabled": true
+                },
+                {
+                  "key": "iconUploadId",
+                  "type": "text",
+                  "value": "",
+                  "description": "🆕 Presigned — purpose BRAND_FEATURE_ICON",
                   "disabled": true
                 }
               ]
@@ -13093,7 +13614,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"message\": \"Claims fetched successfully.\",\n  \"data\": {\n    \"total\": 15,\n    \"totalPages\": 1,\n    \"page\": 1,\n    \"limit\": 20,\n    \"data\": [\n      {\n        \"_id\": \"6aa6ddf16fd8c36058cfc963\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 270,\n          \"promoDiscount\": 0,\n          \"netBill\": 630,\n          \"totalPayable\": 640,\n          \"youSaved\": 270,\n          \"vendorPayable\": 630\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-RTP79Y\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddf16fd8c36058cfc964\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddef6fd8c36058cfc958\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 270,\n          \"promoDiscount\": 0,\n          \"netBill\": 630,\n          \"totalPayable\": 640,\n          \"youSaved\": 270,\n          \"vendorPayable\": 630\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-JQDVTN\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddef6fd8c36058cfc959\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddec6fd8c36058cfc94b\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 270,\n          \"promoDiscount\": 0,\n          \"netBill\": 630,\n          \"totalPayable\": 640,\n          \"youSaved\": 270,\n          \"vendorPayable\": 630\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-VJV4C4\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddec6fd8c36058cfc94c\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6dde96fd8c36058cfc93e\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 270,\n          \"promoDiscount\": 0,\n          \"netBill\": 630,\n          \"totalPayable\": 640,\n          \"youSaved\": 270,\n          \"vendorPayable\": 630\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-VAWFAH\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6dde96fd8c36058cfc93f\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddd66fd8c36058cfc916\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 950,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 950,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 285,\n          \"promoDiscount\": 0,\n          \"netBill\": 665,\n          \"totalPayable\": 675,\n          \"youSaved\": 285,\n          \"vendorPayable\": 665\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-WKRYQ9\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddd66fd8c36058cfc917\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddd36fd8c36058cfc90b\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 950,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 950,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 285,\n          \"promoDiscount\": 0,\n          \"netBill\": 665,\n          \"totalPayable\": 675,\n          \"youSaved\": 285,\n          \"vendorPayable\": 665\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-J6977X\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddd36fd8c36058cfc90c\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddd06fd8c36058cfc900\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 950,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 950,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 285,\n          \"promoDiscount\": 0,\n          \"netBill\": 665,\n          \"totalPayable\": 675,\n          \"youSaved\": 285,\n          \"vendorPayable\": 665\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-HATGXA\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddd06fd8c36058cfc901\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddcd6fd8c36058cfc8f5\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 950,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 950,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 285,\n          \"promoDiscount\": 0,\n          \"netBill\": 665,\n          \"totalPayable\": 675,\n          \"youSaved\": 285,\n          \"vendorPayable\": 665\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-UJ7M7P\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddcd6fd8c36058cfc8f6\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddc56fd8c36058cfc8da\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"flat 150 off above 800\",\n          \"offerDiscount\": 150,\n          \"promoDiscount\": 0,\n          \"netBill\": 750,\n          \"totalPayable\": 760,\n          \"youSaved\": 150,\n          \"vendorPayable\": 750\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-JJMDVT\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddc56fd8c36058cfc8db\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddc46fd8c36058cfc8d5\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 270,\n          \"promoDiscount\": 0,\n          \"netBill\": 630,\n          \"totalPayable\": 640,\n          \"youSaved\": 270,\n          \"vendorPayable\": 630\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-U4P4XY\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddc46fd8c36058cfc8d6\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddc36fd8c36058cfc8d0\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"flat 150 off above 800\",\n          \"offerDiscount\": 150,\n          \"promoDiscount\": 0,\n          \"netBill\": 750,\n          \"totalPayable\": 760,\n          \"youSaved\": 150,\n          \"vendorPayable\": 750\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-T7DJPM\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddc36fd8c36058cfc8d1\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"{{claim_id}}\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 270,\n          \"promoDiscount\": 0,\n          \"netBill\": 630,\n          \"totalPayable\": 640,\n          \"youSaved\": 270,\n          \"vendorPayable\": 630\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"{{claim_code}}\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"{{claim_transaction_id}}\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddbe6fd8c36058cfc8bb\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 600,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 600,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 180,\n          \"promoDiscount\": 0,\n          \"netBill\": 420,\n          \"totalPayable\": 430,\n          \"youSaved\": 180,\n          \"vendorPayable\": 420\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-37T4UV\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddbe6fd8c36058cfc8bc\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddbd6fd8c36058cfc8b6\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"flat 150 off above 800\",\n          \"offerDiscount\": 150,\n          \"promoDiscount\": 0,\n          \"netBill\": 750,\n          \"totalPayable\": 760,\n          \"youSaved\": 150,\n          \"vendorPayable\": 750\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-4RKG6R\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddbd6fd8c36058cfc8b7\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddbc6fd8c36058cfc8b1\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 1000,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 1000,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 300,\n          \"promoDiscount\": 0,\n          \"netBill\": 700,\n          \"totalPayable\": 710,\n          \"youSaved\": 300,\n          \"vendorPayable\": 700\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-CDV44Q\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddbc6fd8c36058cfc8b2\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      }\n    ]\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"message\": \"Claims fetched successfully.\",\n  \"data\": {\n    \"total\": 15,\n    \"totalPages\": 1,\n    \"page\": 1,\n    \"limit\": 20,\n    \"data\": [\n      {\n        \"_id\": \"6aa6ddf16fd8c36058cfc963\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\",\n          \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerType\": \"IMAGE\",\n          \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 270,\n          \"promoDiscount\": 0,\n          \"netBill\": 630,\n          \"totalPayable\": 640,\n          \"youSaved\": 270,\n          \"vendorPayable\": 630\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-RTP79Y\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddf16fd8c36058cfc964\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddef6fd8c36058cfc958\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\",\n          \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerType\": \"IMAGE\",\n          \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 270,\n          \"promoDiscount\": 0,\n          \"netBill\": 630,\n          \"totalPayable\": 640,\n          \"youSaved\": 270,\n          \"vendorPayable\": 630\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-JQDVTN\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddef6fd8c36058cfc959\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddec6fd8c36058cfc94b\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\",\n          \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerType\": \"IMAGE\",\n          \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 270,\n          \"promoDiscount\": 0,\n          \"netBill\": 630,\n          \"totalPayable\": 640,\n          \"youSaved\": 270,\n          \"vendorPayable\": 630\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-VJV4C4\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddec6fd8c36058cfc94c\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6dde96fd8c36058cfc93e\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\",\n          \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerType\": \"IMAGE\",\n          \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 270,\n          \"promoDiscount\": 0,\n          \"netBill\": 630,\n          \"totalPayable\": 640,\n          \"youSaved\": 270,\n          \"vendorPayable\": 630\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-VAWFAH\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6dde96fd8c36058cfc93f\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddd66fd8c36058cfc916\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\",\n          \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerType\": \"IMAGE\",\n          \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 950,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 950,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 285,\n          \"promoDiscount\": 0,\n          \"netBill\": 665,\n          \"totalPayable\": 675,\n          \"youSaved\": 285,\n          \"vendorPayable\": 665\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-WKRYQ9\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddd66fd8c36058cfc917\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddd36fd8c36058cfc90b\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\",\n          \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerType\": \"IMAGE\",\n          \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 950,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 950,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 285,\n          \"promoDiscount\": 0,\n          \"netBill\": 665,\n          \"totalPayable\": 675,\n          \"youSaved\": 285,\n          \"vendorPayable\": 665\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-J6977X\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddd36fd8c36058cfc90c\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddd06fd8c36058cfc900\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\",\n          \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerType\": \"IMAGE\",\n          \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 950,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 950,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 285,\n          \"promoDiscount\": 0,\n          \"netBill\": 665,\n          \"totalPayable\": 675,\n          \"youSaved\": 285,\n          \"vendorPayable\": 665\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-HATGXA\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddd06fd8c36058cfc901\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddcd6fd8c36058cfc8f5\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\",\n          \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerType\": \"IMAGE\",\n          \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 950,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 950,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 285,\n          \"promoDiscount\": 0,\n          \"netBill\": 665,\n          \"totalPayable\": 675,\n          \"youSaved\": 285,\n          \"vendorPayable\": 665\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-UJ7M7P\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddcd6fd8c36058cfc8f6\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddc56fd8c36058cfc8da\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\",\n          \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerType\": \"IMAGE\",\n          \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"flat 150 off above 800\",\n          \"offerDiscount\": 150,\n          \"promoDiscount\": 0,\n          \"netBill\": 750,\n          \"totalPayable\": 760,\n          \"youSaved\": 150,\n          \"vendorPayable\": 750\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-JJMDVT\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddc56fd8c36058cfc8db\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddc46fd8c36058cfc8d5\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\",\n          \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerType\": \"IMAGE\",\n          \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 270,\n          \"promoDiscount\": 0,\n          \"netBill\": 630,\n          \"totalPayable\": 640,\n          \"youSaved\": 270,\n          \"vendorPayable\": 630\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-U4P4XY\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddc46fd8c36058cfc8d6\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddc36fd8c36058cfc8d0\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\",\n          \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerType\": \"IMAGE\",\n          \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"flat 150 off above 800\",\n          \"offerDiscount\": 150,\n          \"promoDiscount\": 0,\n          \"netBill\": 750,\n          \"totalPayable\": 760,\n          \"youSaved\": 150,\n          \"vendorPayable\": 750\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-T7DJPM\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddc36fd8c36058cfc8d1\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"{{claim_id}}\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\",\n          \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerType\": \"IMAGE\",\n          \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 270,\n          \"promoDiscount\": 0,\n          \"netBill\": 630,\n          \"totalPayable\": 640,\n          \"youSaved\": 270,\n          \"vendorPayable\": 630\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"{{claim_code}}\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"{{claim_transaction_id}}\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddbe6fd8c36058cfc8bb\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\",\n          \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerType\": \"IMAGE\",\n          \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 600,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 600,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 180,\n          \"promoDiscount\": 0,\n          \"netBill\": 420,\n          \"totalPayable\": 430,\n          \"youSaved\": 180,\n          \"vendorPayable\": 420\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-37T4UV\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddbe6fd8c36058cfc8bc\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddbd6fd8c36058cfc8b6\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\",\n          \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerType\": \"IMAGE\",\n          \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 900,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 900,\n          \"offerTitle\": \"flat 150 off above 800\",\n          \"offerDiscount\": 150,\n          \"promoDiscount\": 0,\n          \"netBill\": 750,\n          \"totalPayable\": 760,\n          \"youSaved\": 150,\n          \"vendorPayable\": 750\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-4RKG6R\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddbd6fd8c36058cfc8b7\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      },\n      {\n        \"_id\": \"6aa6ddbc6fd8c36058cfc8b1\",\n        \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n        \"brandId\": \"{{brand_id}}\",\n        \"subBrandId\": \"{{sub_brand_id}}\",\n        \"voucherSnapshot\": {\n          \"name\": \"flat 30% off on total bill\",\n          \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n          \"bannerType\": \"IMAGE\",\n          \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n        },\n        \"brandSnapshot\": {\n          \"name\": \"postman cafe mocha\"\n        },\n        \"outletSnapshot\": {\n          \"uniqueId\": \"SB-PMFX-A\",\n          \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n          \"state\": \"madhya pradesh\"\n        },\n        \"billAmount\": 1000,\n        \"offerApplied\": true,\n        \"pricing\": {\n          \"billAmount\": 1000,\n          \"offerTitle\": \"30% off above 500\",\n          \"offerDiscount\": 300,\n          \"promoDiscount\": 0,\n          \"netBill\": 700,\n          \"totalPayable\": 710,\n          \"youSaved\": 300,\n          \"vendorPayable\": 700\n        },\n        \"status\": \"PAID\",\n        \"claimCode\": \"TD-CDV44Q\",\n        \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n        \"transactionId\": \"6aa6ddbc6fd8c36058cfc8b2\",\n        \"brand\": {\n          \"_id\": \"{{brand_id}}\",\n          \"brandName\": \"postman cafe mocha\",\n          \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n          \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n          \"subscriptionPlan\": \"postman seed pro\"\n        }\n      }\n    ]\n  }\n}"
             }
           ],
           "event": [
@@ -13338,7 +13859,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"message\": \"Payment details fetched successfully.\",\n  \"data\": {\n    \"payment\": {\n      \"_id\": \"{{claim_transaction_id}}\",\n      \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n      \"status\": \"captured\",\n      \"amount\": 640,\n      \"currency\": \"INR\",\n      \"verified\": true,\n      \"verifiedAt\": \"2026-08-27T10:00:00.000Z\",\n      \"razorpayOrderId\": \"order_PMFXx-245\",\n      \"razorpayPaymentId\": \"pay_PMFXx-245\",\n      \"invoiceId\": \"TD/2026/PMFX/0005\",\n      \"brandId\": \"{{brand_id}}\",\n      \"subBrandId\": \"{{sub_brand_id}}\",\n      \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n      \"voucher\": {\n        \"claimId\": \"{{claim_id}}\",\n        \"billAmount\": 900,\n        \"offerDiscount\": 270,\n        \"netBill\": 630,\n        \"vendorPayable\": 630,\n        \"vendorPromoCost\": 0,\n        \"commissionAmount\": 0\n      },\n      \"settlementId\": \"{{settlement_id}}\",\n      \"settlementHold\": false\n    },\n    \"claim\": {\n      \"_id\": \"{{claim_id}}\",\n      \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n      \"claimCode\": \"{{claim_code}}\",\n      \"status\": \"PAID\",\n      \"billAmount\": 900,\n      \"offerApplied\": true,\n      \"brandId\": \"{{brand_id}}\",\n      \"subBrandId\": \"{{sub_brand_id}}\",\n      \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n      \"transactionId\": \"{{claim_transaction_id}}\",\n      \"voucherSnapshot\": {\n        \"name\": \"flat 30% off on total bill\"\n      },\n      \"brandSnapshot\": {\n        \"name\": \"postman cafe mocha\"\n      },\n      \"outletSnapshot\": {\n        \"uniqueId\": \"SB-PMFX-A\",\n        \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n        \"state\": \"madhya pradesh\"\n      },\n      \"pricing\": {\n        \"billAmount\": 900,\n        \"offerDiscount\": 270,\n        \"promoDiscount\": 0,\n        \"totalPayable\": 640,\n        \"youSaved\": 270,\n        \"offerTitle\": \"30% off above 500\",\n        \"netBill\": 630,\n        \"vendorPayable\": 630\n      }\n    },\n    \"brand\": {\n      \"_id\": \"{{brand_id}}\",\n      \"brandName\": \"postman cafe mocha\",\n      \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n      \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n      \"subscriptionPlan\": \"postman seed pro\"\n    },\n    \"outlet\": {\n      \"_id\": \"{{sub_brand_id}}\",\n      \"uniqueId\": \"SB-PMFX-A\",\n      \"storeId\": \"TS-GAWE-7VQ3-H4LY\"\n    },\n    \"viewer\": {\n      \"role\": \"VENDOR\",\n      \"scope\": \"BRAND\",\n      \"canSeePlatformCosts\": false,\n      \"canSeeCustomerContact\": false\n    }\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"message\": \"Payment details fetched successfully.\",\n  \"data\": {\n    \"payment\": {\n      \"_id\": \"{{claim_transaction_id}}\",\n      \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n      \"status\": \"captured\",\n      \"amount\": 640,\n      \"currency\": \"INR\",\n      \"verified\": true,\n      \"verifiedAt\": \"2026-08-27T10:00:00.000Z\",\n      \"razorpayOrderId\": \"order_PMFXx-245\",\n      \"razorpayPaymentId\": \"pay_PMFXx-245\",\n      \"invoiceId\": \"TD/2026/PMFX/0005\",\n      \"brandId\": \"{{brand_id}}\",\n      \"subBrandId\": \"{{sub_brand_id}}\",\n      \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n      \"voucher\": {\n        \"claimId\": \"{{claim_id}}\",\n        \"billAmount\": 900,\n        \"offerDiscount\": 270,\n        \"netBill\": 630,\n        \"vendorPayable\": 630,\n        \"vendorPromoCost\": 0,\n        \"commissionAmount\": 0\n      },\n      \"settlementId\": \"{{settlement_id}}\",\n      \"settlementHold\": false\n    },\n    \"claim\": {\n      \"_id\": \"{{claim_id}}\",\n      \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n      \"claimCode\": \"{{claim_code}}\",\n      \"status\": \"PAID\",\n      \"billAmount\": 900,\n      \"offerApplied\": true,\n      \"brandId\": \"{{brand_id}}\",\n      \"subBrandId\": \"{{sub_brand_id}}\",\n      \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n      \"transactionId\": \"{{claim_transaction_id}}\",\n      \"voucherSnapshot\": {\n        \"name\": \"flat 30% off on total bill\",\n        \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n        \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n        \"bannerType\": \"IMAGE\",\n        \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n      },\n      \"brandSnapshot\": {\n        \"name\": \"postman cafe mocha\"\n      },\n      \"outletSnapshot\": {\n        \"uniqueId\": \"SB-PMFX-A\",\n        \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n        \"state\": \"madhya pradesh\"\n      },\n      \"pricing\": {\n        \"billAmount\": 900,\n        \"offerDiscount\": 270,\n        \"promoDiscount\": 0,\n        \"totalPayable\": 640,\n        \"youSaved\": 270,\n        \"offerTitle\": \"30% off above 500\",\n        \"netBill\": 630,\n        \"vendorPayable\": 630\n      }\n    },\n    \"brand\": {\n      \"_id\": \"{{brand_id}}\",\n      \"brandName\": \"postman cafe mocha\",\n      \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n      \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n      \"subscriptionPlan\": \"postman seed pro\"\n    },\n    \"outlet\": {\n      \"_id\": \"{{sub_brand_id}}\",\n      \"uniqueId\": \"SB-PMFX-A\",\n      \"storeId\": \"TS-GAWE-7VQ3-H4LY\"\n    },\n    \"viewer\": {\n      \"role\": \"VENDOR\",\n      \"scope\": \"BRAND\",\n      \"canSeePlatformCosts\": false,\n      \"canSeeCustomerContact\": false\n    }\n  }\n}"
             },
             {
               "name": "404 · Subscription payment ko claim detail se kholna — 404",
@@ -13509,7 +14030,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"message\": \"Claim details fetched successfully.\",\n  \"data\": {\n    \"claim\": {\n      \"_id\": \"{{claim_id}}\",\n      \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n      \"claimCode\": \"{{claim_code}}\",\n      \"status\": \"PAID\",\n      \"billAmount\": 900,\n      \"offerApplied\": true,\n      \"brandId\": \"{{brand_id}}\",\n      \"subBrandId\": \"{{sub_brand_id}}\",\n      \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n      \"transactionId\": \"{{claim_transaction_id}}\",\n      \"voucherSnapshot\": {\n        \"name\": \"flat 30% off on total bill\"\n      },\n      \"brandSnapshot\": {\n        \"name\": \"postman cafe mocha\"\n      },\n      \"outletSnapshot\": {\n        \"uniqueId\": \"SB-PMFX-A\",\n        \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n        \"state\": \"madhya pradesh\"\n      },\n      \"pricing\": {\n        \"billAmount\": 900,\n        \"offerDiscount\": 270,\n        \"promoDiscount\": 0,\n        \"totalPayable\": 640,\n        \"youSaved\": 270,\n        \"offerTitle\": \"30% off above 500\",\n        \"netBill\": 630,\n        \"vendorPayable\": 630\n      }\n    },\n    \"payment\": {\n      \"_id\": \"{{claim_transaction_id}}\",\n      \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n      \"status\": \"captured\",\n      \"amount\": 640,\n      \"currency\": \"INR\",\n      \"verified\": true,\n      \"verifiedAt\": \"2026-08-27T10:00:00.000Z\",\n      \"razorpayOrderId\": \"order_PMFXx-245\",\n      \"razorpayPaymentId\": \"pay_PMFXx-245\",\n      \"invoiceId\": \"TD/2026/PMFX/0005\",\n      \"brandId\": \"{{brand_id}}\",\n      \"subBrandId\": \"{{sub_brand_id}}\",\n      \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n      \"voucher\": {\n        \"claimId\": \"{{claim_id}}\",\n        \"billAmount\": 900,\n        \"offerDiscount\": 270,\n        \"netBill\": 630,\n        \"vendorPayable\": 630,\n        \"vendorPromoCost\": 0,\n        \"commissionAmount\": 0\n      },\n      \"settlementId\": \"{{settlement_id}}\",\n      \"settlementHold\": false\n    },\n    \"brand\": {\n      \"_id\": \"{{brand_id}}\",\n      \"brandName\": \"postman cafe mocha\",\n      \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n      \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n      \"subscriptionPlan\": \"postman seed pro\"\n    },\n    \"outlet\": {\n      \"_id\": \"{{sub_brand_id}}\",\n      \"uniqueId\": \"SB-PMFX-A\",\n      \"storeId\": \"TS-GAWE-7VQ3-H4LY\"\n    },\n    \"timeline\": [],\n    \"viewer\": {\n      \"role\": \"VENDOR\",\n      \"scope\": \"BRAND\",\n      \"canSeePlatformCosts\": false,\n      \"canSeeCustomerContact\": false\n    }\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"message\": \"Claim details fetched successfully.\",\n  \"data\": {\n    \"claim\": {\n      \"_id\": \"{{claim_id}}\",\n      \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n      \"claimCode\": \"{{claim_code}}\",\n      \"status\": \"PAID\",\n      \"billAmount\": 900,\n      \"offerApplied\": true,\n      \"brandId\": \"{{brand_id}}\",\n      \"subBrandId\": \"{{sub_brand_id}}\",\n      \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n      \"transactionId\": \"{{claim_transaction_id}}\",\n      \"voucherSnapshot\": {\n        \"name\": \"flat 30% off on total bill\",\n        \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n        \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n        \"bannerType\": \"IMAGE\",\n        \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n      },\n      \"brandSnapshot\": {\n        \"name\": \"postman cafe mocha\"\n      },\n      \"outletSnapshot\": {\n        \"uniqueId\": \"SB-PMFX-A\",\n        \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n        \"state\": \"madhya pradesh\"\n      },\n      \"pricing\": {\n        \"billAmount\": 900,\n        \"offerDiscount\": 270,\n        \"promoDiscount\": 0,\n        \"totalPayable\": 640,\n        \"youSaved\": 270,\n        \"offerTitle\": \"30% off above 500\",\n        \"netBill\": 630,\n        \"vendorPayable\": 630\n      }\n    },\n    \"payment\": {\n      \"_id\": \"{{claim_transaction_id}}\",\n      \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n      \"status\": \"captured\",\n      \"amount\": 640,\n      \"currency\": \"INR\",\n      \"verified\": true,\n      \"verifiedAt\": \"2026-08-27T10:00:00.000Z\",\n      \"razorpayOrderId\": \"order_PMFXx-245\",\n      \"razorpayPaymentId\": \"pay_PMFXx-245\",\n      \"invoiceId\": \"TD/2026/PMFX/0005\",\n      \"brandId\": \"{{brand_id}}\",\n      \"subBrandId\": \"{{sub_brand_id}}\",\n      \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n      \"voucher\": {\n        \"claimId\": \"{{claim_id}}\",\n        \"billAmount\": 900,\n        \"offerDiscount\": 270,\n        \"netBill\": 630,\n        \"vendorPayable\": 630,\n        \"vendorPromoCost\": 0,\n        \"commissionAmount\": 0\n      },\n      \"settlementId\": \"{{settlement_id}}\",\n      \"settlementHold\": false\n    },\n    \"brand\": {\n      \"_id\": \"{{brand_id}}\",\n      \"brandName\": \"postman cafe mocha\",\n      \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n      \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n      \"subscriptionPlan\": \"postman seed pro\"\n    },\n    \"outlet\": {\n      \"_id\": \"{{sub_brand_id}}\",\n      \"uniqueId\": \"SB-PMFX-A\",\n      \"storeId\": \"TS-GAWE-7VQ3-H4LY\"\n    },\n    \"timeline\": [],\n    \"viewer\": {\n      \"role\": \"VENDOR\",\n      \"scope\": \"BRAND\",\n      \"canSeePlatformCosts\": false,\n      \"canSeeCustomerContact\": false\n    }\n  }\n}"
             }
           ],
           "event": [
@@ -13618,7 +14139,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"message\": \"Claim details fetched successfully.\",\n  \"data\": {\n    \"claim\": {\n      \"_id\": \"{{claim_id}}\",\n      \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n      \"claimCode\": \"{{claim_code}}\",\n      \"status\": \"PAID\",\n      \"billAmount\": 900,\n      \"offerApplied\": true,\n      \"brandId\": \"{{brand_id}}\",\n      \"subBrandId\": \"{{sub_brand_id}}\",\n      \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n      \"transactionId\": \"{{claim_transaction_id}}\",\n      \"voucherSnapshot\": {\n        \"name\": \"flat 30% off on total bill\"\n      },\n      \"brandSnapshot\": {\n        \"name\": \"postman cafe mocha\"\n      },\n      \"outletSnapshot\": {\n        \"uniqueId\": \"SB-PMFX-A\",\n        \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n        \"state\": \"madhya pradesh\"\n      },\n      \"pricing\": {\n        \"billAmount\": 900,\n        \"offerDiscount\": 270,\n        \"promoDiscount\": 0,\n        \"totalPayable\": 640,\n        \"youSaved\": 270,\n        \"offerTitle\": \"30% off above 500\",\n        \"netBill\": 630,\n        \"vendorPayable\": 630\n      }\n    },\n    \"payment\": {\n      \"_id\": \"{{claim_transaction_id}}\",\n      \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n      \"status\": \"captured\",\n      \"amount\": 640,\n      \"currency\": \"INR\",\n      \"verified\": true,\n      \"verifiedAt\": \"2026-08-27T10:00:00.000Z\",\n      \"razorpayOrderId\": \"order_PMFXx-245\",\n      \"razorpayPaymentId\": \"pay_PMFXx-245\",\n      \"invoiceId\": \"TD/2026/PMFX/0005\",\n      \"brandId\": \"{{brand_id}}\",\n      \"subBrandId\": \"{{sub_brand_id}}\",\n      \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n      \"voucher\": {\n        \"claimId\": \"{{claim_id}}\",\n        \"billAmount\": 900,\n        \"offerDiscount\": 270,\n        \"netBill\": 630,\n        \"vendorPayable\": 630,\n        \"vendorPromoCost\": 0,\n        \"commissionAmount\": 0\n      },\n      \"settlementId\": \"{{settlement_id}}\",\n      \"settlementHold\": false\n    },\n    \"brand\": {\n      \"_id\": \"{{brand_id}}\",\n      \"brandName\": \"postman cafe mocha\",\n      \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n      \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n      \"subscriptionPlan\": \"postman seed pro\"\n    },\n    \"outlet\": {\n      \"_id\": \"{{sub_brand_id}}\",\n      \"uniqueId\": \"SB-PMFX-A\",\n      \"storeId\": \"TS-GAWE-7VQ3-H4LY\"\n    },\n    \"timeline\": [],\n    \"viewer\": {\n      \"role\": \"VENDOR\",\n      \"scope\": \"BRAND\",\n      \"canSeePlatformCosts\": false,\n      \"canSeeCustomerContact\": false\n    }\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"message\": \"Claim details fetched successfully.\",\n  \"data\": {\n    \"claim\": {\n      \"_id\": \"{{claim_id}}\",\n      \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n      \"claimCode\": \"{{claim_code}}\",\n      \"status\": \"PAID\",\n      \"billAmount\": 900,\n      \"offerApplied\": true,\n      \"brandId\": \"{{brand_id}}\",\n      \"subBrandId\": \"{{sub_brand_id}}\",\n      \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n      \"transactionId\": \"{{claim_transaction_id}}\",\n      \"voucherSnapshot\": {\n        \"name\": \"flat 30% off on total bill\",\n        \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n        \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n        \"bannerType\": \"IMAGE\",\n        \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n      },\n      \"brandSnapshot\": {\n        \"name\": \"postman cafe mocha\"\n      },\n      \"outletSnapshot\": {\n        \"uniqueId\": \"SB-PMFX-A\",\n        \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n        \"state\": \"madhya pradesh\"\n      },\n      \"pricing\": {\n        \"billAmount\": 900,\n        \"offerDiscount\": 270,\n        \"promoDiscount\": 0,\n        \"totalPayable\": 640,\n        \"youSaved\": 270,\n        \"offerTitle\": \"30% off above 500\",\n        \"netBill\": 630,\n        \"vendorPayable\": 630\n      }\n    },\n    \"payment\": {\n      \"_id\": \"{{claim_transaction_id}}\",\n      \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n      \"status\": \"captured\",\n      \"amount\": 640,\n      \"currency\": \"INR\",\n      \"verified\": true,\n      \"verifiedAt\": \"2026-08-27T10:00:00.000Z\",\n      \"razorpayOrderId\": \"order_PMFXx-245\",\n      \"razorpayPaymentId\": \"pay_PMFXx-245\",\n      \"invoiceId\": \"TD/2026/PMFX/0005\",\n      \"brandId\": \"{{brand_id}}\",\n      \"subBrandId\": \"{{sub_brand_id}}\",\n      \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n      \"voucher\": {\n        \"claimId\": \"{{claim_id}}\",\n        \"billAmount\": 900,\n        \"offerDiscount\": 270,\n        \"netBill\": 630,\n        \"vendorPayable\": 630,\n        \"vendorPromoCost\": 0,\n        \"commissionAmount\": 0\n      },\n      \"settlementId\": \"{{settlement_id}}\",\n      \"settlementHold\": false\n    },\n    \"brand\": {\n      \"_id\": \"{{brand_id}}\",\n      \"brandName\": \"postman cafe mocha\",\n      \"merchantId\": \"TM-QRTA-UK4Q-PZFU\",\n      \"logo\": \"https://res.cloudinary.com/demo/image/upload/sample.jpg\",\n      \"subscriptionPlan\": \"postman seed pro\"\n    },\n    \"outlet\": {\n      \"_id\": \"{{sub_brand_id}}\",\n      \"uniqueId\": \"SB-PMFX-A\",\n      \"storeId\": \"TS-GAWE-7VQ3-H4LY\"\n    },\n    \"timeline\": [],\n    \"viewer\": {\n      \"role\": \"VENDOR\",\n      \"scope\": \"BRAND\",\n      \"canSeePlatformCosts\": false,\n      \"canSeeCustomerContact\": false\n    }\n  }\n}"
             },
             {
               "name": "403 · Dusre brand ki claim — 403",
@@ -14587,7 +15108,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"message\": \"Refund details fetched successfully.\",\n  \"data\": {\n    \"refund\": {\n      \"_id\": \"{{refund_request_id}}\",\n      \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n      \"updatedAt\": \"2026-08-27T10:00:00.000Z\",\n      \"status\": \"VENDOR_APPROVED\",\n      \"isOpen\": true,\n      \"claimId\": \"6aa6ddc36fd8c36058cfc8d0\",\n      \"transactionId\": \"6aa6ddc36fd8c36058cfc8d1\",\n      \"brandId\": \"{{brand_id}}\",\n      \"requestedAmount\": 400,\n      \"approvedAmount\": 400,\n      \"reason\": \"OTHER\",\n      \"method\": \"SOURCE\",\n      \"reasonNote\": \"Seeded for the vendor approve example.\",\n      \"vendorDecisionAt\": \"2026-08-27T10:00:00.000Z\",\n      \"vendorNote\": \"Only the starter was wrong.\",\n      \"split\": {\n        \"vendorClawback\": 400,\n        \"vendorPromoReversal\": 0,\n        \"isFullRefund\": false\n      },\n      \"statusLabel\": \"Approved by the outlet\",\n      \"canDecide\": false,\n      \"canWithdraw\": false\n    },\n    \"claim\": {\n      \"_id\": \"6aa6ddc36fd8c36058cfc8d0\",\n      \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n      \"claimCode\": \"TD-T7DJPM\",\n      \"status\": \"PAID\",\n      \"billAmount\": 900,\n      \"offerApplied\": true,\n      \"brandId\": \"{{brand_id}}\",\n      \"subBrandId\": \"{{sub_brand_id}}\",\n      \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n      \"transactionId\": \"6aa6ddc36fd8c36058cfc8d1\",\n      \"voucherSnapshot\": {\n        \"name\": \"flat 30% off on total bill\"\n      },\n      \"brandSnapshot\": {\n        \"name\": \"postman cafe mocha\"\n      },\n      \"outletSnapshot\": {\n        \"uniqueId\": \"SB-PMFX-A\",\n        \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n        \"state\": \"madhya pradesh\"\n      },\n      \"pricing\": {\n        \"billAmount\": 900,\n        \"offerDiscount\": 150,\n        \"promoDiscount\": 0,\n        \"totalPayable\": 760,\n        \"youSaved\": 150,\n        \"offerTitle\": \"flat 150 off above 800\",\n        \"netBill\": 750,\n        \"vendorPayable\": 750\n      }\n    },\n    \"timeline\": [\n      {\n        \"_id\": \"6aa6de3c068fefd7a4138d56\",\n        \"at\": \"2026-08-27T10:00:00.000Z\",\n        \"action\": \"REFUND_APPROVED\",\n        \"label\": \"Refund approved\",\n        \"by\": \"VENDOR\",\n        \"amount\": 400\n      }\n    ],\n    \"viewer\": {\n      \"role\": \"VENDOR\",\n      \"scope\": \"BRAND\"\n    }\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"message\": \"Refund details fetched successfully.\",\n  \"data\": {\n    \"refund\": {\n      \"_id\": \"{{refund_request_id}}\",\n      \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n      \"updatedAt\": \"2026-08-27T10:00:00.000Z\",\n      \"status\": \"VENDOR_APPROVED\",\n      \"isOpen\": true,\n      \"claimId\": \"6aa6ddc36fd8c36058cfc8d0\",\n      \"transactionId\": \"6aa6ddc36fd8c36058cfc8d1\",\n      \"brandId\": \"{{brand_id}}\",\n      \"requestedAmount\": 400,\n      \"approvedAmount\": 400,\n      \"reason\": \"OTHER\",\n      \"method\": \"SOURCE\",\n      \"reasonNote\": \"Seeded for the vendor approve example.\",\n      \"vendorDecisionAt\": \"2026-08-27T10:00:00.000Z\",\n      \"vendorNote\": \"Only the starter was wrong.\",\n      \"split\": {\n        \"vendorClawback\": 400,\n        \"vendorPromoReversal\": 0,\n        \"isFullRefund\": false\n      },\n      \"statusLabel\": \"Approved by the outlet\",\n      \"canDecide\": false,\n      \"canWithdraw\": false\n    },\n    \"claim\": {\n      \"_id\": \"6aa6ddc36fd8c36058cfc8d0\",\n      \"createdAt\": \"2026-08-27T10:00:00.000Z\",\n      \"claimCode\": \"TD-T7DJPM\",\n      \"status\": \"PAID\",\n      \"billAmount\": 900,\n      \"offerApplied\": true,\n      \"brandId\": \"{{brand_id}}\",\n      \"subBrandId\": \"{{sub_brand_id}}\",\n      \"voucherId\": \"6aa6ddb46fd8c36058cfc889\",\n      \"transactionId\": \"6aa6ddc36fd8c36058cfc8d1\",\n      \"voucherSnapshot\": {\n        \"name\": \"flat 30% off on total bill\",\n        \"bannerUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n        \"bannerThumbnail\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg\",\n        \"bannerType\": \"IMAGE\",\n        \"imageUrl\": \"https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/first-451.jpg\"\n      },\n      \"brandSnapshot\": {\n        \"name\": \"postman cafe mocha\"\n      },\n      \"outletSnapshot\": {\n        \"uniqueId\": \"SB-PMFX-A\",\n        \"storeId\": \"TS-GAWE-7VQ3-H4LY\",\n        \"state\": \"madhya pradesh\"\n      },\n      \"pricing\": {\n        \"billAmount\": 900,\n        \"offerDiscount\": 150,\n        \"promoDiscount\": 0,\n        \"totalPayable\": 760,\n        \"youSaved\": 150,\n        \"offerTitle\": \"flat 150 off above 800\",\n        \"netBill\": 750,\n        \"vendorPayable\": 750\n      }\n    },\n    \"timeline\": [\n      {\n        \"_id\": \"6aa6de3c068fefd7a4138d56\",\n        \"at\": \"2026-08-27T10:00:00.000Z\",\n        \"action\": \"REFUND_APPROVED\",\n        \"label\": \"Refund approved\",\n        \"by\": \"VENDOR\",\n        \"amount\": 400\n      }\n    ],\n    \"viewer\": {\n      \"role\": \"VENDOR\",\n      \"scope\": \"BRAND\"\n    }\n  }\n}"
             }
           ],
           "event": [
@@ -19250,6 +19771,380 @@
                   ""
                 ]
               }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "12 — Uploads",
+      "description": "🆕 Presigned direct-to-S3 (U-1). Do chhote JSON request — file in dono me se kisi me nahi jaati, wo seedha S3 par jaati hai.\n\n⚠️ Ye endpoints `verifyJwtToken` par hain, kisi role par nahi: vendor voucher images bhejta hai, customer avatar, admin category picture. Kya bheja ja sakta hai wo **purpose** tay karta hai — uska bucket, uske allowed kinds, uska size cap — caller ka role nahi.",
+      "item": [
+        {
+          "name": "Ijazat maango (presign) ⭐",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purpose\": \"CATEGORY_IMAGE\",\n  \"contentType\": \"image/png\",\n  \"sizeBytes\": 184320,\n  \"fileName\": \"cover.png\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/uploads/presign",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "uploads",
+                "presign"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** koi bhi signed-in caller\n\n🆕 File seedha S3 par bhejne ki **ijazat** maangta hai — file is server tak aati hi nahi.\n\n🔴 **Iske baad kya karna hai:** `url` par ek multipart POST bhejiye, jisme `fields` ke **saare field pehle** aur **file sabse aakhir me** ho. S3 file part ke baad kuch nahi padhta, to baad me bheja gaya field laga hi nahi. S3 seedha `204` deta hai, koi body nahi.\n\n```js\nconst form = new FormData();\nObject.entries(data.fields).forEach(([k, v]) => form.append(k, v));\nform.append(\"file\", file);   // sabse aakhir me\nawait fetch(data.url, { method: \"POST\", body: form });\n```\n\n⚠️ `sizeBytes` sirf ek **padhne-layak 413** deta hai. Asli limit signed policy me hai — size chhota bata kar bada file bhejna S3 par hi ruk jayega.\n\n🔴 **Wo limit ab admin ki hai (U-3).** Ek hi number teen se banta hai: code ka ceiling, `Setting.storage.limits`, aur surface ka apna override — sabse chhota jeetta hai. Pehle policy me code ka constant jaata tha, yaani admin ka number is raaste par lagta hi nahi tha.\n\nPhir `/uploads/confirm`."
+          },
+          "response": [
+            {
+              "name": "200 · Ijazat maango (presign)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/uploads/presign",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "uploads",
+                    "presign"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Upload authorised.\",\n  \"data\": {\n    \"uploadId\": \"68f1a2b3c4d5e6f7a8b9e001\",\n    \"url\": \"https://trydood-nonprod-public.s3.ap-south-1.amazonaws.com/\",\n    \"fields\": {\n      \"key\": \"staging/68f1a2b3c4d5e6f7a8b9c0a1/9f2c6d1e-4b7a-4c2f-9a3d-7e5b1c8f2a4d.png\",\n      \"Content-Type\": \"image/png\",\n      \"bucket\": \"trydood-nonprod-public\",\n      \"Policy\": \"eyJleHBpcmF0aW9uIjoiMjAyNi0wOS0xOFQxMDozMDowMFoiLCJ…\",\n      \"X-Amz-Signature\": \"8f2c1d4b7a9e3f5c2d8b1a6e4f7c9d2b5a8e1f4c7d0b3a6e\"\n    },\n    \"expiresInSeconds\": 900,\n    \"stagingKey\": \"staging/68f1a2b3c4d5e6f7a8b9c0a1/9f2c6d1e-4b7a-4c2f-9a3d-7e5b1c8f2a4d.png\",\n    \"typePrefix\": \"images\"\n  }\n}"
+            },
+            {
+              "name": "413 · Ijazat maango (presign)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/uploads/presign",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "uploads",
+                    "presign"
+                  ]
+                }
+              },
+              "status": "Payload Too Large",
+              "code": 413,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"That file is 12 MB. The limit here is 5 MB.\"\n}"
+            },
+            {
+              "name": "422 · Ijazat maango (presign)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/uploads/presign",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "uploads",
+                    "presign"
+                  ]
+                }
+              },
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"CATEGORY_IMAGE does not accept video/mp4.\"\n}"
+            },
+            {
+              "name": "503 · Ijazat maango (presign) ⭐",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/uploads/presign",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "uploads",
+                    "presign"
+                  ]
+                }
+              },
+              "status": "Service Unavailable",
+              "code": 503,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Presigned upload is turned off for this platform. Turn it on in Admin → Settings → Storage, or send the file directly as a multipart field on the same request.\"\n}"
+            },
+            {
+              "name": "409 · Ijazat maango (presign) ⭐",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/uploads/presign",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "uploads",
+                    "presign"
+                  ]
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Presigned upload only works on S3, and this platform is set to CLOUDINARY. Either switch Admin → Settings → Storage → provider to AWS_S3, or turn presigned upload off so every file takes the same road.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Upload confirm karo ⭐",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"uploadId\": \"68f1a2b3c4d5e6f7a8b9e001\",\n  \"entityId\": \"68f1a2b3c4d5e6f7a8b9c101\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/uploads/confirm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "uploads",
+                "confirm"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{vendor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "**Access:** koi bhi signed-in caller\n\n🔴 **Yahi ek jagah hai jahan file ki asli pehchaan hoti hai.** Is se pehle har check us `Content-Type` par tha jo client ne chuna. Yahan object ke apne pehle bytes padhe jaate hain, aur stored type unse aata hai — PNG ke naam par bheja gaya GIF `gifs/` me landta hai, theek us resize step se bahar jo uski animation khatam kar deta.\n\n`entityId` optional hai: logo ko apna brand pehle se pata hota hai, par voucher image us version ki hoti hai jo abhi bani hi nahi. Na ho to key me ek segment kam.\n\n⚠️ **Kisi aur ka `uploadId` `404` deta hai, `403` nahi** — jo id maujood hai uske baare me \"ye aapki nahi\" keh dena, ye bata dena hai ki wo id asli hai.\n\n⚠️ **Ek upload ek hi baar.** Warna ek hi file do rows par lag jaati, aur doosri wo file rakhti jiske liye usne kuch diya hi nahi.\n\n🔴 **Asli size bhi yahin naapa jaata hai, aur `413` de sakta hai.** Signature ek baar likhi jaati hai aur 15 minute chalti hai; admin us beech limit ghata sakta hai aur aapke haath ki signature nahi badalti. Reject hui file wahin delete ho jaati hai.\n\n⚠️ Limit **verified kind** ki hoti hai, declared ki nahi. GIF ka apna bada ceiling hai, to PNG ko `image/gif` bata kar bhejna warna GIF ka allowance muft me de deta."
+          },
+          "response": [
+            {
+              "name": "200 · Upload confirm karo",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/uploads/confirm",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "uploads",
+                    "confirm"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Upload confirmed.\",\n  \"data\": {\n    \"storage\": {\n      \"provider\": \"AWS_S3\",\n      \"publicId\": null,\n      \"bucket\": \"trydood-nonprod-public\",\n      \"key\": \"images/categories/68f1a2b3c4d5e6f7a8b9c101/9f2c6d1e-4b7a-4c2f-9a3d-7e5b1c8f2a4d.png\"\n    },\n    \"metadata\": {\n      \"contentType\": \"image/png\",\n      \"kind\": \"IMAGE\",\n      \"sizeBytes\": 184320,\n      \"width\": 1200,\n      \"height\": 800\n    }\n  }\n}"
+            },
+            {
+              "name": "409 · Upload confirm karo",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/uploads/confirm",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "uploads",
+                    "confirm"
+                  ]
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"That upload has already been used.\"\n}"
+            },
+            {
+              "name": "400 · Upload confirm karo",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "http://localhost:8080/trydood/v1/uploads/confirm",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "trydood",
+                    "v1",
+                    "uploads",
+                    "confirm"
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"That file was never uploaded, or has already expired.\"\n}"
             }
           ]
         }

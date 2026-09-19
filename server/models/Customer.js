@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { mediaSchema } = require("./mediaSchema");
 const { userField, locationField } = require("./validObjectId");
 const { emailField, mobileField, whatsappField } = require("./contactFields");
 
@@ -13,7 +14,20 @@ const customerSchema = new mongoose.Schema(
     email: emailField,
     mobile: mobileField,
     whatsappNumber: whatsappField,
+    /**
+     * The customer's own profile photo.
+     *
+     * ⚠️ **This is where a customer's picture lives**, not `User.image`. The two
+     * used to hold the same thing — the upload wrote `User.image` and then
+     * copied it here — which is the "two copies, one field" problem this file's
+     * email comment already warns about, and the same way those two came to
+     * disagree.
+     *
+     * For every other role the picture stays on `User`. A vendor has no
+     * `Customer` row to put one on.
+     */
     image: { type: String },
+    imageMedia: { type: mediaSchema, default: undefined },
     uniqueId: { type: String, required: true, unique: true },
     isSignUpCompleted: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },

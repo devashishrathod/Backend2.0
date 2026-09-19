@@ -57,14 +57,26 @@ exports.upsertLocation = async (tokenUserId, payload) => {
     addressLine1,
     addressLine2,
     landmark,
-    city: city?.toLowerCase(),
-    district: district?.toLowerCase(),
+    city,
+    district,
     zipcode,
-    state: state?.toLowerCase(),
-    country: country?.toLowerCase(),
+    state,
+    country,
     formattedAddress:
       formattedAddress ||
-      `${addressLine1?.toLowerCase()}, ${addressLine2?.toLowerCase()}, ${landmark?.toLowerCase()}, ${city?.toLowerCase()}, ${district?.toLowerCase()}, ${state?.toLowerCase()}, ${zipcode}, ${country?.toLowerCase()}`.trim(),
+      [
+        addressLine1,
+        addressLine2,
+        landmark,
+        city,
+        district,
+        state,
+        zipcode,
+        country,
+      ]
+        .filter(Boolean)
+        .map((value) => String(value))
+        .join(", "),
     geo: { type: "Point", coordinates },
     addressType,
     isDefault,

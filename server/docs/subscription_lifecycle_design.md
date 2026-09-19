@@ -441,6 +441,15 @@ it** — the expiry job frees slots in the background — which is why
 `expireVouchers` and `reviewVoucher` both recount, and why `expireVouchers` now
 also expires the master `Voucher` document and not just its version.
 
+> 🔴 **This paragraph described an intention, not the behaviour, until V-5.** The
+> master sweep selected by `{ status: {...}, endAt: { $lte: now } }` and **the
+> `Voucher` model has no `endAt` field** — verified on stage, 0 of 18 vouchers
+> carry one. So it matched nothing on every run, masters never expired, and
+> because the brand list was built from those same rows `recountBrandUsage` was
+> never reached from the job at all. **No voucher has ever released its slot by
+> expiring.** The sweep now derives the masters from the versions it just
+> expired, and retires one only when nothing of that voucher is left in play.
+
 **Banners and promotional tickers are deliberately not gated**: neither model has
 a `brandId`, so they are platform-wide admin content, not a per-vendor feature.
 

@@ -88,7 +88,10 @@ const scopeToActor = async (actor, match, requestedBrandId) => {
     return match;
   }
 
-  throwError(403, "Forbidden: You do not have permission to perform this action.");
+  throwError(
+    403,
+    "Forbidden: You do not have permission to perform this action.",
+  );
 };
 
 /**
@@ -135,11 +138,11 @@ exports.getAllLocations = async (actor, query) => {
     match.isSubBrandAddress = isSubBrandAddress;
   }
   if (isDefault !== undefined) match.isDefault = isDefault;
-  if (city) match.city = city?.toLowerCase();
-  if (district) match.district = district?.toLowerCase();
-  if (state) match.state = state?.toLowerCase();
-  if (zipcode) match.zipcode = zipcode?.toLowerCase();
-  if (country) match.country = country?.toLowerCase();
+  if (city) match.city = city;
+  if (district) match.district = district;
+  if (state) match.state = state;
+  if (zipcode) match.zipcode = zipcode;
+  if (country) match.country = country;
   if (userId) {
     validateObjectId(userId, "User Id");
     match.userId = new mongoose.Types.ObjectId(userId);

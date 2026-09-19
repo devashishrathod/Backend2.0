@@ -380,7 +380,33 @@ const EMPTY_REFERRALS = {
   referred: [],
 };
 
-const referralGraph = async (account, limit) => {
+/**
+ * Put each referral card's photo back on it.
+ *
+ * ⚠️ A customer's picture lives on their `Customer` row, not on `User` — so a
+ * `User.select("... image ...")` returns nothing for exactly the people this
+ * screen is about. Referral cards are almost always customers.
+ *
+ * One query for the whole page rather than one per card, because this is a
+ * fraud screen and the list can be long.
+ */
+exports.withCustomerImages = async (cards) => {
+  const rows = cards.filter(Boolean);
+  if (!rows.length) return;
+
+  const customers = await Customer.find(
+    { userId: { $in: rows.map((row) => row._id) }, isDeleted: false },
+    { userId: 1, image: 1 },
+  ).lean();
+
+  const byUser = new Map(customers.map((c) => [String(c.userId), c.image]));
+  for (const row of rows) {
+    // A vendor or admin in this list keeps whatever `User.image` gave them.
+    row.image = byUser.get(String(row._id)) ?? row.image ?? null;
+  }
+};
+
+exports.referralGraph = async (account, limit) => {
   // A customer with no account at all — the residue of a half-finished signup —
   // still gets every key. Returning a shorter object here would make the two
   // fields that went missing the only ones on the whole response a reader has to
@@ -414,6 +440,9 @@ const referralGraph = async (account, limit) => {
         })
       : 0,
   ]);
+
+  // The photo comes from `Customer`, so it has to be attached after the fetch.
+  await exports.withCustomerImages([referredBy, ...referred]);
 
   return {
     referralCode: account.referralCode || null,
@@ -562,7 +591,7 @@ exports.getAdminCustomerDetail = async (key, query = {}) => {
       status: PROMO_USAGE_STATUS.CONSUMED,
     }),
     refundAllowance(customerId, refundConfig),
-    referralGraph(account, limit),
+    exports.referralGraph(account, limit),
   ]);
 
   return {

@@ -1,4 +1,5 @@
 const Joi = require("joi");
+const objectId = require("./validJoiObjectId");
 
 exports.validateCreateCategory = (data) => {
   const createSchema = Joi.object({
@@ -8,6 +9,17 @@ exports.validateCreateCategory = (data) => {
     }),
     description: Joi.string().allow("").max(300).messages({
       "string.max": "Description cannot exceed {#limit} characters",
+    }),
+    /**
+     * 🆕 The presigned road (U-2). A client that already sent its bytes to S3
+     * names the upload here instead of attaching a file.
+     *
+     * ⚠️ Not both — `acceptUpload` refuses a request carrying a file **and** an
+     * uploadId, because picking one silently means the caller believes they sent
+     * the other.
+     */
+    uploadId: objectId().optional().messages({
+      "any.invalid": "Invalid uploadId.",
     }),
     isActive: Joi.boolean().optional(),
   });
@@ -22,6 +34,17 @@ exports.validateUpdateCategory = (payload) => {
     }),
     description: Joi.string().allow("").max(300).messages({
       "string.max": "Description cannot exceed {#limit} characters",
+    }),
+    /**
+     * 🆕 The presigned road (U-2). A client that already sent its bytes to S3
+     * names the upload here instead of attaching a file.
+     *
+     * ⚠️ Not both — `acceptUpload` refuses a request carrying a file **and** an
+     * uploadId, because picking one silently means the caller believes they sent
+     * the other.
+     */
+    uploadId: objectId().optional().messages({
+      "any.invalid": "Invalid uploadId.",
     }),
     isActive: Joi.boolean().optional(),
   });

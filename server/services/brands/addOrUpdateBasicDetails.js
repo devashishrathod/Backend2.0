@@ -1,4 +1,5 @@
 const User = require("../../models/User");
+const { toDisplayName } = require("../../helpers/common");
 const Brand = require("../../models/Brand");
 const { throwError } = require("../../utils");
 const { ROLES, BUSINESS_REGISTRATION_STATUS } = require("../../constants");
@@ -55,7 +56,9 @@ exports.addOrUpdateBasicDetails = async (userId, payload) => {
   }
 
   const updateData = {};
-  if (brandName) updateData.brandName = brandName.toLowerCase().trim();
+  // ⚠️ Yahan `.toLowerCase()` reh gaya tha jab baaki jagah se hata — ek hi
+  // field, do behaviour. Ab dono `toDisplayName` se guzarte hain.
+  if (brandName) updateData.brandName = toDisplayName(brandName);
   if (legalBusinessName) {
     updateData.legalBusinessName = legalBusinessName.toLowerCase().trim();
   }

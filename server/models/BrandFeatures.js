@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { storageSchema } = require("./storageSchema");
+const { mediaSchema } = require("./mediaSchema");
 const { brandField } = require("./validObjectId");
 
 const brandFeaturesSchema = new mongoose.Schema(
@@ -11,7 +11,7 @@ const brandFeaturesSchema = new mongoose.Schema(
     // Sibling of the field above — provider + key, so a delete does not have
     // to infer where the bytes are from the URL. Absent on rows written
     // before this existed; `deleteAsset` falls back to the URL for those.
-    iconStorage: { type: storageSchema, default: undefined },
+    iconMedia: { type: mediaSchema, default: undefined },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
   },

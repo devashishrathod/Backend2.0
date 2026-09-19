@@ -1,10 +1,16 @@
 const mongoose = require("mongoose");
+const { toDisplayName } = require("../../helpers/common");
 
 const BrandFeatures = require("../../models/BrandFeatures");
 const { resolveActorBrand } = require("../../helpers/brands");
 const { throwError } = require("../../utils");
 const storage = require("../storage");
-const { assertImageFile } = require("../../helpers/media");
+const { describeIncoming } = storage;
+const {
+  assertImageFile,
+  toMediaDocument,
+  discardOnFailure,
+} = require("../../helpers/media");
 const { UPLOAD_PURPOSE } = require("../../constants/storage");
 
 /**
@@ -37,32 +43,53 @@ exports.addBrandFeature = async (actor, payload, icon) => {
     }
   }
 
-  if (!icon) throwError(400, "Feature icon is required!");
+  /**
+   * ⚠️ Described before it is spent (U-5). Everything above can still refuse —
+   * the ten-feature ceiling most of all — so the upload has to stay spendable
+   * until this point.
+   */
   assertImageFile(icon, "Feature icon");
+  const incoming = await describeIncoming(actor, {
+    file: icon,
+    uploadId: payload.iconUploadId,
+    purpose: UPLOAD_PURPOSE.BRAND_FEATURE_ICON,
+  });
+  if (!incoming) throwError(400, "Feature icon is required!");
 
   // Minted up front: the icon's key carries the feature id, and the upload has
   // to happen before the row exists.
   const _id = new mongoose.Types.ObjectId();
 
-  let uploaded;
-  try {
-    uploaded = await storage.uploadFromPath({
-      filePath: icon.tempFilePath,
-      originalFile: icon,
-      purpose: UPLOAD_PURPOSE.BRAND_FEATURE_ICON,
-      entityId: _id,
-    });
-  } catch (error) {
-    console.error("Error on uploading feature icon", error.message);
-    throwError(500, "Failed to upload feature icon!");
-  }
-  return await BrandFeatures.create({
-    _id,
-    brandId: brand._id,
-    title,
-    description,
-    icon: uploaded.url,
-    iconStorage: uploaded.storage,
-    isActive: typeof isActive === "string" ? isActive === "true" : isActive,
+  /**
+   * 🔴 This used to sit in a `try` that turned **every** failure into
+   * `500 Failed to upload feature icon!`.
+   *
+   * That was already wrong — a vendor attaching a PDF got a 500 with nothing in
+   * it to act on — and G1/G2 made it worse, because the facade now answers with
+   * the specific refusals: `413` naming the 2 MB ceiling, `422` naming the type
+   * it found in the bytes. Flattening those to a 500 would throw away the only
+   * sentence the vendor can do anything with.
+   *
+   * A genuine provider failure still surfaces, with its own status, from the one
+   * place that knows what actually went wrong.
+   */
+  const uploaded = await storage.acceptUpload(actor, {
+    file: incoming.file,
+    uploadId: incoming.uploadId,
+    purpose: UPLOAD_PURPOSE.BRAND_FEATURE_ICON,
+    entityId: _id,
   });
+
+  // ⚠️ The icon goes back out if the row does not arrive — see `createCategory`.
+  return await discardOnFailure(uploaded, () =>
+    BrandFeatures.create({
+      _id,
+      brandId: brand._id,
+      title: toDisplayName(title),
+      description,
+      icon: uploaded.url,
+      iconMedia: toMediaDocument(uploaded),
+      isActive: typeof isActive === "string" ? isActive === "true" : isActive,
+    }),
+  );
 };

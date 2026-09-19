@@ -3,7 +3,10 @@ const Transaction = require("../../models/Transaction");
 const VoucherClaim = require("../../models/VoucherClaim");
 
 const { throwError } = require("../../utils");
-const { buildClaimPreview } = require("../../helpers/vouchers");
+const {
+  buildClaimPreview,
+  buildVoucherSnapshot,
+} = require("../../helpers/vouchers");
 const {
   generateClaimCode,
   recordClaimHistory,
@@ -287,11 +290,10 @@ exports.createVoucherClaimOrder = async (actor, payload, idempotencyKey) => {
       // Frozen now. Everything they copy is editable afterwards, and a claim
       // from September has to still read the same in March.
       offerSnapshot: offer ? JSON.parse(JSON.stringify(offer)) : undefined,
-      voucherSnapshot: {
-        name: voucher.name,
-        categoryId: voucher.categoryId,
-        subCategoryId: voucher.subCategoryId,
-      },
+      // Built by one helper so the shape lives in one place — and so what
+      // gets frozen is what `pickVoucherBanner` showed the customer, not the
+      // raw banner field beside it (V-6c).
+      voucherSnapshot: buildVoucherSnapshot(voucher, version),
       brandSnapshot: brand ? { name: brand.brandName } : undefined,
       outletSnapshot: {
         uniqueId: outlet.uniqueId,
