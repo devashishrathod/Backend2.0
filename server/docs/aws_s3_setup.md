@@ -4,8 +4,34 @@
 > [s3_media_migration_plan.md](./s3_media_migration_plan.md) me hai, phases
 > [s3_migration_phases.md](./s3_migration_phases.md) me.
 >
-> **Status:** AWS par abhi kuch nahi bana. Code ki taraf Phase 1 (`configs/env/`)
-> ho chuka hai; Phase 2 (storage facade) inke bina bhi shuru ho sakta hai.
+> 🚀 **Production par jaane ka sequence is doc me nahi hai** — wo
+> [production_go_live_runbook.md](./production_go_live_runbook.md) me hai: kram,
+> har kadam ka verify, rollback, aur env. Ye doc sirf AWS **banane** ka hai.
+
+> ## 📌 Status — 2026-09-19 ko naapa gaya, andaaz nahi
+>
+> **Ye line pehle kehti thi "AWS par abhi kuch nahi bana". Wo ab sach nahi.**
+>
+> | Cheez | Naap | Kaise naapa |
+> |---|---|---|
+> | `trydood-nonprod-public` | ✅ **maujood** | signed `GetObject` par `AccessDenied`, `NoSuchBucket` nahi |
+> | `trydood-nonprod-private` | ✅ **maujood** | wahi |
+> | `trydood-prod-public` | ✅ **maujood** | wahi |
+> | `trydood-prod-private` | ✅ **maujood** | wahi |
+> | Region | `ap-south-1` | anonymous GET par koi `PermanentRedirect` nahi aaya |
+> | Block Public Access (dono public) | ✅ **ON** | anonymous GET → `403` |
+> | IAM policy ka daayra | ✅ tang hai | missing key par `NoSuchKey` nahi, `AccessDenied` — yaani `s3:ListBucket` nahi diya gaya, jo §5.1 ka iraada hai |
+> | **CloudFront** | ❌ **nahi bana** | `cdn.trydood.com` resolve hi nahi hota (connect fail) |
+> | Code ki taraf | ✅ Phase **0–5 poore** | facade, S3 provider, presign+confirm, 6 surfaces, private PDF |
+>
+> 🔴 **Bacha sirf CloudFront + DNS.** Buckets ban chuke hain aur unki Block Public
+> Access sahi hai (CloudFront + OAC ke liye wo **ON** hi honi chahiye — §2.2).
+>
+> ⚠️ `AccessDenied` ye sabit karta hai ki **naam maujood hai**, ye nahi ki wo
+> hamara hi account hai — bina `s3:ListBucket` ke dono ek jaise dikhte hain. Prod
+> par likhne wala probe maine **jaan-bujh kar nahi chalaya**. Ownership console se
+> confirm karein; ya panel se switch karte waqt `checkS3Ready()` khud likh-padh kar
+> bata dega.
 
 ---
 

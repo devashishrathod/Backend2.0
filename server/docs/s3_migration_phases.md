@@ -5,13 +5,23 @@
 > jahan wo showcase, voucher aur media-unification ke saath ek hi order me hai
 > (`U-*` aur `X-*` blocks). **Naya kaam wahan se lein, yahan se nahi.**
 >
-> **Status:** Phase 0 ✅ · 1 ✅ · 2 ✅ (step A **aur** B) · 3 ✅ · 4 ✅.
-> Phase 5 ka code likha ja chuka hai par **wire nahi hua** (`models/Upload.js`,
-> `services/storage/{presign,confirm,inspect}.js` — uncommitted) — wo ab **U-1** hai.
+> **Status:** Phase 0 ✅ · 1 ✅ · 2 ✅ (step A **aur** B) · 3 ✅ · 4 ✅ · 5 ✅
+> (U-1…U-5 me wire ho gaya, uncommitted).
+>
+> 🔴 **Phase 5 ka magic-byte check ek road par adhoora tha, ab dono par hai.**
+> `identify()` sirf `confirm` se bulaya jaata tha — yaani presigned road par.
+> Multipart road `file.mimetype` hi store karta tha, jo client likhta hai.
+> Block G (G2/G3) ne wo band kiya: ab dono road pehla kilobyte padhte hain, `kind`
+> bytes se aata hai, aur dimensions dono taraf milti hain.
+>
+> 🔴 **Phase 6 (X-1) ka blocker code me nahi hai.** `CDN_BASE_URL` set hai par wo
+> host resolve nahi hota, aur public bucket bina credentials ke 403 deta hai —
+> live probe se, 2026-09-18. Detail: master plan §0.6.
 >
 > Design + edge cases: [s3_media_migration_plan.md](./s3_media_migration_plan.md)
 > **AWS setup runbook: [aws_s3_setup.md](./aws_s3_setup.md)**
-> Aaj ka media flow: [media_upload_map.md](./media_upload_map.md)
+> Migration se pehle ka media flow: [media_upload_map.md](./media_upload_map.md)
+> — ⚠️ snapshot hai, aaj ka sach nahi (uska apna banner dekhein)
 > Env / services: [environment_and_services_map.md](./environment_and_services_map.md)
 
 ---
@@ -29,7 +39,7 @@
 | Q-5 | Video metadata | **`metadata.pending` flag + hourly retry sweep** |
 | Q-6 | Resize widths | `160 / 400 / 800 / 1600`, **strict allowlist** |
 | Q-7 / Q-9 | Infra | Main **Terraform + CLI scripts** likhunga, aap chalayenge. Mere paas AWS console access nahi |
-| Q-8 | Multipart sunset | **Phase 5 ship + 6 hafte** |
+| Q-8 | Multipart sunset | 🔄 **Badla 2026-09-18** — waqt par nahi. Trigger: Cloudinary ka apna presign ship ho jaye (master §0.5) |
 | L-1 | Limit | Global **100 MB** ceiling. Per-surface limits sirf showcase par (10/50 MB) |
 | DB-1 | Data | Sab test data. **Koi migration script nahi** |
 | FE-1 | Clients | Panels + app **doosri team** ke paas |
@@ -57,7 +67,7 @@
 | **6** → **X-1** | CloudFront + resize Lambda (T1) | 🟡 URL shape | ✅ | ✅ | 2 |
 | **7** → **X-2** | Metadata Lambda + retry sweep (M-1) | ❌ | ✅ | ✅ | 5 |
 | **8** → **X-3** | Panel + app migrate | ✅ | ❌ | — | 5, 6 |
-| **9** → **X-4** | Multipart + `express-fileupload` delete | ❌ | ❌ | ✅ | 8 |
+| **9** → **X-4** | Multipart + `express-fileupload` delete — 🔄 Cloudinary presign ke **baad** (master §0.5) | ❌ | ❌ | ✅ | 8 |
 
 **Phase 0-4 me doosri team ko kuch nahi karna.** Unka contract **U-1** par milta hai.
 
@@ -392,7 +402,14 @@ same frozen object, kabhi re-parse nahi.
 | **Goal** | Ek jagah provider decide ho. **L-1…L-4 landmines yahin marte hain.** |
 | **Depends on** | Phase 1 |
 | **Client change** | ❌ |
-| **Infra** | ❌ — dono step bina AWS ke ship hue. S3 provider likha hua hai, `MEDIA_PROVIDER=AWS_S3` par jaga hoga |
+| **Infra** | ❌ — dono step bina AWS ke ship hue. S3 provider likha hua hai, `Setting.storage.provider = AWS_S3` par jaga hoga |
+
+> ⚠️ **Ye line pehle `MEDIA_PROVIDER=AWS_S3` kehti thi, aur wo ab sach nahi.**
+> ST-3 ke baad provider **admin panel** se aata hai — `Setting.storage.provider`.
+> `MEDIA_PROVIDER` sirf **pehla document banne** par seed karta hai
+> ([`models/Setting.js:996`](../models/Setting.js)), uske baad redeploy se kuch
+> nahi badalta. Runtime par padhne wali ekmatra jagah
+> [`services/storage/index.js:47`](../services/storage/index.js) hai.
 | **Status** | ✅ Step A + Step B. Natija §2.8 me |
 
 ## 2.1 Files
@@ -545,8 +562,9 @@ wo mumkin ho jaata hai.
 > milta hai. Ek type-named prefix content ka daawa hai, aur wo daawa tabhi banega
 > jab bytes dekh li gayi hon.
 >
-> `audio/` abhi **nahi** banega — `uploadAudio` zinda hai par uska koi caller
-> nahi. Table me row rahegi; object tab girega jab koi sach me audio bhejega.
+> `audio/` **kabhi nahi** banega — `uploadAudio` aur uska purpose dono hata diye
+> gaye (Block G · G10). Jab kisi ko sach me audio chahiye hoga, use apna purpose,
+> apna bucket row aur apna ceiling milega — har doosre surface ki tarah.
 
 ## 2.6 Edge cases
 
@@ -589,7 +607,10 @@ farq hi nahi kar paate.
 - [x] `deleteAsset` dono provider par sach me delete kare
 - [x] Unknown provider par **throw**, silent skip nahi
 - [x] Legacy URL-only row Cloudinary se delete ho
-- [x] `MEDIA_PROVIDER=CLOUDINARY` se purana behaviour wapas aaye
+- [x] Cloudinary par purana behaviour wapas aaye — ⚠️ ye Phase 2 me
+      `MEDIA_PROVIDER=CLOUDINARY` se naapa gaya tha. **ST-3 ke baad wo switch
+      `Setting.storage.provider` hai**, env nahi; env sirf pehla document seed
+      karta hai
 - [x] `verifyImports.js` clean, koi cycle nahi — 877 modules
 - [x] Unit suite 73/73, `verifyEnvCoverage` teeno list agree
 
@@ -637,8 +658,11 @@ key ko id chahiye thi. Mongo ids waise bhi client-side bante hain, to ye wahi
 value hai jo `create` khud banata.
 
 `services/uploads/index.js` **delete nahi hua** — usme `uploadPDF` (Phase 4 me
-private bucket par jaayega) aur `uploadAudio` (koi caller nahi, jaan-boojh kar
-rakha) bache hain. `uploadImage`, `uploadVideo`, `deleteImage`,
+private bucket par chala gaya) aur `uploadAudio` bache the. ⚠️ `uploadAudio` bhi
+ab ja chuka hai — Block G (G10), 0 caller. Aaj us file me sirf
+`uploadDocument`/`deleteDocument` hain, aur wahi do jagah hain jahan
+`uploadFromPath` seedha bulaya jaata hai: server ki apni generated PDF, koi
+client nahi. `uploadImage`, `uploadVideo`, `deleteImage`,
 `deleteAudioOrVideo`, `upload*WithMetadata` sab chale gaye.
 
 ### Saath me band hua
@@ -1118,7 +1142,7 @@ Hamara kaam: contract + sandbox + support. Phase 5 par unhe milta hai:
 
 | | |
 |---|---|
-| **Trigger** | Phase 8 poora + 6 hafte (Q-8) |
+| **Trigger** | 🔄 Cloudinary ka apna presign ship ho jaye — master §0.5. Purana "Phase 8 + 6 hafte" hata diya |
 
 | File | |
 |---|---|

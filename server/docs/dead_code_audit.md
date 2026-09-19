@@ -575,7 +575,7 @@ API dead hai.
 
 | Symbol | File |
 |---|---|
-| `uploadAudio`, `uploadVideo`, `deletePDF` | `services/uploads/index.js` |
+| ~~`uploadAudio`~~, ~~`uploadVideo`~~, `deletePDF` | `services/uploads/index.js` — ✅ `uploadVideo` Phase 2 me, `uploadAudio` Block G (G10) me hata. `deletePDF` ab `deleteDocument` hai aur uske **2 caller** hain |
 | `countExpiringSoon` | `services/subscribeds/expireSubscriptions.js` |
 | `presentHistory` | `services/settlements/getSettlements.js` |
 | `liveBankSnapshot`, `paidTotal` | `services/settlements/paySettlement.js` |

@@ -9,12 +9,34 @@
 > **Block V ka V-6 bhi ship ho chuka** — teen commit me: `verifyApiCoverage` ka
 > fix, `WriteConflict` → 409, aur delete khud.
 >
-> **Block V poora** (V-1…V-7) aur **U-1 bhi**. **Agla: U-2** — pehli surface
-> (category pilot). U-1 ka doosra commit abhi uncommitted hai. Storage ka final faisla §0.5 me locked hai — prod S3-only, client
-> sirf presigned, koi dual mode nahi, aur **X-4 phase hi khatam**.
+> **Block V poora** (V-1…V-7), **Block U poora** (U-1…U-5) aur **Block G poora**
+> (G1…G12 — code-end ke saare gap). **Agla: Block X** (infra) — X-1 CloudFront +
+> resize Lambda, X-2 metadata Lambda, X-3 panel migration (doosri team), aur X-4
+> multipart sunset jo Cloudinary ke apne presign ke baad hoga. Storage ka final
+> faisla §0.5 me locked hai — prod S3-only aur client sirf presigned.
+> ⚠️ **X-4 (multipart sunset) wapas khula hai** — multipart Cloudinary ka
+> ekmatra upload raasta hai, to wo tab tak rahega jab tak Cloudinary ka apna
+> presign ship na ho (§0.5 🔮).
 >
-> **O-1** (OTP throttle) aur **O-2** (poori money suite ek saath green nahi
-> rehti) dono jaanboojh kar khule hain — likh diye gaye hain, fix nahi kiye. **Block U** (presigned upload) aur **Block X** (infra) abhi baaki hain.
+> ### 🔴 Delivery abhi bhi blocked hai, aur wo code ka issue nahi hai
+>
+> Live probe (2026-09-18) se: `CDN_BASE_URL` `https://cdn.trydood.com` par set
+> hai aur wo host **resolve hi nahi hota** (ENOTFOUND); public bucket bina
+> credentials ke **403** deta hai. Yaani provider S3 par karte hi har media URL
+> mar jaayegi. Upload, delete, replace aur documents sab chalte hain — sirf
+> public media ka **delivery** toota hai. Detail §0.6 me.
+>
+> ### ⚠️ U-1 commit 2 se aage ka kuch bhi commit nahi hua
+>
+> Aapke kehne par: kaam poora, test poore, mutation poori — par `git commit` ek
+> bhi nahi. Kaunsi file kis logical commit ki hai, wo
+> `scratchpad/UNCOMMITTED-MANIFEST.md` me likha hai, taaki baad me commit karna
+> khudai ka kaam na ho.
+>
+> **O-3** (chaar dead knob) aur **O-4** (multipart par size cap) ab **band** hain
+> — Block G me. Khule sirf **O-1** (OTP throttle) aur **O-2** (poori money suite
+> ek saath green nahi rehti) hain, dono jaanboojh kar. **Block X** (infra) baaki
+> hai, aur uska pehla kadam code nahi — AWS hai (§0.6).
 >
 > Har phase ka detail aur uska commit hash Part 4B me. Part 4 ka table sirf
 > **estimate** hai — jo actually laga wo detail section me likha hai.
@@ -93,13 +115,13 @@ E2 purpose mismatch → 422 · E5 upload transaction ke bahar · pehli surface =
 | Cheez | Faisla |
 |---|---|
 | **Production ka storage** | **S3-only**, din ek se |
-| **Cloudinary** | Code me rahega — `url` + `remove` ke liye. `upload` U-5 tak |
+| **Cloudinary** | Code me rahega — `url` + `remove` ke liye, aur `upload` bhi **multipart ke raaste** (neeche) |
 | **Dev / stage** | S3 par, `dev/` aur `staging/` prefix ke saath |
 | **Stage ka purana data** | **Jaisa hai waisa** — 211 Cloudinary rows, migrate nahi karenge |
 | **Provider switch** | **Dynamic rahega** — `providerFor(asset)` har row ka apna provider padhta hai |
-| **Client ka upload** | **Sirf presigned.** Multipart kabhi ship nahi hoga |
+| **Client ka upload** | **Sirf presigned** (S3). Multipart server par rahega, client ko nahi diya jaayega |
 | **Dual mode (transport)** | **Nahi chahiye** — koi purana client version hai hi nahi |
-| **X-4 (multipart sunset)** | **Phase khatam** — multipart U-5 ke ant me seedha delete |
+| **X-4 (multipart sunset)** | 🔄 **Badla — 2026-09-18.** Multipart U-5 me **delete nahi** hoga; wo Cloudinary ka ekmatra upload raasta hai. Sunset tabhi jab Cloudinary ka apna presign (§🔮) ship ho jaye |
 | **Order** | V-6c → V-7 → U-1…U-5 → X-1/X-2 |
 
 ### Prod S3-only kyun — suvidha nahi, ek gap
@@ -110,7 +132,7 @@ delivery URL hi ekmatra URL hai — permanent aur public. Invoice PDF par
 customer ka naam, pata, GSTIN aur amount hota hai. Wo finding **S3 par hi band
 hoti hai**, kyunki `signedGetUrl` sirf S3 provider ke paas hai.
 
-### ⚠️ Cloudinary ka `upload` U-5 ke baad pahunch se bahar ho jayega
+### ⚠️ Cloudinary ka `upload` sirf multipart se pahunchta hai — aur isi liye multipart rahega
 
 Ye **maan kar** liya gaya hai, bhoola nahi gaya:
 
@@ -125,14 +147,35 @@ Multipart hatte hi Cloudinary ka `upload` kisi ke haath nahi aayega, kyunki
 `presign.js` `@aws-sdk/s3-presigned-post` par bana hai aur Cloudinary ke paas
 is shape ka kuch nahi hai.
 
-**Prod me iska farak zero hai** — prod waise bhi S3-only hai. Uske liye ek
-doosra upload raasta zinda rakhna wo keemat hai jiska koi kharidar nahi.
+> ### 🔴 Isiliye U-5 multipart **delete nahi** karega — faisla 2026-09-18 ko dobara confirm hua
+>
+> Pehle yahan likha tha ki prod S3-only hai, to doosra upload raasta zinda rakhne
+> ka koi kharidar nahi. Wo tab tak sach hai jab tak **koi** Cloudinary par nahi
+> jaata — aur `Setting.storage.provider` ek dropdown hai jo kal badal sakta hai.
+>
+> Multipart hata dene ka matlab hota: us dropdown ko Cloudinary par le jaate hi
+> upload ka **koi** raasta nahi bachta. Ek switch jo sab kuch chalu rakhne ka
+> vaada karta ho aur upload band kar de, wo switch na hone se bura hai.
+>
+> To multipart **rahega**, Cloudinary ke upload raaste ke roop me. Sunset tabhi
+> hoga jab §🔮 wala Cloudinary presign ship ho jaye — tab dono provider ka apna
+> presign hoga aur multipart ka koi kaam nahi bachega.
 
-### 🔮 Future: dono provider, zero client change
+### 🔮 Future (locked): dono provider presigned, zero client change
 
-Agar kal Cloudinary par naye uploads chahiye hue, to raasta likha hua hai —
-**Cloudinary ka signed direct upload** (`presign`/`confirm` ka Cloudinary
-version), taaki facade dono par chale. Andaza **~6-8 ghante + tests**.
+> **Faisla 2026-09-18 — abhi S3, Cloudinary baad me.** Aaj presigned raasta sirf
+> S3 par hai aur wahi ship ho raha hai. Cloudinary ka apna presigned upload
+> **baad me** aayega, **usi generic shape me**, taaki client me **ek line na
+> badle** — surface wahi `uploadId` bhejegi, facade tay karega kis provider ka
+> presign dena hai.
+>
+> Andaza **~8-10 ghante + tests** (pehle ~6-8 likha tha; `confirm` ka
+> magic-byte + move step Cloudinary par alag shape leta hai, isliye upar).
+>
+> ⚠️ **Tab tak multipart hi Cloudinary ka upload raasta hai** — dekhein upar.
+
+Cloudinary ka signed direct upload (`presign`/`confirm` ka Cloudinary version)
+facade ke peechhe aayega, taaki `acceptUpload` dono par ek jaisa chale.
 
 🔴 **Client me tab bhi kuch nahi badlega.** Wo already sabit hai:
 
@@ -161,7 +204,78 @@ ek kaam karta hua raasta apne aap test hona band ho jaata.
   `width`/`height` laut deta hai (18 Sept ke probe me dikha); S3 kuch nahi
   batata, isliye `mediaSchema` me wo `null` default hain
 - **"6 hafte"** — wo window sirf purane app versions ke liye tha. Koi purana
-  version hai hi nahi, to X-4 ke saath wo bhi khatam
+  version hai hi nahi, to wo window bemani hai. ⚠️ Par **X-4 khud khatam nahi
+  hua** — multipart Cloudinary ka ekmatra upload raasta hai, to uska sunset
+  Cloudinary ke apne presign (§0.5 🔮) ke baad hi hoga, waqt ke hisaab se nahi
+
+---
+
+## 0.6 🔴 Delivery blocked hai — aur wo code me nahi hai
+
+> **Live probe, 2026-09-18.** Code padh kar nahi — asli bucket par asli object
+> likh kar, aur wahi URL **bina credentials ke** kholi jo app DB me likhti hai.
+
+```
+CDN_BASE_URL      : https://cdn.trydood.com      ← .env me SET hai
+AWS_REGION        : ap-south-1
+public bucket     : trydood-nonprod-public
+private bucket    : trydood-nonprod-private
+
+── CDN wali URL (jo DB me likhi jaati hai)   🔴 ENOTFOUND
+── Seedhi S3 URL (CDN bypass)                🔴 403 AccessDenied
+── private bucket anonymous                  ✅ 403 (jaisa hona chahiye)
+── signed GET banti hai                      ✅ haan
+```
+
+`nslookup cdn.trydood.com` → naam hai, **address nahi**.
+
+### Do blocker, dono AWS ke
+
+| # | Kya | Asar |
+|---|---|---|
+| **1** | Public bucket par Block Public Access **on** hai | Har `<img src>` ko **403** |
+| **2** | `cdn.trydood.com` exist hi nahi karta | Har URL **ENOTFOUND** |
+
+⚠️ **Preflight ise pehle nahi pakadta tha** — wo `getS3Client()` se likhta-padhta
+hai, yaani signed. Ab **G4** dono check karta hai aur switch ko **rokta** hai
+(warning nahi), kyunki nateeja "poore platform ka media toota" hai.
+
+### Aaj ki haalat — DB se
+
+```
+Setting.storage.provider : (set hi nahi)  →  code Cloudinary par gir jaata hai
+DB me Cloudinary URLs    : 458
+DB me S3 URLs            : 0
+DB me cdn.trydood URLs   : 0
+```
+
+Yaani **abhi kuch toota hua nahi hai**. Ye tab tootega jis second koi dropdown
+S3 par le jaayega — aur ab preflight use rok dega.
+
+### ✅ Kya phir bhi chalta hai
+
+Upload (dono road), delete, replace, aur **documents poori tarah** — wo private
+bucket + per-request signed link par hain, jinhe na public read chahiye na
+CloudFront. Sirf **public media ka delivery** ruka hai.
+
+### Do raaste
+
+| | Kya karna | Trade-off |
+|---|---|---|
+| **A** | `CDN_BASE_URL` khali karo + bucket par public-read policy | Turant chalu, par koi resize nahi aur bucket khula. ⚠️ URL **likhne ke waqt** row me bake hoti hai, to is raaste par likhi rows me raw S3 URL hamesha rahegi |
+| **B** | `CDN_BASE_URL` waisa hi rakho, provider **S3 par mat karo** jab tak CloudFront live na ho | Bucket band rahega (OAC), resize milega, aur **ek bhi tooti URL kabhi likhi hi nahi jaayegi** |
+
+🔮 **Sifarish: B.** Stage ka data disposable hai, to intezaar ka koi kharcha nahi.
+
+### ⚠️ Frontend team ko kya batana hai
+
+Presign ka contract final hai — integration aaj shuru ho sakta hai. Par
+**presign se chadhi file abhi dikhegi nahi**, aur wo backend ka bug nahi hai.
+Bina ye bataye wo teen din "images kyu nahi aa rahi" debug karenge.
+
+🔴 Aur ek: `presign`/`confirm` **hamesha S3 par likhte hain**. Provider Cloudinary
+par ho to presign ab **409** deta hai (G5) — pehle wo chup-chaap do provider par
+row bana deta.
 
 ---
 
@@ -745,31 +859,31 @@ expire hone ke baad delete ho jayega."*
 
 | Phase | Kaam | Size |
 |---|---|---|
-| **F-1** | `getSetting()` TTL cache + invalidate — aaj har read ek **write** hai | ~1 h · 1 commit |
-| **F-2** | `Setting.storage` block + `getStorageConfig()` + min(global,surface) + cross-validation | ~3 h · 2 commit |
-| **F-3** | `mediaSchema` + `posterSchema` + `toMediaResponse` + facade ka naya return shape | ~3.5 h · 2 commit |
-| **F-4** | Provider Setting se (ST-1) + **preflight probe** (ST-2) + env sirf seed default | ~2.5 h · 1 commit |
+| **F-1** ✅ | `getSetting()` TTL cache + invalidate — aaj har read ek **write** hai | ~1 h · 1 commit |
+| **F-2** ✅ | `Setting.storage` block + `getStorageConfig()` + min(global,surface) + cross-validation | ~3 h · 2 commit |
+| **F-3** ✅ | `mediaSchema` + `posterSchema` + `toMediaResponse` + facade ka naya return shape | ~3.5 h · 2 commit |
+| **F-4** ✅ | Provider Setting se (ST-1) + **preflight probe** (ST-2) + env sirf seed default | ~2.5 h · 1 commit |
 
 ## Block M — Media unification (5 chunk, domain-wise)
 
 | Phase | Kaam | Size |
 |---|---|---|
-| **M-1** | Sidecar → `mediaSchema`: Brand ×2, SubBrand ×2, Category, SubCategory, BrandFeatures, User | ~3 h · 2 commit |
-| **M-1b** | **Customer profile pic** — CUSTOMER role ka upload `Customer.image` par, `User.image` unset rahe | ~1.5 h · 1 commit |
-| **M-2** | Documents: Dispute, RefundRequest, Settlement, Transaction | ~2 h · 1 commit |
-| **M-3** | Banner ×3 + PromotionalTicker (inline → mediaSchema, hardcoded enum khatam) | ~2.5 h · 1 commit |
-| **M-4** | ShowcaseSection: `medias[]` + `thumbnail` → mediaSchema + **poster** | ~2.5 h · 1 commit |
-| **M-5** | Voucher.banner + VoucherVersion.images[] + dead joi import (P10, P11) | ~2.5 h · 1 commit |
+| **M-1** ✅ | Sidecar → `mediaSchema`: Brand ×2, SubBrand ×2, Category, SubCategory, BrandFeatures, User | ~3 h · 2 commit |
+| **M-1b** ✅ | **Customer profile pic** — CUSTOMER role ka upload `Customer.image` par, `User.image` unset rahe | ~1.5 h · 1 commit |
+| **M-2** ✅ | Documents: Dispute, RefundRequest, Settlement, Transaction | ~2 h · 1 commit |
+| **M-3** ✅ | Banner ×3 + PromotionalTicker (inline → mediaSchema, hardcoded enum khatam) | ~2.5 h · 1 commit |
+| **M-4** ✅ | ShowcaseSection: `medias[]` + `thumbnail` → mediaSchema + **poster** | ~2.5 h · 1 commit |
+| **M-5** ✅ | Voucher.banner + VoucherVersion.images[] + dead joi import (P10, P11) | ~2.5 h · 1 commit |
 
 ## Block S — Showcase ([detail yahan](./showcase_rules_and_upload_plan.md))
 
 | Phase | Kaam | Size |
 |---|---|---|
-| **S-1** | Setting: `minItemsPerSection`, `minSectionsPerBrand`, GIF, cross-validation | ~2 h · 1 commit |
-| **S-2** | `sortOrder` auto-manage (media + section) + `__v` + `VersionError` → 409 | ~4 h · 3 commit |
-| **S-3** | Write guards — media floor, section floor, ADMIN exempt | ~2.5 h · 2 commit |
-| **S-4** | Customer reads — min filter + **re-sequencing (1,3 → 1,2)** + clips | ~3.5 h · 2 commit |
-| **S-5** | Managed reads — `customerVisibility { isLive, reasons[] }` | ~1.5 h · 1 commit |
+| **S-1** ✅ | Setting: `minItemsPerSection`, `minSectionsPerBrand`, GIF, cross-validation | ~2 h · 1 commit |
+| **S-2** ✅ | `sortOrder` auto-manage (media + section) + `__v` + `VersionError` → 409 | ~4 h · 3 commit |
+| **S-3** ✅ | Write guards — media floor, section floor, ADMIN exempt | ~2.5 h · 2 commit |
+| **S-4** ✅ | Customer reads — min filter + **re-sequencing (1,3 → 1,2)** + clips | ~3.5 h · 2 commit |
+| **S-5** ✅ | Managed reads — `customerVisibility { isLive, reasons[] }` | ~1.5 h · 1 commit |
 
 > Purana **SC-0** (cover `.mp4`) ab **M-4** me hai — `poster` mandatory hone se
 > wo bug rah hi nahi jaata.
@@ -778,40 +892,194 @@ expire hone ke baad delete ho jayega."*
 
 | Phase | Kaam | Size |
 |---|---|---|
-| **V-1** | Setting: `minImages` + per-kind size caps config se (P12) | ~2 h · 1 commit |
-| **V-2** | **Min 3 images** — 3 jagah, ek helper, ek message (P13) | ~1.5 h · 1 commit |
-| **V-3** | Uploads transaction ke bahar — create + update (P3) | ~2.5 h · 1 commit |
-| **V-4** | **Banner ka naya shape + approval + image fallback** (V-2…V-6, V-4a, P5, P9) — sabse bada | ~5 h · 3 commit |
-| **V-5** | **Pause / resume** + unique-index trap ka 409 (V-7, P7) | ~2 h · 1 commit |
-| **V-6** | **Delete**: `DELETED` status · `deletedAt`/`deletedBy`/`deleteReason` · slot release · live-claim guard (V-8, V-11, P7) | ~2.5 h · 1 commit |
-| **V-6b** | **Admin ko deleted dikhana** — `includeDeleted` filter, ADMIN-only (V-13) | ~1.5 h · 1 commit |
-| **V-6c** | **Claim snapshot bharna** — `voucherSnapshot` me banner + pehli image (V-12) | ~1.5 h · 1 commit |
-| **V-7** | Image **reorder** endpoint (V-9, P8) | ~1.5 h · 1 commit |
+| **V-1** ✅ | Setting: `minImages` + per-kind size caps config se (P12) | ~2 h · 1 commit |
+| **V-2** ✅ | **Min 3 images** — 3 jagah, ek helper, ek message (P13) | ~1.5 h · 1 commit |
+| **V-3** ✅ | Uploads transaction ke bahar — create + update (P3) | ~2.5 h · 1 commit |
+| **V-4** ✅ | **Banner ka naya shape + approval + image fallback** (V-2…V-6, V-4a, P5, P9) — sabse bada | ~5 h · 3 commit |
+| **V-5** ✅ | **Pause / resume** + unique-index trap ka 409 (V-7, P7) | ~2 h · 1 commit |
+| **V-6** ✅ | **Delete**: `DELETED` status · `deletedAt`/`deletedBy`/`deleteReason` · slot release · live-claim guard (V-8, V-11, P7) | ~2.5 h · 1 commit |
+| **V-6b** ✅ | **Admin ko deleted dikhana** — `includeDeleted` filter, ADMIN-only (V-13) | ~1.5 h · 1 commit |
+| **V-6c** ✅ | **Claim snapshot bharna** — `voucherSnapshot` me banner + pehli image (V-12) | ~1.5 h · 1 commit |
+| **V-7** ✅ | Image **reorder** endpoint (V-9, P8) | ~1.5 h · 1 commit |
 
 ## Block U — Upload (presigned direct-to-S3)
 
 | Phase | Kaam | Size |
 |---|---|---|
 | **U-1** ✅ | `/uploads/presign` + `/uploads/confirm` wiring + `acceptUpload` facade | ~4 h · 2 commit |
-| **U-2** | Pehli surface — category (pilot) | ~1.5 h · 1 commit |
-| **U-3** | Showcase surface — multi-file + thumbnail pairing | ~4 h · 2 commit |
-| **U-4** | Voucher surface — images + banner + poster | ~3 h · 2 commit |
-| **U-5** | Baaki surfaces — brand, subBrand, category, ticker, avatar, features **+ multipart delete** | ~4 h · 6 commit |
+| **U-2** ✅ | Pehli surface — category (pilot) | ~1.5 h · 1 commit (uncommitted) |
+| **U-3** ✅ | Showcase surface — multi-file + thumbnail pairing (+ limits dono raaston par) | ~4 h · 2 commit (uncommitted) |
+| **U-4** ✅ | Voucher surface — images + banner + poster (+ 🆕 `VOUCHER_BANNER_POSTER` purpose) | ~3 h · 1 commit (uncommitted) |
+| **U-5** ✅ | Baaki surfaces — brand, subBrand, **subCategory**, ticker, avatar, features (+ 🆕 `BANNER_POSTER`, E5, teesri delete-order galti). ⚠️ **multipart delete isme se nikal gaya** — wo X-4 hai, aur X-4 Cloudinary ke presign ke baad hi hoga (§0.5) | ~4 h (uncommitted) |
+
+## Block G — Code-end ke saare gap ✅
+
+> **Sab DONE, uncommitted.** Ye block U-5 ke baad ke poore gap hunt se aaya: code
+> se dhoondha gaya, docs se nahi. Barah me se **paanch ek hi cheez** the — *ek hi
+> file, do road, do jawab* — jo migration ki sabse khatarnak class hai, kyunki
+> dono taraf code "sahi" chalta hai aur kisi log me kuch nahi aata.
+
+| # | Gap | Kya tha | Kahan |
+|---|---|---|---|
+| **G1** ✅ | Multipart par nau surfaces ka koi size cap nahi | Sirf 100 MB ka transport limit; presigned road purpose ka cap lagata tha | `accept.js` |
+| **G2** ✅ | 🔴 Multipart road file ke **bytes dekhta hi nahi** tha | `identify()` ka ek hi caller tha — `confirm`. Mime wahi tha jo client ne header me likha | `accept.js` · `inspect.js` |
+| **G3** ✅ | Multipart par dimensions hamesha `null` | Ek hi PNG, do road, do row | `accept.js` |
+| **G4** ✅ | Preflight dead CDN aur band bucket ko nahi pakadta tha | Sirf "CDN_BASE_URL khali hai kya" puchta tha, "kaam karta hai kya" nahi | `preflight.js` |
+| **G5** ✅ | `Setting.storage` ke chaar knob dead | Schema, validator, doc — par koi reader nahi (= purana O-3) | `presign.js` · `index.js` |
+| **G6** ✅ | Chaar create-path me confirm ke baad rollback nahi | Object final key par orphan; `staging/` lifecycle use kabhi nahi chhuti | 4 services |
+| **G9** ✅ | Do stale comment | Dono kehte the "multipart U-5 me hat jaayega" | `accept.js` · `index.js` |
+| **G10** ✅ | `uploadAudio` dead code | 0 caller. Purpose aur `MAX_BYTES` row bhi saath gaye | `uploads/index.js` |
+| **G11** ✅ | Showcase poster pairing galat jud sakti thi | Comment ne jo daava kiya, code wo karta nahi tha | `pairPosters.js` 🆕 |
+| **G12** ✅ | Teen poster purpose apni surface rule se **wide** the | Presign GIF poster ko signature de deta, surface uske baad 422 deta — bytes kharch hone ke baad | `constants/storage.js` |
+| **G13** ✅ | 🔴 **iPhone ki HEIC photo video ban jaati thi** | G2 ka apna blind spot — `ftyp` dekh kar rukna. Detail neeche | `inspect.js` · `presign.js` |
+
+> ### 🔴 G13 — G2 ne jo khud chhod diya tha
+>
+> **Kaise mila:** commit se pehle ke aakhri check me, ye puch kar ki "bytes hi
+> faisla karte hain, to iPhone ki photo ka kya hota hai?"
+>
+> HEIC, HEIF aur AVIF **wahi container** hain jo MP4/MOV hai — teeno me offset 4
+> par `ftyp`. Signature check wahin ruk jaata tha, to:
+>
+> ```
+> HEIC (iPhone photo)  →  MP4/MOV / video/mp4 / VIDEO
+> ```
+>
+> **Asar 18 me se 4 surfaces par** — `SHOWCASE_MEDIA`, `BANNER_MEDIA`,
+> `VOUCHER_BANNER`, `LEGACY` — kyunki `accept.js:199` sirf
+> `entry.kinds.includes(identified.kind)` dekhta hai:
+>
+> | Surface | Kya hota tha |
+> |---|---|
+> | Image-only (14) | Refuse — par message *"does not accept MP4/MOV files"*, jo photo bhejne wale ko samajh hi nahi aata |
+> | **Video lene wali (4)** | 🔴 Photo `videos/` me `video/mp4` ban kar **store ho jaati**. Player khol nahi paata. Kuch error nahi, kuch log nahi |
+>
+> ⚠️ **Ye G2 ka apna regression tha, aur wo likha hona chahiye.** HEAD par
+> purani allow-list (`constants/showcase.js:66`) me `image/heic` tha hi nahi, to
+> header par bharosa karne wala purana code use **refuse** kar deta tha. Bytes
+> padhne ke baad wo `VIDEO` ban kar aage nikal gayi. Ek check ko sahi karne ne
+> ek naya raasta khol diya — isi liye "ab bytes padhte hain" kaafi nahi hota,
+> ye bhi dekhna padta hai ki **kaun se** bytes.
+>
+> **Fix:** offset 8 ka ISO brand padho. HEIF/AVIF brands naam se refuse, jaise
+> SVG aur HTML hote hain; asli video brands (`isom`, `mp42`, `qt  `, `3gp4`,
+> `avc1`) jaise the waise. **Image family allow-list hai, video nahi** — dono
+> ulti disha me fail hote hain: anjaan video brand ko video maanna sahi hai,
+> anjaan image brand ko video maanna yahi bug hai.
+>
+> 🔴 **Aur ek parat, usi jaanch me:** `kindFromMime("image/heic")` → `IMAGE`, to
+> presign road signature de deta, client **poori file** chadhata, aur tab confirm
+> refuse karta. Wahi G12 wali baat. **SVG par bhi yahi ho raha tha.** Ab
+> `refusalForMime()` ek hi list se dono road ko jawab deta hai, aur refusal ke
+> shabd word-for-word ek hain.
+>
+> ⚠️ Refusal ka message customer ke liye likha gaya hai, hamare liye nahi:
+> *"HEIC photos are not supported yet — please send a JPEG or PNG. On an iPhone:
+> Settings → Camera → Formats → Most Compatible."* Ye wo refusal hai jise ek aam
+> customer sach me milega, to use "no" par khatam nahi hona chahiye.
+
+> ### 🔴 G2 — sabse zaroori, aur sabse chupa hua
+>
+> `inspect.js` khud apne header me likhta hai ki har "is this an image?" check
+> `file.mimetype` padhta hai aur wo **client likhta hai**. Us file ka
+> `identify()` poore repo me sirf **ek jagah** se bulaya jaata tha — `confirm`,
+> yaani sirf presigned road. Multipart par:
+>
+> - `providers/s3.js` ne wahi `Content-Type` store kiya jo client ne bheja
+> - SVG aur HTML ka naam-se-refusal chalta hi nahi tha
+> - `kind` bhi usi claim se banta tha → galat prefix → ek GIF `images/` me girta,
+>   `gifs/` me nahi, jahan X-1 ka resize uski animation flatten kar deta
+>
+> ⚠️ **XSS ka risk kam hai** (type pinned hone par browser SVG nahi chalata), par
+> **koi bhi bytes** aapke CDN domain se serve ho sakte the. Ab dono road pehla
+> kilobyte padhte hain — `HEAD_BYTES` bhi ek hi jagah se aata hai, taaki dono
+> barabar padhein.
+>
+> ### ⚠️ Refusal ke shabd dono road par ek jaise hain
+>
+> Jaan-bujh kar word-for-word: *"That file type is not supported."*,
+> *"USER_AVATAR does not accept MP4/MOV files."*, *"That file is 3 MB. The limit
+> here is 2 MB."* Ek hi problem ke do wording support queue ko sikha deti hai ki
+> ye do alag problem hain.
+>
+> ### 🔴 G5 ka faisla — default `false`, aur `confirm` flag padhta hi nahi
+>
+> Presign band karna un uploads ko nahi phansana chahiye jo chal rahe hain: wo
+> bytes bucket me aa chuke hain aur kharch ho chuke hain. To switch **darwaza
+> band karta hai, andar wale ko phansata nahi**.
+>
+> ⚠️ Aur ek naya guard: platform Cloudinary par ho aur presign on ho to **409**.
+> Warna ek hi surface ke kuch row S3 par aur kuch Cloudinary par baith jaate, sirf
+> is hisaab se ki client ne kaunsa road liya.
+>
+> ⚠️ `assertStorageLimitRule` me naya rule: `intentTtlMinutes` `presignTtlMinutes`
+> se chhota nahi ho sakta. Dono alag-alag valid hain (1–60 aur 1–1440), to koi
+> validator ise akela pakad nahi sakta — galat sirf **ek doosre ke rishte me** hai.
+>
+> ### Proof
+>
+> unit **711/711** (40 suites) · money upload suites **153/153** ·
+> `uploadPresignConfirm` **23/23** · mutation **29/29 MARA** (20 unit + 9 money) ·
+> naya `pairPosters.test.js` · naya shared fixture `__tests__/support/localFile.js`
+>
+> ⚠️ Mutation me ek mutant **zinda bacha tha** aur wo ganwaaya nahi gaya:
+> `presignTtlSeconds` do jagah use hota hai — `Expires:` (jo S3 enforce karta hai)
+> aur `expiresInSeconds:` (jo client ko bataya jaata hai) — aur test sirf doosri
+> ka tha. Naya test signed policy ko base64 se decode karke uski apni `expiration`
+> padhta hai. Review se ye nahi milta; mutation se mila.
+
+---
 
 ## Block X — Infra
+
+> 🚀 **Production par jaane ka kadam-dar-kadam sequence:**
+> **[production_go_live_runbook.md](./production_go_live_runbook.md)** — kram,
+> har kadam ka verify, rollback, aur kya-kya env badalna hai.
+> AWS ka setup (bucket, IAM, CloudFront) uska vishay nahi —
+> wo [aws_s3_setup.md](./aws_s3_setup.md) me hai.
+
+> ### 📌 Is server me **kitna code** bacha hai — 2026-09-19, code se verify karke
+>
+> Block X ka naam "Infra" hai, par sab infra nahi hai. Ye table sirf **is repo ka**
+> bacha hua kaam ginati hai:
+>
+> | Phase | Backend code bacha? | Kya, theek-theek |
+> |---|---|---|
+> | **X-1** | ❌ **kuch nahi** | Backend ka hissa **ho chuka**. `?w=` client jodta hai; poore repo me koi width/allowlist/srcset logic hai hi nahi (khoja gaya, 0 hits). GIF ko resize se bachana key ke prefix se hota hai (`gifs/` vs `images/`), aur G2 ke baad `kind` **verified bytes** se banta hai — to `.png` naam wali GIF bhi `gifs/` me hi girti hai |
+> | **X-2** | ✅ **haan — teen cheezein** | 1. `mediaSchema` par **`pending` flag nahi hai** (P7-1 ko chahiye). `duration` hai, default `0` — [`models/mediaSchema.js:148`](../models/mediaSchema.js) · 2. **Hourly retry sweep job nahi hai** (P7-2) — par infra maujood hai: [`jobs/index.js`](../jobs/index.js) me ~20 job `setInterval` + [`helpers/jobs/jobLock.js`](../helpers/jobs/jobLock.js) par · 3. Lambda se DB tak ka **raasta tay nahi** — agar endpoint se, to naya route + `endpoints_category` + role doc + Postman request + example (teeno collection ka niyam) |
+> | **X-3** | ❌ backend ka nahi | Doc + Postman pehle se tayyar. Ek setting badalni hogi: `storage.upload.presignEnabled = true` |
+> | **X-4** | ✅ haan — par **roka hua** | Multipart + `express-fileupload` hatana. Niche dekhein |
+>
+> ⚠️ **X-1 aur X-2 ka Lambda source is repo me nahi hai** — koi `lambda/`,
+> `infra/` ya `terraform/` folder maujood nahi. Wo AWS ka kaam hai.
+>
+> 🔴 **X-2 S3 ko rokta nahi.** Wo **sirf video duration** ke liye hai. Image ke
+> `width`/`height` G3 me server par hi ban jaate hain — wahi 1 KB jo signature ke
+> liye padha jaata hai, dimensions bhi de deta hai (`services/storage/inspect.js`
+> → `readDimensions`). To X-2 se pehle bhi: images poori tarah theek, videos
+> chalti aur dikhti hain, bas duration `0:00` rehti hai.
+>
+> ⚠️ Aur wo `0:00` **chup-chaap** galat hai, isi liye P7-2 ko plan
+> ([s3_migration_phases.md:1125](./s3_migration_phases.md)) `CLAUDE.md` ka silent-
+> failure rule todne wala batata hai. Isliye X-2 ka sweep uske Lambda ke **saath**
+> jaana chahiye, pehle nahi — warna ek aisa job likha jaayega jise koi kabhi green
+> hote nahi dekhega, jo bilkul wahi gap hai jo G5 me chaar knobs par mila tha.
 
 | Phase | Kaam |
 |---|---|
 | **X-1** | CloudFront + resize Lambda (widths `160/400/800/1600`, `gifs/` bahar) |
 | **X-2** | Metadata Lambda (video duration/dimensions) + retry sweep |
 | **X-3** | Panel + app migration (doosri team) |
-| ~~**X-4**~~ | ~~Multipart + `express-fileupload` sunset (U ship + 6 hafte)~~ — 🔴 **phase khatam** (§0.5). Koi client live nahi hua, to multipart kabhi ship hi nahi hoga; wo **U-5 ke ant me seedha delete** hota hai. 6-hafte ka window sirf purane app versions ke liye tha |
+| **X-4** | Multipart + `express-fileupload` sunset — 🔄 **wapas khula, 2026-09-18** (§0.5). Pehle "U-5 ke ant me seedha delete" likha tha; wo galat tha, kyunki multipart hi Cloudinary ka ekmatra upload raasta hai aur `Setting.storage.provider` ek dropdown hai. **Sunset tabhi jab Cloudinary ka apna presign ship ho** (§🔮, ~8-10 h). 6-hafte ka purana window ab bhi bemani hai — koi client live nahi hua |
 
 ## Block O — OTP throttle (media migration se bahar)
 
 | Phase | Kaam |
 |---|---|
 | **O-1** | 🔴 **OTP throttle burst me khul jaata hai** — claim ki pehchaan timestamp se hoti hai, jo ek-saath aaye callers me ek jaisa hota hai |
+| **O-2** | ⚠️ **Poori money suite ek saath green nahi rehti** — suite ke design ki wajah se, kisi ek test ke bug se nahi. Detail neeche |
+| **O-3** ✅ | ~~`Setting.storage` ke chaar knob kuch karte hi nahi~~ — **band, Block G me (G5)**. Chaaron ab live hain, aur ek naya rule bhi: intent TTL signature se chhota nahi ho sakta |
+| **O-4** ✅ | ~~Multipart raaste par nau surfaces ka koi size cap hai hi nahi~~ — **band, Block G me (G1)**. Dono road ab `getUploadLimit` ka ek hi number padhte hain |
 
 ---
 
@@ -1238,13 +1506,198 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 
 ---
 
+## O-4 ✅ · ~~Multipart raaste par nau surfaces ka koi size cap hai hi nahi~~
+
+> ✅ **BAND — Block G, gap G1** (aur G2/G3 ne usi jagah do aur farak bhi mitaye).
+> Ab dono road `getUploadLimit(purpose, kind)` ka **ek hi number** padhte hain,
+> aur `kind` verified bytes se aata hai — declared mime se nahi, to ek video ko
+> GIF ka allowance nahi mil sakta. Refusal ke shabd bhi dono taraf word-for-word
+> ek jaise hain.
+>
+> Neeche ka poora vishleshan waise hi rakha hai — wo batata hai ki galti **kaise
+> dikhi**, aur wahi cheez agli baar bhi kaam aayegi.
+
+`helpers/media/assertImageFile.js` · `helpers/banners/media.js` · `helpers/promotionalTickers/media.js` · aur wo saat surfaces jo sirf `assertImageFile` bulate hain
+
+> 🔴 **U-5 ke final verification me mila, 2026-09-18.** Ek hi file do raaston se
+> bhejne par do alag jawab milte hain:
+>
+> | Raasta | Kaun rokta hai | Kitne par |
+> |---|---|---|
+> | Multipart | `express-fileupload` ka `MAX_UPLOAD_SIZE_MB` | **100 MB** |
+> | Presigned | presign ki policy + confirm ka apna check | **purpose ka apna cap** |
+>
+> Aur purpose ke cap bahut chhote hain:
+>
+> | Purpose | Cap | Multipart par asar |
+> |---|---|---|
+> | `BRAND_FEATURE_ICON` | 2 MB | 100 MB tak chal jaata hai |
+> | `TICKER_ICON` | 2 MB | wahi |
+> | `USER_AVATAR` | 5 MB | wahi |
+> | `BRAND_LOGO` · `SUB_BRAND_LOGO` | 5 MB | wahi |
+> | `CATEGORY_IMAGE` · `SUBCATEGORY_IMAGE` | 10 MB | wahi |
+> | `BRAND_COVER` · `SUB_BRAND_COVER` | 10 MB | wahi |
+> | `BANNER_MEDIA` · `BANNER_POSTER` | 50 / 10 MB | wahi |
+>
+> **Wajah:** in surfaces par multipart road sirf `assertImageFile` bulata hai, aur
+> wo **mime** dekhta hai, size nahi — file me likha hai: *"Is this an image?"*.
+> App banner aur ticker ke apne helper me bhi koi size check nahi hai.
+>
+> ⚠️ **Teen surfaces isse bahar hain aur pehle se theek hain** — showcase
+> (`validateMediaFiles`), voucher images (`validateVoucherImages`) aur voucher
+> banner (`assertWithinSize`). Wahan multipart par bhi size naapa jaata hai.
+>
+> ### ⚠️ Ye U ne nahi banaya — U ne dikhaya
+>
+> Presign pehle din se `entry.maxBytes` par cap lagata tha, to farak hamesha tha.
+> U-3 ne sirf ye badla ki presign ab **admin ka** number padhta hai (aur wo aur
+> chhota ho sakta hai), aur U-5 ne wo raasta in nau surfaces tak pahuncha diya —
+> jisse farak ab har surface par dikhta hai, ek-do par nahi.
+>
+> ### 🔴 Customer ko kya dikhta hai
+>
+> Ek 8 MB ki phone photo: multipart se **chadh jaati hai**, presigned se `413`.
+> Jab panel presigned par shift hoga, wahi photo jo kal chadh rahi thi aaj mana ho
+> jaayegi — aur koi nahi bata payega ki kya badla, kyunki dono taraf se code
+> "sahi" chal raha hoga.
+>
+> ### Theek karne ka raasta
+>
+> `getUploadLimit(purpose, kind)` pehle se maujood hai aur wahi number dono jagah
+> deta hai. Surface ke multipart branch me ek `assertWithinLimit(file, purpose)`
+> jodna kaafi hai — naya number nahi, wahi number.
+>
+> ⚠️ **Ye behaviour change hai, isliye abhi nahi kiya.** Aaj multipart se 40 MB ka
+> brand cover chadh sakta hai; cap lagte hi wo mana ho jaayega. Kitni purani rows
+> us cap se upar hain ye naapna hoga, aur kya un par koi asar padta hai — stage ka
+> data disposable hai, par faisla aapka hai.
+
+---
+
+## O-3 ✅ · ~~`Setting.storage` ke chaar knob kuch karte hi nahi~~
+
+> ✅ **BAND — Block G, gap G5.** Chaaron live hain: `presignEnabled` (`presign`
+> padhta hai, `confirm` jaanboojh kar **nahi**), `presignTtlMinutes`,
+> `intentTtlMinutes`, aur `signedUrlTtlMinutes` (facade `documentUrl` me).
+>
+> ⚠️ Do naye guard saath aaye: platform S3 par na ho to presign **409**, aur
+> `intentTtlMinutes` `presignTtlMinutes` se chhota ho to save par **422**.
+
+`helpers/settings/getStorageConfig.js:102–105` · `services/storage/presign.js:75,158,189,201` · `services/storage/providers/s3.js`
+
+> ⚠️ **Ye line pehle `presign.js:41,50` kehti thi** — wo purane hardcoded
+> constants (`PRESIGN_TTL_SECONDS`, `INTENT_TTL_MS`) ke pate the, jo G5 me hat
+> gaye. Aaj ke chaar pate: `:75` setting padhna · `:158` `Expires` (jo **S3
+> enforce karta hai**) · `:189` intent ka `expiresAt` · `:201` `expiresInSeconds`
+> (jo **client ko bataya jaata hai**). Pehle do alag ho jaayen to vendor ko ek
+> waqt bataya jaata aur S3 doosre par chalta — isi liye `:158` ka apna test hai,
+> jo signed policy ko base64 se decode karke uski `expiration` padhta hai.
+
+> 🔴 **U-2 ke doc sync me mila.** Admin doc (§ Settings) in chaar ko kaam karta
+> hua batata hai:
+>
+> | Knob | Doc kya kehta hai | Asal me |
+> |---|---|---|
+> | `storage.upload.presignEnabled` | *"Direct-to-S3 raasta, bina deploy ke on/off"* | **Koi reader nahi.** `/uploads/presign` `false` par bhi chalta hai |
+> | `storage.upload.presignTtlMinutes` | *"Client ke paas upload shuru karne ka waqt"* | `presign.js:41` me `PRESIGN_TTL_SECONDS = 15 * 60` hardcoded |
+> | `storage.upload.intentTtlMinutes` | intent row kitni der zinda | `presign.js:50` me `INTENT_TTL_MS` hardcoded |
+> | `storage.delivery.signedUrlTtlMinutes` | private document ke link ki umar | `s3.js` apna hi expiry use karta hai |
+>
+> `getStorageConfig` chaaron ko theek se padhta hai aur `storageConfig.test.js`
+> unhe wapas padh kar green bhi hai — par wo test sirf ye sabit karta hai ki
+> **helper** setting padh leta hai, ye nahi ki koi uspar chalta hai.
+>
+> ⚠️ **Ye khud plan ka apna rule todta hai.** §2 me likha hai: *"Har field ka ek
+> asli reader hai — koi aisa knob nahi jo kuch na kare. Wahi galti `maxSections`
+> me thi, aur wo isi wajah se hataya gaya tha."*
+>
+> 🔴 **Kill switch ka jhooth sabse mehenga hai.** Agar kal presigned raaste me
+> kuch kharaab nikle, admin panel me switch off karega, `Setting` me `false` likha
+> jaayega, UI *"band ho gaya"* dikhayegi — aur raasta poori tarah chalta rahega.
+> Ek kill switch ka galat hona uske na hone se bura hai, kyunki incident ke waqt
+> log usi par bharosa karke aage badh jaate hain.
+>
+> ### ⛔ Kyun abhi fix nahi kiya — ye design ka faisla hai, coding ka nahi
+>
+> `presignEnabled` ka default **`false`** hai (`models/Setting.js:1038`). Use
+> aaj ke code se joda jaaye to **naye install par presigned raasta band** hoga —
+> aur §0.5 me prod ke liye locked faisla *"client sirf presigned"* hai. To do me
+> se ek chunna padega, aur dono ke asar alag hain:
+>
+> **(a) Default `true` kar do** — jo §0.5 se mel khata hai. Switch phir sirf
+> emergency ka off rehta hai. Par ek stored `false` (aaj ki har row me wahi hai)
+> flip hote hi raasta band kar dega, to `true` karne ke saath ek backfill bhi
+> chahiye.
+>
+> **(b) Default `false` rehne do**, aur switch off hone par `/uploads/presign`
+> ek saaf `503` de jo client ko multipart par bhejta hai. Par tab stage/prod dono
+> me use **haath se on** karna padega, aur jis din koi naya environment bina on
+> kiye khada hoga, wahan upload chup-chaap purane raaste par chala jaayega.
+>
+> TTL waale teen knob is faisle par nahi latke — unhe wire karna seedha hai, par
+> unhe akele karna aadha kaam hai aur wahi galatfehmi chhodta hai ki chaaron ab
+> kaam karte hain.
+>
+> **Tab tak:** in chaaron ko **mat badalna** — badalne se kuch nahi hoga, aur ye
+> maan lena ki hua wo asli khatra hai. Admin doc me inke saamne ek line honi
+> chahiye; wo bhi is faisle ke saath hi jaayegi.
+
+---
+
 ## O-2 · Poori money suite ek saath chalane par green nahi rehti
 
-`__tests__/money/*` — 91 files, ek hi `Trydood2_test` database par
+`__tests__/money/*` — 99 files, ek hi `Trydood2_test` database par
 
 > 🔴 **Ye pehli baar 2026-09-18 ko naapa gaya, V-6 ke dauraan.** Poori suite:
 > **2 suite fail, 4 test fail, 1802 pass**. Wahi suites akele chalane par
 > **34/34 pass** karti hain.
+>
+> ### 📌 Block U ke baad dobara naapa — 2026-09-18, U-5 ke ant me
+>
+> **99 suite, 1945 test: 96 pass, 3 fail (10 test).** Teen me se:
+>
+> | Suite | Wajah | Kiska |
+> |---|---|---|
+> | `otpThrottle` | **O-1** — bug zinda hai, test sahi behaviour likhta hai | pehle se |
+> | `brandFeatureOwnership` | uska `services/storage` mock naya `describeIncoming` nahi rakhta tha | U-5 ne toda, **theek ho gaya** |
+> | `mediaUploadRollback` | `uploadBannerMedia` ki nayi signature (actor pehle) | U-5 ne toda, **theek ho gaya** |
+>
+> Dono U-5 wale fix hone ke baad akele green hain. Bacha sirf `otpThrottle`, jo
+> O-1 ka apna red marker hai.
+>
+> ### 📌 Block G ke baad dobara naapa — 2026-09-19
+>
+> Ek hi shaam me **do baar** chalayi gayi, aur dono baar alag suites red hui —
+> yahi is section ka sabse saaf saboot hai.
+>
+> | | Suites | Tests | Red kaun |
+> |---|---|---|---|
+> | **Run 1** | 95 pass / 4 fail | 1963 (10 fail) | `otpThrottle` · `voucherImageFloorPaths` · `voucherUploadOutsideTransaction` · `settlementClaims` |
+> | **Run 2** | 93 pass / 6 fail | 1963 (78 fail) | `otpThrottle` · `documentFailureAlerts` · `bannerCapacity` · `settlementStatement` · `refundAllowance` · `showcaseCustomerReads` |
+>
+> Dono run me **sirf `otpThrottle`** saanjha hai. Har doosra naam ek run me red
+> aur doosri me green — aur akele chalane par **har ek** green:
+> `settlementClaims` ✅ · baaki paanch **89/89** ✅.
+>
+> 🔴 **Run 1 ki do suites asli thin, aur unka fix code me nahi tha.**
+> `voucherImageFloorPaths` aur `voucherUploadOutsideTransaction` nakli
+> `tempFilePath` (`/tmp/photo-1.jpg`) par chal rahi thin. Ye G2 se pehle isliye
+> chalta tha ki multipart road file kholta hi nahi tha; ab `describeAllIncoming`
+> pehla kilobyte padhta hai, to wo `ENOENT` deti hain. Dono ab
+> `__tests__/support/localFile.js` se asli bytes likhti hain — **32/32**. Iske
+> saath HEAD par jitni bhi suites nakli path par thin (chhah), sab asli bytes par
+> aa gayi hain.
+>
+> ⚠️ **Run 2 ka 78 ek code ka naap nahi hai.** Paanch suites ke **saare** test
+> gire, 60.8 / 61.3 / 60.9 / 61.1 second par — yaani `testTimeout: 60000` par,
+> assertion par nahi. Ek galat assertion pandrah test ek saath nahi girati. Wahi
+> run apne aap me ~40 min le gayi jabki usse pehle wali ~18 min me poori hui thi:
+> shared M0 us waqt dhimi thi. `jest.config.js` ka `testTimeout` comment theek
+> isi ghatna ko pehle se likh kar rakhta hai.
+>
+> 📌 **Padhne ka tareeka:** poori suite ka number ek gate nahi hai. Jo suite red
+> aaye use **akele** chalao — wahi jawab hai. Jo dono jagah red rahe, wahi asli
+> hai.
 >
 > `moneyInvariants` ka fail ek settlement total par hai — `488.7` expect,
 > `1273.7` mila. Farq ka aakaar batata hai ki jod me aisi rows aa rahi hain jo
@@ -1278,6 +1731,21 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 ---
 
 ## O-1 · OTP throttle — claim ki pehchaan timestamp se nahi ho sakti
+
+> ### 🔴 Iska ek test **abhi red hai**, aur wo jaan-bujh kar hai
+>
+> `__tests__/money/otpThrottle.test.js` → *"two requests at the same moment ›
+> lets exactly one through"*. Aath ek saath bheje jaate hain; **aath ke aath**
+> nikal jaate hain.
+>
+> Ye test sahi behaviour likhta hai aur bug zinda hai, isliye wo fail hota hai —
+> `helpers/otps/claimOtpSend.js` chhua nahi gaya. **Poori money suite isi wajah
+> se kabhi poori green nahi hoti**, aur ye likha hona zaruri hai: warna agla
+> aadmi red dekh kar maan lega ki usne kuch toda hai, ya use ignore karna seekh
+> lega.
+>
+> ⚠️ Ise `skip` **nahi** kiya gaya. Ek skipped test chup rehta hai; ye red rehta
+> hai aur har run me yaad dilata hai.
 
 `helpers/otps/claimOtpSend.js` · `helpers/otps/releaseOtpSend.js` · `models/OtpThrottle.js`
 
@@ -1631,7 +2099,7 @@ Detail: [showcase_rules_and_upload_plan.md](./showcase_rules_and_upload_plan.md)
 ---
 
 ## U-1 … U-5 · Upload
-### U-1 — ✅ **DONE** (`f14f7bb` + commit 2 uncommitted)
+### U-1 — ✅ **DONE** (`f14f7bb` + `1d87d75`)
 `routes/uploads.js` · `controllers/uploads/*` · `validator/uploads.js` · `services/storage/{presign,confirm,inspect,accept}.js` · `models/Upload.js`
 
 - [x] `POST /uploads/presign` — presigned **POST**, policy S3 enforce karta hai
@@ -1660,10 +2128,330 @@ Detail: [showcase_rules_and_upload_plan.md](./showcase_rules_and_upload_plan.md)
 > check chalta, aur **422** aata jo batata ki wo upload kis surface ka tha —
 > yaani prober ko id ka asli hona **aur** uska surface dono muft. Ab uska apna
 > test hai.
-- **U-2** Category pilot (sabse chhoti surface). ⚠️ **Dual mode nahi** — §0.5
-- **U-3** Showcase surface — multi-file + poster pairing
-- **U-4** Voucher surface — images + banner + poster
-- **U-5** Baaki surfaces — brand, subBrand, ticker, avatar, features (6 commit)
+### U-2 — ✅ **DONE** (uncommitted)
+`validator/categories.js` · `controllers/categories/{createCategory,updateCategory}.js` · `services/categories/{createCategory,updateCategoryById}.js`
+
+- [x] `uploadId` dono schema me — 24-char hex, dono failure ka ek hi message
+- [x] Dono controller `{ userId, role }` service tak le jaate hain
+- [x] Dono service `uploadFromPath` ki jagah `acceptUpload` — multipart abhi bhi chalta hai
+- [x] `if (image || uploadId)` — warna presigned raasta update par pahunchta hi nahi
+- [x] 🔴 **Delete ab `save()` ke BAAD** — neeche
+- [x] Teen-docs rule: endpoints_category #100/#103, admin doc #61/#64 + naye #111–#112, admin Postman dono request
+- [x] **Proof:** money `categoryUpload` **19** (asli bucket) · unit `categoryController` **6** · money `brandImages` **30** (3 naye) · mutation **18/18**
+
+> ### 🔴 Ek asli defect isi block me nikla — delete `save()` se pehle tha
+>
+> Upar ka comment daawa karta tha ki kram theek ho chuka hai, aur ek qadam tak wo
+> sach bhi tha: upload delete se pehle hota tha. Par delete **`save()` se pehle**
+> tha — to ek save jo throw kar jaaye, bytes le jaata aur row purane URL par hi
+> chhod deta. Wahi toota hua tile, bas thoda door hat kar, aur ab row ko kisi aur
+> tasveer par point karne ka koi tareeka bhi nahi.
+>
+> Ab: **upload → save → tab delete**, aur delete ka fail hona sirf log hota hai.
+> Us waqt tak row nayi tasveer par hai, yaani customer ko sahi cheez dikh rahi
+> hai; `500` dena us update ke liye hota jo ho chuka, aur admin ek ho chuke save
+> ko dobara karne jaata. Peechhe ek unreferenced object reh jaata hai — wahi
+> `scripts/auditOrphans.js` ka kaam hai.
+>
+> ⚠️ **Sahi pattern repo me pehle se tha** — `updateBrand`, `updateSubBrand`,
+> `updateBrandFeature` aur `updateSectionMedia` chaaron save ke baad delete karte
+> hain. Teen surface uske bahar thi; category ab andar hai, `subCategory` aur
+> avatar **U-5** ki checklist me hain.
+
+> 🔴 **`actor` hi asli naya kaam hai, aur uska galat hona kahin fail nahi hota.**
+> Facade upload intent ko **id aur owner dono** se dhoondhta hai. Controller se
+> `req.userId` na aaye to service ke apne test green rehte hain (wo apna actor
+> khud banate hain), multipart raasta green rehta hai (wo actor dekhta hi nahi),
+> aur asli client ko **har upload par** `404 That upload was not found.` milta
+> hai. Isi ek baat ke liye `categoryController.test.js` alag se hai.
+
+> 🔴 **Refusal purani tasveer ki keemat par nahi aa sakta.**
+> Purana order delete pehle karta tha, aur tab ek fail hui upload category ko
+> bina tasveer ke chhod deti thi — customer ki list me toota hua tile, ek aisi
+> request se jo `500` deti thi aur retry karne layak lagti thi.
+>
+> Presigned raasta ise **aur** zaroori banata hai: yahan reject hone ke do naye
+> tareeke hain jo multipart par the hi nahi — galat purpose ka upload, aur kisi
+> aur ka upload. `categoryUpload.test.js` ka poora ek describe block isi par hai,
+> aur har assertion **asli bucket par `HeadObject`** hai, mock par nahi.
+
+> ⚠️ **Missing object S3 par `403` deta hai, `404` nahi** — aur ye theek hai.
+> S3 tabhi batata hai ki object nahi hai jab caller ke paas `s3:ListBucket` ho;
+> hamare upload role ke paas jaanboojh kar nahi hai, to *"no such key"* *"access
+> denied"* ban ke aata hai. Isliye har `false` assertion ke bagal me usi
+> credential se ek `true` assertion hai — permission ki dikkat pehle usi ko
+> giraati, to jodi ka pass hona sirf ek hi matlab rakhta hai.
+
+> ⚠️ **`assertImageFile` surface par hi rahega**, facade me nahi. Wo ek **exact
+> mime allow-list** hai, aur purpose ka `kinds` jaanboojh kar nahi hai —
+> `constants/storage.js:97` khud likhta hai ki kinds routing hai, security
+> boundary nahi. `kindFromMime("image/svg+xml")` `IMAGE` deta hai, aur apne CDN
+> se serve hui SVG stored XSS hai. Presigned raaste par yahi kaam confirm ka
+> magic-byte check karta hai.
+
+> ⚠️ **`brandImages` ka storage mock ab asli facade rakhta hai**
+> (`jest.requireActual(".../storage/accept")`). Stub rakhna us ek cheez ko hata
+> deta jo tay karti hai ki request kis raaste par gayi; ab uska multipart raasta
+> wahi mock `uploadFromPath` par utarta hai, to S3 tak kuch nahi jaata.
+
+> **Teen doc galtiyan isi sync me nikli** (U-2 ne banayi nahi, U-2 ne dikhayi):
+> `210` do alag endpoint par tha — pause aur `/app-config` — pause ab `216`;
+> `/uploads` ki dono row §13 Vouchers me padi thi jabki summary table use module
+> 35 keh raha tha, ab apna section §35; aur `GET /documents/:token` isi shape me
+> §24 me tha, ab §34.
+
+### U-3 commit 1 — ✅ **DONE** (uncommitted) · limits dono raaston par
+`helpers/settings/getUploadLimit.js` 🆕 · `helpers/settings/getShowcaseConfig.js` · `helpers/settings/assertStorageLimitRule.js` · `services/storage/{presign,confirm}.js`
+
+- [x] `getUploadLimit(purpose, kind)` — `min(code ka ceiling, Setting.storage.limits, surface override)`
+- [x] `presign` ka **413 aur policy dono** usi number se
+- [x] `confirm` asli byte count ko usi cap se naape — over ho to object discard + 413
+- [x] `getShowcaseConfig` ab `effectiveLimitMB` se guzarta hai — uska pehla asli caller
+- [x] `assertStorageLimitRule` me **GIF ka rule** — pehle chhoota hua tha
+- [x] Docs: endpoints_category #214/#215, admin #111/#112 + `storage` settings block, vendor #94/#95
+- [x] **Proof:** money `uploadSizeLimits` **11** (asli bucket) · unit `uploadLimit` **9** · mutation **16/16**
+
+> ### 🔴 Kyun ye U-3 ke andar hai, aur kyun ise pehle karna pada
+>
+> Showcase pehli surface hai jiski limits settings-driven aur global se **narrow**
+> hain. Uske bina U-3 ka limits wala hissa ek jhooth hota.
+>
+> **Jo tha:** `presign` apni S3 policy ek **static constant** se banata tha
+> (`UPLOAD_PURPOSES[purpose].maxBytes`), aur `confirm` ke paas asli byte count
+> (`head.ContentLength`) hote hue bhi wo kisi limit se compare hota hi nahi tha —
+> sirf kind check hota tha.
+>
+> Matlab `Setting.storage.limits` (ST-3) aur har surface override (ST-4) **sirf
+> multipart raaste par** lagte the. Admin platform ka video limit 50 se 20 karta:
+> panel maan jaata, seedha-S3 raasta 50 par hi rehta. Ek platform, do limit — aur
+> chhoti wali hi wo thi jise band kiya ja sakta tha.
+>
+> ⚠️ **Under-declare karke bhi kuch nahi milta.** Policy hamesha **limit** se
+> banti hai, client ke `sizeBytes` se nahi — wo sirf padhne-layak 413 ke liye hai.
+> Ek test 1 byte declare karke 2 MB bhejta hai aur S3 ka apna `EntityTooLarge`
+> wapas padhta hai.
+
+> ### 🔴 `confirm` ka check policy ki jagah nahi leta — wo uska doosra half hai
+>
+> Signature ek baar likhi jaati hai aur pandrah minute chalti hai. Admin us beech
+> limit ghata de to client ke haath ki signature nahi badalti — to har bakaya
+> presign purani ceiling par chalta rehta. Aur is commit se pehle jaari hui har
+> signature me to static constant hi hai.
+>
+> ⚠️ Aur wahan limit **verified kind** ki hai, declared ki nahi. GIF ka apna bada
+> ceiling hai, to PNG ko `image/gif` bata kar bhejna warna GIF ka allowance muft
+> me de deta — kind magic bytes se isi liye tay hota hai.
+
+> ### ⚠️ `effectiveLimitMB` ka koi caller hi nahi tha
+>
+> `assertStorageLimitRule` ka apna comment kehta hai *"read path chhoti wali leta
+> hai aur ye save mana karta hai — belt and braces"*. Read path lete hi nahi tha:
+> `getShowcaseConfig` `vendor.showcase` ki value seedha lautata tha, kahin `min`
+> nahi. Do me se ek brace lagi hi nahi thi.
+>
+> Ye O-3 ke chaar dead knobs jaisi hi cheez hai, aur isi wajah se dhoondhne par
+> mili. Ab uska pehla asli caller hai, aur ek test us state ko pin karta hai jo
+> save-rule rok nahi sakta — seed kiya hua ya purane shape se restore hua document.
+
+> ⚠️ **GIF ka save-rule chhoota hua tha.** `STORAGE_LIMIT_RULES` me sirf image aur
+> video the, jabki `getShowcaseConfig` GIF ka apna ceiling lautata hai aur
+> `validateMediaFiles` GIF ko usi se naapta hai. Admin showcase ka GIF limit global
+> se bada set karta aur `200` milta. Ab ek test ye bhi naapta hai ki **jo bhi
+> ceiling read path ghatata hai, uska save-rule maujood ho** — do list ka drift
+> dobara chup-chaap na ho.
+
+### U-3 commit 2 — ✅ **DONE** (uncommitted) · showcase surface
+`services/storage/accept.js` · `models/Upload.js` · `helpers/showcases/{upload,validateMedia}.js` · `services/showcases/{addSectionMedia,replaceSectionMedia,updateSectionMedia}.js` · `validator/showcase.js`
+
+- [x] `describeIncoming` / `describeAllIncoming` — surface ko pata chale **kya aa raha hai**, upload kharch kiye bina
+- [x] Teeno endpoint par `uploadIds` / `thumbnailUploadIds` / `uploadId` / `thumbnailUploadId`
+- [x] Poster index-aligned, aur har raasta apne andar pair karta hai
+- [x] `Upload.declaredFileName` — warna presigned raaste par har media ka title khali
+- [x] 🔴 Poster ab `SHOWCASE_THUMBNAIL` par (pehle use video ka 50 MB allowance milta tha)
+- [x] Title/altText 100 char par capped
+- [x] Docs: endpoints_category #63–#65, vendor #48/#49/#50, admin showcase block, vendor Postman ×3
+- [x] **Proof:** money `showcaseUpload` **16** (asli bucket) · unit `showcaseMedia` **41** · mutation **22/22**
+
+> ### 🔴 Surface ke apne rules platform ke rules nahi hain
+>
+> Section meter karta hai **kitni** photo aur video ek section me aa sakti hain,
+> aur **kaunse exact mime** wo leta hai. `presign` aur `confirm` in dono ko
+> jaante hi nahi — wo kind ka parivaar aur size dekhte hain.
+>
+> Multipart par surface `file.mimetype` aur `file.size` padh leti thi. Presigned
+> par file hai hi nahi, sirf id hai. `describeIncoming` wahi teen field intent row
+> se lauta deta hai, to surface ke saare purane check bina badle chalte hain.
+>
+> 🔴 **Aur wo confirm se PEHLE chalte hain.** Baad me chalte to jawab wahi rehta —
+> "section bhar chuka hai" — par vendor ki **saari** files jal chuki hotin, sirf
+> isliye ki unhone ek zyada chun li.
+
+> ### ⚠️ Poster ka apna purpose — aur ye ek fix hai, translation nahi
+>
+> `uploadSingleMedia` poster ko `SHOWCASE_MEDIA` bhejta tha, yaani use video ka
+> **50 MB** allowance milta tha. `SHOWCASE_THUMBNAIL` 10 MB par capped hai aur
+> VIDEO leta hi nahi — jo ek still ke liye theek hai. `updateSectionMedia` pehle
+> se sahi purpose likhta tha; ye path uske bahar tha.
+>
+> 🔴 Presigned raaste par ye ek aur wajah se zaroori hai: video aur uska poster do
+> alag upload hain, aur ek ka id doosre ki jagah kharch nahi hona chahiye — warna
+> do me se **tighter** rule hi wo hai jise skip kiya ja sakta hai.
+
+> ### ⚠️ Title khali aa raha tha, aur kisi test me nahi dikhta
+>
+> `prepareMediaDocuments` har item ka naam uski file se leta hai
+> (`media.originalName`). Presigned raaste par file ka naam kahin store hi nahi
+> hota tha — `presign` use sirf extension ke liye padhta tha. Nateeja: multipart
+> se aayi media ka title bhara hua, presigned se aayi ka khali, ek hi request ke
+> do jawab — aur wo raasta vendor ne chuna bhi nahi tha.
+>
+> Ab `Upload.declaredFileName` rakhta hai aur facade use `metadata.originalName`
+> me lauta deta hai. ⚠️ Wo S3 tak phir bhi nahi jaata — key uuid hi rehti hai,
+> taaki public URL me kisi ka rakha hua naam na aaye.
+
+> ⚠️ **Title ab 100 char par capped hai.** `title` ka apna limit 100 hai aur
+> `altText` ka 150, par ye path unhe seedha likhta hai — to 300-character filename
+> aisi media banata tha jise vendor dekh to sakta tha, edit nahi kar sakta tha,
+> kyunki har save ek aisi value par reject hota tha jo usne kabhi type hi nahi ki.
+
+> ⚠️ **Postman me do field ke naam galat the** — `medias` aur `media`, jabki
+> service `files` aur `file` padhti hai. Dono request default par disabled hain,
+> isliye wo kabhi chali hi nahi aur galti pakdi nahi gayi. Ab theek hain, aur
+> dono raaste likhe hue hain.
+### U-4 — ✅ **DONE** (uncommitted) · voucher surface
+`constants/storage.js` · `helpers/vouchers/{validateImagesFiles,voucherBannerMedia}.js` · `services/vouchers/{createVoucher,updateVoucher,setVoucherBanner}.js` · `validator/vouchers.js` · `controllers/vouchers/setBanner.js`
+
+- [x] `imageUploadIds` (create) · `newImageUploadIds` (update) · `bannerUploadId` + `bannerPosterUploadId` (create aur #83)
+- [x] 🆕 **`VOUCHER_BANNER_POSTER`** purpose — poster ab banner ke allowance par nahi
+- [x] Image floor, ginti aur mime allow-list **describe par**, confirm se pehle
+- [x] Mila-jula batch ek hi list, files pehle ids baad me — floor poore batch par
+- [x] Docs: endpoints_category #75/#76/#83, vendor #54/#55/#59, admin vendor-toolkit block, vendor Postman ×3
+- [x] **Proof:** money `voucherImageFloorPaths` **23** · money `voucherBannerReview` **21** · unit `voucherMedia` **44** · mutation **18/18**
+
+> ### 🔴 Poster ko apna purpose dena ek fix hai, naam badalna nahi
+>
+> `uploadVoucherBannerMedia` poster ko `VOUCHER_BANNER` par bhejta tha, yaani ek
+> still ko video ka **50 MB** allowance milta tha. `VOUCHER_BANNER_POSTER` 10 MB
+> par capped hai aur VIDEO leta hi nahi.
+>
+> 🔴 Presigned raaste par ye ek aur wajah se zaruri hai: purpose hi wo **ek**
+> cheez hai jo banner aur uske poster me farq karti hai. Share karne ka matlab
+> hota dono id aapas me badle ja sakein — aur do rules me se **tighter** wala hi
+> wo hota jise skip kiya ja sakta.
+>
+> ⚠️ Bucket aur `vouchers/<id>` prefix dono ke liye ek hi hain, to koi object
+> hilta nahi. Sirf allowance alag hai.
+
+> ### 🔴 Floor describe par chalta hai, upload par nahi
+>
+> `assertVoucherImageFloor` pehle se upload se pehle chalta tha — par wo `files`
+> ginta tha. Presigned raaste par file hai hi nahi, to bina `describeAllIncoming`
+> ke wo ginti **zero** hoti aur har presigned create floor par mar jaata.
+>
+> Ab dono raaste ek hi list banate hain, aur floor us list par lagta hai: do
+> attached + ek `uploadId` = teen. Raaston ko alag ginna wo galti hai jisme do-do
+> karke koi bhi floor paar kar leta.
+
+> ⚠️ **`jsonTolerantArray` ko upar shift karna pada.** Wo `validateCreateVoucher`
+> aur `validateUpdateVoucher` ke **beech** declare tha; create ab use karta hai,
+> aur ek `const` ko uske temporal dead zone me chhoona module load par throw karta
+> — yaani poora process boot par girta, ek request nahi.
+
+> ⚠️ **Postman me do aur galat field naam mile.** Update request `images` bhejti
+> thi jabki service `newImages` padhti hai, aur banner request ka description
+> abhi bhi `bannerType` + `bannerImage`/`bannerVideo`/`bannerGif` batata tha — wo
+> teeno V-4 me hataye ja chuke the. Dono request disabled hain, isliye kabhi
+> chali hi nahi.
+### U-5 — ✅ **DONE** (uncommitted) · baaki saari surfaces
+`constants/storage.js` · `services/storage/accept.js` · `helpers/{banners,promotionalTickers}/media.js` · `services/{banners,promotionalTickers,brands,subBrands,subCategories,users,auth,brandFeatures}/*` · 8 validator
+
+- [x] App banners `mediaUploadId` + `posterUploadId` · 🆕 **`BANNER_POSTER`** purpose
+- [x] Tickers `iconUploadId`
+- [x] Brand aur outlet — `logoUploadId` + `coverImageUploadId`, har slot ka apna purpose
+- [x] SubCategory `uploadId` · avatar `uploadId` (profile aur register dono)
+- [x] Brand feature icon `iconUploadId`
+- [x] 🔴 **E5** — `updateBrand` ke uploads ab transaction ke **bahar**
+- [x] 🔴 Delete ab `save()` ke **baad** — `updateSubCategoryById` aur `updateUserById`
+- [x] 🔴 Facade ab saaf **500** deta hai jab surface actor bhejna bhool jaye
+- [x] Docs: endpoints_category, vendor doc, admin doc · Postman ×8
+- [x] **Proof:** unit **660** (38 suites) · money `brandImages` **35** · mutation **19/19**
+
+> ### 🔴 Multipart delete U-5 me **nahi** hai — X-4 wapas khul gaya
+>
+> Plan kehta tha ki U-5 ke ant me multipart seedha delete ho jaye. Wo galat tha.
+>
+> `presign.js` `@aws-sdk/s3-presigned-post` par bana hai aur Cloudinary ke paas is
+> shape ka kuch nahi — yaani **multipart hi Cloudinary ka ekmatra upload raasta
+> hai**. Aur `Setting.storage.provider` ek dropdown hai jo kal badal sakta hai.
+> Multipart hata dete to us dropdown ko Cloudinary par le jaate hi upload ka koi
+> raasta nahi bachta: ek switch jo sab chalu rakhne ka vaada kare aur upload band
+> kar de, wo switch na hone se bura hai.
+>
+> **Faisla (2026-09-18, dobara confirm):** abhi **S3 + presign**. Cloudinary ka
+> apna presign **baad me**, usi generic shape me, **zero client change** ke saath
+> (~8-10 h). Multipart ka sunset (X-4) usi ke baad — kisi tareekh par nahi.
+
+> ### 🔴 E5 — `updateBrand` ke uploads transaction ke bahar
+>
+> Do file provider tak jaane me jitna waqt leti, utni der ek Mongo transaction
+> khuli rehti thi. Mongo ki apni seemaa 60 second hai, aur ek dheemi connection
+> use paar kar sakti hai — tab transaction abort hota hai aur vendor ki **poori
+> edit** chali jaati, ek aisi wajah se jiska database se koi lena-dena nahi.
+>
+> ⚠️ Brand ka wajood ab upload se **pehle** check hota hai. Wo check pehle
+> transaction ke apne read se muft milta tha; upload ko aage le jaane par galat id
+> ka 404 do uploads ke **baad** aata — yaani vendor paise deta aur phir 404 sunta.
+>
+> ⚠️ Rollback ab `uploadedBySlot` se padhta hai, `replaced` se nahi. Uploads ab
+> session se pehle hote hain, to ek transaction jo assignment loop se **pehle**
+> fail ho jaye wo `replaced` khali chhodta hai jabki objects bucket me aa chuke
+> hote.
+
+> ### 🔴 Teesri aur aakhri delete-order galti
+>
+> `updateSubCategoryById` aur `updateUserById` dono purani file ko `save()` se
+> **pehle** delete karte the. U-2 me `updateCategoryById` me yahi mila tha; ye wo
+> baaki do hain. Ab teeno: upload → save → tab delete, aur delete ka fail hona
+> sirf log hota hai (row nayi tasveer par point kar chuki hoti hai, to 500 dena us
+> update ke liye hoga jo ho chuka).
+
+> ### ⚠️ Actor bhoolna ab chup-chaap fail nahi hota
+>
+> `describeIncoming`/`acceptUpload` ab **500** dete hain agar surface actor na
+> bheje. Pehle `findOne({ _id, userId: undefined })` kuch match nahi karta aur
+> jawab `404 That upload was not found` hota — yaani vendor ko har baar batate ki
+> unka upload expire ho gaya, ek service signature ki galti ki wajah se.
+>
+> 🔴 Ye wo class hai jo multipart se bhari suite me **kabhi nahi dikhti**: wo
+> raasta actor padhta hi nahi.
+
+> ⚠️ **`registerUser` ko bhi actor mila.** `POST /auth/register` admin-gated hai,
+> to caller hamesha maujood hai — actor wo **admin** hai jo account bana raha hai,
+> na ki wo account jo ban raha hai (wo abhi hai hi nahi).
+
+> ⚠️ **Category/subCategory validator ab ek hi message deta hai.**
+> `Joi.string().hex().length(24)` `"nope"` par **dono** rule report karta hai, aur
+> controller unhe join karke *"Invalid uploadId., Invalid uploadId."* bhejta tha.
+> Repo ka apna `objectId()` helper ek baar jawab deta hai.
+
+> ### 🔴 U-5 me do surface ka delete-order bhi theek karna hai
+>
+> `updateCategoryById` purani tasveer ko **`save()` se pehle** delete karta tha.
+> Matlab save fail hone par bytes ja chuke hote aur row purane URL par hi hoti —
+> customer ki list me toota hua tile, aur wapas laane ka koi tareeka nahi. U-2 me
+> wo theek ho gaya: upload → save → **tab** delete, aur delete ka fail hona
+> request nahi giraata (sirf orphan chhodta hai, jise `auditOrphans` pakadta hai).
+>
+> Wahi galti do aur jagah hai, aur dono U-5 ki files hain:
+>
+> - `services/subCategories/updateSubCategoryById.js:75` — comment me likha hai
+>   *"see `updateCategoryById`"*, aur wahi purana order copy kiya hua hai
+> - `services/users/updateUserById.js:99` — avatar, bilkul wahi shape
+>
+> ⚠️ **Jo pattern sahi hai wo repo me pehle se hai** — `updateBrand`,
+> `updateSubBrand`, `updateBrandFeature` aur `updateSectionMedia` chaaron save ke
+> **baad** delete karte hain aur failure ko `console.error` par chhodte hain. Ye
+> teen surface hi uske bahar thi.
 
 ---
 

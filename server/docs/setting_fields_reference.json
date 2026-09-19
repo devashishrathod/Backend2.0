@@ -12,9 +12,10 @@
     "sampleResponse": "server/docs/setting_default_response.json",
     "documentIsSingleton": "One document for the whole platform. `helpers/settings/getSetting.js` upserts it on first read, so GET never 404s.",
     "updateIsAMerge": "PUT merges block by block — a payload carrying one field leaves its siblings alone. Omitting a field is NOT the same as clearing it.",
-    "totalLeafFields": 125,
-    "writableFields": 121,
-    "readOnlyFields": 4
+    "totalLeafFields": 144,
+    "writableFields": 140,
+    "readOnlyFields": 4,
+    "fieldCountNote": "144 = 139 schema leaf paths + 5 document-level fields (_id, isActive, createdAt, updatedAt, updatedBy). Counted from models/Setting.js, not by hand — the previous 125/121 had drifted and nothing compared them."
   },
   "enums": {
     "customer.settlement.cycleType": [
@@ -126,6 +127,14 @@
       "failsWith": "422, naming both numbers",
       "why": "Same shape as the showcase floor: a voucher would be at once too empty to publish and too full to fix — submit refuses it for too few images, the upload that would rescue it is refused for too many.",
       "withDefaults": "3 <= 5 ✓"
+    },
+    {
+      "name": "presign window vs intent lifetime",
+      "rule": "storage.upload.intentTtlMinutes >= storage.upload.presignTtlMinutes",
+      "enforcedBy": "helpers/settings/assertStorageLimitRule.js, on the MERGED document in services/settings/updateSetting.js",
+      "failsWith": "422, naming both numbers and saying which has to outlive which",
+      "why": "presignTtlMinutes is how long a client may START an upload; intentTtlMinutes is how long the Upload row lives, and that row is what confirm loads to find out whose upload this is. The row is removed by a TTL index, which does not ask whether a signature is still valid. Set intent below presign and a vendor on a slow connection finishes at minute eight, S3 takes every byte because the signature is good for an hour, and confirm answers 'That upload was not found' - about a row that was deleted, not an upload that failed. Retrying works, so it reads as a flaky upload rather than a number somebody typed. Both fields validate independently (1-60 and 1-1440), so neither validator can see this: it is only wrong in relation to the other.",
+      "withDefaults": "60 >= 15 ✓"
     }
   ],
   "notWritableViaApi": {
@@ -1239,7 +1248,8 @@
         "AWS_S3"
       ],
       "writableViaApi": true,
-      "description": "Which provider NEW uploads go to. Deleting an existing asset follows that row's own storage.provider, never this - so flipping the switch cannot strand files uploaded before it."
+      "description": "Which provider NEW uploads go to. Reading or deleting an existing asset follows that row's own storage.provider, never this (services/storage/index.js:60) - so flipping the switch cannot strand files uploaded before it, in either direction. Switching TO AWS_S3 is guarded: updateSetting runs checkS3Ready(), which writes, reads and deletes a real object in BOTH buckets and then fetches one from the public bucket WITHOUT credentials; any failure is a 422 and the save does not happen. Switching back to CLOUDINARY runs no preflight at all (PROVIDERS_NEEDING_PREFLIGHT holds only AWS_S3), so rollback is instant.",
+      "defaultNote": "Seeded from the MEDIA_PROVIDER env var at document CREATION only (models/Setting.js:996), so \"CLOUDINARY\" is what a fresh install gets when MEDIA_PROVIDER is unset - it is not a flat constant. Once the document exists this field is the single source: redeploying with a different MEDIA_PROVIDER does NOT override what an admin chose. WARNING: on a fresh production database the first boot therefore decides the provider WITHOUT any preflight, because preflight only runs on a panel edit."
     },
     "storage.limits.maxImageSizeMB": {
       "type": "number",
@@ -1247,7 +1257,7 @@
       "integer": true,
       "min": 1,
       "writableViaApi": true,
-      "description": "Platform ceiling for an image, in MB. A surface may ask for less; it cannot ask for more."
+      "description": "Platform ceiling for an image, in MB. A surface may ask for less; it cannot ask for more. Enforced on BOTH upload roads — multipart and presigned — against the kind read from the file's own bytes, not the Content-Type the client sent."
     },
     "storage.limits.maxGifSizeMB": {
       "type": "number",
@@ -1255,7 +1265,7 @@
       "integer": true,
       "min": 1,
       "writableViaApi": true,
-      "description": "Platform ceiling for a GIF. Higher than an image on purpose - an animated GIF is every frame at once."
+      "description": "Platform ceiling for a GIF. Higher than an image on purpose - an animated GIF is every frame at once. Enforced on both upload roads, against the kind read from the bytes: a video announced as a GIF is weighed as a video."
     },
     "storage.limits.maxVideoSizeMB": {
       "type": "number",
@@ -1263,7 +1273,7 @@
       "integer": true,
       "min": 1,
       "writableViaApi": true,
-      "description": "Platform ceiling for a video."
+      "description": "Platform ceiling for a video. Enforced on both upload roads, against the kind read from the file's own bytes."
     },
     "storage.limits.maxDocumentSizeMB": {
       "type": "number",
@@ -1279,7 +1289,7 @@
       "integer": true,
       "min": 1,
       "writableViaApi": true,
-      "description": "Platform ceiling for an audio file."
+      "description": "Platform ceiling for an audio file. ⚠️ Nothing can currently reach it: there is no audio upload surface, and UPLOAD_PURPOSE.AUDIO was removed along with the caller-less uploadAudio it existed for. MEDIA_KIND.AUDIO remains so kindFromMime can still NAME an audio file, which is what lets a surface refuse one. Kept here because the day audio is added, this is the number it will be held to."
     },
     "storage.allowed.imageTypes": {
       "type": "string[]",
@@ -1331,7 +1341,7 @@
       "type": "boolean",
       "default": false,
       "writableViaApi": true,
-      "description": "The direct-to-S3 upload route. Switchable without a deploy."
+      "description": "The direct-to-S3 upload route, switchable without a deploy. OFF (the default) makes POST /uploads/presign answer 503 with a message naming the multipart field as the other road. ⚠️ POST /uploads/confirm deliberately does NOT read this: turning it off while uploads are in flight must not strand bytes already in the bucket and already paid for. The switch closes the door; it does not trap whoever is already inside. ⚠️ Requires storage.provider = AWS_S3 — this road writes to S3 unconditionally, so leaving it on under CLOUDINARY would put some rows of one surface on each provider depending on the road the client took. Presign answers 409 in that state."
     },
     "storage.upload.presignTtlMinutes": {
       "type": "number",

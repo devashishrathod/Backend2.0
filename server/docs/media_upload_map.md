@@ -1,5 +1,31 @@
 # Media Upload / Delete / Replace — Complete Map
 
+> # 🔴 Ye **migration se pehle** ka snapshot hai — aaj ka sach nahi
+>
+> Ye doc tab likha gaya tha jab media ka poora kaam Cloudinary par tha, aur uska
+> kaam yahi tha: har upload/delete/replace call site ek jagah gin dena, taaki
+> migration ka plan poori list par ban sake. Us kaam ke liye wo aaj bhi sahi hai
+> — **call sites ki list** ab bhi kaam ki hai.
+>
+> Jo ab sahi **nahi** hai wo neeche §0 ka pehla vaakya hai aur uske jaisi har
+> line:
+>
+> | Ye doc kya kehta hai | Aaj kya hai |
+> |---|---|
+> | *"Ek hi provider hai — Cloudinary"* | Provider `Setting.storage.provider` se aata hai, aur **prod S3-only** hai (§0.5, master plan) |
+> | *"S3 kahin implement nahi — sirf enum + commented `case`"* | `services/storage/providers/s3.js` poora provider hai — upload, delete, public URL, presigned GET |
+> | *"MongoDB me sirf URL string"* | Har surface ek `mediaSchema` sibling bhi rakhti hai (`storage.provider` + `key`), taaki delete URL se guess na kare |
+> | *"Files browser se `express-fileupload` ke through aati hain"* | Multipart ab bhi chalta hai, par `/uploads/presign` + `/uploads/confirm` par file **is server tak aati hi nahi**. Category (U-2) pehli surface hai jo `uploadId` leti hai |
+> | *"L3 = `services/uploads/index.js` — sabka single entry point"*, neeche **nau** function ki table | 🔴 Us file me ab **do** hain: `uploadDocument` aur `deleteDocument`. Baaki saat ja chuke — `uploadVideo` Phase 2 me, `uploadAudio` Block G (G10) me, aur baaki `services/storage` ke facade me chale gaye. Naya single entry point **`services/storage/accept.js`** hai (`acceptUpload` / `acceptUploads` / `describeIncoming` / `describeAllIncoming`) |
+> | *"L2 me mime-type check hota hai"* | Wo check `file.mimetype` padhta tha, jo **client likhta hai**. Block G (G2) ke baad dono road file ka **pehla kilobyte** padhte hain — `services/storage/inspect.js` — aur `kind` un bytes se banta hai, header se nahi |
+>
+> **Aaj ka sach kahan hai:** [master_execution_plan.md](./master_execution_plan.md)
+> (§0.5 storage ka locked faisla, Part 4B har phase ka kaam) ·
+> [endpoints_category.md §35](./endpoints_category.md) (uploads) · role docs.
+>
+> ⚠️ Is doc ko line-by-line update **nahi** kiya gaya. Wo apna kaam hai, aur uske
+> bina ise *"aaj ka flow"* ki tarah padhna hi asli khatra tha — isliye ye banner.
+
 Poore project me **jahan bhi** koi file (image, gif, video, audio, PDF, koi bhi
 media) upload, replace, delete ya generate hoti hai — sab kuch yahan ek jagah.
 
@@ -705,14 +731,13 @@ Ye sab **verify kiye gaye** hain, guess nahi. Har ek ke saath file:line diya hai
 | ✅ **Fixed — Phase 0** | §8.1 (no size limit) · §8.9 (`/tmp` galat jagah) · §8.10 (temp files kabhi delete nahi) · §8.11 (🔴 ownership hole, + 2 aur bug) |
 | ✅ **Fixed — Phase 2** | §8.2 (har delete chup-chaap skip) · §8.3 (delete pehle, upload baad me) |
 | ✅ **Fixed — chhote fix** | §8.4 (6 endpoint par koi mime check nahi) · §8.6 (shared default delete ho sakta tha) · §8.8 (banner/ticker delete par asset reh jaata tha) · §8.13 (voucher images me SVG) |
-| 🟡 **Aadha** | §8.5 (`uploadVideo` hata; `uploadAudio` rakha, `deletePDF` ka caller abhi bhi nahi) |
-| ⏳ **Abhi khula** | §8.7 · §8.12 · §8.14 · §8.15 · §8.16 |
+| ✅ **Fixed — Block G** | 🔴 **§8.12** (mimetype client ka tha — ab dono road bytes padhte hain) · §8.5 poora (`uploadAudio` bhi gaya) |
+| ⏳ **Abhi khula** | §8.7 · §8.14 · §8.15 · §8.16 |
 
 **Khule findings, asar ke hisaab se:**
 
 | # | Kya | Kab theek hoga |
 |---|---|---|
-| 🔴 §8.12 | `mimetype` **client ka bheja hua** hai — bytes kabhi padhe nahi jaate. Aaj Cloudinary bacha raha hai, **S3 par wo bachav nahi rahega**. §8.4/§8.13 ne saamne ka darwaaza band kiya hai; ye poora taala hai | Phase 5 — magic bytes |
 | 🟠 §8.14 | PDF ka URL public + permanent + `Math.random()` se guessable | Phase 4 — private bucket |
 | 🟡 §8.7 | `Brand.coverImage`, `SubBrand.logo/coverImage` — padhe jaate hain, likhta koi nahi | faisla chahiye |
 | 🟡 §8.15 | Uploads serial — 15 image = 15 round trip | Phase 5 ke saath |
@@ -859,7 +884,13 @@ kabhi nahi milta.
 Compare karein: banner/ticker/showcase/voucher-banner sab clean `422` dete hain
 expected mime types ki list ke saath.
 
-### 8.5 🟡 PARTLY FIXED — 3 dead functions
+### 8.5 ✅ FIXED — ~~3 dead functions~~
+
+> ✅ **Poora band, Block G (G10).** `uploadAudio` bhi hata diya gaya — uske 0
+> caller the. Uska `UPLOAD_PURPOSE.AUDIO` aur `MAX_BYTES.AUDIO` bhi saath gaye:
+> wo sirf isi function ke liye the. `MEDIA_KIND.AUDIO` raha, kyunki
+> `kindFromMime` ko audio file ko **naam** dena aata rehna chahiye — tabhi koi
+> surface use refuse kar sakta hai.
 
 > **Phase 2:** `uploadVideo` hata diya gaya. `uploadAudio` aur `deletePDF`
 > jaan-boojh kar rakhe gaye — neeche wajah.
@@ -870,7 +901,7 @@ codebase me **0 call sites**:
 | Function | Ab |
 |---|---|
 | `uploadVideo` | ✅ **hata** — `helpers/showcases` aur `helpers/banners` ab seedha facade se jaate hain |
-| `uploadAudio` | 🟡 **rakha gaya** — faisla liya gaya ki aage audio aa sakta hai. Koi `audio/` prefix S3 par tab tak banega hi nahi jab tak koi ise call na kare |
+| `uploadAudio` | ✅ **hata — Block G (G10)** — 0 caller. Uska `UPLOAD_PURPOSE.AUDIO` aur `MAX_BYTES.AUDIO` bhi saath gaye; wo sirf isi ke liye the. `MEDIA_KIND.AUDIO` raha, taaki `kindFromMime` ek audio file ko **naam** de sake aur surface use refuse kar sake |
 | `deletePDF` | 🟠 **rakha gaya, par abhi bhi koi caller nahi** — Phase 4 ka kaam |
 
 Iska practical matlab: **project me kahin bhi audio (mp3, wav) upload nahi
@@ -1147,7 +1178,17 @@ Panel multipart bhejta hai isliye wahan kaam karta dikhta tha; JSON se update
 karne par feature switch off karne ka koi tarika hi nahi tha — aur response
 success bolta tha.
 
-### 8.12 🔴 `mimetype` client ka bheja hua hai, file ka nahi
+### 8.12 ✅ FIXED — ~~`mimetype` client ka bheja hua hai, file ka nahi~~
+
+> ✅ **Fixed in Block G (G2/G3).** `identify()` pehle sirf `confirm` se bulaya
+> jaata tha — yaani **sirf presigned road** par. Ab `acceptUpload` aur
+> `describeIncoming` dono multipart file ka pehla kilobyte padhte hain, aur jo
+> mime aage jaata hai wo **bytes ka** hai, header ka nahi. `HEAD_BYTES` bhi ek hi
+> jagah se aata hai, to dono road barabar padhte hain.
+>
+> ⚠️ Saath me: SVG/HTML ka naam-se-refusal ab dono road par chalta hai, `kind`
+> verified bytes se banta hai (to GIF `gifs/` me hi girta hai), aur dimensions
+> bhi dono road par aati hain — pehle multipart par hamesha `null` thi.
 
 `express-fileupload` busboy se `info.mimeType` leta hai
 (`lib/processMultipart.js:63`), jo multipart part ke **client-supplied

@@ -250,18 +250,27 @@ position ka koi matlab nahi bachta. Wahan `sortOrder` payload se **hata denge**
 
 ## B.1 Do raaste, ek hi manzil
 
-Phase 5 **dual mode** hai — purana raasta band nahi hota (S3 doc D-Q8: multipart
-sunset = Phase 5 ship + 6 hafte).
+Dono raaste chalte hain. ⚠️ Multipart ka sunset **waqt par nahi** hai — wo
+Cloudinary ke apne presign ke baad hoga (master §0.5); purana "Phase 5 + 6 hafte"
+wala window hata diya gaya.
 
 ```
-Raasta 1 (aaj, chalta rahega)        Raasta 2 (naya)
+Raasta 1 (multipart)                 Raasta 2 (presigned)
 client → multipart → server          client → presign → S3 (direct)
-       → req.files                          → confirm → uploadId
-       → storage.uploadFromPath             → storage.acceptUpload
-       → { url, storage, metadata }         → { url, storage, metadata }
-                    \                      /
-                     → same media subdocument
+       → req.files                          → confirm par uploadId
+            \                                        /
+             → describeIncoming  ← surface ke apne rules yahan chalte hain,
+             |                      aur upload abhi kharch nahi hua
+             → storage.acceptUpload
+             → { url, storage, metadata }
+                          ↓
+                 same media subdocument
 ```
+
+🔴 **Ab dono raaste ek hi function se guzarte hain** — `acceptUpload`. Pehle ye
+diagram do alag entry point dikhata tha; uska matlab hota har surface me apni
+`if` ugti, aur unnees `if` matlab unnees mauke ek me purpose check karne aur agle
+me bhool jaane ke.
 
 Dono ka **return shape ek** hai, isliye showcase/category/brand services ko farak
 nahi padta ki file kaise aayi.
@@ -289,10 +298,11 @@ nahi padta ki file kaise aayi.
      conditional findOneAndUpdate(consumedAt:null) ← race me ek hi jeetta hai
 ```
 
-Ye teenon file likhi ja chuki hain (uncommitted):
+✅ **Ye sab ban chuka hai** — U-1 me route, controller, validator aur facade
+(`acceptUpload` / `acceptUploads`), U-3 me `describeIncoming` aur showcase surface.
 [presign.js](../services/storage/presign.js) · [confirm.js](../services/storage/confirm.js) ·
-[inspect.js](../services/storage/inspect.js) · [Upload.js](../models/Upload.js).
-**Route / controller / validator / middleware / facade method abhi nahi bane.**
+[inspect.js](../services/storage/inspect.js) · [accept.js](../services/storage/accept.js) ·
+[Upload.js](../models/Upload.js) · [routes/uploads.js](../routes/uploads.js).
 
 ## B.3 Showcase ka poora example
 
@@ -348,12 +358,38 @@ hi nahi sakta. Server rules:
    }
 ```
 
-Yahan pairing **explicit JSON** hai — index ka bharosa bhi nahi chahiye, aur order
-bilkul wahi rehta hai jo array me hai. Ye `thumbnailFor_N` se saaf behtar hai, par
-multipart me JSON nesting nahi ho sakti, isliye dono shapes rakhni padengi.
+> ### ⚠️ Jo bana wo ye nahi hai — parallel arrays hain, nested objects nahi
+>
+> Upar ka `medias: [{ uploadId, thumbnailUploadId }]` explicit pairing deta hai,
+> jo apne aap me behtar hai. Par is doc ne khud likha tha ki multipart me JSON
+> nest nahi ho sakti, yaani **do shapes** maintain karni padengi — ek har raaste
+> ke liye.
+>
+> Jo bana:
+>
+> ```json
+> {
+>   "uploadIds":          ["u1", "u2", "u3", "u4", "u5"],
+>   "thumbnailUploadIds": ["t1", "t2"]
+> }
+> ```
+>
+> ⚠️ Pairing index se hai, **aur har raasta apne andar pair karta hai** —
+> `thumbnails[2]` teesri attached file ka poster, `thumbnailUploadIds[0]` pehle
+> uploadId ka. Store hone ka kram **files pehle, ids baad me** (wahi kram jo
+> `acceptUploads` use karta hai), to sortOrder aur pairing kabhi alag nahi hote.
+>
+> **Ek hi shape dono raaston par** — multipart `thumbnails[]` index se jodta tha
+> aur ab bhi jodta hai; presigned `thumbnailUploadIds[]` bilkul waise hi. Do
+> shapes maintain karne se ye saasta hai, aur mila-jula batch bhi ek hi list
+> banta hai — jo zaruri hai, kyunki section ki ginti **poore batch** par lagti
+> hai, har raaste par alag nahi.
+>
+> 🔴 Agar explicit pairing chahiye to wo **client-facing** badlaav hai aur uska
+> apna faisla hai — abhi wo nahi liya gaya.
 
-**Dono raaste ek hi jagah milte hain** — `addSectionMedia` ko ek normalized array
-milta hai `[{ upload, thumbnailUpload? }]`, uske aage sab same.
+**Dono raaste ek hi jagah milte hain** — `addSectionMedia` ko ek normalized list
+milti hai `[{ name, mimetype, size, file | uploadId }]`, uske aage sab same.
 
 ### Baaki cases
 
@@ -365,24 +401,45 @@ milta hai `[{ upload, thumbnailUpload? }]`, uske aage sab same.
 | Multiple video | `files` × N + `thumbnailFor_0..N-1` | `[{uploadId, thumbnailUploadId} × N]` |
 | Mix + GIF | upar wala example | upar wala example |
 
-## B.4 Layering — Route A (locked)
+## B.4 Layering — jo bana, aur kyun alag bana
 
-```
-route          isVendorOrAdmin · requireShowcaseEnabled · validateSchema
-   ↓
-middleware     acceptUploads({ purpose })
-               body me uploadIds/medias hon to har ek ko facade se resolve karke
-               req.resolvedUploads me daal deta hai — service ko actor nahi chahiye
-   ↓
-service        addSectionMedia(actor, payload, files | req.resolvedUploads)
-   ↓
-facade         storage.acceptUpload(actor, uploadId, { purpose, entityId })
-               → confirmUpload() → { url, storage, metadata }
-```
-
-Teen layer isliye ki service ko `actor` pehle se milta hai par **upload ki
-ownership ek cross-cutting rule hai** — 17 purposes me se har ek ko wahi check
-chahiye. Middleware me rakhne se wo ek jagah rehta hai.
+> ### 🔴 Yahan design se hata gaya hai — jaan-bujh kar, aur wajah ke saath
+>
+> Pehle jo likha tha (aur "Route A (locked)" kaha tha) wo ye tha:
+>
+> ```
+> middleware     acceptUploads({ purpose })
+>                body me uploadIds hon to har ek ko facade se RESOLVE karke
+>                req.resolvedUploads me daal deta hai
+> ```
+>
+> Us shape me ek problem hai jo likhte waqt nahi dikhi: **"resolve" ka matlab
+> confirm hai, aur confirm ka matlab consume.** Middleware service se pehle
+> chalta hai, to jab tak service apne rules tak pahunchti — section bhar chuka
+> hai, ye mime hum nahi lete, photo ki jagah photo — tab tak saari uploads
+> kharch ho chuki hoti. Vendor ek extra file chunta aur poori batch dobara
+> upload karta.
+>
+> Isliye do hisse alag kiye gaye:
+>
+> ```
+> route          isVendorOrAdmin · requireShowcaseEnabled · validateSchema
+>    ↓
+> service        describeAllIncoming(actor, { files, uploadIds, purpose })
+>                → [{ name, mimetype, size, file | uploadId }]   ← kuch consume nahi
+>                surface ke apne rules isi list par chalte hain
+>    ↓
+> facade         storage.acceptUpload(actor, { file | uploadId, purpose, entityId })
+>                → confirmUpload() → { url, storage, metadata }  ← ab consume hota hai
+> ```
+>
+> **Ownership ka cross-cutting check phir bhi ek hi jagah hai** — wahi wajah jo
+> middleware ke liye di gayi thi. `describeIncoming` aur `fromIntent` dono
+> `_id + userId` se hi row dhoondhte hain, aur dono facade me hain.
+>
+> ⚠️ Middleware ka ek aur nuksaan: purpose har surface ka apna hai, aur showcase
+> me **do** hain ek hi request me (`SHOWCASE_MEDIA` + `SHOWCASE_THUMBNAIL`). Ek
+> route-level `acceptUploads({ purpose })` us jodi ko express hi nahi kar sakta.
 
 ## B.5 Error matrix
 
@@ -398,7 +455,7 @@ chahiye. Middleware me rakhne se wo ek jagah rehta hai.
 | kind surface par allowed nahi | 422 | "SHOWCASE_MEDIA does not accept PDF files." |
 | size cap | 413 | "That file is N MB. The limit here is M MB." |
 | quota (presign par bhi) | 400 | wahi message jo aaj `validateMediaFiles` deta hai |
-| `thumbnailFor_N` ka N galat | 422 | "Thumbnail index N ka koi file nahi hai." |
+| poster ka id gallery ka nikla (ya ulta) | 422 | "That upload was authorised for SHOWCASE_MEDIA, and this is SHOWCASE_THUMBNAIL. …" |
 | photo par thumbnail | 422 | pehle se maujood message |
 
 ---
