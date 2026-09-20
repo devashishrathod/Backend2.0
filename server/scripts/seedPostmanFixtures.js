@@ -1120,6 +1120,25 @@ const run = async () => {
     setting.customer.promoCode.isEnabled = true;
 
     /**
+     * ⚠️ The vendor switch, explicitly — and it is **not** redundant with the
+     * constant's default.
+     *
+     * `SUBSCRIPTION_DEFAULTS.isPromoCodeEnabled` is `true` today, but it used to
+     * be `false`, and a stored `Setting` keeps whatever the default was on the
+     * day it was written. The scratch database still carried `false`, so
+     * `GET /promoCodes/vendor/get-all` returned `isEnabled: false` with an empty
+     * page — and every row-shape assertion on that page passed, because there
+     * were no rows to check. The capture recorded an example documenting the
+     * endpoint as returning nothing.
+     *
+     * A fixture that leans on a default is a fixture that breaks silently the
+     * day the default moves. Both switches are set by name for that reason.
+     */
+    if (!setting.vendor) setting.vendor = {};
+    if (!setting.vendor.subscription) setting.vendor.subscription = {};
+    setting.vendor.subscription.isPromoCodeEnabled = true;
+
+    /**
      * ⚠️ `maxOpenRequests` raised from its default of **1**.
      *
      * The seeded customer needs an open refund parked in
@@ -1191,9 +1210,101 @@ const run = async () => {
       firstOrderOnly: false,
       createdBy: admin._id,
       isActive: true,
+      /**
+       * ⚠️ Without this the code is **redeemable but unlisted**, and
+       * `GET /promoCodes/customer/get-all` captures an empty page — an example
+       * that documents the endpoint as returning nothing, and assertions on the
+       * row shape that pass because there are no rows to check.
+       *
+       * `isPublic` defaults to `false` precisely so a targeted campaign is never
+       * published by omission, which means every fixture meant to be *seen* has
+       * to opt in by name.
+       */
+      isPublic: true,
+      // The one thing no field derives. Everything else on the card — the
+      // minimum, the window, the per-customer cap — is generated from the rules
+      // above, so a term cannot contradict them.
+      termsAndConditions: ["Dine-in only.", "Not valid with other offers."],
     });
 
-    return `1 promo code (${MARK}10) + customer.promoCode.isEnabled = true`;
+    /**
+     * A second code that is listed and **cannot be used yet**.
+     *
+     * One applicable row proves the happy path and nothing else. The listing's
+     * whole job is to answer "can I use this, and if not why" — with only usable
+     * codes seeded, the captured example never shows a `reason`, and the day
+     * that half breaks the collection stays green.
+     *
+     * The bill the claim requests use is ₹1,200, so a ₹5,000 minimum is refused
+     * for a reason a reader can check against the request beside it.
+     */
+    await PromoCode.create({
+      code: `${MARK}BIGBILL`,
+      description: "seeded customer promo that needs a bigger bill",
+      audience: PROMO_AUDIENCE.CUSTOMER,
+      discountType: PROMO_DISCOUNT_TYPES.FLAT,
+      discountAmount: 500,
+      appliesTo: PROMO_APPLIES_TO.NET_BILL,
+      costBearing: { mode: PROMO_COST_BEARING_MODE.PLATFORM, vendorPercent: 0 },
+      validFrom: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      validTill: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      perCustomerUsageLimit: 999,
+      minBillAmount: 5000,
+      firstOrderOnly: false,
+      createdBy: admin._id,
+      isActive: true,
+      isPublic: true,
+    });
+
+    /**
+     * The vendor twin, for `GET /promoCodes/vendor/get-all`.
+     *
+     * ⚠️ `perBrandUsageLimit` is generous for the same reason the customer one
+     * is: the collection is re-runnable, and the default of 1 would make every
+     * pass after the first report the code as already spent.
+     */
+    await PromoCode.create({
+      code: `${MARK}PLAN20`,
+      description: "seeded vendor promo for the postman collections",
+      audience: PROMO_AUDIENCE.VENDOR,
+      discountType: PROMO_DISCOUNT_TYPES.PERCENT,
+      discountPercent: 20,
+      maxDiscountAmount: 2000,
+      minOrderValue: 0,
+      validFrom: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      validTill: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      perBrandUsageLimit: 999,
+      firstTimeOnly: false,
+      createdBy: admin._id,
+      isActive: true,
+      isPublic: true,
+      termsAndConditions: ["Renewal ke baad refundable nahi."],
+    });
+
+    /**
+     * And a vendor code the seeded brands **cannot** use: they all carry an
+     * ACTIVE plan from the step below, so `firstTimeOnly` is refused. Same
+     * reasoning as `BIGBILL` — the rejected shape needs a fixture too.
+     */
+    await PromoCode.create({
+      code: `${MARK}FIRSTPLAN`,
+      description: "seeded vendor promo for a first purchase only",
+      audience: PROMO_AUDIENCE.VENDOR,
+      discountType: PROMO_DISCOUNT_TYPES.FLAT,
+      discountAmount: 1000,
+      validFrom: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      validTill: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      perBrandUsageLimit: 999,
+      firstTimeOnly: true,
+      createdBy: admin._id,
+      isActive: true,
+      isPublic: true,
+    });
+
+    return (
+      `4 promo codes (${MARK}10, ${MARK}BIGBILL, ${MARK}PLAN20, ` +
+      `${MARK}FIRSTPLAN) + customer.promoCode.isEnabled = true`
+    );
   });
 
   // ── vendor-panel fixtures ────────────────────────────────────────────────

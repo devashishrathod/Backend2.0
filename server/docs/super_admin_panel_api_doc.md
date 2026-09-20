@@ -48,7 +48,7 @@
 24. [Sub Category APIs](#sub-category-apis) — 5
 25. [Subscription Plan APIs](#subscription-plan-apis) — 5
 26. [Subscribed APIs](#subscribed-apis) — 8
-27. [Promo Code APIs](#promo-code-apis) — 6
+27. [Promo Code APIs](#promo-code-apis) — 6 + 2 listing 🆕
 28. [Payment APIs](#payment-apis) — 4
 29. [Webhook & Dispute APIs](#webhook--dispute-apis) — 5
 30. [Settings APIs](#settings-apis) — 2
@@ -85,7 +85,7 @@ Super admin panel 22 functional areas cover karta hai:
 | 15 | Sub Categories | 5 | Master data CRUD |
 | 16 | Subscription Plans | 5 | Plan catalog CRUD + entitlements |
 | 17 | Subscribeds | 8 | **Grant / cancel / resync / forfeit compensation** |
-| 18 | Promo Codes | 6 | Campaign CRUD + usage report |
+| 18 | Promo Codes | 7 | Campaign CRUD + usage report (6, `isAdmin`) 🆕 + `GET /promoCodes/vendor/get-all`, jo admin gate ke **upar** hai aur `isVendorOrAdmin` par chalta hai — admin `brandId` dekar kisi bhi brand ke liye call kar sakta hai. Teesra listing endpoint (`/customer/get-all`) sirf customer ka hai |
 | 19 | Payments | 4 | Vendor ke liye checkout drive karna + invoice |
 | 20 | Webhooks & Disputes | 5 | Delivery log, replay, chargeback worklist |
 | 21 | Settings | 2 | Platform config — GST, limits, policies, channels |
@@ -3257,7 +3257,23 @@ GET /vouchers/versions/get-all?approvedBy=68f1a2b3c4d5e6f7a8b9c000&fromDate=2026
         "name": "flat 30% off on total bill",
         "description": "Valid on dine-in and takeaway",
         "tags": ["coffee", "cafe"],
-        "images": [{ "_id": "…", "url": "…", "sortOrder": 1 }],
+        "images": [
+          {
+            "_id": "…",
+            "media": {
+              "url": "…",
+              "kind": "IMAGE",
+              "mimeType": "image/webp",
+              "sizeBytes": 82314,
+              "width": 1200,
+              "height": 800,
+              "duration": 0,
+              "originalName": "hero.webp",
+              "storage": { "provider": "AWS_S3" }
+            },
+            "sortOrder": 1
+          }
+        ],
         "offers": [
           { "_id": "…", "title": "30% off above 500", "minBillAmount": 500, "discountType": "PERCENTAGE", "discountValue": 30, "maxDiscountAmount": 300 }
         ],
@@ -3285,6 +3301,7 @@ GET /vouchers/versions/get-all?approvedBy=68f1a2b3c4d5e6f7a8b9c000&fromDate=2026
 **1. Ye **versions** deta hai, vouchers nahi** — ek voucher ke multiple versions honge.
 **2. `sortBy=RELEVANCE` bina `search` ke silently `NEWEST` ban jaata hai.**
 **3. Review (#38) aur publish (#42) ke liye `versionId` yahin se milta hai.**
+**4. 🆕 `images[].media.storage` me sirf `provider` aata hai** — `publicId` / `bucket` / `key` kabhi nahi. Wo file ka **pata** hai, uske baare me detail nahi; jiske paas wo hai wo file seedha fetch ya overwrite kar sakta hai. Pehle teeno is response me ja rahe the. Poora niyam vendor doc §58 note 5 me hai.
 
 ### 39–42, 44–45 — quick reference
 
@@ -5840,7 +5857,26 @@ GET /subscribeds/history?brandId=68f1a2b3c4d5e6f7a8b9c3a1&limit=50
 
 # Promo Code APIs
 
-Promo codes **do checkouts** ke liye. **Poora module `router.use(isAdmin)` ke peeche hai ✅** — vendor ya customer codes manage nahi karte, wo sirf redeem karte hain.
+Promo codes **do checkouts** ke liye. **Manage poora `router.use(isAdmin)` ke peeche hai ✅** — vendor ya customer codes banate/badalte nahi.
+
+### 🆕 Do listing endpoints admin gate ke upar baithte hain
+
+`GET /promoCodes/customer/get-all` (`isCustomer`) aur `GET /promoCodes/vendor/get-all` (`isVendorOrAdmin`) `router.use(isAdmin)` line ke **upar** declare hain aur apna gate khud rakhte hain. Neeche kuch bhi juda to wo admin-only hi rahega — bhoolne ki safe disha.
+
+- **Customer listing** → `customer_mobile_api_doc.md` §16a, request `trydood-customer` collection me.
+- **Vendor listing** → `vendor_panel_api_doc.md` §67a, request **`trydood-vendor` collection me**. Admin bhi ise call kar sakta hai (`brandId` dena zaroori — `resolveActorBrand`), par request ek hi jagah rehti hai: do collections me ek hi request rakhne ka matlab hai do jagah maintain karna, aur jis din ek update hui aur doosri nahi, jo chhoot gayi wo jhooth bolne lagti hai bina kisi ko pata chale.
+
+Listing sirf **dikhati** hai — apply karne ka raasta wahi purana hai.
+
+> ### ⚠️ `isPublic` — kya list hota hai vs kya chalta hai
+>
+> `PromoCode.isPublic` ka default **`false`** hai, aur listing `{ isPublic: true }` maangti hai. Yaani jis code par ye field hai hi nahi — is feature se **pehle bane saare codes** — wo chhupa rehta hai.
+>
+> Ye `audience` wale trap ki **ulti** padhai hai, jaan-bujh kar. `audience` par absent ko `VENDOR` padha jaata hai kyunki wahi sach hai; yahan absent ko "listed" padhna is feature ke ship hote hi platform ka har targeted campaign publish kar deta — influencer code, win-back code, wo code jo ek hi customer ko mail kiya tha. Absent ka matlab **hidden** hona chahiye, aur `{ isPublic: true }` wo muft me deta hai.
+>
+> Aur ye sirf **baantne** ka faisla hai. Dono checkout validators `isPublic` **dekhte hi nahi** — targeted campaign ka poora matlab hi yahi hai ki code unlisted ho aur type karne par chale.
+>
+> `isPublic: true` ke liye `description` **mandatory** hai (`422` warna). Card ka headline aur terms code ke apne fields se **derive** hote hain, par offer kya hai ye line sirf insaan likh sakta hai — uske bina card ek code aur ek number hai jise tap karne ki koi wajah nahi, aur ye chup-chaap hota hai.
 
 ### ⚠️ `audience` — sabse pehle ye samjhein
 
@@ -5890,9 +5926,11 @@ Ek abandoned checkout single-use code ko lock na kar de, isliye:
 
 ⚠️ **`RESERVED` 30 minute se purana ho to sweep job (`releaseStalePromoReservations`, har 15 min) usko reclaim kar leta hai.**
 
-### ⚠️ Promo codes abhi off hain
+### Master switch — `isPromoCodeEnabled`
 
-`Setting.vendor.subscription.isPromoCodeEnabled` ka default **`false`** hai. Checkout preview tab ye deta hai:
+⚠️ Yahan pehle likha tha *"default `false`"*. Wo ab **galat** hai — `SUBSCRIPTION_DEFAULTS.isPromoCodeEnabled` aur `Setting.vendor.subscription.isPromoCodeEnabled` dono ka default **`true`** hai ([constants/subscription.js:260](../constants/subscription.js#L260), [models/Setting.js:300](../models/Setting.js#L300)), aur vendor doc ne ise "RESOLVED" bhi mark kar rakha hai. Ye line usi ke saath badalni reh gayi thi.
+
+Band karna ho to explicitly `false` bhejein. Band hone par checkout preview ye deta hai:
 ```json
 { "promo": { "supported": false, "applied": null, "message": "Promo codes are coming soon" } }
 ```
@@ -5924,6 +5962,8 @@ Ek abandoned checkout single-use code ko lock na kar de, isliye:
 | `totalUsageLimit` | number | ❌ | Integer ≥ 1 |
 | `perBrandUsageLimit` | number | ❌ | Integer ≥ 1 — ⚠️ `totalUsageLimit` se zyada nahi · **VENDOR only** |
 | `isActive` | boolean | ❌ | |
+| `isPublic` 🆕 | boolean | ❌ | **Default `false`** — code app/panel ki listing me dikhega ya nahi. ⚠️ `true` karne par `description` **zaroori** hai |
+| `termsAndConditions` 🆕 | string[] | ❌ | Max **10** lines, har ek max 200 chars. Sirf wo baatein jo kisi field me express nahi hoti |
 
 **`audience: "CUSTOMER"` ke extra fields:**
 
@@ -8676,7 +8716,7 @@ Gate sirf `verifyJwtToken` — **scope token se aata hai**. Vendor apne brand ke
 
 # Appendix A — Not For Admin Panel
 
-Admin ke paas platform ka sabse zyada access hai, par **33 endpoints** aise hain jo admin panel me nahi aane chahiye.
+Admin ke paas platform ka sabse zyada access hai, par **34 endpoints** aise hain jo admin panel me nahi aane chahiye.
 
 ### Vendor onboarding (11) — `isVendor` gated, admin ko `403` milega
 
@@ -8716,9 +8756,11 @@ Admin ke paas platform ka sabse zyada access hai, par **33 endpoints** aise hain
 >
 > Is doc me dono baatein ek saath likhi hui thin — ek sahi, ek purani.
 
-### Customer-facing (10)
+### Customer-facing (11)
 
-`POST /locations/upsert` *(customer-only, service me `403`)* · `POST /follows/toggle/:brandId` · `GET /follows/get-all` · `POST /brandAvoidances/toggle/:brandId` · `GET /brandAvoidances/get-all` · `GET /banners/customer/active` · `GET /promotionalTickers/customer/active` · `GET /vouchers/customer/get-all` · `GET /vouchers/customer/get/:voucherId` · `POST /vouchers/customer/voucher/preview`
+`POST /locations/upsert` *(customer-only, service me `403`)* · `POST /follows/toggle/:brandId` · `GET /follows/get-all` · `POST /brandAvoidances/toggle/:brandId` · `GET /brandAvoidances/get-all` · `GET /banners/customer/active` · `GET /promotionalTickers/customer/active` · `GET /vouchers/customer/get-all` · `GET /vouchers/customer/get/:voucherId` · `POST /vouchers/customer/voucher/preview` · 🆕 `GET /promoCodes/customer/get-all` *(`isCustomer` — admin ko `403`)*
+
+> 🆕 Ye **11** ho gaye. `GET /promoCodes/customer/get-all` ki jagah admin ke liye `GET /promoCodes/get-all` (#85) hai — wahi codes, admin ke apne numbers ke saath (`usedCount`, `consumedCount`, `reservedCount`). Customer wali listing jaan-bujh kar wo counters **nahi** deti.
 
 ### Work hours (1)
 

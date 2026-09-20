@@ -1,17 +1,30 @@
 # Trydood 2.0 — Customer Mobile App API Documentation
 
-**Version:** 1.7.0
+**Version:** 1.7.1
 **Base URL (Local):** `http://localhost:8080/trydood/v1`
 **Base URL (Staging):** `https://backend2-0-4v4i.onrender.com/trydood/v1`
 **Base URL (Production):** `https://api.trydood.com/trydood/v1`
 **Framework:** Express.js (Node.js, CommonJS)
 **Database:** MongoDB (Mongoose ODM)
 **Scope:** Customer mobile app ke **64 endpoints** — jinme se **22 guest ke liye khule hain**
-**Last verified:** 2026-09-05 against a running server · Categorization → [endpoints_category.md](./endpoints_category.md) (216 total endpoints)
+**Last verified:** 2026-09-05 against a running server · Categorization → [endpoints_category.md](./endpoints_category.md) (228 total endpoints)
+**Partly re-verified:** 2026-09-21 — follow/avoid wale paanch endpoints code se capture karke (neeche dekhein)
 
 > ✅ **Ye doc live API ke against verify hota hai**, sirf code padhkar nahi likha jaata. Saare endpoints ek chalte hue server pe seeded fixtures ke saath run hote hain: **135 requests, 473 assertions, 0 failed.**
 >
-> ✅ **Postman ke saare examples asli responses hain** — **206 examples, 140/140 requests par**, sab ek live run se capture kiye gaye ([`postman/trydood-customer.postman_collection.json`](../postman/trydood-customer.postman_collection.json)). Koi bhi example haath se nahi likha gaya, isliye wo galat ho hi nahi sakta jab tak API khud galat na ho.
+> ⚠️ Wo newman run **2026-09-05 ka hai**. Uske baad follow/avoid wala change (v1.7.1) aaya hai aur wo run dobara nahi chalaya gaya, to us line ko us tareekh tak hi sach maanein.
+>
+> ✅ **Postman ke saare examples asli responses hain** — sab ek live run se capture kiye gaye ([`postman/trydood-customer.postman_collection.json`](../postman/trydood-customer.postman_collection.json)). Koi bhi example haath se nahi likha gaya, isliye wo galat ho hi nahi sakta jab tak API khud galat na ho.
+>
+> 🔴 **Ek apvaad, abhi ke liye.** v1.7.1 me paanch endpoints par naye keys jude
+> (`isFollowed` / `isAvoided`), par unke **saved examples dobara capture nahi
+> kiye gaye** — wo examples asli hain, bas **purane run ke** hain, to unme naye
+> keys nahi dikhte. In paanch ke liye is doc ka body zyada sahi hai, kyunki wo
+> seedha chalte hue code se capture kiya gaya hai. Capture cycle chalte hi ye
+> apvaad khatam ho jayega. Endpoints: [#14a](#14a-get-search) ·
+> [#17f](#17f-get-voucher-claimspaymentstransactionid--ek-payment) ·
+> [#17g](#17g-get-voucher-claimsclaimid--ek-claim-timeline-ke-saath) ·
+> [#18](#18-get-brandscustomergetbrandid) · [#18a](#18a-get-brandscustomerget-all-)
 >
 > ✅ **Har `**Access:**` line routes se derive hoti hai**, likhi nahi jaati — `postman/lib/routeGates.js` `routes/` padhta hai.
 >
@@ -37,7 +50,27 @@
 > asal me `subBrandId` hai, aur flat `medias[]` jo asal me nested `media.data[]` hai), aur
 > dono sirf chalane par pakde gaye.
 
-### 🆕 v1.7.0 me kya naya
+### 🆕 v1.7.1 me kya naya — follow / avoid har brand surface par
+
+| Change | Detail |
+|---|---|
+| 🆕 **`isFollowed` / `isAvoided`** | Chaar customer surface par: brand profile [#18](#18-get-brandscustomergetbrandid), brand directory [#18a](#18a-get-brandscustomerget-all-), global search ka `BRAND` section [#14a](#14a-get-search), aur claim/payment ke `brand` block [#17f](#17f-get-voucher-claimspaymentstransactionid--ek-payment) · [#17g](#17g-get-voucher-claimsclaimid--ek-claim-timeline-ke-saath). Guest ko dono `false` — key **gayab nahi hoti** |
+| 🔴 **Gate badla** | `/brands/customer/get-all` aur `/brands/customer/get/:brandId` `Public` se **`optionalAuth`** par. Bina gate ke `req.customerId` signed-in customer ke liye bhi `undefined` tha, yaani har brand par follow button un-pressed dikhta — `200`, shape sahi, jawab galat. ⚠️ **Expired token ab `401` deta hai**, pehle chup-chaap `200` |
+| 🔒 **Flags dekhne wale ke hain** | Vendor/sub-vendor/admin ko hamesha `false`. Buyer ka status jaan-boojh kar nahi bheja jaata — wo vendor ko *"is grahak ne aapko avoid kar rakha hai"* bata deta |
+| 📝 **#17f ka poora body** | Pehle wahan sirf `/* placeholder */` tha. Ab asli capture kiya hua body + teeno role ka field-difference table |
+| 🔴 **`invoiceDownloadUrl` ka path theek** | Doc `/transactions/invoice/<token>` kehta tha — wo route **hata chuka hai**. Asli `/documents/<token>` |
+| 🔴 **`outlet.address` hata** | Doc me tha, response me kabhi aata hi nahi |
+| 🔴 **`workHours` ka sach** | Doc kehta tha din absent ho sakta hai. Asli: **saaton din hamesha** aate hain, unset din `{ "isOpen": false }` |
+| 🆕 **`mobile` / `whatsappNumber`** | [#18](#18-get-brandscustomergetbrandid) inhe hamesha lautata tha, doc me kahin the hi nahi — Call/WhatsApp button inhi se banta hai |
+
+> ⚠️ **In paanch endpoints ke Postman saved examples abhi purane shape ke hain.**
+> Naye keys unme nahi hain. Body yahan doc me **code se capture** ki gayi hai
+> (`Trydood2_test` par asli service chala kar), par collection ke examples ek
+> fresh seed-and-capture cycle maangte hain jo abhi chalaya nahi gaya. Jab tak wo
+> na chale, **in endpoints ke liye doc collection se zyada sahi hai** — baaki
+> jagah ulta hai.
+
+### v1.7.0 me kya aaya tha
 
 **Teen gaps band, aur ek leak.** Appendix B ke #11, #13 aur #14 ab RESOLVED hain.
 
@@ -152,7 +185,7 @@ Ye **live verification round** tha. Teen jagah doc code se match nahi kar raha t
 |---|---|
 | **+4 endpoints** | Naya `/deviceTokens/*` module — push notifications ([Section 17](#push-notification-apis)) |
 | **Security fix** ✅ | Shared default password issue fix ho gaya — OTP accounts ab bina password ke bante hain. [Appendix B](#appendix-b--known-issues) #6 |
-| **Backend grew** | Platform 108 → 143 endpoints. Naye modules (`/promoCodes`, `/subscribeds`, `/notifications`) vendor/admin ke liye hain — customer app ko nahi chahiye |
+| **Backend grew** | Platform 108 → 143 endpoints. Naye modules me se `/subscribeds` aur `/notifications` ka management vendor/admin ka hai. ⚠️ `/promoCodes` ab **poora** admin-only nahi — `GET /promoCodes/customer/get-all` customer app ka hai ([#16a](#16a-get-promocodescustomerget-all-)); baaki 6 manage endpoints admin ke hi hain |
 | **Role gates** | Vouchers, transactions, subBrands pe ab proper role checks hain. Customer-facing endpoints pe koi change nahi |
 
 ---
@@ -195,6 +228,7 @@ Ye **live verification round** tha. Teen jagah doc code se match nahi kar raha t
 13. [Voucher APIs](#voucher-apis)
     - [GET /vouchers/customer/get-all](#15-get-voucherscustomerget-all)
     - [GET /vouchers/customer/get/:voucherId](#16-get-voucherscustomergetvoucherid)
+    - [GET /promoCodes/customer/get-all](#16a-get-promocodescustomerget-all-) 🆕
     - [POST /vouchers/customer/voucher/preview](#17-post-voucherscustomervoucherpreview)
 13a. [**Voucher Claim APIs** 🆕](#voucher-claim-apis-)
     - [POST /voucher-claims/create-order](#17a-post-voucher-claimscreate-order)
@@ -314,7 +348,7 @@ Authorization: Bearer <token>
 
 App store approval ke liye user ko **sign-up se pehle** app dekhne dena zaruri tha, isliye
 browse endpoints se auth hata di gayi hai. **62 me se 22 endpoints guest ke liye khule
-hain** (18 poore public + 4 `optionalAuth`).
+hain** (16 poore public + 6 `optionalAuth`).
 
 ### Chhah tarah ke access
 
@@ -323,19 +357,28 @@ Ye ginti [`postman/lib/routeGates.js`](../postman/lib/routeGates.js) se nikli ha
 
 | Gate | Matlab | Kitne |
 |---|---|---:|
-| 🌐 **Public** | Token dekha hi nahi jaata. Response sabke liye ek jaisa | 19 |
-| 🌐 **`optionalAuth`** | Token ho to decode hota hai aur response personalise hota hai; na ho to guest chalta hai | 4 |
+| 🌐 **Public** | Token dekha hi nahi jaata. Response sabke liye ek jaisa | 17 |
+| 🌐 **`optionalAuth`** | Token ho to decode hota hai aur response personalise hota hai; na ho to guest chalta hai | 6 |
 | 🌐 **Public — auth entry** | Login/OTP. Public hona **majboori** hai, warna koi sign in hi na kar paaye — par ye "browsing" nahi hai | 2 |
 | 🔒 **`verifyJwtToken`** | Koi bhi signed-in role — **ek endpoint, kai shapes** (claims, payments, refunds, notifications) | 17 |
 | 🔒 **`isCustomer`** | Sirf customer — engagement, location, claims ke writes, bank accounts, refunds ke writes, search history | 17 |
 | 🔒 **`verifyJwtTokenEvenIfDeactivated`** | Signed in, suspended account bhi — logout, push unregister aur **notification feed**, warna suspended user phasa reh jaata aur suspension samjhane wala notice bhi na padh paata | 3 |
 
-> ⚠️ **18 Public me `GET /documents/:token` bhi hai**, par wo guest surface
+> ⚠️ **Public me `GET /documents/:token` bhi hai**, par wo guest surface
 > nahi hai: uska 32-byte token hi credential hai. Wo link WhatsApp/email se aata hai,
 > jahan browser me koi session hota hi nahi.
 >
 > ⚠️ Ye table pehle `verifyJwtToken: 7` aur `isCustomer: 5` kehta tha — ginti claims,
 > refunds, bank accounts aur search jodne se **pehle** ki thi, aur kisi ne update nahi ki.
+>
+> 🔴 **Upar wali line aur ye table ek doosre se 1 ka farq rakhte hain** (`16 + 6 = 22`
+> banaam table ka `17 + 6 = 23`), aur ye farq **pehle se hai** — jab do `/brands/customer/*`
+> endpoints `Public` se `optionalAuth` par gaye tab dono taraf se theek 2 ghataya-jodha
+> gaya, farq waisa hi raha. Kaaran ye hai ki `GET /documents/:token` ko ek jagah gina
+> gaya hai aur doosri jagah nahi, aur koi script in dono ko aapas me milati nahi —
+> `verifyApiCoverage.js` sirf `endpoints_category.md` ke totals padhta hai, is doc ke
+> nahi. Ise sudhaarne ke liye pehle ye tay karna hoga ki signed-link wala endpoint
+> "guest surface" me ginna chahiye ya nahi.
 
 ### Kya guest kar sakta hai
 
@@ -2137,9 +2180,19 @@ chahiye — guest ki recent searches uske apne device par rehti hain (§14d).
 
 **Access:** 🌐 **Public** (`optionalAuth`) — guest aur signed-in dono.
 
-Signed-in customer ko do cheezein extra milti hain, baaki kuch nahi badalta:
-coordinates na bhejne par uska saved address use ho jaata hai, aur `commit=true`
-wali query yaad rakhi jaati hai.
+Signed-in customer ko **teen** cheezein extra milti hain, baaki kuch nahi badalta:
+coordinates na bhejne par uska saved address use ho jaata hai, `commit=true` wali
+query yaad rakhi jaati hai, aur `BRAND` section ke har item ke `meta` me
+`isFollowed` / `isAvoided` sach batate hain.
+
+> 🆕 Guest ko ye dono keys bhi milti hain, bas hamesha `false` — brand card ka
+> follow button har jagah ek hi tarah render hota hai, chahe search se khula ho,
+> directory se ([#18a](#18a-get-brandscustomerget-all-)) ya profile se
+> ([#18](#18-get-brandscustomergetbrandid)).
+>
+> ⚠️ Ye sirf `BRAND` section par hain. `VOUCHER` item ke `meta` me `brandId`
+> hota hai, par uske saath ye flags **nahi** aate — voucher card brand ka
+> follow state dikhata hi nahi.
 
 ### Query Params
 
@@ -2187,6 +2240,8 @@ GET /search?q=pizza&latitude=22.7533&longitude=75.8937&limit=5
               "isTopBrand": true,
               "isVerified": true,
               "followersCount": 4821,
+              "isFollowed": true,
+              "isAvoided": false,
               "outletCount": 12,
               "categoryId": "68f0…b3e1",
               "subCategoryId": "68f0…b3e9",
@@ -2999,6 +3054,138 @@ GET /vouchers/customer/get/68f1a2b3c4d5e6f7a8b9c2a1?latitude=22.7533&longitude=7
 
 ---
 
+## 16a. GET /promoCodes/customer/get-all 🆕
+
+**Access:** 🔒 **CUSTOMER — login zaroori**
+
+Wo promo codes jo customer khud dekh kar chun sakta hai. Har row batati hai ki **abhi laga sakte ho ya nahi**, nahi to **kyun nahi**, aur — bill diya ho to — **kitna bachega**.
+
+> ⚠️ **`optionalAuth` nahi, `isCustomer`.** Listing har row par *is* customer ki apni usage ginti hai ("ek baar hi use ho sakta hai" ka jawab). Guest ke liye us sawaal ka koi jawab hai hi nahi, to bina login wali list sabko jhooth bolti.
+
+### Do tareeke se poocho
+
+| Kaise | Kya milta hai |
+|---|---|
+| **Sirf list** — koi query nahi | Catalogue: code, headline, terms, aapki usage. `savings` **`null`** — bina bill ke daam nahi banta |
+| **Bill ke saath** — `voucherId` + `outletId` + `billAmount` | Upar ka sab, **plus** har code ka asli `savings`, aur wo gates jo bill maangte hain (minimum bill, brand/category scope) |
+
+**Query params**
+
+| Param | Type | Req | Notes |
+|---|---|:---:|---|
+| `page` · `limit` | number | ❌ | `limit` max **50**, default 20 |
+| `voucherId` | ObjectId | ❌ | — |
+| `outletId` | ObjectId | ❌ | — |
+| `billAmount` | number | ❌ | > 0 |
+| `offerId` | ObjectId | ❌ | Sirf `voucherId` ke saath |
+
+> ⚠️ **`voucherId`, `outletId`, `billAmount` — teeno saath, ya teeno nahi.** Do bhejna adhoora jawab nahi hai, wo aisi request hai jiska daam ban hi nahi sakta: teesra guess karna kisi anjaan bill ke against bachat quote karna hoga, aur do ko ignore karna chupchaap doosre sawaal ka jawab dena. `422` hi imaandaar hai.
+>
+> `offerId` bina `voucherId` ke bhi `422` — kis voucher par offer lagani hai, ye bataye bina wo bemaani hai.
+
+### Response — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "Promo codes fetched successfully",
+  "data": {
+    "isEnabled": true,          // Setting.customer.promoCode.isEnabled
+    "context": {                // bill diya ho tab; warna null
+      "brandId": "68f…c2a9",
+      "billAmount": 1000,
+      "netBill": 900,
+      "convenienceFee": 20,
+      "offerApplied": true
+    },
+    "total": 3, "totalPages": 1, "page": 1, "limit": 20,
+    "data": [
+      {
+        "_id": "690…a11",
+        "code": "WELCOME50",
+        "headline": "50% OFF up to ₹100",   // discount se banta hai, stored nahi
+        "description": "Pehle order par aadha bill maaf",
+        "discountType": "PERCENT",
+        "discountPercent": 50,
+        "discountAmount": 0,
+        "maxDiscountAmount": 100,
+        "minBillAmount": 300,
+        "appliesTo": "NET_BILL",
+        "appliesToLabel": "your bill after the voucher offer",
+        "firstOrderOnly": true,
+        "validFrom": null,
+        "validTill": "2026-10-31T18:29:59.999Z",
+        "usage": { "perCustomerLimit": 1, "usedByYou": 0, "usesLeft": 1 },
+        "terms": [
+          "Discount applies to your bill after the voucher offer.",
+          "Minimum bill of ₹300.",
+          "Maximum discount of ₹100.",
+          "Valid till 31 Oct 2026.",
+          "Can be used once per customer.",
+          "Valid on your first order only.",
+          "Valid at Cafe Mocha, The Grill House."
+        ],
+        "isApplicable": true,
+        "reason": null,
+        "savings": { "discount": 100, "base": 900, "appliesTo": "NET_BILL" }
+      },
+      {
+        "code": "BIGBILL",
+        "isApplicable": false,
+        "reason": "Your bill is below the minimum for this promo code.",
+        "savings": null
+      }
+    ]
+  }
+}
+```
+
+### `terms` **banaye** jaate hain, likhe nahi
+
+Har line code ke apne field se nikalti hai — minimum bill, window, per-customer cap, brand/category scope. Admin ke haath se likhi hui term `₹200` keh sakti hai jab code `₹300` enforce karta ho, aur **kahin kuch galat nahi dikhta**: listing sahi padhti hai, customer maan leta hai, aur rejection checkout par aata hai bina ye bataye ki jhooth kis taraf tha.
+
+`PromoCode.termsAndConditions` sirf **un** baaton ke liye hai jo kisi field me express hi nahi hoti — *"dine-in only"*, *"kisi aur offer ke saath nahi"*. Wo lines derived ones ke **baad** aati hain.
+
+### ⚠️ Jo is response me kabhi nahi aayega
+
+| Field | Kyun |
+|---|---|
+| `costBearing` | Discount kaun bhar raha hai — hamara margin split brand ke saath |
+| `usedCount` · `totalUsageLimit` | Campaign ka size aur burn rate. Ye competitor ka sawaal hai, customer ka nahi |
+| `isPublic` · `createdBy` · `isDeleted` | Internal state |
+
+`usage` block aapka apna hai — `perCustomerLimit`, `usedByYou`, `usesLeft`. **Platform ka koi counter nahi.**
+
+### ⚠️ Jo list me nahi hai, wo bhi chal sakta hai
+
+Listing sirf `isPublic: true` codes deti hai. Jo code kisi ek customer ko mail hua ho, ya influencer ka ho — wo list me **nahi** aayega aur type karne par **chalega**. `isPublic` "baantein ya nahi" ka faisla hai, "valid hai ya nahi" ka nahi.
+
+Isi tarah jo code **khatam** ho chuka (platform cap poora), **expire** ho gaya, ya **abhi shuru nahi** hua — wo list me aata hi nahi. Jo code live hai par *abhi aap* nahi laga sakte, wo `isApplicable: false` + `reason` ke saath dikhta hai, kyunki "minimum bill ₹300" par customer kuch **kar** sakta hai.
+
+### Kram
+
+Jo lag sakte hain wo pehle, unme sabse zyada bachat wala upar. ⚠️ Ye kram **page ke andar** lagta hai — pages ke aar-paar rank karne ka matlab hota har request par platform ka har code is customer ke against tolna.
+
+### Errors
+
+Context diya ho to **wahi jaanch** chalti hai jo `POST /vouchers/customer/voucher/preview` chalati hai (dono `buildClaimPreview` se guzarte hain), isliye codes bhi wahi hain:
+
+| Code | Kab |
+|---|---|
+| `401` | Token nahi ya expire |
+| `403` | Customer nahi (`isCustomer`), ya account deactivate ho chuka |
+| `422` | `voucherId`/`outletId`/`billAmount` adhoore · bill `0` ya negative · bill cap se upar · naam ki hui offer lag hi nahi sakti |
+| `404` | **Voucher** mila hi nahi |
+| `400` | Voucher abhi available nahi · outlet is voucher se linked nahi · outlet unavailable |
+
+> `isEnabled: false` koi error nahi — `data: []` aur ek `message` aata hai. Sawaal theek tha, jawab "abhi koi nahi" hai.
+
+### Apply kaise hota hai
+
+Ye endpoint kuch **apply nahi** karta. Code uthao aur usse `POST /vouchers/customer/voucher/preview` ya `POST /voucher-claims/create-order` ke `promoCode` field me bhejo — wahi ek raasta hai jahan discount lagta hai. Dono jagah wahi niyam chalte hain jo yahan `isApplicable` decide karte hain, isliye list aur button kabhi alag jawab nahi de sakte.
+
+---
+
 ## 17. POST /vouchers/customer/voucher/preview
 
 Bill amount pe **actual discount** calculate karta hai. Ye batata hai user ko kitna bachega.
@@ -3739,24 +3926,219 @@ na commercial disclosure hain na privacy:
 
 **Push notification ka deep link yahin utarta hai.**
 
-### Response
-```jsonc
+### Headers
+| Header | Value | Required |
+|---|---|---|
+| `Authorization` | `Bearer <token>` | ✅ — koi bhi signed-in role |
+
+### Path Params
+| Param | Type | Required | Notes |
+|---|---|---|---|
+| `transactionId` | ObjectId | ✅ | Payment ki id. Claim ki id **nahi** — uske liye [#17g](#17g-get-voucher-claimsclaimid--ek-claim-timeline-ke-saath) |
+
+Request body **nahi** hai — ye `GET` hai.
+
+### Success — `200` (CUSTOMER apni hi receipt khol raha hai)
+
+> Ye body code se **capture** ki gayi hai, haath se nahi likhi — `Trydood2_test`
+> par asli service chala kar. Keys wahi hain jo server sach me bhejta hai.
+
+```json
 {
-  "payment": { /* wahi projection jo #17e deti hai */
-    "invoiceDownloadUrl": "https://api.trydood.com/trydood/v1/transactions/invoice/<token>"
-  },
-  "claim":   { /* judi hui claim, frozen snapshots ke saath */ },
-  "brand":   { "brandName": "cafe mocha", "logo": "https://…",
-               "merchantId": "TM-362P-7M7E-ZB2N",   // 🆕
-               "subscriptionPlan": "Pro Plus" },     // 🆕 live plan, warna null
-  "outlet":  { "storeId": "T-01", "uniqueId": "…", "address": "…" },
-  "viewer":  { "role": "CUSTOMER", "scope": "OWN", "canSeePlatformCosts": false, "canSeeCustomerContact": true }
+  "success": true,
+  "message": "Payment details fetched successfully.",
+  "data": {
+    "payment": {
+      "_id": "68f1a2b3c4d5e6f7a8b9d201",
+      "createdAt": "2026-08-20T10:59:12.215Z",
+      "status": "captured",
+      "amount": 810,
+      "currency": "INR",
+      "verified": true,
+      "razorpayOrderId": "order_QhX2kLm9vTn4Ab",
+      "razorpayPaymentId": "pay_QhX2kLm9vTn4Cd",
+      "paymentMethod": "upi",
+      "invoiceId": "TD/VCH/26-27/000412",
+      "brandId": "68f1a2b3c4d5e6f7a8b9c3a1",
+      "subBrandId": "68f1a2b3c4d5e6f7a8b9c4a1",
+      "voucher": {
+        "claimId": "68f1a2b3c4d5e6f7a8b9d101",
+        "billAmount": 1000,
+        "offerDiscount": 200,
+        "netBill": 800,
+        "convenienceFee": 10
+      },
+      "customerId": "68f1a2b3c4d5e6f7a8b9b001",
+      "amountRefunded": 0,
+      "refundStatus": null,
+      "invoiceDownloadUrl": "https://api.trydood.com/trydood/v1/documents/9f3c…64-char-token"
+    },
+    "claim": {
+      "_id": "68f1a2b3c4d5e6f7a8b9d101",
+      "createdAt": "2026-08-20T10:58:40.363Z",
+      "claimCode": "TD-ABC123",
+      "status": "REDEEMED",
+      "billAmount": 1000,
+      "offerApplied": false,
+      "brandId": "68f1a2b3c4d5e6f7a8b9c3a1",
+      "subBrandId": "68f1a2b3c4d5e6f7a8b9c4a1",
+      "voucherId": "68f2a2b3c4d5e6f7a8b9d1b7",
+      "transactionId": "68f1a2b3c4d5e6f7a8b9d201",
+      "voucherSnapshot": { "name": "Weekend Special" },
+      "brandSnapshot":   { "name": "cafe mocha" },
+      "outletSnapshot":  { "storeId": "TS-87HD-48L3-PZYW" },
+      "pricing": {
+        "billAmount": 1000,
+        "offerDiscount": 200,
+        "promoDiscount": 0,
+        "totalPayable": 810,
+        "youSaved": 200,
+        "offerTitle": "20% off",
+        "convenienceFee": 10
+      },
+      "customerId": "68f1a2b3c4d5e6f7a8b9b001"
+    },
+    "brand": {
+      "_id": "68f1a2b3c4d5e6f7a8b9c3a1",
+      "brandName": "cafe mocha",
+      "merchantId": "TM-362P-7M7E-ZB2N",
+      "logo": "https://res.cloudinary.com/…/mocha-logo.jpg",
+      "subscriptionPlan": "Pro Plus",
+      "isFollowed": true,
+      "isAvoided": false
+    },
+    "outlet": {
+      "_id": "68f1a2b3c4d5e6f7a8b9c4a1",
+      "uniqueId": "TDS000201",
+      "storeId": "TS-87HD-48L3-PZYW"
+    },
+    "viewer": {
+      "role": "CUSTOMER",
+      "scope": "OWN",
+      "canSeePlatformCosts": false,
+      "canSeeCustomerContact": true
+    }
+  }
 }
 ```
+
+### Ek endpoint, teen shapes — VENDOR ko kya alag milta hai
+
+Same URL, same row, alag body. Ye `viewer` block se derive hota hai, guess se nahi.
+
+Ye table `claimProjection()` ([helpers/transactions/buildClaimReadPipeline.js](../helpers/transactions/buildClaimReadPipeline.js))
+se li gayi hai — yaani **jo role dekh sakta hai**, aur capture se milaayi gayi hai.
+
+| Key | CUSTOMER | VENDOR / SUB_VENDOR | ADMIN |
+|---|:---:|:---:|:---:|
+| `_id` · `createdAt` · `status` · `amount` · `currency` · `verified` · `verifiedAt` · `razorpayOrderId` · `razorpayPaymentId` · `paymentMethod` · `invoiceId` · `brandId` · `subBrandId` · `voucherId` | ✅ | ✅ | ✅ |
+| `customerId` | ✅ | ❌ | ✅ |
+| `email` · `contact` | ❌ | ❌ | ✅ |
+| `amountRefunded` | ✅ | ❌ | ✅ |
+| `refundStatus` | ✅ | ❌ | ❌ |
+| `invoiceDownloadUrl` *(`documentToken` se banta hai)* | ✅ | ❌ | ✅ |
+| `settlementHold` · `settlementId` | ❌ | ✅ | ✅ |
+| `paidToVendorAt` | ❌ | ✅ | ❌ |
+| `settlementStage` · `isDisputed` · `disputeStatus` | ❌ | ❌ | ✅ |
+| `gatewayFee` · `netReceived` | ❌ | ❌ | ✅ |
+| `voucher.claimId` · `billAmount` · `offerDiscount` · `netBill` | ✅ | ✅ | ✅ |
+| `voucher.convenienceFee` | ✅ | ❌ | ✅ |
+| `voucher.vendorPayable` · `vendorPromoCost` · `commissionAmount` | ❌ | ✅ | ✅ |
+| `voucher.platformPromoCost` · baaki commission fields | ❌ | ❌ | ✅ |
+| `claim.customerId` | ✅ | ❌ | ✅ |
+| `brand.isFollowed` / `isAvoided` | apna sach | hamesha `false` | hamesha `false` |
+
+> ### ⚠️ "Dikh sakta hai" ≠ "hamesha aayega"
+>
+> Projection ek **whitelist** hai jo asli document par lagti hai. Jis path ki
+> document me value hi nahi hai, wo key response me **aati hi nahi** — `null`
+> nahi, bilkul absent.
+>
+> Isliye `settlementId`, `paidToVendorAt`, `disputeStatus`, `verifiedAt` jaisi
+> keys tab tak nahi dikhengi jab tak wo ghatna ho na jaye (settle hona, payout
+> jaana, dispute khulna). Upar ✅ ka matlab *"is role se chhupayi nahi gayi"* hai,
+> *"hamesha maujood"* nahi.
+>
+> Client me hamesha optional-chaining se padhein, aur key ki maujoodgi se role ya
+> state ka andaza **mat** lagayein — uske liye `viewer` aur `status` hain.
+
+⚠️ **`refundStatus` sirf CUSTOMER ke projection me hai — admin ke bhi nahi.**
+Admin projection me `amountRefunded` hai, `refundStatus` nahi. Code me iski koi
+wajah likhi nahi hai, to ye jaan-boojh kar hai ya chhoot gaya — ye doc sirf ye
+bata sakti hai ki **abhi aisa hai**.
+
+```jsonc
+// VENDOR ko wahi payment is tarah dikhta hai (sirf farak wale keys):
+"payment": {
+  "voucher": { "claimId": "…", "billAmount": 1000, "offerDiscount": 200,
+               "netBill": 800, "vendorPayable": 800,
+               "vendorPromoCost": 0, "commissionAmount": 0 },
+  "settlementHold": false
+  // customerId, amountRefunded, refundStatus, invoiceDownloadUrl — koi nahi
+},
+"brand":  { "…": "…", "isFollowed": false, "isAvoided": false },
+"viewer": { "role": "VENDOR", "scope": "BRAND",
+            "canSeePlatformCosts": false, "canSeeCustomerContact": false }
+```
+
+⚠️ **Field ki maujoodgi se role mat pehchaniye.** `viewer.role` aur `viewer.scope`
+isi liye bheje jaate hain. Koi field jayaz taur par khaali ho sakti hai, aur tab
+guess pehli hi baar galat hoti hai.
+
+### Response fields
+
+| Field | Type | Notes |
+|---|---|---|
+| `payment.status` | string | **Payment** ki vocabulary — `created` · `authorized` · `captured` · `failed`. Claim ke `status` se alag |
+| `payment.currency` | string | Hamesha `"INR"` abhi |
+| `payment.refundStatus` | string\|null | Refund shuru na hua ho to `null` |
+| `payment.invoiceDownloadUrl` | string\|undefined | Neeche wala box padhein |
+| `claim.status` | string | **Claim** ki vocabulary — `PENDING` · `PAID` · `REDEEMED` · `EXPIRED` · `CANCELLED` |
+| `claim.*Snapshot` | object | **Frozen** — voucher republish hone ya outlet ka naam badalne ke baad bhi receipt sahi padhti hai |
+| `brand.subscriptionPlan` | string\|null | **Live** plan ka naam; plan na ho to `null` |
+| `brand.isFollowed` / `isAvoided` | boolean | **Dekhne wale** ke. Neeche wala box padhein |
+| `outlet` | object\|null | Sirf `_id`, `uniqueId`, `storeId`. ⚠️ Koi `address` **nahi** aata |
+
+> ### ⚠️ `invoiceDownloadUrl` ka raasta `/documents/<token>` hai
+>
+> `/transactions/invoice/<token>` **nahi** — wo purana raasta tha. Ab **chhe kism
+> ke document** (claim receipt, subscription invoice, grant advice, payout
+> statement, refund receipt, chargeback advice) ek hi route se aate hain, kyunki
+> ek bare token khud nahi bata sakta ki wo kis kism ka hai.
+>
+> ⚠️ **Sirf bana hua URL aata hai, token nahi.** Token PDF ka bina-auth bearer
+> credential hai; token alag se bhejna client ko ek aur cheez de deta hai jo leak
+> ho sake.
+>
+> ⚠️ `PUBLIC_API_URL` set na ho to **key hi nahi aati** (`undefined`). Kahin na
+> jaane wala Download button na hone se bura hai — key na ho to button mat
+> dikhaiye.
 
 > `brand` ka shape **#17e ki listing jaisa hi** hai, jaan-boojh kar. Detail page
 > par listing se kam field dikhna usi tarah chup-chaap galat hai jaise zyada
 > dikhna — bas dusri disha me.
+
+> ### 🆕 `isFollowed` / `isAvoided` — **dekhne wale ke**, kharidne wale ke nahi
+>
+> Ye endpoint teen audience ka hai (customer, vendor/sub-vendor, admin), to
+> *"customer is brand ko follow karta hai?"* ka jawab kisi **ek** ke baare me
+> dena padta hai. Jawab hamesha **jisne page khola** uske baare me hai:
+>
+> | Kaun khol raha hai | Kya milta hai |
+> |---|---|
+> | Customer (apni hi receipt) | Apna sach — aur wahin se brand follow kar sakta hai |
+> | Vendor / Sub-vendor | Dono `false` — unka koi Customer record hai hi nahi |
+> | Admin | Dono `false`, usi wajah se |
+>
+> ⚠️ **Buyer ka status jaan-boojh kar nahi bheja jaata.** Wo bhejne ka matlab
+> hota vendor ko ye batana ki *"is grahak ne aapko avoid kar rakha hai"* — wahi
+> kism ka disclosure jise `canSeeCustomerContact: false` rokta hai. Isliye ye
+> `transaction.customerId` se nahi, **caller se** resolve hota hai — taaki galti
+> karna mumkin hi na rahe, yaad rakhne par na chhoda jaaye.
+>
+> Yahi do keys brand profile ([#18](#18-get-brandscustomergetbrandid)) aur brand
+> directory ([#18a](#18a-get-brandscustomerget-all-)) par bhi hain, usi jagah —
+> `brand` object ke andar — taaki app ek hi fact ko do shapes me na padhe.
 
 - **`claim` saath aata hai** kyunki akela payment sirf ek raqam aur ek timestamp hai —
   customer ko wo dekhna hai *jo usne khareeda*: voucher ka naam, outlet, claim code
@@ -3787,15 +4169,84 @@ claim ke liye bani hai. **Id ka unique hona iska jawab nahi hai.**
 
 **Access:** 🔒 koi bhi logged-in role (`verifyJwtToken`)
 
-### Response
-`claim` · `payment` · `brand` · `outlet` · **`timeline`** · `viewer`
+### Headers
+| Header | Value | Required |
+|---|---|---|
+| `Authorization` | `Bearer <token>` | ✅ — koi bhi signed-in role |
 
-`brand` bilkul wahi shape hai jo #17f deta hai — `merchantId` 🆕 aur
-`subscriptionPlan` 🆕 (live plan, warna `null`) samet:
+### Path Params
+| Param | Type | Required | Notes |
+|---|---|---|---|
+| `claimId` | ObjectId | ✅ | Claim ki id. Counter par code se kholna ho to `GET /voucher-claims/code/:claimCode` — **wahi service, wahi response** |
 
-```json
-"brand": { "brandName": "cafe mocha", "logo": "https://…", "merchantId": "TM-362P-7M7E-ZB2N", "subscriptionPlan": "Pro Plus" }
+Request body **nahi** hai.
+
+### Success — `200` (CUSTOMER)
+
+> Ye body bhi code se **capture** ki gayi hai.
+
+```jsonc
+{
+  "success": true,
+  "message": "Claim details fetched successfully.",
+  "data": {
+    "claim": {
+      "_id": "68f1a2b3c4d5e6f7a8b9d101",
+      "createdAt": "2026-08-20T10:58:40.363Z",
+      "claimCode": "TD-ABC123",
+      "status": "REDEEMED",
+      "billAmount": 1000,
+      "offerApplied": false,
+      "brandId": "68f1a2b3c4d5e6f7a8b9c3a1",
+      "subBrandId": "68f1a2b3c4d5e6f7a8b9c4a1",
+      "voucherId": "68f2a2b3c4d5e6f7a8b9d1b7",
+      "transactionId": "68f1a2b3c4d5e6f7a8b9d201",
+      "voucherSnapshot": { "name": "Weekend Special" },
+      "brandSnapshot":   { "name": "cafe mocha" },
+      "outletSnapshot":  { "storeId": "TS-87HD-48L3-PZYW" },
+      "pricing": {
+        "billAmount": 1000, "offerDiscount": 200, "promoDiscount": 0,
+        "totalPayable": 810, "youSaved": 200,
+        "offerTitle": "20% off", "convenienceFee": 10
+      },
+      "customerId": "68f1a2b3c4d5e6f7a8b9b001"
+    },
+    "payment": { /* wahi projection jo #17f deta hai — poora body wahan hai */ },
+    "brand": {
+      "_id": "68f1a2b3c4d5e6f7a8b9c3a1",
+      "brandName": "cafe mocha",
+      "merchantId": "TM-362P-7M7E-ZB2N",
+      "logo": "https://res.cloudinary.com/…/mocha-logo.jpg",
+      "subscriptionPlan": "Pro Plus",
+      "isFollowed": true,
+      "isAvoided": false
+    },
+    "outlet": {
+      "_id": "68f1a2b3c4d5e6f7a8b9c4a1",
+      "uniqueId": "TDS000201",
+      "storeId": "TS-87HD-48L3-PZYW"
+    },
+    "timeline": [ /* neeche */ ],
+    "viewer": {
+      "role": "CUSTOMER", "scope": "OWN",
+      "canSeePlatformCosts": false, "canSeeCustomerContact": true
+    }
+  }
+}
 ```
+
+⚠️ **`payment` `null` ho sakta hai** — claim ban jaati hai aur payment baad me
+hoti hai, to abhi tak na hui ho to yahan kuch nahi aata. `claim.status` hi sach
+batata hai.
+
+`brand` **bilkul wahi shape** hai jo #17f deta hai — dono ke key-set capture se
+milaaye gaye hain aur ek jaise nikle.
+
+> ⚠️ *"Bilkul wahi shape"* ek **vaada** hai, ittefaq nahi. Dono keys yahan isliye
+> hain kyunki #17f par hain — ek me jod kar doosre me chhod dena wahi chup-chaap
+> farq paida karta hai jiske khilaf ye line likhi gayi thi. Dono `false` aate
+> hain jab kholne wala vendor, sub-vendor ya admin ho; matlab aur wajah
+> [#17f](#17f-get-voucher-claimspaymentstransactionid--ek-payment) par hai.
 
 ```jsonc
 "timeline": [
@@ -4273,7 +4724,28 @@ usme paisa daalne ki jagah hi nahi hoti**.
 
 Brand profile screen ka **single call** — brand, features, visible showcase preview aur outlets, sab ek saath.
 
-**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
+**Access:** 🌐 **Guest bhi** (`optionalAuth`) — token bhejo to personalised, na bhejo to anonymous. Galat token phir bhi reject hota hai
+
+> 🆕 **`isFollowed` / `isAvoided` — aur isiliye gate badla.**
+>
+> Ye dono **dekhne wale** ke baare me hain, brand ke baare me nahi.
+> `followersCount` sabke liye ek hi number hai; ye do har customer ke liye alag
+> hain, aur `req.customerId` se nikalte hain.
+>
+> ⚠️ Pehle is route par **koi gate tha hi nahi**, to `req.customerId` sahi token
+> wale caller ke liye bhi `undefined` rehta — yaani signed-in customer ko bhi
+> dono flags `false` milte aur **har brand par follow button un-pressed dikhta**.
+> Response `200`, shape bilkul sahi, jawab galat, aur kahin koi error nahi. Wahi
+> `optionalAuth` lagane ki wajah hai.
+>
+> ⚠️ **Expired token ab `401` deta hai**, pehle wo chup-chaap ignore ho kar `200`
+> deta tha. App ko yahan wahi refresh-ya-sign-out raasta chalana hoga jo voucher
+> feed aur search par pehle se chalta hai. Bina token wale guest par koi farq
+> nahi — use dono flags `false` milte hain.
+>
+> Guest ko keys **gayab nahi**, `false` milti hain. Key ka na hona app ko
+> *"follow nahi kiya"* aur *"pata nahi"* me farq karne ko majboor karta, jo wo
+> kar hi nahi sakti.
 
 > 🔄 **v1.2.0 me badla.** Pehle yahan `GET /brands/get?brandId=` document tha. Wo endpoint ab **customer ke liye band hai** (`isVendorOrAdmin`) — wo brand ka PAN, GSTIN, bank account aur subscription billing return karta tha. Ye naya endpoint sirf wahi banata hai jo profile screen render karti hai, to usme strip karne layak kuch hai hi nahi.
 
@@ -4291,7 +4763,7 @@ Brand profile screen ka **single call** — brand, features, visible showcase pr
 ### Headers
 | Header | Value | Required |
 |---|---|---|
-| `Authorization` | `Bearer <token>` | ✅ |
+| `Authorization` | `Bearer <token>` | ⬜ Optional — bhejo to `isFollowed`/`isAvoided` sach batate hain. ⚠️ Bheja to **valid hona chahiye**: expired/galat token par `401`/`403`, guest par downgrade nahi |
 
 ### Path Params
 | Param | Type | Required |
@@ -4316,6 +4788,12 @@ Brand profile screen ka **single call** — brand, features, visible showcase pr
     "joinedDate": "2026-03-15T00:00:00.000Z",
     "isVerified": true,
 
+    "mobile": "9700000002",
+    "whatsappNumber": "9700000002",
+
+    "isFollowed": true,
+    "isAvoided": false,
+
     "category":    { "_id": "…", "name": "food & beverages", "image": "https://…/food.jpg" },
     "subCategory": { "_id": "…", "name": "cafe",             "image": "https://…/cafe.jpg" },
 
@@ -4329,8 +4807,14 @@ Brand profile screen ka **single call** — brand, features, visible showcase pr
     },
 
     "workHours": {
-      "monday":  { "isOpen": true,  "start": "09:00", "end": "23:00" },
-      "sunday":  { "isOpen": false, "start": null,    "end": null }
+      "_id": "…",
+      "monday":    { "start": "09:00", "end": "23:00", "isOpen": true },
+      "tuesday":   { "start": "09:00", "end": "23:00", "isOpen": true },
+      "wednesday": { "isOpen": false },
+      "thursday":  { "isOpen": false },
+      "friday":    { "isOpen": false },
+      "saturday":  { "isOpen": false },
+      "sunday":    { "isOpen": false }
     },
 
     "features": [
@@ -4389,10 +4873,18 @@ Brand profile screen ka **single call** — brand, features, visible showcase pr
 |---|---|---|
 | `merchantId` 🆕 | string\|null | Brand ka merchant identifier (`TM-XXXX-XXXX-XXXX`) |
 | `subscriptionPlan` 🆕 | string\|null | Brand ka **live** plan ka naam. Plan na ho ya lapse ho chuka ho to `null`. Free-text hai — value par `switch`/`if` mat likhiye. #15 ka warning box padhein |
+| `mobile` · `whatsappNumber` | string\|absent | **Brand ke apne public contact numbers** — Call aur WhatsApp button inhi se banta hai. Vendor ne set na kiya ho to key **absent** hoti hai (`null` nahi), to button dikhane se pehle check karein. ⚠️ Ye brand ka number hai, kisi customer ka nahi |
+| `isFollowed` 🆕 | boolean | **Aap** is brand ko follow karte hain ya nahi. Guest ko hamesha `false`. Toggle: [#23](#23-post-followstogglebrandid) |
+| `isAvoided` 🆕 | boolean | **Aapne** is brand ko avoid mark kiya hai ya nahi. Guest ko hamesha `false`. Toggle: [#25](#25-post-brandavoidancestogglebrandid) |
 
 > ⚠️ Sirf plan ka **naam** aata hai. `GET /brands/get` (vendor) poora `subscribed`
 > document deta hai — price, dates, entitlements — par wo response customer ke
 > liye nahi hai. Plan ka naam ek badge hai; uske peeche ki billing nahi.
+
+> ⚠️ **`followersCount` aur `isFollowed` do alag cheezein hain.** Pehla brand ka
+> hai — sabke liye ek hi number. Doosra aapka hai. Follow toggle karne par
+> **dono** badalte hain, to UI ko dono update karne chahiye; toggle ka apna
+> response taaza `followersCount` wapas deta hai, use hi lijiye.
 
 ### Errors
 | Status | Message | Kab |
@@ -4400,7 +4892,8 @@ Brand profile screen ka **single call** — brand, features, visible showcase pr
 | `400` | `Invalid brand ID` | `brandId` valid ObjectId nahi |
 | `404` | `Brand not found` | Brand exist nahi karta, deleted hai, ya inactive |
 | `422` | `Brand ID is required` / `Invalid brandId` | Path param missing/galat |
-| `403` | `Forbidden: You do not have permission to perform this action.` | Token customer ka nahi |
+| `401` | *(auth message)* | ⚠️ **Token bheja aur wo expired hai.** Bina token wale guest ko ye kabhi nahi aata — iska matlab *"refresh karo ya sign out"* hai, *"guest ban jao"* nahi |
+| `403` | *(auth message)* | Token bheja par malformed/invalid hai. Role ki wajah se `403` yahan **nahi** aata — `optionalAuth` role dekhta hi nahi, vendor/admin ka valid token bhi chalta hai (unhe dono flags `false` milte hain) |
 
 ### ⚠️ Edge cases & notes
 
@@ -4425,7 +4918,16 @@ Brand profile screen ka **single call** — brand, features, visible showcase pr
 
 **7. Outlets me sirf active outlets** aate hain, aur unme koi `userId` ya internal field nahi hota.
 
-**8. `workHours` ke din top-level keys hain** — koi `workingHours` wrapper nahi. Jo din set nahi hua wo absent ho sakta hai.
+**8. `workHours` ke din top-level keys hain** — koi `workingHours` wrapper nahi.
+
+⚠️ **Saaton din hamesha aate hain**, chahe vendor ne sirf do set kiye hon —
+schema me har din ka `isOpen` default `false` hai. Jo din set nahi hua wo
+`{ "isOpen": false }` ban kar aata hai, aur usme `start`/`end` keys **hoti hi
+nahi** (ye `null` nahi hain, absent hain). To bandh din ke liye
+`day.start` padhne se pehle `day.isOpen` check karein.
+
+⚠️ `workHours` **poora block** absent ho sakta hai agar brand ne kabhi timings
+set hi na ki hon — wahan `workHoursId` hi nahi hota aur join khaali rehta hai.
 
 **9. Jo bhi join na mile wo field absent ya `null` hoga** — brand ne category/location/workHours set na kiya ho to. Render se pehle check karein.
 
@@ -4435,14 +4937,26 @@ Brand profile screen ka **single call** — brand, features, visible showcase pr
 
 Brand directory ki paginated list — aur **"Top Brands" tab** bhi isi se.
 
-**Access:** 🌐 **Public** — koi token nahi chahiye (guest browsing)
+**Access:** 🌐 **Guest bhi** (`optionalAuth`) — token bhejo to personalised, na bhejo to anonymous. Galat token phir bhi reject hota hai
 
 > 🆕 **v1.3.0 me naya.** Pehle koi brand-list endpoint tha hi nahi.
+
+> 🆕 **Har row par `isFollowed` / `isAvoided`.** Wahi do keys jo brand profile
+> ([#18](#18-get-brandscustomergetbrandid)) par hain, usi matlab ke saath —
+> **dekhne wale** ke, brand ke nahi. List row aur wo row jo profile kholti hai,
+> dono ek hi jagah se aate hain, to unka jawab kabhi alag nahi ho sakta.
+>
+> Isi wajah se gate `Public` se `optionalAuth` hua — poora explanation #18 par
+> hai. ⚠️ **Expired token ab `401`** deta hai; guest (bina token) par koi farq
+> nahi.
+>
+> ⚠️ Ye do keys **filter nahi** hain. Avoid kiya hua brand listing se hatta
+> **nahi** — flag aata hai aur dikhana ya na dikhana app ka faisla hai.
 
 ### Headers
 | Header | Value | Required |
 |---|---|---|
-| `Authorization` | `Bearer <token>` | ✅ |
+| `Authorization` | `Bearer <token>` | ⬜ Optional — bhejo to har row ke `isFollowed`/`isAvoided` sach batate hain. ⚠️ Bheja to **valid hona chahiye**: expired/galat token par `401`/`403` |
 
 ### Query Params
 | Param | Type | Required | Default | Validation |
@@ -4506,9 +5020,6 @@ Na bhejein to ye simple directory hai — koi `distanceInMeters` field nahi aaye
         "followersCount": 1243,
         "joinedDate": "2026-03-15T00:00:00.000Z",
         "isTopBrand": true,
-        "isVerified": true,
-        "outletCount": 4,
-        "distanceInMeters": 420,
         "category": {
           "_id": "68f1a2b3c4d5e6f7a8b9c0e1",
           "name": "food and beverages",
@@ -4518,7 +5029,13 @@ Na bhejein to ye simple directory hai — koi `distanceInMeters` field nahi aaye
           "_id": "68f1a2b3c4d5e6f7a8b9c0f1",
           "name": "cafe",
           "image": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/subcategories/cafe.png"
-        }
+        },
+        "subscriptionPlan": "Pro Plus",
+        "outletCount": 4,
+        "distanceInMeters": 420,
+        "isVerified": true,
+        "isFollowed": true,
+        "isAvoided": false
       }
     ]
   }
@@ -4534,6 +5051,8 @@ Na bhejein to ye simple directory hai — koi `distanceInMeters` field nahi aaye
 | `isVerified` | boolean | `SystemVerify.status === "APPROVED"` se derive. `brand.isApproved` **nahi** — wo hamesha `false` rehta hai |
 | `merchantId` | string\|null | Brand ka merchant identifier (`TM-XXXX-XXXX-XXXX`) |
 | `subscriptionPlan` 🆕 | string\|null | Brand ka **live** plan ka naam; plan na ho ya lapse ho chuka ho to `null`. Free-text — value par branch mat likhiye. #15 ka warning box padhein |
+| `isFollowed` 🆕 | boolean | **Aap** follow karte hain ya nahi. Bina token ke hamesha `false`. Toggle: [#23](#23-post-followstogglebrandid) |
+| `isAvoided` 🆕 | boolean | **Aapne** avoid mark kiya hai ya nahi. Bina token ke hamesha `false`. Toggle: [#25](#25-post-brandavoidancestogglebrandid) |
 | `outletCount` | number | Kitne active outlets hain |
 | `distanceInMeters` | number | **Sirf coordinates bhejne pe.** Sabse paas ke outlet ki doori, metres me, rounded |
 | `category` / `subCategory` | object\|null | Singular object hai, array nahi |
@@ -4545,7 +5064,8 @@ Na bhejein to ye simple directory hai — koi `distanceInMeters` field nahi aaye
 | `422` | `latitude and longitude must be provided together` | Sirf ek bheja |
 | `422` | `Invalid category ID` / `Invalid subCategory ID` | ObjectId format |
 | `422` | *(Joi message)* | `limit > 50`, coordinates range se bahar, etc. |
-| `403` | – | Customer ke alawa koi aur role |
+| `401` | *(auth message)* | ⚠️ **Token bheja aur wo expired hai.** Guest (bina token) ko kabhi nahi aata |
+| `403` | *(auth message)* | Token malformed/invalid. Role ki wajah se **nahi** — `optionalAuth` role check karta hi nahi |
 
 ### ⚠️ Edge cases & notes
 
@@ -6307,7 +6827,7 @@ Ye endpoints backend me exist karte hain par **customer app inko use na kare**. 
 
 | Module | Endpoints | Kiske liye |
 |---|---:|---|
-| `/promoCodes/*` | 6 | **Admin only** (`router.use(isAdmin)`). Subscription promo codes ka management. Vendor bhi manage nahi karta — wo sirf `/transactions/subscribe/preview` me code redeem karta hai |
+| `/promoCodes/*` | 8 → **sirf 7 chhodo** | ✅ `GET /promoCodes/customer/get-all` customer app ka hai aur upar documented hai — [#16a](#16a-get-promocodescustomerget-all-). Baaki 7 me se 6 manage endpoints **admin only** hain (`router.use(isAdmin)`) aur `GET /promoCodes/vendor/get-all` vendor panel ka. Customer code **apply** karta hai, manage nahi — wo `/vouchers/customer/voucher/preview` aur `/voucher-claims/create-order` ke `promoCode` field se hota hai |
 | `/subscribeds/*` | 8 | Admin (6) + Vendor (2). Brand subscription lifecycle — grant, cancel, resync, forfeit compensation |
 | `/notifications/*` | 7 → **sirf 3 chhodo** | ✅ Chaar customer ke liye hain aur upar documented hain — [#37](#37-get-notificationsget-all-), [#38](#38-put-notificationsmark-read-), [#38a](#38a-get-notificationspreferences-), [#38b](#38b-put-notificationspreferences-). Baaki teen — `GET|PUT /notifications/admin/preferences` aur `POST /notifications/broadcast` — **admin-only** hain (`isAdmin`); broadcast platform ke har user tak pahunch sakta hai |
 | `/auth/set-password` · `/forgot-password` · `/reset-password` | 3 | Technically role-agnostic hain, par customer app WhatsApp OTP se login karta hai — password flow ki zarurat nahi |

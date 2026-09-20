@@ -1914,6 +1914,156 @@ const voucherFolder = folder(
 );
 
 // ===========================================================================
+// 05a — Promo Codes
+// ===========================================================================
+const promoFolder = folder(
+  "05a — Promo Codes",
+  [
+    "Wo codes jo customer khud dekh kar chun sakta hai. Listing **apply nahi karti** —",
+    "code uthao aur `/vouchers/customer/voucher/preview` ya `/voucher-claims/create-order`",
+    "ke `promoCode` field me bhejo.",
+    "",
+    "### Do tareeke se poocho",
+    "",
+    "| Kaise | Kya milta hai |",
+    "|---|---|",
+    "| Koi query nahi | Catalogue — terms, aapki usage. `savings` **`null`** |",
+    "| `voucherId` + `outletId` + `billAmount` | Upar ka sab **plus** asli `savings`, aur wo gates jo bill maangte hain |",
+    "",
+    "⚠️ **Teeno saath, ya teeno nahi.** Do bhejna adhoora jawab nahi hai — wo aisi",
+    "request hai jiska daam ban hi nahi sakta, aur teesra guess karna kisi anjaan bill",
+    "ke against bachat quote karna hoga.",
+    "",
+    "### ⚠️ Jo list me nahi hai, wo bhi chal sakta hai",
+    "",
+    "Listing sirf `isPublic: true` codes deti hai. Kisi ek customer ko mail kiya gaya",
+    "code list me **nahi** aayega aur type karne par **chalega** — `isPublic` \"baantein",
+    "ya nahi\" ka faisla hai, \"valid hai ya nahi\" ka nahi.",
+  ].join("\n"),
+  [
+    req({
+      name: "Promo codes — catalogue ⭐",
+      method: "GET",
+      segments: ["promoCodes", "customer", "get-all"],
+      token: CUST,
+      query: [
+        { key: "page", value: "1", disabled: true },
+        { key: "limit", value: "20", disabled: true },
+      ],
+      description: [
+        "| Param | Default | Notes |",
+        "|---|---|---|",
+        "| `page` / `limit` | `1` / `20` | `limit` **max 50** |",
+        "",
+        "Bina bill ke `savings` `null` aata hai — `0` \"kuch nahi milega\" padha jaata,",
+        "aur wo jhooth hota.",
+      ].join("\n"),
+      assert: [
+        ...A.status(200),
+        ...A.ok("Promo codes fetched successfully"),
+        ...A.custom("catalogue kuch price nahi karta", [
+          `const d = pm.response.json().data;`,
+          // 🔴 **true**, not merely boolean. A disabled switch returns an empty
+          // page, and every row-shape check below then passes because there is
+          // nothing to check — the collection stays green while the endpoint
+          // documents itself as returning nothing. That is exactly how the first
+          // vendor capture went out.
+          `pm.expect(d.isEnabled, "isEnabled").to.eql(true);`,
+          `pm.expect(d.context, "context").to.eql(null);`,
+          `pm.expect(d.data, "data").to.be.an("array");`,
+          `d.data.forEach(function (p) {`,
+          `  pm.expect(p.savings, "savings for " + p.code).to.eql(null);`,
+          `});`,
+        ]),
+        /**
+         * 🔴 The leak check. `costBearing` is our margin split with the brand,
+         * and the platform counters are the campaign's size and burn rate —
+         * a competitor's question, not a customer's. A `...promo` anywhere in
+         * the shaping publishes all of them.
+         */
+        ...A.custom("costBearing aur platform counters kabhi nahi aate", [
+          `pm.response.json().data.data.forEach(function (p) {`,
+          `  ["costBearing", "usedCount", "totalUsageLimit", "isPublic", "createdBy", "isDeleted"].forEach(function (f) {`,
+          `    pm.expect(p, f + " on " + p.code).to.not.have.property(f);`,
+          `  });`,
+          `});`,
+        ]),
+        ...A.custom("har row apni usage aur derived terms rakhti hai", [
+          `pm.response.json().data.data.forEach(function (p) {`,
+          `  pm.expect(p.code, "code").to.be.a("string");`,
+          `  pm.expect(p.headline, "headline").to.be.a("string");`,
+          `  pm.expect(p.terms, "terms").to.be.an("array");`,
+          `  pm.expect(p.isApplicable, "isApplicable").to.be.a("boolean");`,
+          `  pm.expect(p.usage, "usage").to.be.an("object");`,
+          `  pm.expect(p.usage, "perCustomerLimit").to.have.property("perCustomerLimit");`,
+          `  pm.expect(p.usage, "usesLeft").to.have.property("usesLeft");`,
+          `});`,
+        ]),
+      ],
+    }),
+
+    req({
+      name: "Promo codes — bill ke saath (priced)",
+      method: "GET",
+      segments: ["promoCodes", "customer", "get-all"],
+      token: CUST,
+      query: [
+        { key: "voucherId", value: "{{voucher_id}}" },
+        { key: "outletId", value: "{{sub_brand_id}}" },
+        { key: "billAmount", value: "1200" },
+      ],
+      description: [
+        "Teeno saath bhejne par wahi `buildClaimPreview` chalta hai jo checkout chalata",
+        "hai — isliye drawer aur button ke numbers **ek hi jagah se** aate hain.",
+        "",
+        "`context` wo figures wapas deta hai jinke against list bani, taaki app khud",
+        "compare kar sake.",
+      ].join("\n"),
+      assert: [
+        ...A.status(200),
+        ...A.ok("Promo codes fetched successfully"),
+        ...A.custom("context wahi bill hai jo bheja gaya", [
+          `const d = pm.response.json().data;`,
+          `pm.expect(d.context, "context").to.be.an("object");`,
+          `pm.expect(d.context.billAmount, "billAmount").to.eql(1200);`,
+          `pm.expect(d.context.netBill, "netBill").to.be.a("number");`,
+        ]),
+        ...A.custom("jo lag sakta hai uska daam hai, baaki ka reason", [
+          `pm.response.json().data.data.forEach(function (p) {`,
+          `  if (p.isApplicable) {`,
+          `    pm.expect(p.savings, "savings for " + p.code).to.be.an("object");`,
+          `    pm.expect(p.savings.discount, "discount").to.be.a("number");`,
+          `    pm.expect(p.reason, "reason on applicable " + p.code).to.eql(null);`,
+          `  } else {`,
+          `    pm.expect(p.reason, "reason for " + p.code).to.be.a("string");`,
+          `  }`,
+          `});`,
+        ]),
+        ...A.custom("jo lag sakte hain wo pehle", [
+          `const rows = pm.response.json().data.data;`,
+          `let seenBlocked = false;`,
+          `rows.forEach(function (p) {`,
+          `  if (!p.isApplicable) seenBlocked = true;`,
+          `  else pm.expect(seenBlocked, "applicable after blocked: " + p.code).to.eql(false);`,
+          `});`,
+        ]),
+      ],
+    }),
+
+    req({
+      name: "Adhoora context — sirf voucherId",
+      method: "GET",
+      segments: ["promoCodes", "customer", "get-all"],
+      token: CUST,
+      query: [{ key: "voucherId", value: "{{voucher_id}}" }],
+      description:
+        "Teen me se do bhejna guess karne ka nyota hai — aur guess kiya hua bill ek aisi bachat quote karta hai jo kisi ne poochi hi nahi.",
+      assert: [...A.status(422), ...A.err("must be sent together")],
+    }),
+  ],
+);
+
+// ===========================================================================
 // 06 — Brand Profile
 // ===========================================================================
 const brandFolder = folder(
@@ -3303,6 +3453,29 @@ const gateFolder = folder(
         segments: ["banners", "get-all"],
         why: "Customer ke liye sirf `/banners/customer/active` hai.",
       },
+      /**
+       * 🔴 Both promo surfaces, because "the gate is mounted" and "the gate
+       * refuses" are different claims and only one of them is testable.
+       *
+       * `/promoCodes/get-all` is the **admin** listing and carries `usedCount`,
+       * `consumedCount` and `reservedCount` — the campaign's size and burn rate.
+       * `/promoCodes/vendor/get-all` resolves a brand and reports that brand's
+       * usage. Neither is a customer's, and the customer listing deliberately
+       * publishes no platform counter at all, so a leak here would hand over
+       * exactly what `shapePromoForList` exists to withhold.
+       */
+      {
+        name: "Promo codes — admin listing",
+        method: "GET",
+        segments: ["promoCodes", "get-all"],
+        why: "Customer ke liye `/promoCodes/customer/get-all` hai. Admin listing platform ke counters (`usedCount`, `consumedCount`) deti hai.",
+      },
+      {
+        name: "Promo codes — vendor listing",
+        method: "GET",
+        segments: ["promoCodes", "vendor", "get-all"],
+        why: "Vendor panel ka endpoint — brand resolve karta hai aur us brand ki usage deta hai.",
+      },
     ].map((c) =>
       req({
         name: `${c.name} → 403`,
@@ -3343,6 +3516,9 @@ const items = [
   masterDataFolder,
   homeFolder,
   voucherFolder,
+  // After the vouchers, because the priced request reuses `{{voucher_id}}` and
+  // `{{sub_brand_id}}` that folder captures.
+  promoFolder,
   brandFolder,
   engagementFolder,
   legalFolder,

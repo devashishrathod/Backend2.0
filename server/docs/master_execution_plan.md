@@ -1665,6 +1665,22 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 > Dono U-5 wale fix hone ke baad akele green hain. Bacha sirf `otpThrottle`, jo
 > O-1 ka apna red marker hai.
 >
+> ### 📌 Promo listing ke baad dobara naapa — 2026-09-21
+>
+> **101 suite, 2006 test: 100 pass, 1 fail (1 test) — 47 min.** Red sirf
+> `otpThrottle › two requests at the same moment`, yaani **O-1 ka apna marker**.
+>
+> Is section ke itihaas me ye sabse saaf run hai (pehle: 4 test → 10 test → 10
+> aur 78). Iska matlab ye **nahi** ki O-2 khatam ho gaya — ek saaf run sirf ek
+> data point hai, aur O-2 ki dalील hi yahi thi ki natija run-dar-run badalta hai.
+> Par ye batata hai ki Block G ke baad jo asli tootan thi (nakli `tempFilePath`
+> wali do suites) wo sach me band hui hain, kyunki wo is baar red nahi aayi.
+>
+> ⚠️ Is run ke waqt working tree me promo-listing ka kaam **aur** kisi aur ka
+> V-4a banner-fallback kaam (`helpers/vouchers/customerListing.js` +
+> `services/vouchers/getAllVoucherVersions.js` + do unit test) dono maujood the.
+> Yaani 100/101 dono ke saath hai.
+>
 > ### 📌 Block G ke baad dobara naapa — 2026-09-19
 >
 > Ek hi shaam me **do baar** chalayi gayi, aur dono baar alag suites red hui —

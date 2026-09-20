@@ -2419,6 +2419,105 @@ const plansFolder = folder(
       gate: "`verifyJwtToken`",
       assert: [...A.status(200), ...A.ok()],
     }),
+
+    req({
+      name: "Promo codes — catalogue ⭐",
+      method: "GET",
+      segments: ["promoCodes", "vendor", "get-all"],
+      token: V,
+      query: [
+        { key: "page", value: "1", disabled: true },
+        { key: "limit", value: "20", disabled: true },
+      ],
+      description: [
+        "Wo codes jo ye brand plan kharidte waqt laga sakta hai. Listing **apply nahi",
+        "karti** — code uthao aur `/transactions/subscribe/preview` ke `promoCode` me bhejo.",
+        "",
+        "| Param | Default | Notes |",
+        "|---|---|---|",
+        "| `page` / `limit` | `1` / `20` | `limit` **max 50** |",
+        "| `subscriptionId` | – | Plan ke against price karne ke liye |",
+        "| `brandId` | token se | **Admin ke liye required** (`resolveActorBrand`) |",
+        "",
+        "Bina `subscriptionId` ke `savings` `null` aata hai, aur wo gates skip hote hain",
+        "jinhe plan chahiye — minimum order value, plan scope, action scope.",
+        "",
+        "### ⚠️ Jo list me nahi hai, wo bhi chal sakta hai",
+        "",
+        "Listing sirf `isPublic: true` codes deti hai. Seedhe aapko bheja gaya code list",
+        "me nahi aayega aur `subscribe/preview` me type karne par chalega.",
+      ].join("\n"),
+      assert: [
+        ...A.status(200),
+        ...A.ok("Promo codes fetched successfully"),
+        ...A.custom("catalogue kuch price nahi karta", [
+          `const d = pm.response.json().data;`,
+          // 🔴 **true**, not merely boolean. A disabled switch returns an empty
+          // page, and every row-shape check below then passes because there is
+          // nothing to check — the collection stays green while the endpoint
+          // documents itself as returning nothing. That is exactly how the first
+          // vendor capture went out.
+          `pm.expect(d.isEnabled, "isEnabled").to.eql(true);`,
+          `pm.expect(d.context, "context").to.eql(null);`,
+          `d.data.forEach(function (p) {`,
+          `  pm.expect(p.savings, "savings for " + p.code).to.eql(null);`,
+          `});`,
+        ]),
+        /**
+         * 🔴 `costBearing` tells a vendor exactly what the platform keeps, and
+         * the counters describe the campaign. Neither is theirs.
+         */
+        ...A.custom("costBearing aur platform counters kabhi nahi aate", [
+          `pm.response.json().data.data.forEach(function (p) {`,
+          `  ["costBearing", "usedCount", "totalUsageLimit", "isPublic", "createdBy", "isDeleted"].forEach(function (f) {`,
+          `    pm.expect(p, f + " on " + p.code).to.not.have.property(f);`,
+          `  });`,
+          `});`,
+        ]),
+        ...A.custom("usage sirf apne brand ka hai", [
+          `pm.response.json().data.data.forEach(function (p) {`,
+          `  pm.expect(p.usage, "usage").to.be.an("object");`,
+          `  pm.expect(p.usage, "perBrandLimit").to.have.property("perBrandLimit");`,
+          `  pm.expect(p.usage, "usedByYourBrand").to.have.property("usedByYourBrand");`,
+          `  pm.expect(p.terms, "terms").to.be.an("array");`,
+          `});`,
+        ]),
+      ],
+    }),
+
+    req({
+      name: "Promo codes — plan ke saath (priced)",
+      method: "GET",
+      segments: ["promoCodes", "vendor", "get-all"],
+      token: V,
+      query: [{ key: "subscriptionId", value: "{{subscription_id}}" }],
+      description: [
+        "⚠️ **`action` aap nahi bhejte, wo nikalta hai.** Jo code sirf renewal par valid",
+        "hai use pata hona chahiye ki ye renewal hai — aur wo brand ke **current plan** se",
+        "tay hota hai, request se nahi. Isliye wahi `buildCheckoutPreview` chalta hai jo",
+        "checkout chalata hai.",
+      ].join("\n"),
+      assert: [
+        ...A.status(200),
+        ...A.ok("Promo codes fetched successfully"),
+        ...A.custom("context me plan aur derived action aata hai", [
+          `const d = pm.response.json().data;`,
+          `pm.expect(d.context, "context").to.be.an("object");`,
+          `pm.expect(d.context.action, "action").to.be.a("string");`,
+          `pm.expect(d.context.taxableValue, "taxableValue").to.be.a("number");`,
+        ]),
+        ...A.custom("jo lag sakta hai uska daam hai, baaki ka reason", [
+          `pm.response.json().data.data.forEach(function (p) {`,
+          `  if (p.isApplicable) {`,
+          `    pm.expect(p.savings, "savings for " + p.code).to.be.an("object");`,
+          `    pm.expect(p.reason, "reason on applicable " + p.code).to.eql(null);`,
+          `  } else {`,
+          `    pm.expect(p.reason, "reason for " + p.code).to.be.a("string");`,
+          `  }`,
+          `});`,
+        ]),
+      ],
+    }),
   ],
 );
 
@@ -2868,10 +2967,24 @@ const gateFolder = folder(
         why: "Voucher radius, convenience fee slabs — sab yahin se.",
       },
       {
-        name: "Promo codes",
+        name: "Promo codes — admin listing",
         method: "GET",
         segments: ["promoCodes", "get-all"],
-        why: "Poora module `router.use(isAdmin)`.",
+        why: "⚠️ Ab **poora** module admin-only nahi hai — do listing endpoints `router.use(isAdmin)` ke upar baithte hain. Ye wala manage-side ka hai aur platform ke counters (`usedCount`, `consumedCount`) deta hai; vendor ke liye `/promoCodes/vendor/get-all` hai.",
+      },
+      /**
+       * 🔴 The customer listing, refused to a vendor.
+       *
+       * It is gated `isCustomer` and counts *the caller's* usage. A vendor
+       * reaching it would be a caller the per-customer cap cannot be computed
+       * for, which is the one state the listing must never be in — and "the
+       * gate is mounted" is not the same claim as "the gate refuses".
+       */
+      {
+        name: "Promo codes — customer listing",
+        method: "GET",
+        segments: ["promoCodes", "customer", "get-all"],
+        why: "`isCustomer` — customer app ka endpoint. Vendor ke liye `/promoCodes/vendor/get-all` hai.",
       },
       {
         name: "Saare subscriptions (admin view)",

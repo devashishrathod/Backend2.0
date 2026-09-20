@@ -73,7 +73,7 @@ Ye **re-verification round** tha — har endpoint ka gate code se dobara nikala 
 20. [Showcase APIs](#showcase-apis) — 11
 21. [Voucher APIs](#voucher-apis) — 7
 22. [Brand Feature APIs](#brand-feature-apis) — 5
-23. [Subscription Plan APIs](#subscription-plan-apis) — 2
+23. [Subscription Plan APIs](#subscription-plan-apis) — 3
 24. [My Subscription APIs](#my-subscription-apis) — 2
 25. [Payment APIs](#payment-apis) — 4
 26. [Master Data APIs](#master-data-apis) — 4
@@ -5508,7 +5508,23 @@ GET /vouchers/versions/get-all?brandId=68f1a2b3c4d5e6f7a8b9c3a1&status=DRAFT&lim
         "name": "flat 30% off on total bill",
         "description": "Valid on dine-in and takeaway",
         "tags": ["coffee", "cafe"],
-        "images": [{ "_id": "…", "url": "…", "sortOrder": 1 }],
+        "images": [
+          {
+            "_id": "…",
+            "media": {
+              "url": "…",
+              "kind": "IMAGE",
+              "mimeType": "image/webp",
+              "sizeBytes": 82314,
+              "width": 1200,
+              "height": 800,
+              "duration": 0,
+              "originalName": "hero.webp",
+              "storage": { "provider": "AWS_S3" }
+            },
+            "sortOrder": 1
+          }
+        ],
         "offers": [
           { "_id": "…", "title": "30% off above 500", "minBillAmount": 500, "discountType": "PERCENTAGE", "discountValue": 30, "maxDiscountAmount": 300 }
         ],
@@ -5543,6 +5559,14 @@ GET /vouchers/versions/get-all?brandId=68f1a2b3c4d5e6f7a8b9c3a1&status=DRAFT&lim
 **3. `sortBy=RELEVANCE` bina `search` ke silently `NEWEST` ban jaata hai** — koi error nahi.
 
 **4. `publish` (#57) ke liye `versionId` yahin se milta hai** — `status: "APPROVED"` filter karke.
+
+**5. 🆕 `images[].media` me file ki poori detail hai — par uska pata nahi.**
+
+File ab `media` ke andar baithti hai (wahi `mediaSchema` jo har surface use karta hai), flat `url` nahi. Panel ko `mimeType`, `sizeBytes`, `width`, `height`, `originalName` sab milte hain — kyunki panel ko ye chahiye hote hain.
+
+⚠️ `storage` me **sirf `provider`** aata hai. `publicId`, `bucket` aur `key` kabhi nahi — wo file ka **pata** hai, detail nahi: jiske paas wo hai wo file ko seedha fetch ya overwrite kar sakta hai, is server ke har check ko bypass karke. Pehle teeno yahan se ja rahe the. `provider` isliye rehta hai kyunki S3 migration ke dauraan ye dekhna padta hai ki kaunsi file move ho chuki hai — *kaam ka, khatarnak nahi*.
+
+Yahi niyam showcase panel (`formatManagedMedia`) pehle se follow karta hai. Detail: `helpers/media/toMediaResponse.js`.
 
 ---
 
@@ -6084,6 +6108,123 @@ GET /subscriptions/getAll?isActive=true&sortBy=price&sortOrder=asc&limit=20
 |---|---|
 | `404` | `Subscription not found` |
 | `422` | *(invalid ObjectId)* |
+
+---
+
+## 67a. GET /promoCodes/vendor/get-all 🆕
+
+**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership**
+
+Wo promo codes jo is brand ko plan kharidte waqt mil sakte hain. Har row batati hai **laga sakte ho ya nahi**, nahi to **kyun nahi**, aur — plan chuna ho to — **kitna bachega**.
+
+Ye wahi gate hai jo `POST /transactions/subscribe/preview` (#70) par hai: jo admin kisi brand ke liye purchase preview kar sakta hai, wo usi brand ke codes bhi dekh sakta hai. Brand khud `resolveActorBrand` se tay hota hai — vendor apne alawa kisi ka nahi padh sakta.
+
+### Query Params
+| Param | Type | Required | Notes |
+|---|---|:---:|---|
+| `page` · `limit` | number | ❌ | `limit` max **50**, default 20 |
+| `subscriptionId` | ObjectId | ❌ | Plan ke against price karne ke liye |
+| `brandId` | ObjectId | ⚠️ | **Vendor ke liye optional** (token se), **admin ke liye required** |
+
+### Do tareeke se poocho
+
+| Kaise | Kya milta hai |
+|---|---|
+| **Sirf list** | Catalogue: code, headline, terms, aapke brand ki usage. `savings` **`null`** |
+| **`subscriptionId` ke saath** | Upar ka sab, **plus** asli `savings`, aur wo gates jo plan maangte hain — minimum order value, plan scope, aur **action scope** |
+
+> ⚠️ **`action` aap nahi bhejte, wo nikalta hai.** Jo code sirf renewal par valid hai use pata hona chahiye ki ye renewal hai — aur wo brand ke **current plan** se tay hota hai, na ki request se. Isliye `subscriptionId` dete hi wahi `buildCheckoutPreview` chalta hai jo checkout chalata hai, aur NEW/RENEW/UPGRADE/DOWNGRADE wahin se aata hai.
+>
+> ⚠️ **Isi wajah se ye GET kabhi-kabhi likhta bhi hai.** `getActiveSubscription` `heal: true` par chalta hai: jo `Subscribed` row apni `endDate` guzarne ke baad bhi ACTIVE keh rahi ho, wo wahin EXPIRED ho jaati hai. Repair skip karte to stale row live dikhti, `action` `RENEW` aata jabki sach `NEW` hai, aur `["NEW"]` par scoped code usi vendor ko unusable dikhta jiske liye likha gaya tha — jabki ek click baad checkout wahi row heal karke usi code ko accept kar leta.
+
+### Response — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "Promo codes fetched successfully",
+  "data": {
+    "isEnabled": true,                  // Setting.vendor.subscription.isPromoCodeEnabled
+    "context": {                        // subscriptionId diya ho tab; warna null
+      "subscriptionId": "68f…k001",
+      "planName": "Gold",
+      "action": "RENEW",
+      "taxableValue": 8000
+    },
+    "total": 2, "totalPages": 1, "page": 1, "limit": 20,
+    "data": [
+      {
+        "_id": "690…b22",
+        "code": "MONSOON20",
+        "headline": "20% OFF up to ₹2,000",
+        "description": "Monsoon offer — kisi bhi plan par",
+        "discountType": "PERCENT",
+        "discountPercent": 20,
+        "discountAmount": 0,
+        "maxDiscountAmount": 2000,
+        "minOrderValue": 5000,
+        "applicableActions": ["NEW", "RENEW"],
+        "firstTimeOnly": false,
+        "validFrom": null,
+        "validTill": "2026-10-31T18:29:59.999Z",
+        "usage": { "perBrandLimit": 1, "usedByYourBrand": 0, "usesLeft": 1 },
+        "terms": [
+          "Valid on plans priced ₹5,000 or more, after the plan's own discount.",
+          "Maximum discount of ₹2,000.",
+          "Valid till 31 Oct 2026.",
+          "Can be used once per brand.",
+          "Valid on Gold, Platinum.",
+          "Valid on a new subscription, a renewal."
+        ],
+        "isApplicable": true,
+        "reason": null,
+        "savings": { "discount": 1600, "base": 8000 }
+      },
+      {
+        "code": "FIRSTPLAN",
+        "isApplicable": false,
+        "reason": "This promo code is only valid on a first subscription purchase.",
+        "savings": null
+      }
+    ]
+  }
+}
+```
+
+### `terms` **banaye** jaate hain
+
+Har line code ke apne field se nikalti hai. Haath se likhi term `₹3,000` keh sakti hai jab code `₹5,000` enforce karta ho — aur kahin kuch galat nahi dikhta, rejection checkout par aata hai. `PromoCode.termsAndConditions` sirf un baaton ke liye hai jo kisi field me express hi nahi hoti, aur wo derived lines ke **baad** aati hain.
+
+### ⚠️ Jo is response me kabhi nahi aayega
+
+| Field | Kyun |
+|---|---|
+| `costBearing` | Discount kaun bhar raha hai. Vendor ko ye batana platform ka margin batana hai |
+| `usedCount` · `totalUsageLimit` | Campaign ka size aur burn rate |
+| `isPublic` · `createdBy` · `isDeleted` | Internal state |
+
+`usage` sirf **aapke brand** ka hai — `usedByYourBrand`, `usesLeft`. Kisi doosre brand ki usage isme nahi ginti, aur RESERVED bhi ginti hai (khula hua order bhi kharch hai).
+
+### ⚠️ Jo list me nahi hai, wo bhi chal sakta hai
+
+Listing sirf `isPublic: true` codes deti hai. Jo code seedhe aapko bheja gaya ho wo list me nahi aayega aur `subscribe/preview` me type karne par chalega. Khatam/expire/abhi-shuru-nahi wale codes list me aate hi nahi; jo live hain par abhi nahi lag sakte wo `isApplicable: false` + `reason` ke saath dikhte hain.
+
+### Kram
+
+Jo lag sakte hain wo pehle, unme sabse zyada bachat wala upar — **page ke andar**.
+
+### Errors
+| Status | Message |
+|---|---|
+| `403` | Doosre brand ka `brandId` bheja |
+| `404` | `Subscription plan not found!` · `Brand not found!` |
+| `422` | Admin ne `brandId` nahi bheja · invalid ObjectId · `limit` > 50 |
+
+> `isEnabled: false` error nahi hai — `data: []` aur ek `message`.
+
+### Apply kaise hota hai
+
+Ye endpoint kuch apply nahi karta. Code uthao aur `POST /transactions/subscribe/preview` (#70) ya `create-order` (#71) ke `promoCode` field me bhejo. Wahan wahi niyam chalte hain jo yahan `isApplicable` decide karte hain, isliye list aur checkout kabhi alag jawab nahi de sakte.
 
 ---
 
@@ -7196,6 +7337,21 @@ ka jawab hai, history ka nahi.
 | `403` | Dusre brand ka, ya `SUB_VENDOR` ke liye dusre outlet ka |
 | `422` | Malformed id |
 
+### 🆕 `brand.isFollowed` / `brand.isAvoided` — aapko hamesha `false` milenge
+
+Ye do keys customer app ke brand card ke liye hain, aur ye **jisne page khola**
+uske baare me hain — brand ke baare me nahi. Vendor, sub-vendor aur admin ka koi
+Customer record hota hi nahi, to unke liye dono hamesha `false` hote hain.
+
+⚠️ **Inhe khareedne wale ka status mat samjhiye.** Ye jaan-boojh kar buyer ka
+status **nahi** batate. Batana matlab aapko ye bata dena ki *"is grahak ne aapko
+avoid kar rakha hai"* — wahi kism ki baat jise `canSeeCustomerContact: false`
+rokta hai. Code me ye caller se resolve hote hain, `transaction.customerId` se
+nahi, taaki ye galti mumkin hi na rahe.
+
+Vendor panel me inhe render karne ki koi wajah nahi hai — ye ek hi response shape
+teen audience ko dene ki keemat hain, feature nahi.
+
 ⚠️ **Apna subscription payment yahan nahi khulta.** Ek hi collection vendor subscriptions
 aur customer voucher claims dono rakhti hai; `purpose` scope hi use rokta hai. Apni
 subscription ke liye `/transactions/...` use karein.
@@ -7369,7 +7525,9 @@ Ye 62 endpoints backend me hain par vendor panel inko use na kare. Zyada tar ab 
 
 | Module | Endpoints | Gate |
 |---|---|---|
-| **Promo Codes** | `POST /promoCodes/create` · `GET /get-all` · `GET /reports` · `GET /get/:id` · `PUT /update/:id` · `DELETE /delete/:id` | `router.use(isAdmin)` |
+| **Promo Codes — sirf management** ⚠️ | `POST /promoCodes/create` · `GET /get-all` · `GET /reports` · `GET /get/:id` · `PUT /update/:id` · `DELETE /delete/:id` | `router.use(isAdmin)` |
+
+> ⚠️ **`/promoCodes` poora module ab is appendix me nahi hai.** `GET /promoCodes/vendor/get-all` **vendor panel ka apna endpoint hai** — [#67a](#67a-get-promocodesvendorget-all-) me documented. Upar wali list sirf **management** ki hai; `GET /get-all` (admin listing) aur `/vendor/get-all` (vendor listing) do alag endpoints hain, ek naam ki wajah se confuse mat kariye.
 | **Subscription admin ops** | `POST /subscribeds/admin/grant` · `PUT /admin/cancel` · `GET /admin/get-all` · `GET /admin/forfeited` · `PUT /admin/forfeited/compensate` · `PUT /admin/resync` | `isAdmin` |
 | **Webhook ops** | `GET /transactions/webhook/events` · `GET /webhook/events/:eventId` · `POST /webhook/replay/:eventId` · `GET /transactions/disputes` | `isAdmin` |
 | **Voucher approval** | `POST /vouchers/review/:versionId` | `isAdmin` |
