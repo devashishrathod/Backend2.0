@@ -5,46 +5,32 @@ const {
   PROMO_USAGE_STATUS,
   PROMO_REJECTION,
   PROMO_AUDIENCE,
-  PROMO_APPLIES_TO,
   PROMO_COST_BEARING_MODE,
 } = require("../../constants/promoCode");
-const { assertPromoWindowAndCaps } = require("./assertPromoWindowAndCaps");
+const { evaluateCustomerPromo } = require("./evaluateCustomerPromo");
 const { buildAudienceFilter } = require("./buildAudienceFilter");
 const { round2 } = require("../subscribeds/calculatePricing");
 const { buildTransactionFilter } = require("../transactions");
 const { TRANSACTION_PURPOSE } = require("../../constants/transaction");
 
-const sameId = (a, b) => String(a) === String(b);
-
-/**
- * Does this code appear in a scope list at all?
- *
- * An empty list means "no restriction", which is not the same as "matches
- * nothing" — getting that backwards makes every unscoped code stop working.
- */
-const inScope = (list, id) =>
-  !list?.length || list.some((entry) => sameId(entry, id));
-
 /**
  * Resolve a **customer voucher-claim** promo code and compute what it is worth.
  *
- * The vendor twin is `validatePromoCode`. The two share every audience-agnostic
- * rule through `assertPromoWindowAndCaps` — the window, the platform-wide cap,
- * and the discount arithmetic — so they can never disagree on what a code is
- * worth. Only the scope checks differ, and they are here.
+ * The vendor twin is `validatePromoCode`. Everything either of them decides
+ * about a code now lives in a pure evaluator — `evaluateCustomerPromo` here,
+ * `evaluateVendorPromo` there — which the promo **listing** calls as well. This
+ * file is the database half: find the code, count what the per-customer gates
+ * need, and hand both to the evaluator.
+ *
+ * That split is what stops the drawer a customer picks a code from and the
+ * checkout that applies it from ever disagreeing. Before it existed there was
+ * only one caller, so the rules sat inline; a second caller with its own copy
+ * would have meant the app offering codes that fail on Apply.
  *
  * Returns a verdict rather than throwing, so the preview endpoint can render a
  * disabled Apply button with a reason while order creation turns the same
  * verdict into a 422. Silently charging full price on a code the customer
  * believes they applied is not acceptable.
- *
- * ### The base matters
- *
- * `appliesTo` decides what the discount comes off — the bill after the voucher
- * offer, or Trydood's convenience fee. The discount is then clamped to **that
- * base**, never to the order total: a ₹50 code against a ₹10 fee is worth ₹10,
- * and letting it exceed the base would eat into something it was never meant to
- * discount, or drive the payable to zero.
  *
  * ### Guests
  *
@@ -98,128 +84,73 @@ exports.validateCustomerPromoCode = async ({
   // A vendor code reaching here is reported exactly like a code that does not
   // exist. Saying "this code is not for you" would confirm it exists, which
   // turns the endpoint into an oracle for enumerating live campaigns.
+  //
+  // ⚠️ A hidden code (`isPublic: false`) is deliberately **not** excluded. That
+  // flag decides whether we hand a code out in the listing, never whether it
+  // works when typed — a code mailed to one customer has to be redeemable by
+  // them, and that is the entire point of a targeted campaign.
   if (!promo) return { ok: false, reason: PROMO_REJECTION.NOT_FOUND };
 
-  // A promo on top of no offer at all is a pure giveaway with no vendor supply
-  // behind it, so it is off unless an admin turned it on.
-  if (!offerApplied && !config.allowWhenNoOffer) {
-    return {
-      ok: false,
-      reason: PROMO_REJECTION.NO_OFFER_APPLIED,
-      promoCode: promo,
-    };
-  }
+  const context = {
+    promo,
+    voucher,
+    brandId,
+    billAmount,
+    netBill,
+    convenienceFee,
+    config,
+    offerApplied,
+    isGuest,
+  };
 
-  // ---------- what the discount comes off ----------
-  const appliesTo = promo.appliesTo || PROMO_APPLIES_TO.NET_BILL;
-  const base =
-    appliesTo === PROMO_APPLIES_TO.CONVENIENCE_FEE
-      ? round2(convenienceFee || 0)
-      : round2(netBill || 0);
+  /**
+   * First pass with no counts.
+   *
+   * Every gate except the two per-customer ones is decided from the document
+   * and this checkout alone, so a code rejected here is rejected whatever the
+   * counts say — and a rejected code is the common case on a typed field. Doing
+   * it this way keeps the two count queries off that path entirely, without
+   * either caller holding its own copy of the rules.
+   *
+   * ⚠️ The zeros are the **permissive** reading, so this pass may only be
+   * trusted when it says no. A guest stops here by design: `provisional: true`
+   * is exactly "the per-customer gates were not run".
+   */
+  const firstPass = evaluateCustomerPromo(context);
+  if (!firstPass.ok || isGuest) return firstPass;
 
-  // ---------- minimum bill ----------
-  //
-  // Checked against the RAW bill, deliberately — not against `base`, which is
-  // what `assertPromoWindowAndCaps` would compare a `minBase` to.
-  //
-  // A customer reading "minimum order Rs300" means the bill they typed. Telling
-  // them a Rs320 bill is too small because the voucher discount already took it
-  // to Rs280 is indefensible, and it would make the minimum depend on which
-  // offer happened to apply. So the shared gate is called with no `minBase` and
-  // the rule lives here.
-  if (promo.minBillAmount && round2(billAmount) < promo.minBillAmount) {
-    return {
-      ok: false,
-      reason: PROMO_REJECTION.MIN_BILL_AMOUNT,
-      promoCode: promo,
-    };
-  }
+  const [priorOrderCount, customerUsageCount] = await Promise.all([
+    // Counted from paid transactions rather than from claims: the transaction is
+    // written for every claim, and `verified: true` is the honest reading of
+    // "has ordered before" — an abandoned checkout is not a first order used up.
+    promo.firstOrderOnly
+      ? Transaction.countDocuments(
+          buildTransactionFilter({
+            purpose: TRANSACTION_PURPOSE.VOUCHER_CLAIM,
+            customerId,
+            verified: true,
+          }),
+        )
+      : 0,
+    // Counts the ledger, not `usedCount`. RESERVED rows count too, so a customer
+    // cannot hold two open checkouts against a single-use code and pay for both.
+    // Scoped by audience: a brand's claims on the same code are not this
+    // customer's, and both audiences share this collection.
+    PromoCodeUsage.countDocuments({
+      promoCodeId: promo._id,
+      customerId,
+      audience: PROMO_AUDIENCE.CUSTOMER,
+      status: {
+        $in: [PROMO_USAGE_STATUS.RESERVED, PROMO_USAGE_STATUS.CONSUMED],
+      },
+    }),
+  ]);
 
-  // ---------- shared gates: live, in window, platform cap, worth ----------
-  const verdict = assertPromoWindowAndCaps({ promo, base });
-  if (!verdict.ok) return verdict;
-
-  // ---------- customer-specific scope ----------
-  if (!inScope(promo.voucherIds, voucher?._id)) {
-    return {
-      ok: false,
-      reason: PROMO_REJECTION.VOUCHER_NOT_ELIGIBLE,
-      promoCode: promo,
-    };
-  }
-  if (!inScope(promo.brandIds, brandId)) {
-    return {
-      ok: false,
-      reason: PROMO_REJECTION.BRAND_NOT_ELIGIBLE,
-      promoCode: promo,
-    };
-  }
-  // A voucher carries both; either matching is enough, because an admin scoping
-  // by "Food" means the category the customer would recognise.
-  if (promo.categoryIds?.length) {
-    const matched =
-      inScope(promo.categoryIds, voucher?.categoryId) ||
-      (voucher?.subCategoryId &&
-        promo.categoryIds.some((id) => sameId(id, voucher.subCategoryId)));
-    if (!matched) {
-      return {
-        ok: false,
-        reason: PROMO_REJECTION.CATEGORY_NOT_ELIGIBLE,
-        promoCode: promo,
-      };
-    }
-  }
-
-  // ---------- per-customer rules ----------
-  //
-  // A guest cannot be checked against either. The verdict is marked provisional
-  // and the caller re-validates once they sign in.
-  if (isGuest) {
-    return { ...verdict, provisional: true, appliesTo, promoBase: base };
-  }
-
-  if (promo.firstOrderOnly) {
-    // Counted from paid transactions rather than from claims. `VoucherClaim`
-    // arrives with Phase 1B, but the transaction is written for every claim and
-    // exists today — and `verified: true` is the honest reading of "has ordered
-    // before": an abandoned checkout is not a first order used up.
-    const prior = await Transaction.countDocuments(
-      buildTransactionFilter({
-        purpose: TRANSACTION_PURPOSE.VOUCHER_CLAIM,
-        customerId,
-        verified: true,
-      }),
-    );
-    if (prior > 0) {
-      return {
-        ok: false,
-        reason: PROMO_REJECTION.FIRST_ORDER_ONLY,
-        promoCode: promo,
-      };
-    }
-  }
-
-  // Counts the ledger, not `usedCount`. RESERVED rows count too, so a customer
-  // cannot hold two open checkouts against a single-use code and pay for both.
-  // Scoped by audience: a brand's claims on the same code are not this
-  // customer's, and both audiences share this collection.
-  const customerUses = await PromoCodeUsage.countDocuments({
-    promoCodeId: promo._id,
-    customerId,
-    audience: PROMO_AUDIENCE.CUSTOMER,
-    status: {
-      $in: [PROMO_USAGE_STATUS.RESERVED, PROMO_USAGE_STATUS.CONSUMED],
-    },
+  return evaluateCustomerPromo({
+    ...context,
+    priorOrderCount,
+    customerUsageCount,
   });
-  if (customerUses >= (promo.perCustomerUsageLimit ?? 1)) {
-    return {
-      ok: false,
-      reason: PROMO_REJECTION.CUSTOMER_LIMIT_REACHED,
-      promoCode: promo,
-    };
-  }
-
-  return { ...verdict, provisional: false, appliesTo, promoBase: base };
 };
 
 /**

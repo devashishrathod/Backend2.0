@@ -7,7 +7,7 @@ const {
   PROMO_AUDIENCE,
 } = require("../../constants/promoCode");
 const { SUBSCRIBED_STATUS } = require("../../constants/subscription");
-const { assertPromoWindowAndCaps } = require("./assertPromoWindowAndCaps");
+const { evaluateVendorPromo } = require("./evaluateVendorPromo");
 const { buildAudienceFilter } = require("./buildAudienceFilter");
 
 /**
@@ -18,13 +18,15 @@ const { buildAudienceFilter } = require("./buildAudienceFilter");
  * verdict into a 422. Every rejection carries a specific message — a vendor
  * needs to know *why* a code did not work, not just that it did not.
  *
+ * What a code decides now lives in `evaluateVendorPromo`, which the vendor promo
+ * **listing** calls too; this file is the database half — find the code, count
+ * what the per-brand gates need, hand both over. The customer side is split the
+ * same way, and for the same reason: a listing holding its own copy of these
+ * rules would offer a vendor a code that fails the moment they apply it.
+ *
  * The discount applies to `taxableValue` — the price *after* the plan's own
  * discount — never to the list price. GST is then charged on what remains, so
  * the tax base stays correct.
- *
- * The window, the platform-wide cap and the discount arithmetic now live in
- * `assertPromoWindowAndCaps`, shared with the customer validator so the two can
- * never disagree on what a code is worth.
  *
  * **Audience isolation.** The lookup is scoped so a customer voucher code can
  * never be redeemed at subscription checkout. Why that scope is `$ne: CUSTOMER`
@@ -60,77 +62,48 @@ exports.validatePromoCode = async ({
 
   // A customer-audience code reaching here is reported exactly like a code that
   // does not exist. Saying "this code is not for you" would confirm it exists.
+  //
+  // ⚠️ `isPublic` is not part of this lookup. It decides whether a code is
+  // listed, never whether it is redeemable — a code sent to one brand has to
+  // work when that brand types it.
   if (!promo) return { ok: false, reason: PROMO_REJECTION.NOT_FOUND };
 
-  // ---------- shared gates: live, in window, platform cap, worth ----------
-  const verdict = assertPromoWindowAndCaps({
-    promo,
-    base: taxableValue,
-    minBase: promo.minOrderValue,
-    minReason: PROMO_REJECTION.MIN_ORDER_VALUE,
-  });
-  if (!verdict.ok) return verdict;
+  const context = { promo, subscription, action, taxableValue };
 
-  // ---------- vendor-specific gates ----------
+  /**
+   * First pass with no counts — see the twin note in `validateCustomerPromoCode`.
+   * Every gate but the two per-brand ones is decided from the document and this
+   * checkout alone, so a rejection here is final and costs no query. ⚠️ The
+   * zeros are the permissive reading, so this pass may only be trusted when it
+   * says no.
+   */
+  const firstPass = evaluateVendorPromo(context);
+  if (!firstPass.ok) return firstPass;
 
-  // An empty scope list means "no restriction".
-  if (promo.subscriptionIds?.length) {
-    const allowed = promo.subscriptionIds.some(
-      (id) => String(id) === String(subscription._id),
-    );
-    if (!allowed) {
-      return {
-        ok: false,
-        reason: PROMO_REJECTION.PLAN_NOT_ELIGIBLE,
-        promoCode: promo,
-      };
-    }
-  }
-
-  if (
-    promo.applicableActions?.length &&
-    !promo.applicableActions.includes(action)
-  ) {
-    return {
-      ok: false,
-      reason: PROMO_REJECTION.ACTION_NOT_ELIGIBLE,
-      promoCode: promo,
-    };
-  }
-
-  if (promo.firstTimeOnly) {
-    const prior = await Subscribed.countDocuments({
+  const [priorSubscribedCount, brandUsageCount] = await Promise.all([
+    promo.firstTimeOnly
+      ? Subscribed.countDocuments({
+          brandId: brand._id,
+          status: { $ne: SUBSCRIBED_STATUS.PENDING },
+          isDeleted: false,
+        })
+      : 0,
+    // Per-brand cap counts the ledger, not `usedCount` — RESERVED rows count
+    // too, so a vendor cannot hold two open orders against a single-use code.
+    // Scoped by audience so customer claims on the same code are never counted.
+    PromoCodeUsage.countDocuments({
+      promoCodeId: promo._id,
       brandId: brand._id,
-      status: { $ne: SUBSCRIBED_STATUS.PENDING },
-      isDeleted: false,
-    });
-    if (prior > 0) {
-      return {
-        ok: false,
-        reason: PROMO_REJECTION.FIRST_TIME_ONLY,
-        promoCode: promo,
-      };
-    }
-  }
+      audience: { $ne: PROMO_AUDIENCE.CUSTOMER },
+      status: {
+        $in: [PROMO_USAGE_STATUS.RESERVED, PROMO_USAGE_STATUS.CONSUMED],
+      },
+    }),
+  ]);
 
-  // Per-brand cap counts the ledger, not `usedCount` — RESERVED rows count too,
-  // so a vendor cannot hold two open orders against a single-use code. Scoped by
-  // audience so customer claims on the same code are never counted here.
-  const brandUses = await PromoCodeUsage.countDocuments({
-    promoCodeId: promo._id,
-    brandId: brand._id,
-    audience: { $ne: PROMO_AUDIENCE.CUSTOMER },
-    status: {
-      $in: [PROMO_USAGE_STATUS.RESERVED, PROMO_USAGE_STATUS.CONSUMED],
-    },
+  return evaluateVendorPromo({
+    ...context,
+    priorSubscribedCount,
+    brandUsageCount,
   });
-  if (brandUses >= (promo.perBrandUsageLimit ?? 1)) {
-    return {
-      ok: false,
-      reason: PROMO_REJECTION.BRAND_LIMIT_REACHED,
-      promoCode: promo,
-    };
-  }
-
-  return verdict;
 };

@@ -105,6 +105,49 @@ const sharedFields = {
   totalUsageLimit: Joi.number().integer().min(1).optional(),
   perBrandUsageLimit: Joi.number().integer().min(1).optional(),
   isActive: Joi.boolean().optional(),
+
+  // ---------- the listed card ----------
+  /**
+   * Whether the code appears in the customer app's or the vendor panel's own
+   * listing. Defaults to `false` on the model, so a code is hidden until an
+   * admin says otherwise — a targeted campaign must never be published by
+   * omission. It never affects whether a typed code is redeemable.
+   */
+  isPublic: Joi.boolean().optional(),
+
+  /**
+   * Extra terms for that card.
+   *
+   * Only what no field expresses — "dine-in only". Everything the code already
+   * enforces is derived by `helpers/promoCodes/buildPromoTerms.js`, because a
+   * hand-typed rule can contradict the one the validator applies and the
+   * customer finds out at checkout.
+   */
+  termsAndConditions: Joi.array()
+    .items(
+      Joi.string().trim().min(1).max(PROMO_CODE_LIMITS.MAX_TERM_LENGTH),
+    )
+    .max(PROMO_CODE_LIMITS.MAX_TERMS_LINES)
+    .optional()
+    .messages({
+      "array.max": `A promo code can carry at most {#limit} extra terms`,
+      "string.max": `Each term can be at most ${PROMO_CODE_LIMITS.MAX_TERM_LENGTH} characters`,
+    }),
+};
+
+// Shared by both listings — the page size is also the number of codes each
+// request evaluates against the caller, so it is capped well below the admin
+// listing's 100.
+const listPagingRules = {
+  page: Joi.number().integer().min(1).optional(),
+  limit: Joi.number()
+    .integer()
+    .min(1)
+    .max(PROMO_CODE_LIMITS.MAX_LIST_LIMIT)
+    .optional()
+    .messages({
+      "number.max": "limit cannot exceed {#limit}",
+    }),
 };
 
 // Reused by the listing and the report — both must be able to scope by audience
@@ -176,6 +219,76 @@ exports.validateGetAllPromoCodes = {
       .valid("createdAt", "code", "usedCount", "validTill")
       .optional(),
     sortOrder: Joi.string().valid("asc", "desc").optional(),
+  }),
+};
+
+/**
+ * The customer's own listing.
+ *
+ * ### The checkout context is all-or-nothing
+ *
+ * `voucherId`, `outletId` and `billAmount` are what the claim preview needs to
+ * price anything, and `.and()` makes them arrive together or not at all. Two of
+ * the three is not a partial answer — it is a request that cannot be priced,
+ * and the alternatives are both worse than a 422: guessing the third would
+ * quote a saving against a bill nobody named, and ignoring the two that came
+ * would silently answer a different question than the one asked.
+ *
+ * With none of them the endpoint answers the catalogue question instead, and
+ * says so by leaving `savings` null on every row.
+ */
+exports.validateGetCustomerPromoCodes = {
+  query: Joi.object({
+    ...listPagingRules,
+
+    voucherId: objectId().optional().messages({
+      "any.invalid": "Invalid voucher ID format.",
+    }),
+    outletId: objectId().optional().messages({
+      "any.invalid": "Invalid outlet ID format.",
+    }),
+    // `positive`, matching the claim preview: a zero bill is not a cheaper
+    // checkout, it is a request that cannot be priced.
+    billAmount: Joi.number().positive().precision(2).optional().messages({
+      "number.base": "Bill amount must be a number.",
+      "number.positive": "Bill amount must be greater than zero.",
+    }),
+    // The customer's explicit offer choice, which changes the net bill a promo
+    // is measured against. Meaningless without a voucher to apply it to.
+    offerId: objectId().optional().messages({
+      "any.invalid": "Invalid offer ID format.",
+    }),
+  })
+    .and("voucherId", "outletId", "billAmount")
+    .with("offerId", "voucherId")
+    .messages({
+      "object.and":
+        "voucherId, outletId and billAmount must be sent together — send all three to price the codes against a bill, or none to list them.",
+      "object.with": "offerId only makes sense together with voucherId.",
+    }),
+};
+
+/**
+ * The vendor's own listing.
+ *
+ * `subscriptionId` is the whole context on this side: it decides the taxable
+ * value a discount is worth, and — through the brand's current plan — whether
+ * this is a new purchase, a renewal or an upgrade, which is what an
+ * action-scoped code is judged on. Without it the rows come back unpriced.
+ *
+ * `brandId` is the admin's: `resolveActorBrand` requires one from an admin and
+ * refuses a vendor any brand but their own.
+ */
+exports.validateGetVendorPromoCodes = {
+  query: Joi.object({
+    ...listPagingRules,
+
+    subscriptionId: objectId().optional().messages({
+      "any.invalid": "Invalid subscription plan id",
+    }),
+    brandId: objectId().optional().messages({
+      "any.invalid": "Invalid brand id",
+    }),
   }),
 };
 
