@@ -39,7 +39,6 @@ const {
   SUBSCRIPTION_TYPES,
 } = require("../constants");
 const { VOUCHER_STATUSES, VOUCHER_DISCOUNT_TYPES } = require("../constants/voucher");
-const { VOUCHER_BANNER_TYPE } = require("../constants/voucherBanner");
 const { BANNER_REDIRECT_TYPE } = require("../constants/banner");
 const { MEDIA_KIND } = require("../constants/storage");
 const {
@@ -880,8 +879,20 @@ const run = async () => {
       description: "valid on dine-in and takeaway. seeded fixture.",
       categoryId: category._id,
       subCategoryId: subCategory._id,
+      /**
+       * 🔴 This was `{ url, sortOrder }` — the flat shape the media migration
+       * replaced. `voucherImageSchema.media` is `required`, so every seeded
+       * version failed validation with "An image file is required." on a field
+       * the old call never mentioned.
+       */
       images: [
-        { url: "https://res.cloudinary.com/demo/image/upload/sample.jpg", sortOrder: 1 },
+        {
+          media: {
+            url: "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+            kind: MEDIA_KIND.IMAGE,
+          },
+          sortOrder: 1,
+        },
       ],
       offers,
       startAt: new Date(Date.now() - 86400000),
@@ -917,9 +928,24 @@ const run = async () => {
       ctx: brands[0],
       name: "flat 30% off on total bill",
       code: "VCH-90000001",
+      /**
+       * 🔴 This was `{ type: VOUCHER_BANNER_TYPE.IMAGE, image: {url} }` — the
+       * shape V-4 deleted, along with the enum. A missing named export is
+       * `undefined` rather than an error, so the require kept resolving and the
+       * seeder died on `.IMAGE` **eight steps in**, after writing brands,
+       * outlets and features. Nothing ran the fixtures in between, so it read as
+       * working until somebody needed them.
+       *
+       * The live shape is two slots: `current` is what a customer sees and is
+       * always approved; `pending` is what an admin has yet to look at. What the
+       * file *is* comes from `media.kind`, not from a label beside it.
+       */
       banner: {
-        type: VOUCHER_BANNER_TYPE.IMAGE,
-        image: { url: "https://res.cloudinary.com/demo/image/upload/sample.jpg" },
+        current: {
+          url: "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+          kind: MEDIA_KIND.IMAGE,
+        },
+        status: null,
       },
       suggested: true,
       offers: [
@@ -1258,8 +1284,20 @@ const run = async () => {
       description: "seeded draft",
       categoryId: category._id,
       subCategoryId: subCategory._id,
+      /**
+       * 🔴 This was `{ url, sortOrder }` — the flat shape the media migration
+       * replaced. `voucherImageSchema.media` is `required`, so every seeded
+       * version failed validation with "An image file is required." on a field
+       * the old call never mentioned.
+       */
       images: [
-        { url: "https://res.cloudinary.com/demo/image/upload/sample.jpg", sortOrder: 1 },
+        {
+          media: {
+            url: "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+            kind: MEDIA_KIND.IMAGE,
+          },
+          sortOrder: 1,
+        },
       ],
       offers: [
         {
@@ -1311,8 +1349,20 @@ const run = async () => {
       description: "seeded approved",
       categoryId: category._id,
       subCategoryId: subCategory._id,
+      /**
+       * 🔴 This was `{ url, sortOrder }` — the flat shape the media migration
+       * replaced. `voucherImageSchema.media` is `required`, so every seeded
+       * version failed validation with "An image file is required." on a field
+       * the old call never mentioned.
+       */
       images: [
-        { url: "https://res.cloudinary.com/demo/image/upload/sample.jpg", sortOrder: 1 },
+        {
+          media: {
+            url: "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+            kind: MEDIA_KIND.IMAGE,
+          },
+          sortOrder: 1,
+        },
       ],
       offers: [
         {

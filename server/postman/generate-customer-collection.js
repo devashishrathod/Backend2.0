@@ -23,7 +23,21 @@ const path = require("path");
 
 const { ROLES, ADDRESS_TYPES } = require("../constants");
 const { VOUCHER_SORT_BY, VOUCHER_DISCOUNT_TYPES } = require("../constants/voucher");
-const { VOUCHER_BANNER_TYPE } = require("../constants/voucherBanner");
+/**
+ * 🔴 This used to import `VOUCHER_BANNER_TYPE`, and that enum was **deleted**
+ * with the rest of the `{type, image, video, gif}` banner shape (V-4). The
+ * import kept resolving — a missing named export is `undefined`, not an error —
+ * so the generator crashed with `Object.values(undefined)` on line one of the
+ * voucher folder, and **could not be run at all**. Nothing said so until
+ * somebody tried to add a request.
+ *
+ * `bannerType` still reaches the client as one of three literals, but it is
+ * derived now: `pickVoucherBanner`'s `typeOf` maps `media.kind` to VIDEO, GIF,
+ * or IMAGE for everything else. Reading `MEDIA_KIND` here keeps the assertion on
+ * the same source that decides it.
+ */
+const { MEDIA_KIND } = require("../constants/storage");
+const BANNER_TYPES = [MEDIA_KIND.IMAGE, MEDIA_KIND.VIDEO, MEDIA_KIND.GIF];
 const {
   BANNER_REDIRECT_TYPE,
   BANNER_ACTIVE_LIMIT,
@@ -1247,8 +1261,8 @@ const voucherFolder = folder(
           `  }`,
           `});`,
         ]),
-        ...A.custom(`bannerType enum me se hai (${list(VOUCHER_BANNER_TYPE)})`, [
-          `const allowed = ${json(Object.values(VOUCHER_BANNER_TYPE))};`,
+        ...A.custom(`bannerType enum me se hai (${list(BANNER_TYPES)})`, [
+          `const allowed = ${json(BANNER_TYPES)};`,
           `pm.response.json().data.data.forEach(function (v) {`,
           `  if (v.bannerType !== null) pm.expect(allowed).to.include(v.bannerType);`,
           `});`,
