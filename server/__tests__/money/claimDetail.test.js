@@ -7,7 +7,16 @@ const {
 
 const Transaction = require("../../models/Transaction");
 const VoucherClaim = require("../../models/VoucherClaim");
-const { getClaimTransactionDetail } = require("../../services/voucherClaims");
+const Brand = require("../../models/Brand");
+const Follow = require("../../models/Follow");
+const BrandAvoidance = require("../../models/BrandAvoidance");
+// The real generator — `merchantId` is HMAC-derived from `MERCHANT_ID_SECRET`,
+// so a hand-written string fails validation.
+const { generateBrandMerchantId } = require("../../helpers/brands");
+const {
+  getClaimTransactionDetail,
+  getClaimDetail,
+} = require("../../services/voucherClaims");
 const {
   claimProjection,
   claimRecordProjection,
@@ -111,16 +120,18 @@ const seed = async ({ customerId, brandId, subBrandId }) => {
 
 beforeAll(async () => {
   await connectTestDb();
-  for (const m of [Transaction, VoucherClaim]) await m.createIndexes();
+  for (const m of [Transaction, VoucherClaim, Follow, BrandAvoidance]) {
+    await m.createIndexes();
+  }
 });
 
 afterAll(async () => {
-  await clearCollections(Transaction, VoucherClaim);
+  await clearCollections(Transaction, VoucherClaim, Follow, BrandAvoidance);
   await disconnectTestDb();
 });
 
 beforeEach(async () => {
-  await clearCollections(Transaction, VoucherClaim);
+  await clearCollections(Transaction, VoucherClaim, Follow, BrandAvoidance);
   CUSTOMER_A = oid();
   BRAND_A = oid();
   BRAND_B = oid();
@@ -492,5 +503,112 @@ describe("the whitelist fails closed", () => {
     // assertions above start passing for the wrong reason.
     expect(claimProjection(ROLES.ADMIN).gatewayFee).toBe(1);
     expect(claimRecordProjection(ROLES.ADMIN).pricing).toBe(1);
+  });
+});
+
+/**
+ * 🔴 `brand.isFollowed` / `brand.isAvoided` describe **the viewer**, never the
+ * buyer.
+ *
+ * These two endpoints have three audiences, so the flags had to be about
+ * somebody. Answering about the buyer would tell a vendor "this customer has
+ * you avoided" — exactly what `canSeeCustomerContact: false` refuses one field
+ * over. The helper reads `actor`, not `transaction.customerId`; this pins the
+ * **call site**, because the helper can be perfectly correct and still be handed
+ * the wrong argument.
+ */
+describe("the brand block reports the viewer, not the buyer", () => {
+  let BRAND_DOC;
+
+  beforeEach(async () => {
+    BRAND_DOC = await Brand.create({
+      brandName: "fixture brand",
+      uniqueId: `TDB${Date.now()}${Math.floor(Math.random() * 100000)}`,
+      userId: oid(),
+      merchantId: await generateBrandMerchantId(),
+    });
+
+    // Re-seed the money rows against the real brand, so `brand` is not null.
+    await clearCollections(Transaction, VoucherClaim);
+    ({ transaction: txn, claim } = await seed({
+      customerId: CUSTOMER_A,
+      brandId: BRAND_DOC._id,
+      subBrandId: OUTLET_1,
+    }));
+
+    // The buyer both follows and avoids this brand — the strongest possible
+    // signal, so a leak cannot hide behind a false that happened to be right.
+    await Follow.create({
+      followerId: CUSTOMER_A,
+      followeeId: BRAND_DOC._id,
+    });
+    await BrandAvoidance.create({
+      customerId: CUSTOMER_A,
+      brandId: BRAND_DOC._id,
+    });
+  });
+
+  afterEach(async () => {
+    await clearCollections(Brand);
+  });
+
+  it("gives the buyer their own state on the payment detail", async () => {
+    const result = await getClaimTransactionDetail(
+      customer(CUSTOMER_A),
+      String(txn._id),
+    );
+
+    expect(result.brand.isFollowed).toBe(true);
+    expect(result.brand.isAvoided).toBe(true);
+  });
+
+  it("hides the buyer's state from the vendor who owns the brand", async () => {
+    const result = await getClaimTransactionDetail(
+      vendor(BRAND_DOC._id),
+      String(txn._id),
+    );
+
+    expect(result.brand.isFollowed).toBe(false);
+    expect(result.brand.isAvoided).toBe(false);
+    // The control: the vendor really is looking at the right row.
+    expect(result.viewer.scope).toBe("BRAND");
+  });
+
+  it("hides the buyer's state from the outlet and from an admin", async () => {
+    for (const actor of [subVendor(BRAND_DOC._id, OUTLET_1), admin()]) {
+      const result = await getClaimTransactionDetail(actor, String(txn._id));
+      expect(result.brand.isFollowed).toBe(false);
+      expect(result.brand.isAvoided).toBe(false);
+    }
+  });
+
+  /**
+   * The claim page states in its own comment that its `brand` is the same shape
+   * as the payment page's. Adding a key to one and not the other is how a
+   * detail page quietly starts carrying less than the page it was opened from.
+   */
+  it("keeps the claim detail's brand block the same shape", async () => {
+    const payment = await getClaimTransactionDetail(
+      customer(CUSTOMER_A),
+      String(txn._id),
+    );
+    const claimPage = await getClaimDetail(customer(CUSTOMER_A), {
+      claimId: String(claim._id),
+    });
+
+    expect(Object.keys(claimPage.brand).sort()).toEqual(
+      Object.keys(payment.brand).sort(),
+    );
+    expect(claimPage.brand.isFollowed).toBe(true);
+    expect(claimPage.brand.isAvoided).toBe(true);
+  });
+
+  it("hides the buyer's state from the vendor on the claim detail too", async () => {
+    const result = await getClaimDetail(vendor(BRAND_DOC._id), {
+      claimId: String(claim._id),
+    });
+
+    expect(result.brand.isFollowed).toBe(false);
+    expect(result.brand.isAvoided).toBe(false);
   });
 });

@@ -13,6 +13,7 @@ const {
 const { buildClaimTimeline } = require("../../helpers/voucherClaims");
 const { invoiceUrl } = require("../../helpers/notifications");
 const { resolveBrandPlanName } = require("../../helpers/subscribeds");
+const { getBrandRelationship } = require("../../helpers/brands");
 
 /**
  * One claim, its payment, and its story.
@@ -74,30 +75,43 @@ exports.getClaimDetail = async (actor, { claimId, claimCode }) => {
     }
   }
 
-  // Same brand shape as the payment detail and the two listings — `merchantId`
-  // and the live `subscriptionPlan` included. These four reads are independent,
-  // so the plan costs no extra round trip.
-  const [brand, outlet, timeline, subscriptionPlan] = await Promise.all([
-    claimDoc.brandId
-      ? Brand.findById(claimDoc.brandId)
-          .select("brandName logo merchantId")
-          .lean()
-      : null,
-    claimDoc.subBrandId
-      ? SubBrand.findById(claimDoc.subBrandId)
-          .select("uniqueId storeId address")
-          .lean()
-      : null,
-    // Built per audience, never filtered — see the helper for why the raw audit
-    // row can never reach a page.
-    buildClaimTimeline({ claimId: claimDoc._id, role: access.role }),
-    resolveBrandPlanName(claimDoc.brandId),
-  ]);
+  /**
+   * Same brand shape as the payment detail and the two listings — `merchantId`,
+   * the live `subscriptionPlan`, and the viewer's `isFollowed` / `isAvoided`.
+   * These five reads are independent, so neither costs an extra round trip.
+   *
+   * ⚠️ "Same shape" is a claim this file makes in prose and the app relies on.
+   * Adding a key to one of these two and not the other is how a detail page
+   * quietly starts carrying less than the page it was opened from — the mirror
+   * of the leak `assertTransactionAccess` guards, and just as hard to notice.
+   */
+  const [brand, outlet, timeline, subscriptionPlan, relationship] =
+    await Promise.all([
+      claimDoc.brandId
+        ? Brand.findById(claimDoc.brandId)
+            .select("brandName logo merchantId")
+            .lean()
+        : null,
+      claimDoc.subBrandId
+        ? SubBrand.findById(claimDoc.subBrandId)
+            .select("uniqueId storeId address")
+            .lean()
+        : null,
+      // Built per audience, never filtered — see the helper for why the raw
+      // audit row can never reach a page.
+      buildClaimTimeline({ claimId: claimDoc._id, role: access.role }),
+      resolveBrandPlanName(claimDoc.brandId),
+      // The **viewer's** own follow / avoid state, resolved off `actor` rather
+      // than off `claimDoc.customerId` — telling a vendor that this buyer has
+      // them avoided is the same disclosure `canSeeCustomerContact: false`
+      // refuses. A vendor or admin has no Customer row and gets both `false`.
+      getBrandRelationship(actor, claimDoc.brandId),
+    ]);
 
   return {
     claim,
     payment,
-    brand: brand ? { ...brand, subscriptionPlan } : null,
+    brand: brand ? { ...brand, subscriptionPlan, ...relationship } : null,
     outlet: outlet || null,
     timeline,
     viewer: {

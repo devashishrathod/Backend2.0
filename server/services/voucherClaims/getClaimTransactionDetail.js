@@ -12,6 +12,7 @@ const {
 } = require("../../helpers/transactions");
 const { invoiceUrl } = require("../../helpers/notifications");
 const { resolveBrandPlanName } = require("../../helpers/subscribeds");
+const { getBrandRelationship } = require("../../helpers/brands");
 
 /**
  * One payment, told to whoever opened it.
@@ -103,7 +104,7 @@ exports.getClaimTransactionDetail = async (actor, transactionId) => {
    * had to be checked against the whole transaction first; it runs in the same
    * `Promise.all`, so it costs no extra round trip.
    */
-  const [brand, outlet, subscriptionPlan] = await Promise.all([
+  const [brand, outlet, subscriptionPlan, relationship] = await Promise.all([
     transaction.brandId
       ? Brand.findById(transaction.brandId)
           .select("brandName logo merchantId")
@@ -115,6 +116,23 @@ exports.getClaimTransactionDetail = async (actor, transactionId) => {
           .lean()
       : null,
     resolveBrandPlanName(transaction.brandId),
+    /**
+     * `isFollowed` / `isAvoided` — **the viewer's own**, never the buyer's.
+     *
+     * This endpoint has three audiences, so "does this customer follow the
+     * brand" has to be asked about somebody. It is asked about whoever opened
+     * the page: a customer reading their own receipt sees their own state and
+     * can follow the brand from it, and a vendor or admin — who has no Customer
+     * row — gets `false` for both.
+     *
+     * ⚠️ Not the paying customer's state. Answering that would tell a vendor
+     * "this buyer has you avoided", which is the same class of disclosure
+     * `assertTransactionAccess` refuses with `canSeeCustomerContact: false` two
+     * lines of this file above. Resolving it off `actor` rather than off
+     * `transaction.customerId` is what makes that impossible rather than
+     * remembered.
+     */
+    getBrandRelationship(actor, transaction.brandId),
   ]);
 
   /**
@@ -139,8 +157,11 @@ exports.getClaimTransactionDetail = async (actor, transactionId) => {
     payment: { ...payment, invoiceDownloadUrl },
     claim,
     // Spread onto the brand rather than returned beside it, so the key sits
-    // exactly where every other endpoint puts it.
-    brand: brand ? { ...brand, subscriptionPlan } : null,
+    // exactly where every other endpoint puts it. The same is true of the two
+    // relationship flags: the brand directory and the brand profile both carry
+    // them on the brand, and a receipt that put them somewhere else would make
+    // the app read the same fact from two shapes.
+    brand: brand ? { ...brand, subscriptionPlan, ...relationship } : null,
     outlet: outlet || null,
     /**
      * What the caller may render, stated rather than inferred.
