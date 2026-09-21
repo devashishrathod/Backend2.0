@@ -194,10 +194,33 @@ exports.settlementProjection = (role) => {
   // VENDOR and SUB_VENDOR.
   return {
     ...base,
-    // The last four digits and the bank name, never the account itself.
+    /**
+     * Where their own money was sent — masked, and never the account itself.
+     *
+     * ⚠️ This is **their** account, and it is the answer to the one question a
+     * vendor asks when a payout has not landed: *"which account did you send it
+     * to?"* Four digits and a bank name cannot answer it — a brand with two
+     * accounts at the same bank sees the same two words either way. The holder
+     * name and the IFSC identify the destination without disclosing anything
+     * they do not already hold.
+     *
+     * 🔴 The full account number is **not stored here at all**, by design.
+     * `bankSnapshot` carries `maskedAccountNumber` and `accountLast4Digits`
+     * only; the complete number lives on the `Bank` document and nowhere else.
+     * That is deliberate and must stay that way — a payout statement is read,
+     * logged and forwarded far more often than a bank settings page.
+     *
+     * ⚠️ Read from the **snapshot**, never the live `Bank`. A vendor who changed
+     * their account after this payout must still see where the money actually
+     * went; the live record would name an account that never received it.
+     */
+    "bankSnapshot.accountHolderName": 1,
+    "bankSnapshot.maskedAccountNumber": 1,
     "bankSnapshot.accountLast4Digits": 1,
+    "bankSnapshot.ifscCode": 1,
     "bankSnapshot.bankName": 1,
     approvedAt: 1,
+    payoutProvider: 1,
     // The category, not the staff note.
     failureReason: 1,
   };

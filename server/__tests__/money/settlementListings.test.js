@@ -225,16 +225,37 @@ describe("an empty list is an answer, not a fault", () => {
 });
 
 describe("what each audience is shown", () => {
-  it("never gives a vendor the full bank account", async () => {
+  /**
+   * ⚠️ This assertion was widened deliberately, and the thing it is named after
+   * did not move.
+   *
+   * The vendor used to get four digits and a bank name. That cannot answer the
+   * one question a missing payout produces — *"which account did you send it
+   * to?"* — because a brand with two accounts at the same bank sees the same two
+   * words either way. The holder name, the masked number and the IFSC identify
+   * the destination and disclose nothing the vendor does not already hold.
+   *
+   * 🔴 **The full account number is still not here, and there is nowhere for it
+   * to come from.** `bankSnapshot` carries the masked form and the last four and
+   * has never carried the complete number; it lives on `Bank` alone. The last
+   * assertion is the one that matters and is deliberately written against the
+   * literal value rather than against a key name.
+   */
+  it("gives a vendor the masked account, never the full one", async () => {
     await settlement();
 
     const row = (await getSettlements(vendor(), {})).data[0];
 
     expect(row.bankSnapshot.accountLast4Digits).toBe("7890");
     expect(row.bankSnapshot.bankName).toBe("HDFC Bank");
-    expect(row.bankSnapshot.maskedAccountNumber).toBeUndefined();
-    expect(row.bankSnapshot.ifscCode).toBeUndefined();
-    expect(row.bankSnapshot.accountHolderName).toBeUndefined();
+    expect(row.bankSnapshot.maskedAccountNumber).toBe("XXXXXX7890");
+    expect(row.bankSnapshot.ifscCode).toBe("HDFC0001234");
+    expect(row.bankSnapshot.accountHolderName).toBeDefined();
+
+    // Nothing in the block is a complete account number — the masked form ends
+    // in the same four digits and begins with mask characters.
+    expect(row.bankSnapshot.maskedAccountNumber).toMatch(/^X+\d{4}$/);
+    expect(row.bankSnapshot.accountNumber).toBeUndefined();
   });
 
   it("gives an admin the whole snapshot", async () => {
@@ -498,8 +519,12 @@ describe("one settlement, in full", () => {
 
     expect(result.settlement.idempotencyKey).toBeUndefined();
     expect(result.settlement.needsRevalidation).toBeUndefined();
-    expect(result.settlement.bankSnapshot.ifscCode).toBeUndefined();
+    // The bank block widened — see the listing test above for why. The whitelist
+    // is still a whitelist: `idempotencyKey` and `needsRevalidation` above are
+    // what that claim rests on, and neither moved.
+    expect(result.settlement.bankSnapshot.ifscCode).toBe("HDFC0001234");
     expect(result.settlement.bankSnapshot.accountLast4Digits).toBe("7890");
+    expect(result.settlement.bankSnapshot.accountNumber).toBeUndefined();
   });
 
   it("hides a field the model grows until the projection names it", async () => {
