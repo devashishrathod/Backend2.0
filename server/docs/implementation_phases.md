@@ -877,15 +877,28 @@ phone wale attacker ko mushkil se rokti. Number ek aadmi hai.
 window me baarah baar mit jaata aur kuch cap hi na karta.
 
 ⚠️ **Claim hi write hai.** `claimOtpSend` window prune karke append **ek hi**
-aggregation-pipeline update me karta hai, aur caller ye poochkar jaanta hai ki
-uska apna timestamp bacha ya nahi. Read-then-write me do tap do message bhejte, aur
-doosra instance aate hi limit dogunni ho jaati. (Mongoose 9 me `{ updatePipeline:
-true }` chahiye — test ne yahi pakda tha.)
+aggregation-pipeline update me karta hai. Read-then-write me do tap do message
+bhejte, aur doosra instance aate hi limit dogunni ho jaati. (Mongoose 9 me
+`{ updatePipeline: true }` chahiye — test ne yahi pakda tha.)
 
-⚠️ **Send fail hone par slot wapas** milta hai, aur **value se** hataya jaata hai.
-Rakhne par provider ka outage grahak ko ek ghante ke liye login se bahar kar deta —
-aur wo galti poori tarah hamari hoti. Time-range se hatane par usi second me claim
-kiye doosre callers ke slot bhi chhoot jaate.
+> 🔴 **Yahan pehle likha tha ki caller "apna timestamp bacha ya nahi" poochta hai
+> — wahi O-1 bug tha, aur wo 2026-09-21 ko band hua.**
+>
+> Timestamp pehchaan nahi hoti: ek hi millisecond me aaye N caller ka
+> `now.getTime()` ek jaisa hota hai, to jis ek write ne sach me append kiya usko
+> **sabhi** ne apna samajh liya. Aath concurrent claim, aathon `allowed: true`,
+> saat ne kuch likha hi nahi — aur aath message chale gaye. Throttle theek us
+> burst par khulta tha jiske liye wo banaya gaya tha.
+>
+> Ab har entry `{ at, nonce }` hai aur caller apne **nonce** se poochta hai.
+> Atomic write kabhi galat tha hi nahi — sirf baad me poocha gaya sawaal galat
+> tha, aur isi liye wo review se nikal gaya.
+
+⚠️ **Send fail hone par slot wapas** milta hai, aur **nonce se** hataya jaata hai
+(`$pull: { sends: { nonce } }`). Rakhne par provider ka outage grahak ko ek ghante
+ke liye login se bahar kar deta — aur wo galti poori tarah hamari hoti. ⚠️ `at` se
+ya time-range se hatane par usi millisecond me kisi **aur** ke claim kiye slot
+chhoot jaate — wahi O-1 ulta, aur wo dono release sites par zinda tha.
 
 ### Aur ek adhoori wiring pakdi
 
