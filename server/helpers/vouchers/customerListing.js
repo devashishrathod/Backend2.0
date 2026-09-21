@@ -1377,6 +1377,36 @@ const toCustomerOffers = (offers = []) =>
  *
  * Placed straight after `$unwind: "$version"` in both pipelines, so a later
  * `version: 1` carries the already-narrowed array.
+ *
+ * ### 🔴 It narrows `media`, it does not flatten it — and that distinction is
+ * the whole bug this stage once caused
+ *
+ * This used to emit `{ _id, url, sortOrder }`, lifting `media.url` up a level
+ * and dropping `media` itself. Every **image** still rendered, because
+ * `toCustomerImage` reads `image.url` as a fallback. But `pickVoucherBanner`
+ * takes the same array and looks for `image.media.url` — so the V-4a fallback
+ * found nothing in it, ever, and **every voucher without an approved banner
+ * answered `bannerUrl: null`** on both the list and the detail. The slot that
+ * was designed never to be empty was empty on exactly the vouchers it was
+ * written for.
+ *
+ * Nothing caught it. The unit tests feed `pickVoucherBanner` the **stored**
+ * shape, which is what `buildVoucherSnapshot` passes it — and that shape never
+ * reaches it through a pipeline. A helper tested on a shape it is never given
+ * in production is a helper with no test.
+ *
+ * So the stage keeps `media` as a `media`. One shape reaches
+ * `pickVoucherBanner` from both of its callers, and there is nothing left for
+ * the two to disagree about.
+ *
+ * ⚠️ `kind` rides along because `pickVoucherBanner` derives `bannerType` from
+ * it. Without it a GIF fallback reports itself as an `IMAGE` — a smaller lie
+ * than the null, and one that would have outlived the fix.
+ *
+ * ⚠️ No `poster`, deliberately. A voucher image is always a still —
+ * `UPLOAD_PURPOSE.VOUCHER_IMAGE` accepts `IMAGE` and `GIF` and nothing else —
+ * so the VIDEO branch of `thumbnailOf` is unreachable here, and projecting a
+ * field to satisfy a branch that cannot run is how a payload grows.
  */
 const NARROW_VERSION_IMAGES = {
   $addFields: {
@@ -1386,10 +1416,17 @@ const NARROW_VERSION_IMAGES = {
         as: "i",
         in: {
           _id: "$$i._id",
-          // ⚠️ `media.url` only. Naming `media` whole would carry `storage`
-          // across the wire again, which is the exact thing this stage exists
-          // to stop.
-          url: "$$i.media.url",
+          /**
+           * ⚠️ Named field by field, never `media` whole. Naming it whole
+           * would carry `storage` — Cloudinary's `publicId`, or the S3
+           * `bucket` and `key` — across the wire on a **public** route, which
+           * is the exact thing this stage exists to stop. The shape survives;
+           * the locator does not.
+           */
+          media: {
+            url: "$$i.media.url",
+            kind: "$$i.media.kind",
+          },
           sortOrder: "$$i.sortOrder",
         },
       },

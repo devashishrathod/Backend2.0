@@ -326,6 +326,153 @@ describe("pickVoucherBanner — the customer's flat view, and the fallback", () 
 });
 
 /**
+ * 🔴 The shape `pickVoucherBanner` is actually handed in production.
+ *
+ * ### Why the tests above could not catch this
+ *
+ * Every one of them feeds the **stored** shape — `{ media: {...}, sortOrder }`
+ * — which is what `buildVoucherSnapshot` passes, and which the customer
+ * pipelines never pass. Between `$unwind: "$version"` and the mapper sits
+ * `NARROW_VERSION_IMAGES`, and for as long as that stage **flattened**
+ * `media.url` up to `url`, `firstImage` looked for a key that had just been
+ * removed. Result: `bannerUrl: null` on every voucher without an approved
+ * banner, on the list and the detail, while the images beside it rendered fine.
+ *
+ * A helper tested only on a shape it is never given in production is a helper
+ * with no test. So this block does not describe the narrowed shape — it
+ * **derives it from the real pipeline**, and hands the result to the real
+ * helper. Flatten that stage again and this fails.
+ */
+describe("pickVoucherBanner — against the shape the real pipeline emits", () => {
+  const {
+    buildCustomerVoucherPipeline,
+    buildCustomerVoucherDetailPipeline,
+  } = require("../../helpers/vouchers/customerListing");
+
+  const AT = { latitude: 19.07, longitude: 72.87, maxDistance: 50000 };
+
+  /** The stage under test, lifted out of the pipeline rather than restated. */
+  const narrowStageOf = (pipeline) => {
+    const stage = pipeline.find(
+      (s) => s?.$addFields && "version.images" in s.$addFields,
+    );
+    if (!stage) throw new Error("no stage narrows version.images any more");
+    return stage.$addFields["version.images"].$map.in;
+  };
+
+  /**
+   * Apply a `$map`'s `in` spec to one document, in JS.
+   *
+   * ⚠️ It understands exactly what the stage uses today — nested objects and
+   * `"$$i.<path>"` leaves — and **throws on anything else**. That refusal is
+   * the point: the day the stage grows a `$cond`, this test stops rather than
+   * quietly evaluating it wrong and reporting a pass.
+   */
+  const applySpec = (spec, source, at = "in") => {
+    if (typeof spec === "string") {
+      if (!spec.startsWith("$$i.")) {
+        throw new Error(`${at}: unsupported expression ${spec}`);
+      }
+      return spec
+        .slice("$$i.".length)
+        .split(".")
+        .reduce((value, key) => value?.[key], source);
+    }
+    if (spec && typeof spec === "object" && !Array.isArray(spec)) {
+      return Object.fromEntries(
+        Object.entries(spec).map(([key, value]) => [
+          key,
+          applySpec(value, source, `${at}.${key}`),
+        ]),
+      );
+    }
+    throw new Error(`${at}: unsupported expression ${JSON.stringify(spec)}`);
+  };
+
+  const storedImages = [
+    { _id: OID(), media: imageMedia({ url: "https://cdn.example.com/first.webp" }), sortOrder: 1 },
+    { _id: OID(), media: imageMedia({ url: "https://cdn.example.com/second.webp" }), sortOrder: 2 },
+  ];
+
+  const narrow = (pipeline) => {
+    const spec = narrowStageOf(pipeline);
+    return storedImages.map((image) => applySpec(spec, image));
+  };
+
+  const listImages = () => narrow(buildCustomerVoucherPipeline({ ...AT, query: {} }));
+  const detailImages = () =>
+    narrow(buildCustomerVoucherDetailPipeline({ ...AT, voucherId: OID(), outletId: null }));
+
+  test("both customer pipelines narrow images the same way", () => {
+    expect(narrowStageOf(buildCustomerVoucherPipeline({ ...AT, query: {} }))).toEqual(
+      narrowStageOf(
+        buildCustomerVoucherDetailPipeline({ ...AT, voucherId: OID(), outletId: null }),
+      ),
+    );
+  });
+
+  /**
+   * 🔴 The regression itself. `firstImage` reads `image.media.url`, so the
+   * stage has to answer with a `media` — not with the URL lifted out of it.
+   */
+  test("the narrowed image still carries a `media`, not a flattened url", () => {
+    const [first] = listImages();
+
+    expect(first.media?.url).toBe("https://cdn.example.com/first.webp");
+    expect(first.sortOrder).toBe(1);
+  });
+
+  test.each([
+    ["list", listImages],
+    ["detail", detailImages],
+  ])("the V-4a fallback resolves on the %s pipeline's shape", (_name, images) => {
+    const result = pickVoucherBanner(null, images());
+
+    expect(result.bannerUrl).toBe("https://cdn.example.com/first.webp");
+    expect(result.bannerThumbnail).toBe("https://cdn.example.com/first.webp");
+    expect(result.bannerIsFallback).toBe(true);
+  });
+
+  test("a pending banner still falls back, and still reports PENDING", () => {
+    const result = pickVoucherBanner(
+      { pending: imageMedia(), status: VOUCHER_BANNER_STATUS.PENDING },
+      listImages(),
+    );
+
+    expect(result.bannerUrl).toBe("https://cdn.example.com/first.webp");
+    expect(result.bannerStatus).toBe(VOUCHER_BANNER_STATUS.PENDING);
+    expect(result.bannerIsFallback).toBe(true);
+  });
+
+  /**
+   * ⚠️ `kind` has to survive the stage too. Without it every fallback reports
+   * `IMAGE`, so a GIF voucher tile would be described wrongly — a quieter bug
+   * than the null, and one that would have outlived the fix for it.
+   */
+  test("the fallback's type comes from the file's own kind", () => {
+    const spec = narrowStageOf(buildCustomerVoucherPipeline({ ...AT, query: {} }));
+    const gif = applySpec(spec, {
+      _id: OID(),
+      media: imageMedia({ kind: MEDIA_KIND.GIF, url: "https://cdn.example.com/a.gif" }),
+      sortOrder: 1,
+    });
+
+    expect(pickVoucherBanner(null, [gif]).bannerType).toBe("GIF");
+  });
+
+  /**
+   * The stage is a whitelist and has to stay one: this route is public, and
+   * naming `media` whole would put `publicId` / `bucket` / `key` back on the
+   * wire — which is what the stage was written to prevent in the first place.
+   */
+  test("narrowing still strips every locator", () => {
+    expect(JSON.stringify(listImages())).not.toMatch(
+      /bucket|publicId|"key"|storage/i,
+    );
+  });
+});
+
+/**
  * U-4 — the gallery images, on either road.
  *
  * ⚠️ The money suite that covers the floor and the counts **mocks** this helper,
