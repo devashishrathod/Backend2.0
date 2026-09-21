@@ -7,6 +7,13 @@ const {
   buildVoucherInvoiceSnapshot,
 } = require("./buildVoucherInvoiceSnapshot");
 const { buildClaimTimeline } = require("./buildClaimTimeline");
+const {
+  buildOutletSection,
+  buildVoucherSection,
+  buildPricingSection,
+  buildPaymentInfoSection,
+  buildSettlementSection,
+} = require("./buildClaimDetailSections");
 
 module.exports = {
   generateClaimCode,
@@ -23,4 +30,18 @@ module.exports = {
   // Built per audience rather than filtered — the raw audit row carries a
   // free-form snapshot that would leak our margin onto a vendor's page.
   buildClaimTimeline,
+  /**
+   * The sections a claim payment is read in — outlet, voucher, pricing, payment
+   * and the **vendor payout** it ended up in.
+   *
+   * Each decides its own audience once, in one file, rather than at the two
+   * detail services that both assemble them. `buildSettlementSection` is the
+   * one to be careful with: it reports Trydood paying the vendor, never
+   * Razorpay paying Trydood.
+   */
+  buildOutletSection,
+  buildVoucherSection,
+  buildPricingSection,
+  buildPaymentInfoSection,
+  buildSettlementSection,
 };

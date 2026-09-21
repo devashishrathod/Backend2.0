@@ -81,8 +81,13 @@ describe("whose relationship it reports", () => {
    * `GET /voucher-claims/payments/:transactionId` is one endpoint with three
    * audiences, so "does the customer follow this brand" had to be asked about
    * somebody. Answering it about the **buyer** would tell a vendor that this
-   * customer has them avoided — the same disclosure `assertTransactionAccess`
-   * refuses with `canSeeCustomerContact: false`.
+   * customer has them avoided — the same class of disclosure
+   * `assertTransactionAccess` refuses with `canSeeCustomerPhone: false`.
+   *
+   * ⚠️ That used to name `canSeeCustomerContact`, which is `true` for the brand
+   * side now that they are given the buyer's email. What a buyer *thinks* of a
+   * brand was never a contact detail, so the reasoning stands unchanged — only
+   * the flag still carrying the refusal is a different one.
    *
    * Resolving off the actor rather than off `transaction.customerId` is what
    * makes that impossible rather than remembered.

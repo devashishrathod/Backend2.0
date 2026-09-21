@@ -3107,10 +3107,14 @@ agla banner bhejta hai.
       "current": {
         "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg",
         "kind": "IMAGE",
+        "width": 1200,
+        "height": 628,
         "mimeType": "image/jpeg",
         "sizeBytes": 184320,
-        "storage": { "provider": "CLOUDINARY", "publicId": "vouchers/banner-451" }
+        "originalName": "banner.jpg",
+        "provider": "CLOUDINARY"
       },
+      "pending": null,
       "status": null,
       "rejectionReason": null,
       "reviewedBy": "68f1a2b3c4d5e6f7a8b9c001",
@@ -3124,6 +3128,14 @@ agla banner bhejta hai.
 > batata hai ki **review me kya hai** — approve ke baad review me kuch hai hi
 > nahi. Customer ko `bannerStatus: "APPROVED"` phir bhi milta hai, wo `current`
 > ke hone se derive hota hai.
+>
+> 🔴 **`storage` ab nahi aata; flat `provider` hai.** Ye response raw
+> sub-document lauta raha tha, to approve aur reject dono me
+> `storage.publicId` ja raha tha — ek aisi file ka **pata** jo is admin ne
+> upload bhi nahi ki. `toMediaResponse` ka admin niyam shuru se yahi kehta hai:
+> panel ko `provider` milta hai, locator kabhi nahi. Ye response us niyam se
+> guzarta hi nahi tha. Ab teeno banner surfaces ek hi `toManagedBanner` se
+> jaate hain — vendor doc §59 dekhein.
 
 ### Errors
 | Status | Message | Kab |
@@ -3263,13 +3275,12 @@ GET /vouchers/versions/get-all?approvedBy=68f1a2b3c4d5e6f7a8b9c000&fromDate=2026
             "media": {
               "url": "…",
               "kind": "IMAGE",
-              "mimeType": "image/webp",
-              "sizeBytes": 82314,
               "width": 1200,
               "height": 800,
-              "duration": 0,
+              "mimeType": "image/webp",
+              "sizeBytes": 82314,
               "originalName": "hero.webp",
-              "storage": { "provider": "AWS_S3" }
+              "provider": "AWS_S3"
             },
             "sortOrder": 1
           }
@@ -3301,7 +3312,9 @@ GET /vouchers/versions/get-all?approvedBy=68f1a2b3c4d5e6f7a8b9c000&fromDate=2026
 **1. Ye **versions** deta hai, vouchers nahi** — ek voucher ke multiple versions honge.
 **2. `sortBy=RELEVANCE` bina `search` ke silently `NEWEST` ban jaata hai.**
 **3. Review (#38) aur publish (#42) ke liye `versionId` yahin se milta hai.**
-**4. 🆕 `images[].media.storage` me sirf `provider` aata hai** — `publicId` / `bucket` / `key` kabhi nahi. Wo file ka **pata** hai, uske baare me detail nahi; jiske paas wo hai wo file seedha fetch ya overwrite kar sakta hai. Pehle teeno is response me ja rahe the. Poora niyam vendor doc §58 note 5 me hai.
+**4. 🆕 File `media` object me aati hai, teeno panel surfaces par ek hi shape** — `{url, kind, width, height, mimeType, sizeBytes, originalName, provider}`. `provider` flat hai; `publicId` / `bucket` / `key` kabhi nahi jaate — wo file ka **pata** hai, detail nahi. Wahi `voucher.banner.current` / `.pending` par bhi.
+
+**5. 🔴 Joined blocks ab whitelist hain.** `brand`, `voucher`, `category`, `subCategory` aur `*ByUser` par pehle koi projection nahi thi, to poore documents ja rahe the — brand ke `BankId`/`GSTId`/`PANId`, owner ka `email`/`mobile`, aur users ka **`walletBalance`** tak. Ye endpoint vendor ko bhi khulta hai, aur `approvedByUser` admin hota hai — yaani vendor admin ki detail padh sakta tha. Poori list vendor doc §58 note 6 me hai.
 
 ### 39–42, 44–45 — quick reference
 
@@ -7071,6 +7084,174 @@ GET /transactions/disputes?status=ACTION_REQUIRED
 **6. Admin ko `PAYMENT_DISPUTED` notification bhi jaati hai** (severity `CRITICAL`).
 
 **7. Dispute lose hone pe** subscription cancel karna pad sakta hai — `PUT /subscribeds/admin/cancel` (#77).
+
+---
+
+## Voucher-claim reads — admin token par kya alag milta hai
+
+Ye paanch endpoints `verifyJwtToken` par hain, isliye inka poora reference
+[vendor doc](./vendor_panel_api_doc.md) me hai (#82–#86). **Ek hi URL, teen
+shape** — scope aur projection token se tay hote hain, to admin token wahi
+endpoints call karke sabse chaudi row paata hai:
+
+```
+GET /voucher-claims                       GET /voucher-claims/:claimId
+GET /voucher-claims/payments              GET /voucher-claims/code/:claimCode
+GET /voucher-claims/payments/:transactionId
+```
+
+### 🔴 `customer` block — jo pehle **tha hi nahi**
+
+Admin ko in rows par grahak ka naam ya handle kabhi nahi milta tha, aur jo do
+field projection me the wo **hamesha khaali aate the**:
+
+> `claimProjection` shuru se `email` aur `contact` maangti aayi hai, lekin
+> voucher-claim row par in dono ko **koi code likhta hi nahi**.
+> `createVoucherClaimOrder` inhe set nahi karta, na webhook, na settler — sirf
+> `createSubscribeOrder` bharta hai, jo doosra flow hai. To projection sampark
+> ka waada karti thi aur document ke paas kuch tha hi nahi, aur kahin koi error
+> nahi aata tha. Ye ab **customer record** se aata hai, jahan wo asal me rehta hai.
+
+```json
+"customer": {
+  "fullName": "Asha Menon",
+  "uniqueId": "TDC000001",
+  "email": "asha@example.com",
+  "mobile": "9876543210",
+  "whatsappNumber": "9876543210"
+}
+```
+
+| Field | Vendor / Sub-vendor | **Admin** | Customer |
+|---|---|---|---|
+| `fullName` · `uniqueId` | ✅ | ✅ | — block hi nahi |
+| `email` · `mobile` · `whatsappNumber` | ❌ | ✅ | — block hi nahi |
+| `_id` | ❌ | ❌ | — |
+
+⚠️ **Set na ki gayi key gayab hoti hai, `null` nahi.** `fullName`, `email`,
+`mobile` — koi bhi required nahi hai, aur aggregation projection missing field ko
+chhod deti hai, `null` nahi banati. `customer?.email ?? "—"` se padhein.
+
+⚠️ **Customer token par ye block aata hi nahi.** Wo khud wahi insaan hai; apni hi
+order history ki har row par apna naam join karke bhejna ek bekaar round trip
+hai. Isliye lookup unke pipeline me **jodha hi nahi jaata**, jodkar hataya nahi
+jaata.
+
+⚠️ `customer._id` kisi ko nahi milta — wo `transaction.customerId` hi hai, jo
+vendor se jaan-boojh kar chhupa hai. Admin ko wo row par upar se mil hi jaata hai.
+
+⚠️ Koi `isDeleted` filter nahi. Account band ho chuka ho to bhi naam aata hai —
+bikri hui thi, uska settlement hona hai, aur support ko us row ko pehchaanna hai.
+
+### 🆕 `voucherVersion` block
+
+```json
+"voucherVersion": { "_id": "…", "versionCode": "VCH-00042317-V3", "versionNumber": 3 }
+```
+
+Teeno roles ko milta hai. ⚠️ `versionCode` **kisi bhi** transaction ya claim
+document par nahi hai, aur `voucherSnapshot` bhi use freeze nahi karta — wo sirf
+`VoucherVersion` par rehta hai, isliye har surface uske liye join karti hai.
+Admin ke liye ye wahi code hai jis par `VoucherVersionTextIndex` search karta hai
+(weight me naam ke baad doosra).
+
+⚠️ Deleted, archived ya paused version bhi naam se aata hai. Bikri us version se
+hui thi; wo record badal nahi sakta.
+
+### Kahan aata hai
+
+| Endpoint | Jagah |
+|---|---|
+| Dono listings | har **row ke andar**, `brand` / `outlet` ke saath |
+| Teeno detail endpoints | **top level**, `brand` / `outlet` ke bagal me; maujood na ho to `null` |
+
+### ⚠️ `viewer` par ab **do** contact flag hain
+
+| Flag | Poochta hai | Customer | **Vendor / Sub-vendor** | Admin |
+|---|---|:-:|:-:|:-:|
+| `canSeeCustomerContact` | koi channel dikh raha hai? | ✅ | ✅ (email) | ✅ |
+| `canSeeCustomerPhone` 🆕 | **number** dikh raha hai? | ✅ | ❌ | ✅ |
+
+Brand side ko pehle koi sampark nahi milta tha aur `canSeeCustomerContact: false`
+ka matlab bilkul wahi tha. Baad me unhe **email** de diya gaya — brand ka us
+insaan se kaam banta hai jisne abhi kharida hai — par `mobile`/`whatsappNumber`
+wahin ruke rahe. Ek boolean is haalat ko bina jhoot bole bata hi nahi sakta tha,
+isliye do hain.
+
+🔴 Dono ko `customerIdentityProjection` se **mel khaana hi hai**. Payload se na
+milne wala flag, flag na hone se bura hai: panel ya to bheja hua field chhupa
+dega ya waada kiya hua field khaali dikhayega — aur dono me se koi bhi failure
+access helper ka bug jaisa nahi lagta.
+
+---
+
+## Voucher-claim payment detail — paanch naye section
+
+`GET /voucher-claims/payments/:transactionId`, `GET /voucher-claims/:claimId` aur
+`GET /voucher-claims/code/:claimCode` — teeno par ye paanch key purani keys ke
+**bagal me** aati hain (kuch purana hataya nahi gaya):
+
+```
+outletDetail · voucher · pricing · paymentInfo · settlement
+```
+
+Poora field-by-field reference [vendor doc #84a](./vendor_panel_api_doc.md) me
+hai. Yahan sirf wo hai jo **admin token par alag** milta hai.
+
+| Section | Admin ko extra |
+|---|---|
+| `outletDetail` | `userId` (outlet manager ka account) |
+| `voucher` | poori moderation history — `rejectionReason`, `approvedBy`, `reviewedAt`, `submittedBy`, `deleteReason`, `isImmutable` |
+| `pricing` | 🔴 **hamara margin** — `platformPromoCost`, `gatewayFee`, `gatewayFeeBearer`, `vendorGatewayFee`, `netReceived` |
+| `paymentInfo` | `gatewayAccount`, `gateway`, `acquirerData`, `authorizedAt`, `settlementStage`, `razorpaySettlementId`, gateway ke saare `error*`, `duplicateCapturePaymentIds` |
+| `settlement` | `needsRevalidation`, `taintedTransactionIds`, `approvedBy`, `failureNote`, `idempotencyKey`, aur har leg par `providerReference` · `initiatedBy` · poora `bankSnapshot` |
+
+### 🔴 Do alag cheezein "settlement" kehlaati hain
+
+| Kahan | Kya |
+|---|---|
+| `settlement` section | **Trydood → vendor**. Hamara payout |
+| `paymentInfo.razorpaySettlementId` · `fundsReceivedAt` | **Razorpay → Trydood**. Hamari apni banking |
+
+Doosri wali sirf admin ko dikhti hai, aur `settlement` section me **kabhi nahi**
+aati — wahan aa jaana ye jhoot bolna hota ki vendor ko paisa mil chuka hai.
+
+### `settlement.state` — is ek payment ki position
+
+`NOT_SETTLED` · `ON_HOLD` · `IN_SETTLEMENT` · `PAID` · `PAYOUT_FAILED`
+
+⚠️ Pehle ek-do din har payment `NOT_SETTLED` hi rehta hai — eligibility tabhi
+shuru hoti hai jab Razorpay hume settle kar de. Ye khaali object nahi, ek **state
+aur wajah** ke saath aata hai; khaali fields wali payout row panel par fault
+jaisi padhi jaati hai.
+
+### ⚠️ "Settlement transaction id" ek field nahi, `legs` ki list hai
+
+Bada payout do NEFT me toda ja sakta hai aur bounce par retry **naya leg** banata
+hai. Isiliye `PayoutLeg` alag model hai: ek `payoutUtr` column doosra UTR
+chup-chaap kho deta. Bank statement se milane wala reference `legs[].utr` hai.
+
+### `settlement.bank` — masked, aur poora number kahin nahi
+
+Vendor aur admin dono ko ek hi block milta hai: `accountHolderName`,
+`maskedAccountNumber`, `accountLast4Digits`, `ifscCode`, `bankName`.
+
+🔴 **Poora account number settlement par store hi nahi hota.** `bankSnapshot`
+shuru se masked form aur last 4 rakhta hai; poora number sirf `Bank` document par
+hai. Support ko kabhi poora number chahiye to wo `Bank` se aata hai, yahan se
+nahi — aur wo **aaj ka** account hai, zaroori nahi ki jahan paisa gaya wahi ho.
+
+### 🔴 Google Pay / PhonePe ka farq nahi bataya ja sakta
+
+Razorpay UPI par sirf `method: "upi"` aur `vpa` bhejta hai — app ka naam payload
+me hai hi nahi. `paymentInfo.method.vpaHandle` handle jaisa hai waisa deta hai
+aur usse koi app ka naam **banaya nahi jaata**. `@ok*` → GPay aur `@ybl` →
+PhonePe ek convention hai, fact nahi, aur PSP partner badalne par badal jaata
+hai. `method.wallet` iska jawab nahi — wo sirf `type: "wallet"` par set hota hai.
+
+⚠️ **Card ki details store nahi hotin** — `mapPayment` sirf `cardId` likhta hai.
+Network/last4/issuer Razorpay ke payload me aate hain par likhe nahi jaate, to wo
+kisi bhi payment par nahi dikhaye ja sakte.
 
 ---
 

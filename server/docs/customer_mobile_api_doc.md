@@ -3852,6 +3852,23 @@ naam dikhata jo brand ab rakhta hi nahi — theek wahi bug jise hatane ke liye y
 change hua hai. Purana naam chahiye to `brandSnapshot.name` padhein; aaj ka
 haal chahiye to `brand`.
 
+### 🆕 `voucherVersion` — bhi live, snapshot ke saath
+
+```json
+"voucherVersion": { "_id": "…", "versionCode": "VCH-00042317-V3", "versionNumber": 3 }
+```
+
+Teeno role ko. `versionCode` support call par quote karne wala reference hai.
+
+⚠️ `brand` wali hi baat: ye `voucherSnapshot` ki jagah nahi leta. Snapshot us din
+ka naam aur tasveer hai; ye batata hai ki bikri **kis version** se hui thi.
+
+⚠️ `versionCode` kisi claim ya transaction document par hai hi nahi — `VoucherVersion`
+par hi rehta hai, isliye ye ek live join hai. Version delete ya archive ho chuka
+ho to bhi code aata hai.
+
+⚠️ `customer` block customer token par nahi aata — wajah [#17e](#17e-get-voucher-claimspayments--mere-payments) me.
+
 ### ⚠️ Scope query se chaudi nahi ho sakti
 
 Filter aur scope **intersect** hote hain. Vendor `?brandId=<dusra brand>` bheje to **kuch
@@ -3889,11 +3906,19 @@ claim ki nahi. Baaki query params #17d jaise.
 | `voucher.vendorPayable` | — | ✅ | ✅ |
 | `gatewayFee` · `netReceived` | — | — | ✅ |
 | `voucher.platformPromoCost` | — | — | ✅ |
-| `email` · `contact` | ✅ (apna) | — | ✅ |
+| `customer.fullName` · `.uniqueId` · `.email` 🆕 | — | ✅ | ✅ |
+| `customer.mobile` · `.whatsappNumber` 🆕 | — | — | ✅ |
+| `voucherVersion.versionCode` 🆕 | ✅ | ✅ | ✅ |
 
 > Vendor ko `gatewayFee` **kabhi nahi** — Razorpay ne humse kya liya wo commercial
-> disclosure hai. `email` / `contact` bhi nahi — wo privacy hai. Dono ek hi document par
+> disclosure hai. Grahak ka sampark bhi nahi — wo privacy hai. Dono ek hi document par
 > hain, isiliye faisla `claimProjection()` me **ek jagah** hota hai.
+
+> ⚠️ **Sudhaar.** Ye table pehle top-level `email` · `contact` ko *"customer ✅
+> (apna), admin ✅"* batati thi. Dono galat the: `claimProjection` customer ko ye
+> do field deti hi nahi, aur admin ko deti to hai par **voucher-claim row par
+> inhe koi code likhta hi nahi** — sirf subscription flow bharta hai. Grahak ki
+> details ab `customer` block se aati hain, jo unhe customer record se padhta hai.
 
 `purpose` se scope hai, isliye ek galat filter bhi kabhi **subscription** payment nahi
 dikha sakta — ek hi collection dono flows rakhti hai.
@@ -3918,6 +3943,42 @@ na commercial disclosure hain na privacy:
 | `brand.merchantId` 🆕 | string\|null | Brand ka merchant identifier |
 | `brand.subscriptionPlan` 🆕 | string\|null | Brand ka **live** plan; lapse ho chuka ho to `null` |
 
+### 🆕 `voucherVersion` block
+
+Har row par, **teeno** role ko:
+
+```json
+"voucherVersion": { "_id": "…", "versionCode": "VCH-00042317-V3", "versionNumber": 3 }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `voucherVersion.versionCode` 🆕 | string\|null | `VCH-########-V#` — support call par quote karne wala reference |
+| `voucherVersion.versionNumber` 🆕 | number\|null | Kaunsa version |
+
+⚠️ `versionCode` **kisi bhi** transaction ya claim document par nahi hai, aur
+`voucherSnapshot` bhi use freeze nahi karta — wo sirf `VoucherVersion` par rehta
+hai, isliye har surface uske liye join karti hai. Version delete ya archive ho
+chuka ho to bhi code aata hai.
+
+### ❌ `customer` block aapko nahi aata — aur ye jaan-boojh kar hai
+
+Brand side aur admin ko har row par ek `customer: { fullName, uniqueId }` block
+milta hai. Customer token par wo **aata hi nahi**: aap khud wahi insaan hain, aur
+apni hi order history ki har row par apna naam join karke bhejna ek bekaar round
+trip hai. Lookup aapke pipeline me **jodha hi nahi jaata**.
+
+Apna naam aur `uniqueId` `GET /customers/profile` se aate hain, jahan se hamesha
+aate the.
+
+⚠️ Vendor ko aapka **naam, `uniqueId` aur email** dikhta hai — counter par aapko
+pehchaanne aur us bikri ke baare me likhne ke liye. Aapka **number nahi** — wo
+sirf admin ko dikhta hai.
+
+Response ka `viewer` block ise saaf-saaf batata hai: `canSeeCustomerContact`
+("koi channel dikh raha hai?") aur `canSeeCustomerPhone` ("number dikh raha
+hai?"). Vendor ke liye pehla `true`, doosra `false`.
+
 ---
 
 ## 17f. GET /voucher-claims/payments/:transactionId — ek payment
@@ -3938,10 +3999,54 @@ na commercial disclosure hain na privacy:
 
 Request body **nahi** hai — ye `GET` hai.
 
+### 🆕 `voucherVersion` top level par
+
+`payment` · `claim` · `brand` · `outlet` ke bagal me ab
+`voucherVersion: { versionCode, versionNumber }` bhi aata hai — maujood na ho to
+`null`, key gayab nahi hoti. Shape aur niyam [#17e](#17e-get-voucher-claimspayments--mere-payments) me.
+
+`customer` block yahan bhi aapko **nahi** aata (wajah #17e me). Vendor aur admin
+ko wo isi jagah, `outlet` ke bagal me milta hai.
+
+### 🆕 Chaar naye section
+
+Purani keys ke **bagal me** chaar aur aate hain — koi purani key hati nahi:
+
+| Section | Kya |
+|---|---|
+| `outletDetail` | Outlet poora — `storeId`, `outletType`, contact, aur **`address`** (addressLine, city, state, zipcode, geo) |
+| `voucher` | `snapshot` (frozen — jo aapne kharidte waqt dekha), `offer` (theek wahi offer jo laga, poori terms), `version` (live) |
+| `pricing` | Poora frozen price — bill, offer, promo, `convenienceFee` aur uska slab, GST block, `totalPayable`, `youSaved`, `amountRefunded` |
+| `paymentInfo` | `gatewayPaymentId`, `acquirerTransactionId`, `invoiceNumber`, `method` (upi/card + `vpa`), teen alag waqt, aur `paidTo` |
+
+⚠️ Thoda **overlap** hai — `pricing.billAmount` aur `payment.voucher.billAmount`
+ek hi number hain. Naye code me naye section padhein.
+
+### ❌ `settlement` section aapko `null` aata hai — aur ye jaan-boojh kar hai
+
+Vendor aur admin ko ek paanchwa section milta hai: `settlement`. Wo **Trydood se
+vendor ko jaane wale payout** ke baare me hai — us payout ka `netPayable`, brand
+ke poore period ka `grossCollected`, aur vendor ke bank ka account holder, masked
+account number aur IFSC. Us sab ka aapki receipt se koi lena-dena nahi, isliye
+customer token par ye key **`null`** aati hai.
+
+🔴 Ye chhoot **naam lekar** di gayi hai, apne aap nahi hui. Jo projection
+settlement ko narrow karti hai wo sirf `ADMIN` ko alag maanti hai aur baaki sabko
+vendor wali shape de deti hai — kyunki wo ek aise endpoint ke liye likhi gayi thi
+jahan sirf do role pahunchte hain. Yahan teen pahunchte hain, to teesre ko
+explicitly mana karna pada.
+
+⚠️ Jo aap sach me poochhte hain — *"mera refund wapas aaya?"* — wo
+`pricing.amountRefunded` hai, aur wo aapko milta hai.
+
 ### Success — `200` (CUSTOMER apni hi receipt khol raha hai)
 
 > Ye body code se **capture** ki gayi hai, haath se nahi likhi — `Trydood2_test`
 > par asli service chala kar. Keys wahi hain jo server sach me bhejta hai.
+>
+> ⚠️ Ye capture `voucherVersion` se **pehle** ka hai, isliye us key ka yahan na
+> dikhna body ka purana hona hai — response ka sach nahi. Agli capture run ise
+> theek kar degi.
 
 ```json
 {
@@ -4181,9 +4286,26 @@ claim ke liye bani hai. **Id ka unique hona iska jawab nahi hai.**
 
 Request body **nahi** hai.
 
+### 🆕 `voucherVersion` aur chaar naye section
+
+`claim` · `payment` · `brand` · `outlet` · `timeline` ke saath ab
+`voucherVersion: { versionCode, versionNumber }` bhi, aur wahi chaar section jo
+[#17f](#17f-get-voucher-claimspaymentstransactionid--ek-payment) me hain —
+`outletDetail` · `voucher` · `pricing` · `paymentInfo`. Bilkul wahi shape; ye do
+page ek hi screen se khulte hain.
+
+`customer` block aur `settlement` section customer token par yahan bhi nahi aate
+(`settlement` `null` hota hai — wajah #17f me).
+
+`GET /voucher-claims/code/:claimCode` ([#17h](#17h-get-voucher-claimscodeclaimcode--code-se-kholo))
+wahi service hai, to uska response bhi bilkul yahi hai.
+
 ### Success — `200` (CUSTOMER)
 
 > Ye body bhi code se **capture** ki gayi hai.
+>
+> ⚠️ Capture `voucherVersion` se pehle ka hai — us key ka na dikhna body ka
+> purana hona hai, response ka sach nahi.
 
 ```jsonc
 {
