@@ -7,6 +7,7 @@ const { VOUCHER_BANNER_STATUS } = require("../../constants/voucherBanner");
 const {
   uploadVoucherBannerMedia,
   deleteVoucherBannerMedia,
+  toManagedBanner,
 } = require("../../helpers/vouchers");
 
 /**
@@ -107,5 +108,21 @@ exports.setVoucherBanner = async (actor, payload, file, posterFile) => {
     await deleteVoucherBannerMedia(supersededPending);
   }
 
-  return voucher;
+  /**
+   * 🔴 The banner, not the voucher.
+   *
+   * This was `return voucher;` — the whole Mongoose document. The vendor doc
+   * has described this response as `{ voucherId, banner }` all along, so the
+   * endpoint was answering with `normalizedName`, `createdBy`, `updatedBy`,
+   * `timezone`, `deleteReason`, both version pointers and every other column
+   * the model carries, none of it documented and none of it asked for.
+   *
+   * ⚠️ Through `toManagedBanner`, the same helper the admin's review and the
+   * version listing use — one shape for the one idea, and the locator
+   * (`publicId` / `bucket` / `key`) stays on the server.
+   */
+  return {
+    voucherId: voucher._id,
+    banner: toManagedBanner(voucher.banner),
+  };
 };
