@@ -224,7 +224,10 @@ exports.confirmUpload = async (actor, uploadId, { entityId } = {}) => {
   const claimed = await Upload.findOneAndUpdate(
     { _id: intent._id, consumedAt: null },
     { $set: { consumedAt: new Date(), storage, verified } },
-    { new: true },
+    // `returnDocument: "after"` rather than `new: true` — the latter is
+    // deprecated in Mongoose 9 and warned on every confirmed upload. Only the
+    // match decides anything here; the returned copy is not read.
+    { returnDocument: "after" },
   );
   if (!claimed) throwError(409, "That upload has already been used.");
 

@@ -911,6 +911,75 @@ expire hone ke baad delete ho jayega."*
 | **U-3** ✅ | Showcase surface — multi-file + thumbnail pairing (+ limits dono raaston par) | ~4 h · 2 commit (uncommitted) |
 | **U-4** ✅ | Voucher surface — images + banner + poster (+ 🆕 `VOUCHER_BANNER_POSTER` purpose) | ~3 h · 1 commit (uncommitted) |
 | **U-5** ✅ | Baaki surfaces — brand, subBrand, **subCategory**, ticker, avatar, features (+ 🆕 `BANNER_POSTER`, E5, teesri delete-order galti). ⚠️ **multipart delete isme se nikal gaya** — wo X-4 hai, aur X-4 Cloudinary ke presign ke baad hi hoga (§0.5) | ~4 h (uncommitted) |
+| **U-6** ✅ | 🔴 **Documented client sequence kaam hi nahi karti thi** — `attachedAt` guard + voucher ka error passthrough. Detail neeche | ~3 h · 2 commit |
+
+### U-6 — 🔴 **`/uploads/confirm` bulane par har surface toot jaati thi** (2026-09-22)
+
+**Kahan se mila:** production (Render) par `POST /vouchers/create` → `500 "Failed
+to upload voucher images."` Panel ne wahi kiya jo doc kehti hai.
+
+**Asli kaaran — ek field do kaam kar raha tha.** `Upload.consumedAt` dono
+matlab rakhta tha:
+
+| Ghatna | Kitni baar honi chahiye |
+|---|---|
+| bytes padhe gaye, object `staging/` se asli key par gaya | ek baar (dobara ka matlab hi nahi) |
+| **kisi surface ne apni row ke liye le liya** | 🔴 zyada se zyada ek baar |
+
+Guard pehli par laga tha. To jo client `/uploads/confirm` bula leta — aur vendor
+doc #94/#95, customer doc, `endpoints_category.md` §35, sab yahi kehti hain — uski
+row par nishaan lag jaata, aur surface (jo dobara confirm karti hai) `409 "That
+upload has already been used."` de deti, ek hi baar upload ki gayi file par.
+
+**Blast radius: 11 surfaces**, teeno panel + mobile app — voucher (images/banner/
+poster), showcase (media/thumbnail), brand logo/cover, sub-brand logo/cover,
+feature icon, category, sub-category, banner+poster, ticker icon, avatar. Voucher
+akeli jagah thi jahan 409 ko `500` me wrap kiya jaata tha, isliye wahin se dikha.
+
+**Chhupa kyun raha — do line, dono purani:**
+- money suite kabhi `/uploads/confirm` **call hi nahi karti thi**; sab
+  presign → S3 → `acceptUpload` chalate the. Documented raaste ka **ek bhi test
+  nahi** tha
+- doc #95 me aaj tak likha tha *"Vendor panel ki koi surface abhi `uploadId` nahi
+  leti"* — U-2 ke waqt sach, U-4/U-5 ke baad jhooth. Us line ki wajah se ye
+  sequence chalayi hi nahi gayi
+
+**Fix:** naya `Upload.attachedAt`, aur guard wahan shift. `fromIntent` ab:
+purpose check → (confirmed ho to row se `storage`+`verified`, warna confirm) →
+conditional `findOneAndUpdate({ attachedAt: null })`. Claim **confirm ke baad**,
+taaki refuse hui file (galat type / oversize) upload ko jalaye nahi.
+
+⚠️ **Dono client sequence chalti hain**, isliye backend akela deploy ho sakta
+hai — panel/app me ek line badle bina. Purani mobile build bhi chalti rahegi.
+⚠️ Migration nahi chahiye: field default `null`, aur rows waise bhi
+`intentTtlMinutes` (60 min) par TTL se mit jaati hain.
+
+**Doosra defect, saath me:** `uploadVoucherImages` har failure ko ek hi `500` me
+badal deta tha — 404/422/413/409 sab *"Failed to upload voucher images."* Ab
+`statusCode` wala error waisa ka waisa aage jaata hai (rollback pehle chalta
+hai). Wahi fix `services/showcases/replaceSectionMedia.js` me pehle se thi.
+
+**Proof:**
+- `__tests__/money/voucherCreatePresignedPanel.test.js` (12) — 🔴 **wahi request
+  jo production me 500 di thi**, asli bucket aur asli service par: presign → S3 →
+  confirm × 4 image + banner, phir `createVoucher`. Upload helpers mock **nahi**.
+  12 edge case: mila-jula panel (kuch confirmed kuch nahi), multipart + id ek
+  saath, ek hi id do baar, doosre voucher par kharch ho chuki id (409, 500 nahi),
+  banner id images me (422), doosre ki id (404), floor se kam aur ceiling se
+  zyada — dono me **kuch kharch nahi hota**
+- `__tests__/money/uploadAttachClaim.test.js` (27) — wahi guard **S3 ke bina**,
+  pure Mongo, saare 16 purpose. Credentials na hon tab bhi fix ki coverage rehti hai
+- `uploadAccept.test.js` — documented sequence ka poora block, asli bucket par
+- unit `voucherMedia` (7) — error passthrough, har status code ke liye
+- **mutation:** guard ka filter `{attachedAt: null}` hatao to theek do test marte
+  hain — double-attach aur race — baaki 25 pass rehte hain
+
+⚠️ **Fixture ka ek sabak, is file ke liye likha hai:** `createVoucher` category
+**brand se** leta hai (`const { categoryId, subCategoryId } = brand`), request se
+nahi. Bina category wala brand fixture andar chala jaata hai — `validateVoucherCategory`
+missing id par `null` lautata hai, throw nahi karta — aur bahut baad me
+`VoucherVersion.create` par required-path error deta hai, jo padhne me "create toot
+gaya" lagta hai. Ek poora run isi me gaya.
 
 ## Block G — Code-end ke saare gap ✅
 

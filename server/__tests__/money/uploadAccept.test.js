@@ -27,6 +27,7 @@ const {
   createUploadIntent,
   acceptUpload,
   acceptUploads,
+  confirmUpload,
   deleteAssets,
 } = require("../../services/storage");
 const { toMediaDocument } = require("../../helpers/media");
@@ -49,6 +50,21 @@ const uploadTo = async ({ url, fields }, body) => {
   for (const [key, value] of Object.entries(fields)) form.append(key, value);
   form.append("file", new Blob([body], { type: "image/png" }), "probe");
   return fetch(url, { method: "POST", body: form });
+};
+
+/**
+ * The whole client sequence the panel docs prescribe: presign, send the bytes,
+ * and call `POST /uploads/confirm` **before** handing the id to a surface.
+ */
+const clientConfirmedUpload = async (
+  who,
+  purpose = UPLOAD_PURPOSE.CATEGORY_IMAGE,
+) => {
+  const uploadId = await readyUpload(who, purpose);
+  // ⚠️ No `entityId`: on a create the row this file belongs to does not exist
+  // yet, which is exactly the position a client is in.
+  const confirmed = await confirmUpload(who, uploadId, {});
+  return { uploadId, confirmed };
 };
 
 /** Presign and actually send the bytes, so the id is ready to be accepted. */
@@ -230,6 +246,7 @@ describe("🔴 E1 — one road at a time", () => {
     // Still theirs to use once they decide which they meant.
     const row = await Upload.findById(uploadId).lean();
     expect(row.consumedAt ?? null).toBeNull();
+    expect(row.attachedAt ?? null).toBeNull();
   });
 });
 
@@ -267,6 +284,7 @@ describe("🔴 E2 — the upload belongs to one surface", () => {
 
     const row = await Upload.findById(uploadId).lean();
     expect(row.consumedAt ?? null).toBeNull();
+    expect(row.attachedAt ?? null).toBeNull();
 
     // And it still works on the surface it was meant for.
     const accepted = await acceptUpload(who, {
@@ -406,5 +424,287 @@ describe("a list of files", () => {
     );
 
     expect(statusCode).toBe(404);
+  });
+});
+
+/**
+ * 🔴 The sequence every panel doc prescribes — and which nothing here walked.
+ *
+ * `POST /uploads/confirm` is a live endpoint, and the vendor doc (#94/#95), the
+ * customer doc and `endpoints_category.md` all say the same thing: confirm, then
+ * send the `uploadId` to the surface. Every test in this file went presign → S3
+ * → `acceptUpload`, so the documented road had **no coverage at all** — and it
+ * did not work. `fromIntent` confirmed a second time, hit the replay guard, and
+ * answered *"That upload has already been used."* about a file uploaded once.
+ *
+ * ⚠️ It was not a voucher bug. All eleven presigned surfaces go through this
+ * facade, so avatars, logos, showcase media and category images were the same;
+ * voucher create was only the one that wrapped the 409 into a 500.
+ */
+describe("🔴 the client may confirm before the surface ever sees the id", () => {
+  it("takes an upload the client already confirmed", async () => {
+    const who = actor();
+    const { uploadId } = await clientConfirmedUpload(who);
+
+    const accepted = await acceptUpload(who, {
+      uploadId,
+      purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
+      entityId: oid(),
+    });
+
+    expect(accepted.storage.key).toBeTruthy();
+    expect(accepted.metadata.mimeType).toBe("image/png");
+    expect(accepted.metadata.size).toBe(PNG.length);
+  });
+
+  /**
+   * The promise the facade makes is that a surface cannot tell which road a file
+   * came down. A third road that answers a slightly different shape would be the
+   * same class of defect the facade exists to prevent.
+   */
+  it("answers what the surface-confirmed road answers, field for field", async () => {
+    const who = actor();
+    const { uploadId: early } = await clientConfirmedUpload(who);
+    const late = await readyUpload(who);
+
+    const [fromEarly, fromLate] = [
+      await acceptUpload(who, {
+        uploadId: early,
+        purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
+      }),
+      await acceptUpload(who, {
+        uploadId: late,
+        purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
+      }),
+    ];
+
+    // Everything but the object key, which is a uuid either way.
+    expect(fromEarly.metadata).toEqual(fromLate.metadata);
+    expect(fromEarly.purpose).toBe(fromLate.purpose);
+    expect(fromEarly.storage.provider).toBe(fromLate.storage.provider);
+    expect(fromEarly.storage.bucket).toBe(fromLate.storage.bucket);
+    expect(toMediaDocument(fromEarly).kind).toBe(toMediaDocument(fromLate).kind);
+  });
+
+  /**
+   * ⚠️ Nothing is copied twice. Confirm moved the object and deleted what it
+   * copied from, so a second move is not merely wasteful — there is nothing left
+   * in `staging/` to move.
+   */
+  it("keeps the key confirm already gave it", async () => {
+    const who = actor();
+    const { uploadId, confirmed } = await clientConfirmedUpload(who);
+
+    const accepted = await acceptUpload(who, {
+      uploadId,
+      purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
+      entityId: oid(),
+    });
+
+    expect(accepted.storage.key).toBe(confirmed.storage.key);
+  });
+
+  it("builds a public URL on this road too", async () => {
+    const who = actor();
+    const { uploadId } = await clientConfirmedUpload(who);
+
+    const accepted = await acceptUpload(who, {
+      uploadId,
+      purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
+    });
+
+    expect(accepted.url).toContain(accepted.storage.key);
+    expect(toMediaDocument(accepted).url).toMatch(/^https?:\/\//);
+  });
+
+  /**
+   * 🔴 Every surface, not just the one that reported it.
+   *
+   * The failure was in the shared facade, so proving one purpose proves the
+   * mechanism and nothing else. A vendor whose logo upload broke would not be
+   * comforted that voucher images were tested.
+   */
+  it.each([
+    UPLOAD_PURPOSE.BRAND_LOGO,
+    UPLOAD_PURPOSE.BRAND_COVER,
+    UPLOAD_PURPOSE.SUB_BRAND_LOGO,
+    UPLOAD_PURPOSE.BRAND_FEATURE_ICON,
+    UPLOAD_PURPOSE.CATEGORY_IMAGE,
+    UPLOAD_PURPOSE.SUBCATEGORY_IMAGE,
+    UPLOAD_PURPOSE.USER_AVATAR,
+    UPLOAD_PURPOSE.SHOWCASE_MEDIA,
+    UPLOAD_PURPOSE.SHOWCASE_THUMBNAIL,
+    UPLOAD_PURPOSE.BANNER_MEDIA,
+    UPLOAD_PURPOSE.BANNER_POSTER,
+    UPLOAD_PURPOSE.VOUCHER_IMAGE,
+    UPLOAD_PURPOSE.VOUCHER_BANNER,
+    UPLOAD_PURPOSE.VOUCHER_BANNER_POSTER,
+    UPLOAD_PURPOSE.TICKER_ICON,
+  ])("works for %s", async (purpose) => {
+    const who = actor();
+    const { uploadId } = await clientConfirmedUpload(who, purpose);
+
+    const accepted = await acceptUpload(who, {
+      uploadId,
+      purpose,
+      entityId: oid(),
+    });
+
+    expect(accepted.storage.key).toBeTruthy();
+    expect(accepted.metadata.mimeType).toBe("image/png");
+  });
+
+  it("still refuses a stranger's confirmed upload as if it did not exist", async () => {
+    const mine = actor();
+    const { uploadId } = await clientConfirmedUpload(mine);
+
+    const { statusCode } = await failure(
+      acceptUpload(actor(), {
+        uploadId,
+        purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
+      }),
+    );
+
+    // Confirming it early does not make it transferable.
+    expect(statusCode).toBe(404);
+  });
+
+  /**
+   * ⚠️ E2 survives the new road. The purpose check runs before the claim, so a
+   * one-word mistake still costs nothing — the upload is refused and remains
+   * spendable on the surface it was authorised for.
+   */
+  it("refuses a confirmed upload on the wrong surface without burning it", async () => {
+    const who = actor();
+    const { uploadId } = await clientConfirmedUpload(
+      who,
+      UPLOAD_PURPOSE.CATEGORY_IMAGE,
+    );
+
+    const { statusCode } = await failure(
+      acceptUpload(who, { uploadId, purpose: UPLOAD_PURPOSE.BRAND_LOGO }),
+    );
+    expect(statusCode).toBe(422);
+
+    const row = await Upload.findById(uploadId).lean();
+    expect(row.attachedAt ?? null).toBeNull();
+
+    // And the surface it was meant for still takes it.
+    const accepted = await acceptUpload(who, {
+      uploadId,
+      purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
+    });
+    expect(accepted.storage.key).toBeTruthy();
+  });
+});
+
+/**
+ * 🔴 One upload, one row — whoever confirmed it.
+ *
+ * The guard that used to sit on `consumedAt` protected the right thing for the
+ * wrong reason: what must never happen twice is a file being **attached** to a
+ * row, not a file being identified. Now that the client may confirm first, the
+ * two are separate moments and the guard has to be on the second one — or one
+ * uploaded object could be handed to two rows, the second holding a file nobody
+ * paid for.
+ */
+describe("🔴 one upload, one row", () => {
+  it("refuses a client-confirmed upload the second time a surface asks", async () => {
+    const who = actor();
+    const { uploadId } = await clientConfirmedUpload(who);
+
+    await acceptUpload(who, {
+      uploadId,
+      purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
+      entityId: oid(),
+    });
+
+    const { statusCode, message } = await failure(
+      acceptUpload(who, {
+        uploadId,
+        purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
+        entityId: oid(),
+      }),
+    );
+
+    expect(statusCode).toBe(409);
+    expect(message).toMatch(/already been used/i);
+  });
+
+  it("refuses a surface-confirmed upload the second time too", async () => {
+    const who = actor();
+    const uploadId = await readyUpload(who);
+
+    await acceptUpload(who, {
+      uploadId,
+      purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
+    });
+
+    const { statusCode } = await failure(
+      acceptUpload(who, {
+        uploadId,
+        purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
+      }),
+    );
+
+    expect(statusCode).toBe(409);
+  });
+
+  /**
+   * 🔴 The claim is a conditional update, not a read-then-write.
+   *
+   * Two saves landing together would both read `attachedAt: null` and both
+   * proceed, which is precisely the case a guard exists for — and the one a
+   * sequential test can never see.
+   */
+  it("lets exactly one of two saves racing for the same id have it", async () => {
+    const who = actor();
+    const { uploadId } = await clientConfirmedUpload(who);
+
+    const results = await Promise.allSettled([
+      acceptUpload(who, {
+        uploadId,
+        purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
+        entityId: oid(),
+      }),
+      acceptUpload(who, {
+        uploadId,
+        purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
+        entityId: oid(),
+      }),
+    ]);
+
+    const won = results.filter((r) => r.status === "fulfilled");
+    const lost = results.filter((r) => r.status === "rejected");
+
+    expect(won).toHaveLength(1);
+    expect(lost).toHaveLength(1);
+    expect(lost[0].reason.statusCode).toBe(409);
+  });
+
+  /**
+   * ⚠️ Confirming is not attaching, and the row has to say so — otherwise the
+   * whole fix collapses back into the bug it replaced.
+   */
+  it("does not attach an upload the client merely confirmed", async () => {
+    const who = actor();
+    const { uploadId } = await clientConfirmedUpload(who);
+
+    const row = await Upload.findById(uploadId).lean();
+    expect(row.consumedAt).toBeTruthy();
+    expect(row.attachedAt ?? null).toBeNull();
+  });
+
+  it("marks it attached once a surface has taken it", async () => {
+    const who = actor();
+    const { uploadId } = await clientConfirmedUpload(who);
+
+    await acceptUpload(who, {
+      uploadId,
+      purpose: UPLOAD_PURPOSE.CATEGORY_IMAGE,
+    });
+
+    const row = await Upload.findById(uploadId).lean();
+    expect(row.attachedAt).toBeTruthy();
   });
 });

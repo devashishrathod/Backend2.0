@@ -290,13 +290,25 @@ nahi padta ki file kaise aayi.
    POST /showcase/section/:id/add-media   { uploadIds: [...] }
    Server (middleware → facade):
      Upload row _id + userId dono se milta hai   ← doosre ka id load hi nahi hota
-     consumedAt null?                            ← replay guard
-     HeadObject                                  ← file aayi bhi thi?
-     ranged GET 1 KB → identify(bytes)           ← asli type, header nahi
-     kind vs purpose                             ← avatar presign karke video nahi
-     CopyObject staging/ → images|videos|gifs/   ← MetadataDirective: REPLACE
-     conditional findOneAndUpdate(consumedAt:null) ← race me ek hi jeetta hai
+     purpose match?                              ← galat surface → 422, upload bachi rehti hai
+
+     agar client pehle /uploads/confirm bula chuka hai:
+       row ka storage + verified wahin se padh lo  ← S3 ko chhuo hi mat
+     warna:
+       HeadObject                                ← file aayi bhi thi?
+       ranged GET 1 KB → identify(bytes)         ← asli type, header nahi
+       kind vs purpose                           ← avatar presign karke video nahi
+       CopyObject staging/ → images|videos|gifs/ ← MetadataDirective: REPLACE
+       conditional findOneAndUpdate(consumedAt:null) ← do confirm ki race
+
+     conditional findOneAndUpdate(attachedAt:null) ← 🔴 ek upload, ek row
 ```
+
+> 🔴 **Guard `attachedAt` par hai, `consumedAt` par nahi.** Pehle dono ek hi field
+> tha, aur us wajah se wo sequence — client confirm kare, phir surface ko id de —
+> jo har panel doc batati hai, **kabhi chal hi nahi sakti thi**: surface ko `409
+> "That upload has already been used."` mil jaata, ek hi baar upload ki gayi file
+> par. Showcase samet saari 11 presigned surfaces par tha.
 
 ✅ **Ye sab ban chuka hai** — U-1 me route, controller, validator aur facade
 (`acceptUpload` / `acceptUploads`), U-3 me `describeIncoming` aur showcase surface.

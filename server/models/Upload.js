@@ -94,12 +94,44 @@ const uploadSchema = new mongoose.Schema(
     },
 
     /**
-     * ⚠️ The replay guard. Set inside the same transaction that attaches the
-     * file to its row, so a second confirm cannot hand the same object to a
-     * second brand — and a retry after a network drop is answered honestly
-     * rather than producing a duplicate.
+     * When the bytes were read and the object left `staging/` for its real key.
+     *
+     * 🔴 This is **not** the "one upload, one row" guard. `attachedAt` is — and
+     * conflating the two is the bug that made the documented client sequence
+     * impossible to walk.
+     *
+     * `/uploads/confirm` is a live endpoint, and every panel doc tells a client
+     * to call it and *then* send the `uploadId` to the surface. When this field
+     * was the guard, doing exactly that set it — and the surface, which confirms
+     * again, was answered *"That upload has already been used."* about a file
+     * uploaded once. Voucher create wrapped that 409 into a 500 and the vendor
+     * was told only *"Failed to upload voucher images."*
+     *
+     * ⚠️ Verifying and moving is idempotent by nature — there is nothing left in
+     * `staging/` to move a second time. Attaching is what may happen at most
+     * once, so that is where the guard belongs.
      */
     consumedAt: { type: Date, default: null },
+
+    /**
+     * 🔴 The one-use guard: when a **surface** took this upload for a row of its
+     * own — a voucher image, a brand logo, an avatar.
+     *
+     * Without it one confirmed object could be handed to two different rows, the
+     * second of which would hold a file nobody paid for and could not be told
+     * apart from a legitimate one. That is the danger `consumedAt` was written
+     * for; this is the field that actually answers it, because it is set at the
+     * moment the file stops being spendable rather than at the moment it was
+     * identified.
+     *
+     * ⚠️ Claimed with a conditional `findOneAndUpdate({ attachedAt: null })`, so
+     * two saves racing on the same id cannot both win. A read-then-write here
+     * would let a double-tap attach one upload twice.
+     *
+     * ⚠️ It is set **after** the file is known to be real, so a refused type or
+     * an oversize file does not burn an upload that never became anything.
+     */
+    attachedAt: { type: Date, default: null },
 
     /**
      * ⚠️ A **TTL index**, and the reason this collection does not grow without

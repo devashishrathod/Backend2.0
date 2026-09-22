@@ -4429,7 +4429,11 @@ isActive:    true
 
 **4. Duplicate check `name` pe hai** — same naam ki doosri category nahi ban sakti.
 
-**5. 🆕 `uploadId` ka poora flow** — `POST /uploads/presign` → S3 par POST → `POST /uploads/confirm` → wahi `uploadId` yahan. Teeno ka detail **#111–#112** me. Category pehli surface hai jo ise leti hai (U-2); baaki abhi sirf multipart leti hain.
+**5. 🆕 `uploadId` ka poora flow** — `POST /uploads/presign` → S3 par POST → (optional `POST /uploads/confirm`) → wahi `uploadId` yahan. Detail **#111–#112** me.
+
+⚠️ **`/uploads/confirm` ab optional hai aur dono tarah chalta hai** — bulaiye to user ko galat file ka pata Save se pehle chal jata hai; na bulaiye to ye endpoint khud confirm kar leta hai. Pehle bulane par yahan `409 "That upload has already been used."` aata tha, ek hi baar upload ki gayi file par.
+
+⚠️ Ye line pehle kehti thi *"Category pehli surface hai jo ise leti hai (U-2); baaki abhi sirf multipart leti hain"* — U-4/U-5 ke baad **har** presigned surface `uploadId` leti hai.
 
 ---
 
@@ -9609,9 +9613,16 @@ hai, aur phir surface endpoint ko file ki jagah ek `uploadId` deta hai.
 ```
 1. POST /uploads/presign   → { uploadId, url, fields }
 2. POST <url>              → seedha S3 par, multipart form (browser se)
-3. POST /uploads/confirm   → { storage, metadata }
-4. surface endpoint        → body me { uploadId }   ← U-2 se: categories
+3. POST /uploads/confirm   → { storage, metadata }        ← OPTIONAL
+4. surface endpoint        → body me { uploadId }   ← har presigned surface
 ```
+
+⚠️ **Step 3 optional hai.** Bulaiye to file ki asli pehchaan aur asli size wahin
+ho jaate hain — user ko galat file ka pata Save se pehle chal jata hai. Na
+bulaiye to step 4 khud kar leta hai, aur object key me row ki id bhi aa jaati hai.
+**Dono chalte hain.** Pehle nahi chalte the: step 3 karne ke baad step 4 par
+`409 "That upload has already been used."` aata tha — guard *"confirm ho gaya"*
+par laga tha, jabki hona chahiye tha *"kisi row ne le liya"* par.
 
 ⚠️ **Request aur captured examples vendor collection me hain** (`12 — Uploads`) —
 ek hi request do collection me rakhne ka matlab hai use do jagah maintain karna,
@@ -9752,7 +9763,13 @@ SVG yahin ruk jaata hai — aur apne CDN se serve hui SVG stored XSS hai.
 **2. Kisi aur ka `uploadId` `404` deta hai, `403` nahi.** Jo id maujood hai uske
 baare me *"ye aapki nahi"* keh dena, ye bata dena hai ki wo id asli hai.
 
-**3. Ek upload ek hi baar.** Warna ek hi file do rows par lag jaati.
+**3. Ek upload ek hi row par.** Warna ek hi file do rows par lag jaati.
+
+> 🔴 Guard `Upload.attachedAt` par hai — *"kisi surface ne le liya"* — na ki
+> `consumedAt` (*"bytes padh liye, object move ho gaya"*) par. Pehle dono ek hi
+> field the, aur isi wajah se confirm-phir-surface wala raasta, jo ye doc khud
+> batati thi, kabhi chal hi nahi sakta tha. Dobara **confirm** karna abhi bhi
+> `409` hai, aur ek hi id do rows ko dena bhi `409` hai.
 
 **4. 🔴 Size ki limit admin ki hai, aur wahi dono jagah lagti hai.** Ek hi number
 teen se banta hai — `min(code ka ceiling, Setting.storage.limits, surface

@@ -470,7 +470,7 @@ uske baad `express-fileupload` ke saath hi hat jaayega.
 | E-1 | Presign liya, upload kabhi nahi kiya | S3 par kuch nahi | Kuch nahi chahiye. `uploadId` record TTL se expire |
 | E-2 | Upload kiya, confirm nahi kiya | `staging/` me orphan | **Lifecycle 24h auto-delete** |
 | E-3 | Confirm kiya par object hai hi nahi | — | `HeadObject` 404 → `400 "Upload not found"` |
-| E-4 | Same `uploadId` do baar confirm | Do rows ban sakti hain | `uploadId` record par `consumedAt` — dusra `409` |
+| E-4 | Same `uploadId` do baar **kisi row par lagana** | Do rows ban sakti hain | 🔴 `uploadId` record par **`attachedAt`** — dusra `409`. Pehle ye `consumedAt` par tha, jo *"confirm ho gaya"* bhi mark karta tha, aur isi wajah se client ka confirm karna surface ko tod deta tha |
 | E-5 | Kisi aur ka `uploadId` confirm kiya | Chori | `uploadId` record me `userId`; mismatch → `403` |
 | E-6 | Key manually badal kar upload | — | Policy me `starts-with $key staging/<userId>/` — S3 khud reject karega |
 | E-7 | `Content-Type` jhooth bola | `.exe` ko `image/jpeg` keh diya | **Magic byte check** (§4.3) → `400`, object delete |

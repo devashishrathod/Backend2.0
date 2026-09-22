@@ -1487,20 +1487,50 @@ har surface iske peechhe aati hai, voucher unme se sirf ek hai (U-4).
 | # | Method | Endpoint | Access | Cat | Notes |
 |---|---|---|---|---|---|
 | 214 | POST | `/uploads/presign` | Intended: sab (signed-in) · Enforced: **Any auth** | ⚪ | 🆕 Presigned **POST** — client seedha S3 par likhta hai. Policy S3 enforce karta hai: exact key, pinned content-type, size range. File is server tak aati hi nahi. 🔴 Size cap ab **admin ka number** hai (`Setting.storage.limits` + surface override), pehle code ka constant tha |
-| 215 | POST | `/uploads/confirm` | Intended: sab (signed-in) · Enforced: **Any auth** | ⚪ | 🆕 🔴 Yahi tay hota hai ki file **sach me kya hai** — magic bytes se. `staging/` se asli key par move, type bytes se. Replay guard aur owner check dono. 🔴 Asli size bhi yahin naapa jaata hai — presign ke baad limit ghat sakti hai, aur signature nahi badalti |
+| 215 | POST | `/uploads/confirm` | Intended: sab (signed-in) · Enforced: **Any auth** | ⚪ | 🆕 🔴 Yahi tay hota hai ki file **sach me kya hai** — magic bytes se. `staging/` se asli key par move, type bytes se. Replay guard aur owner check dono. 🔴 Asli size bhi yahin naapa jaata hai — presign ke baad limit ghat sakti hai, aur signature nahi badalti. ⚠️ **Client ke liye optional** — surface khud bhi confirm kar leti hai. Bulane ka faayda: vendor ko galat file ka pata Save se pehle chal jata hai |
 
 > ### 🔴 Surface endpoint `uploadId` kaise leta hai
 >
-> Confirm ke baad client wahi `uploadId` us surface ko bhejta hai jiske liye
-> upload hua tha — file attach karne ki jagah. Surface `acceptUpload` se poochhti
-> hai, aur dono raaston se use ek hi shape milti hai.
+> Client wahi `uploadId` us surface ko bhejta hai jiske liye upload hua tha —
+> file attach karne ki jagah. Surface `acceptUpload` se poochhti hai, aur dono
+> raaston se use ek hi shape milti hai.
 >
-> **Abhi kaun leta hai:** `POST /categories/create` (#100) aur
-> `PUT /categories/update/:id` (#103) — U-2 ka pilot. Baaki surfaces U-3, U-4 aur
-> U-5 me judti hain; tab tak wo sirf multipart leti hain.
+> **Confirm pehle karein ya nahi — dono chalte hain:**
+>
+> | Client kya kare | Kya hota hai |
+> |---|---|
+> | `/uploads/confirm` → phir surface | Surface row par pada hua `storage` + `verified` padh leti hai, dobara kuch nahi chhuti. ✅ Vendor ko galat file ka pata jaldi |
+> | Seedha surface ko | Surface khud confirm karti hai, aur `entityId` bhi deti hai — key me `<rowId>/` segment aa jata hai |
+>
+> **Kaun leta hai:** ab **har** presigned surface — voucher (images/banner/poster),
+> showcase (media + thumbnail), brand logo/cover, sub-brand logo/cover, brand
+> feature icon, category, sub-category, banner + poster, ticker icon, avatar.
+>
+> ⚠️ Ye line pehle kehti thi *"Abhi sirf category (U-2), baaki U-3/U-4/U-5 me
+> judengi"* — U-5 kab ka ship ho chuka. Wahi purani line is baat ko chhupa gayi ki
+> confirm-pehle wala raasta kabhi chala hi nahi tha.
 >
 > ⚠️ **File aur `uploadId` ek saath bhejna `422` hai**, dono me se ek chun lena
 > nahi. Chup-chaap ek chun lene ka matlab hota caller maanta rahe ki doosra gaya.
+
+> ### 🔴 Ek upload, ek row — aur guard kis par hai
+>
+> `Upload` row par do alag nishaan hain, aur inka alag hona zaroori hai:
+>
+> | Field | Kab lagta hai | Kitni baar |
+> |---|---|---|
+> | `consumedAt` | bytes padhe gaye, object `staging/` se asli key par gaya | ek baar (dobara ka matlab hi nahi — staging file delete ho chuki) |
+> | `attachedAt` | **kisi surface ne** use apni row ke liye le liya | 🔴 zyada se zyada ek baar |
+>
+> Pehle dono kaam ek hi field (`consumedAt`) mark karta tha. Isi wajah se jo
+> sequence ye doc batati thi — confirm, phir surface ko id — **kabhi chal hi nahi
+> sakti thi**: confirm nishaan laga deta, aur surface ko `409 "That upload has
+> already been used."` milta, ek hi baar upload ki gayi file par. Ye saari 11
+> presigned surfaces par tha; voucher create usko `500 "Failed to upload voucher
+> images."` me badal deta tha, isliye wahan se pakda gaya.
+>
+> ⚠️ Claim `findOneAndUpdate({ attachedAt: null })` se lagta hai, read-then-write
+> se nahi — warna do save ek saath aakar dono jeet jaate.
 
 > ### 🔴 Size ki limit ab dono raaston par ek hai
 >
