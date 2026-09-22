@@ -141,8 +141,27 @@ exports.uploadVoucherImages = async (actor, items, voucherId) => {
     // forever, paid for and unreferenced. The upload result already carries its
     // `storage`, so the delete now follows that.
     await storage.deleteAssets(uploaded);
-    // The original failure was being thrown away, so "Failed to upload voucher
-    // images" was the only trace of a quota, a credential or a network error.
+    /**
+     * 🔴 A refusal the vendor can act on must not be flattened into a 500.
+     *
+     * Every failure from here came back as `500 "Failed to upload voucher
+     * images."` — a wrong id (404), the wrong surface (422), a file over the
+     * limit (413) and an upload already used (409) were all the same sentence,
+     * and the one that said what to fix reached only the server console. The
+     * vendor could not tell a mistake of theirs from an outage of ours, and the
+     * panel had nothing to branch on.
+     *
+     * ⚠️ Rollback runs first either way. Re-throwing before the delete would
+     * leave every image uploaded ahead of the failure on storage, paid for and
+     * unreferenced — the defect the `deleteAssets` above exists for.
+     *
+     * The same fix, in the same shape, is in `services/showcases/
+     * replaceSectionMedia.js`, where "only photo replacement is allowed" was
+     * reaching the client as "Failed to replace media".
+     */
+    if (error.statusCode) throw error;
+    // An error with no status is genuinely ours — a quota, a credential, a
+    // network fault — and the original message would mean nothing to a vendor.
     console.error("Voucher image upload failed:", error.message);
     throwError(500, "Failed to upload voucher images.");
   }
