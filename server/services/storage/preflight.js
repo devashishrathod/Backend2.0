@@ -6,7 +6,7 @@ const {
 
 const { getS3Client, bucketName } = require("../../configs/s3");
 const { STORAGE_BUCKET, STORAGE_PROVIDER } = require("../../constants/storage");
-const { prefix } = require("./keys");
+const { prefix, stagingPrefix } = require("./keys");
 const { config } = require("../../configs/env");
 
 /**
@@ -48,7 +48,16 @@ const { config } = require("../../configs/env");
 const BUCKETS = [STORAGE_BUCKET.PUBLIC, STORAGE_BUCKET.PRIVATE];
 
 const probeBucket = async (client, bucket) => {
-  const key = `${prefix()}staging/__preflight_${Date.now()}_${Math.random()
+  /**
+   * ⚠️ `stagingPrefix()`, not a second copy of the string.
+   *
+   * This probe is litter that the lifecycle rule has to be able to reach, and
+   * the rule keys on exactly one prefix. Spelling it here as well is how the two
+   * drift until the probe lands somewhere nothing sweeps — which is what
+   * happened when this read `${prefix()}staging/` and the rule was written for
+   * `staging/`.
+   */
+  const key = `${stagingPrefix()}__preflight_${Date.now()}_${Math.random()
     .toString(36)
     .slice(2, 8)}.txt`;
 
