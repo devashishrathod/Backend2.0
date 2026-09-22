@@ -6,7 +6,10 @@ const SubBrand = require("../../models/SubBrand");
 const { buildAggregateLookup } = require("../../database");
 const { SYSTEM_VERIFICATION_STATUS } = require("../../constants");
 const { throwError } = require("../../utils");
-const { customerVisibleBrandFilter } = require("../../helpers/brands");
+const {
+  customerVisibleBrandFilter,
+  getBrandRelationship,
+} = require("../../helpers/brands");
 // The live plan, resolved the same way on every customer surface — never off
 // the stale `Brand.subscribedId` pointer. See the helper for what that cost.
 const { buildBrandPlanLookup } = require("../../helpers/subscribeds");
@@ -289,9 +292,14 @@ const fetchOutlets = (_id) =>
  * that response by role, this builds only what the customer profile screen
  * renders, so there is no sensitive field left to accidentally leak.
  *
- * Four independent indexed reads run in parallel.
+ * Five independent indexed reads run in parallel.
+ *
+ * @param {object} payload `{ brandId }`
+ * @param {object} viewer  `req.customerId` — a populated Customer document, or
+ *                         `undefined` for a guest. Identity is context here, not
+ *                         a requirement: the route is `optionalAuth`.
  */
-exports.getCustomerBrand = async (payload) => {
+exports.getCustomerBrand = async (payload, viewer) => {
   const { brandId } = payload;
 
   if (!mongoose.Types.ObjectId.isValid(brandId)) {
@@ -299,14 +307,26 @@ exports.getCustomerBrand = async (payload) => {
   }
   const _id = new mongoose.Types.ObjectId(brandId);
 
-  const [brand, features, showcase, outlets] = await Promise.all([
+  const [brand, features, showcase, outlets, relationship] = await Promise.all([
     fetchBrand(_id),
     fetchFeatures(_id),
     fetchShowcase(_id),
     fetchOutlets(_id),
+    /**
+     * The viewer's own follow / avoid state, joined here rather than projected
+     * into `brandPipeline`. `followersCount` is a fact about the brand and is
+     * the same for every caller; these two are facts about whoever is asking,
+     * so they cannot live in a pipeline that is shared across viewers.
+     *
+     * A guest resolves to no customer and gets `false` for both — not a missing
+     * key, so the follow button always has a state to render.
+     */
+    getBrandRelationship(viewer, _id),
   ]);
 
   if (!brand) throwError(404, "Brand not found");
 
-  return { ...brand, features, showcase, outlets };
+  // Spread beside `followersCount`, where the app already looks for everything
+  // about this brand's following.
+  return { ...brand, ...relationship, features, showcase, outlets };
 };

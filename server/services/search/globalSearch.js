@@ -1,6 +1,9 @@
 const { throwError } = require("../../utils");
 const { getCustomerConfig } = require("../../helpers/settings");
-const { resolveCustomerCoordinates } = require("../../helpers/customers");
+const {
+  resolveCustomerCoordinates,
+  resolveCustomerId,
+} = require("../../helpers/customers");
 const {
   SEARCH_RESULT_TYPES,
   SEARCH_SECTION_ORDER,
@@ -61,7 +64,15 @@ const commitHistory = ({ userId, query, term, normalized, config }) => {
   });
 };
 
-exports.globalSearch = async (userId, query) => {
+/**
+ * @param {string}        userId   the signed-in `User`, or `undefined` for a guest
+ * @param {object}        query    the query string
+ * @param {object|string} viewer   `req.customerId` — a populated `Customer`
+ *                                 document, normalised below. A vendor or admin
+ *                                 previewing the app has none, and that is not
+ *                                 an error; they simply get no personalisation.
+ */
+exports.globalSearch = async (userId, query, viewer) => {
   const config = (await getCustomerConfig()).search;
 
   /**
@@ -109,7 +120,18 @@ exports.globalSearch = async (userId, query) => {
   const latitude = coordinates?.latitude;
   const longitude = coordinates?.longitude;
 
-  const base = { term, normalized, latitude, longitude, hasGeo };
+  /**
+   * Normalised **once**, here, rather than inside each section builder.
+   *
+   * `base` is spread into every builder, and a `customerId` that is sometimes a
+   * document and sometimes an id is the exact trap `resolveCustomerId` exists
+   * for — a `$match` on the document matches nothing and reads as "this
+   * customer follows no brands". Past this line the name is honest: an
+   * ObjectId, or `null` for a guest. Builders that do not personalise ignore it.
+   */
+  const customerId = resolveCustomerId(viewer);
+
+  const base = { term, normalized, latitude, longitude, hasGeo, customerId };
 
   // ── Single-type mode ──────────────────────────────────────────────────────
   if (query.type) {

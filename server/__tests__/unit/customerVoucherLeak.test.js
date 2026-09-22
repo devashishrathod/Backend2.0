@@ -136,17 +136,77 @@ describe("🔴 storage internals never reach a customer", () => {
       }),
     ]) {
       const projected = stageOf(pipeline)?.$addFields["version.images"].$map.in;
-      expect(Object.keys(projected).sort()).toEqual(["_id", "sortOrder", "url"]);
+      expect(Object.keys(projected).sort()).toEqual([
+        "_id",
+        "media",
+        "sortOrder",
+      ]);
       /**
        * ⚠️ The **value**, not just the key.
        *
-       * Checking the key set alone passes `url: "$$i.media"` — three keys,
+       * Checking the key set alone passes `media: "$$i.media"` — three keys,
        * correct names, and the whole media object (storage included) riding out
        * under one of them. That is exactly the leak this stage exists to stop,
        * and it would have looked clean.
+       *
+       * 🔴 So `media` has to be an object built leaf by leaf, and the leaves
+       * have to be named. Anything the stage does not name cannot leak, which
+       * is the entire mechanism — `storage` is absent here because nobody
+       * wrote it down, not because something strips it later.
        */
-      expect(projected.url).toBe("$$i.media.url");
+      expect(typeof projected.media).toBe("object");
+      expect(Object.keys(projected.media).sort()).toEqual(["kind", "url"]);
+      expect(projected.media.url).toBe("$$i.media.url");
+      expect(projected.media.kind).toBe("$$i.media.kind");
     }
+  });
+
+  /**
+   * 🔴 Why `media` survives the stage instead of being flattened to `url`.
+   *
+   * It was flattened once, and it cost the V-4a banner fallback: the images
+   * still rendered (`toCustomerImage` reads `image.url` as a fallback) while
+   * `pickVoucherBanner` looked for `image.media.url` and found nothing, so
+   * every voucher without an approved banner answered `bannerUrl: null`.
+   *
+   * Two consumers, one array, and the shape has to satisfy both. The customer's
+   * own three keys are unchanged — that is the test above this one — so this is
+   * about what the mappers are handed, not about what the app receives.
+   */
+  test("the narrowed shape is the one `pickVoucherBanner` reads", () => {
+    const {
+      pickVoucherBanner,
+    } = require("../../helpers/vouchers/pickVoucherBanner");
+
+    const row = mapCustomerVoucherListItem({
+      voucherId: "v1",
+      name: "Lunch deal",
+      banner: null,
+      version: {
+        _id: "ver1",
+        versionNumber: 3,
+        // Shaped the way the stage above leaves it: `media`, narrowed.
+        images: [
+          { _id: "img1", media: { url: "https://cdn.example.com/1.webp", kind: "IMAGE" }, sortOrder: 1 },
+        ],
+        offers: [storedOffer()],
+      },
+    });
+
+    expect(row.bannerUrl).toBe("https://cdn.example.com/1.webp");
+    expect(row.bannerIsFallback).toBe(true);
+    // And the app still receives the flat three keys it always has.
+    expect(row.version.images[0]).toEqual({
+      _id: "img1",
+      url: "https://cdn.example.com/1.webp",
+      sortOrder: 1,
+    });
+    // Belt and braces: the helper agrees when called directly.
+    expect(
+      pickVoucherBanner(null, [
+        { _id: "img1", media: { url: "https://cdn.example.com/1.webp", kind: "IMAGE" }, sortOrder: 1 },
+      ]).bannerUrl,
+    ).toBe("https://cdn.example.com/1.webp");
   });
 });
 

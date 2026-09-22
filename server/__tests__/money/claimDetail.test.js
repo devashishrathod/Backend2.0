@@ -7,7 +7,18 @@ const {
 
 const Transaction = require("../../models/Transaction");
 const VoucherClaim = require("../../models/VoucherClaim");
-const { getClaimTransactionDetail } = require("../../services/voucherClaims");
+const Brand = require("../../models/Brand");
+const Customer = require("../../models/Customer");
+const VoucherVersion = require("../../models/VoucherVersion");
+const Follow = require("../../models/Follow");
+const BrandAvoidance = require("../../models/BrandAvoidance");
+// The real generator — `merchantId` is HMAC-derived from `MERCHANT_ID_SECRET`,
+// so a hand-written string fails validation.
+const { generateBrandMerchantId } = require("../../helpers/brands");
+const {
+  getClaimTransactionDetail,
+  getClaimDetail,
+} = require("../../services/voucherClaims");
 const {
   claimProjection,
   claimRecordProjection,
@@ -19,9 +30,11 @@ const {
   GATEWAY_FEE_BEARER,
 } = require("../../constants/transaction");
 const { VOUCHER_CLAIM_STATUS } = require("../../constants/voucherClaim");
+const { VOUCHER_DISCOUNT_TYPES } = require("../../constants/voucher");
 const { ROLES, PAYMENT_STATUS } = require("../../constants");
 
 const oid = () => new mongoose.Types.ObjectId();
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 let CUSTOMER_A;
 let BRAND_A;
@@ -30,6 +43,43 @@ let OUTLET_1;
 let OUTLET_2;
 let txn;
 let claim;
+let VERSION;
+
+/**
+ * Real documents behind `customerId` and `voucherVersionId`.
+ *
+ * The detail endpoints read both collections now. Against an id that matches
+ * nothing the service returns `null`, which is indistinguishable from an
+ * audience that is not shown the block at all — so the two cases can only be
+ * told apart if the documents actually exist.
+ */
+let codeSeq = 95_000_000;
+
+const seedVersion = async (brandId) =>
+  VoucherVersion.create({
+    voucherId: oid(),
+    brandId,
+    createdBy: oid(),
+    categoryId: oid(),
+    subCategoryId: oid(),
+    name: "Test Voucher",
+    versionNumber: 4,
+    versionCode: `VCH-${String(codeSeq++).padStart(8, "0")}-V1`,
+    startAt: new Date(Date.now() - DAY_MS),
+    endAt: new Date(Date.now() + 90 * DAY_MS),
+    images: [
+      { media: { url: "https://cdn.test/one.webp", kind: "IMAGE" }, sortOrder: 1 },
+    ],
+    offers: [
+      {
+        title: "20% off",
+        minBillAmount: 100,
+        discountType: VOUCHER_DISCOUNT_TYPES.PERCENTAGE,
+        discountValue: 20,
+        sortOrder: 1,
+      },
+    ],
+  });
 
 const customer = (id) => ({ role: ROLES.CUSTOMER, customerId: id });
 const vendor = (brandId) => ({ role: ROLES.VENDOR, brandId });
@@ -65,6 +115,8 @@ const seed = async ({ customerId, brandId, subBrandId }) => {
     documentToken: "a".repeat(64),
     voucher: {
       claimId,
+      voucherVersionId: VERSION._id,
+      versionNumber: VERSION.versionNumber,
       billAmount: 1000,
       offerDiscount: 200,
       netBill: 800,
@@ -79,8 +131,8 @@ const seed = async ({ customerId, brandId, subBrandId }) => {
     _id: claimId,
     customerId,
     voucherId: oid(),
-    voucherVersionId: oid(),
-    versionNumber: 1,
+    voucherVersionId: VERSION._id,
+    versionNumber: VERSION.versionNumber,
     brandId,
     subBrandId,
     billAmount: 1000,
@@ -109,23 +161,45 @@ const seed = async ({ customerId, brandId, subBrandId }) => {
   return { transaction, claim: claimDoc };
 };
 
+const MODELS = [
+  Transaction,
+  VoucherClaim,
+  Customer,
+  VoucherVersion,
+  Follow,
+  BrandAvoidance,
+];
+
 beforeAll(async () => {
   await connectTestDb();
-  for (const m of [Transaction, VoucherClaim]) await m.createIndexes();
+  for (const m of MODELS) await m.createIndexes();
 });
 
 afterAll(async () => {
-  await clearCollections(Transaction, VoucherClaim);
+  await clearCollections(...MODELS);
   await disconnectTestDb();
 });
 
 beforeEach(async () => {
-  await clearCollections(Transaction, VoucherClaim);
-  CUSTOMER_A = oid();
+  await clearCollections(...MODELS);
   BRAND_A = oid();
   BRAND_B = oid();
   OUTLET_1 = oid();
   OUTLET_2 = oid();
+
+  const [buyer, version] = await Promise.all([
+    Customer.create({
+      userId: oid(),
+      uniqueId: "TDC000042",
+      fullName: "Asha Menon",
+      email: "asha@example.com",
+      mobile: "9876543210",
+      whatsappNumber: "9876543211",
+    }),
+    seedVersion(BRAND_A),
+  ]);
+  CUSTOMER_A = buyer._id;
+  VERSION = version;
 
   ({ transaction: txn, claim } = await seed({
     customerId: CUSTOMER_A,
@@ -286,6 +360,19 @@ describe("what the page needs to render", () => {
     expect(attached.claimCode).toBe(claim.claimCode);
   });
 
+  /**
+   * ⚠️ `canSeeCustomerContact` used to be `false` here, and this assertion was
+   * changed deliberately rather than deleted.
+   *
+   * The brand side was given the buyer's **email** — so a flag saying "no
+   * contact at all" became untrue. It could not simply be left alone either: a
+   * panel that hides the whole customer block on `canSeeCustomerContact: false`
+   * would have gone on hiding a field it was now being sent.
+   *
+   * `canSeeCustomerPhone` is what carries the part that did not move, and the
+   * pair is asserted together so neither can drift away from
+   * `customerIdentityProjection` unnoticed.
+   */
   it("tells the client what it may render instead of making it guess", async () => {
     const { viewer } = await getClaimTransactionDetail(
       vendor(BRAND_A),
@@ -294,7 +381,27 @@ describe("what the page needs to render", () => {
 
     expect(viewer.role).toBe(ROLES.VENDOR);
     expect(viewer.canSeePlatformCosts).toBe(false);
-    expect(viewer.canSeeCustomerContact).toBe(false);
+    // An email, yes.
+    expect(viewer.canSeeCustomerContact).toBe(true);
+    // The number, never.
+    expect(viewer.canSeeCustomerPhone).toBe(false);
+  });
+
+  /**
+   * The flags are a promise about the payload, so they are checked **against**
+   * it rather than on their own. A boolean that agrees with nothing is worse
+   * than no boolean: a client acts on it.
+   */
+  it("keeps the viewer flags honest about what actually came back", async () => {
+    for (const actor of [vendor(BRAND_A), subVendor(BRAND_A, OUTLET_1), admin()]) {
+      const { viewer, customer: buyer } = await getClaimTransactionDetail(
+        actor,
+        txn._id,
+      );
+
+      expect(Boolean(buyer?.email)).toBe(viewer.canSeeCustomerContact);
+      expect(Boolean(buyer?.mobile)).toBe(viewer.canSeeCustomerPhone);
+    }
   });
 
   it("carries the payment method and the moment it happened", async () => {
@@ -492,5 +599,217 @@ describe("the whitelist fails closed", () => {
     // assertions above start passing for the wrong reason.
     expect(claimProjection(ROLES.ADMIN).gatewayFee).toBe(1);
     expect(claimRecordProjection(ROLES.ADMIN).pricing).toBe(1);
+  });
+});
+
+/**
+ * 🔴 `brand.isFollowed` / `brand.isAvoided` describe **the viewer**, never the
+ * buyer.
+ *
+ * These two endpoints have three audiences, so the flags had to be about
+ * somebody. Answering about the buyer would tell a vendor "this customer has
+ * you avoided" — the same class of disclosure `canSeeCustomerPhone: false`
+ * refuses one field over. The helper reads `actor`, not
+ * `transaction.customerId`; this pins the
+ * **call site**, because the helper can be perfectly correct and still be handed
+ * the wrong argument.
+ */
+describe("the brand block reports the viewer, not the buyer", () => {
+  let BRAND_DOC;
+
+  beforeEach(async () => {
+    BRAND_DOC = await Brand.create({
+      brandName: "fixture brand",
+      uniqueId: `TDB${Date.now()}${Math.floor(Math.random() * 100000)}`,
+      userId: oid(),
+      merchantId: await generateBrandMerchantId(),
+    });
+
+    // Re-seed the money rows against the real brand, so `brand` is not null.
+    await clearCollections(Transaction, VoucherClaim);
+    ({ transaction: txn, claim } = await seed({
+      customerId: CUSTOMER_A,
+      brandId: BRAND_DOC._id,
+      subBrandId: OUTLET_1,
+    }));
+
+    // The buyer both follows and avoids this brand — the strongest possible
+    // signal, so a leak cannot hide behind a false that happened to be right.
+    await Follow.create({
+      followerId: CUSTOMER_A,
+      followeeId: BRAND_DOC._id,
+    });
+    await BrandAvoidance.create({
+      customerId: CUSTOMER_A,
+      brandId: BRAND_DOC._id,
+    });
+  });
+
+  afterEach(async () => {
+    await clearCollections(Brand);
+  });
+
+  it("gives the buyer their own state on the payment detail", async () => {
+    const result = await getClaimTransactionDetail(
+      customer(CUSTOMER_A),
+      String(txn._id),
+    );
+
+    expect(result.brand.isFollowed).toBe(true);
+    expect(result.brand.isAvoided).toBe(true);
+  });
+
+  it("hides the buyer's state from the vendor who owns the brand", async () => {
+    const result = await getClaimTransactionDetail(
+      vendor(BRAND_DOC._id),
+      String(txn._id),
+    );
+
+    expect(result.brand.isFollowed).toBe(false);
+    expect(result.brand.isAvoided).toBe(false);
+    // The control: the vendor really is looking at the right row.
+    expect(result.viewer.scope).toBe("BRAND");
+  });
+
+  it("hides the buyer's state from the outlet and from an admin", async () => {
+    for (const actor of [subVendor(BRAND_DOC._id, OUTLET_1), admin()]) {
+      const result = await getClaimTransactionDetail(actor, String(txn._id));
+      expect(result.brand.isFollowed).toBe(false);
+      expect(result.brand.isAvoided).toBe(false);
+    }
+  });
+
+  /**
+   * The claim page states in its own comment that its `brand` is the same shape
+   * as the payment page's. Adding a key to one and not the other is how a
+   * detail page quietly starts carrying less than the page it was opened from.
+   */
+  it("keeps the claim detail's brand block the same shape", async () => {
+    const payment = await getClaimTransactionDetail(
+      customer(CUSTOMER_A),
+      String(txn._id),
+    );
+    const claimPage = await getClaimDetail(customer(CUSTOMER_A), {
+      claimId: String(claim._id),
+    });
+
+    expect(Object.keys(claimPage.brand).sort()).toEqual(
+      Object.keys(payment.brand).sort(),
+    );
+    expect(claimPage.brand.isFollowed).toBe(true);
+    expect(claimPage.brand.isAvoided).toBe(true);
+  });
+
+  it("hides the buyer's state from the vendor on the claim detail too", async () => {
+    const result = await getClaimDetail(vendor(BRAND_DOC._id), {
+      claimId: String(claim._id),
+    });
+
+    expect(result.brand.isFollowed).toBe(false);
+    expect(result.brand.isAvoided).toBe(false);
+  });
+});
+
+/**
+ * ---------------- who paid, and which version ----------------
+ *
+ * Both blocks sit beside `brand` and `outlet` rather than inside `payment`,
+ * because a detail response is a bundle and those are their two siblings in the
+ * listing. The listing nests all four on the row; this endpoint returns the
+ * payment as one member.
+ */
+describe("the customer and voucherVersion blocks on a detail page", () => {
+  const openBoth = async (actor) => [
+    await getClaimTransactionDetail(actor, String(txn._id)),
+    await getClaimDetail(actor, { claimId: String(claim._id) }),
+  ];
+
+  /**
+   * 🔴 Name, id and email — never the number.
+   *
+   * ⚠️ Mutation note: pass `actor.role` instead of `access.role` into
+   * `customerIdentityProjection` and this still passes for a vendor token, which
+   * is exactly why the customer case below is asserted separately.
+   */
+  it("gives the vendor a name, a unique id and an email on both endpoints", async () => {
+    for (const result of await openBoth(vendor(BRAND_A))) {
+      expect(result.customer.fullName).toBe("Asha Menon");
+      expect(result.customer.uniqueId).toBe("TDC000042");
+      expect(result.customer.email).toBe("asha@example.com");
+
+      expect(result.customer.mobile).toBeUndefined();
+      expect(result.customer.whatsappNumber).toBeUndefined();
+      // The ObjectId the payment projection deliberately withholds must not
+      // reappear one key deeper.
+      expect(result.customer._id).toBeUndefined();
+      expect(result.payment.customerId).toBeUndefined();
+    }
+  });
+
+  it("gives an admin the phone numbers as well", async () => {
+    for (const result of await openBoth(admin())) {
+      expect(result.customer.email).toBe("asha@example.com");
+      expect(result.customer.mobile).toBe("9876543210");
+      expect(result.customer.whatsappNumber).toBe("9876543211");
+    }
+  });
+
+  /**
+   * `null`, and the key is still there.
+   *
+   * A missing key would make a client guess whether the block was withheld or
+   * the lookup failed; `null` says "not shown" in the one shape the rest of this
+   * response already uses for `outlet`.
+   */
+  it("gives the customer reading their own receipt no block at all", async () => {
+    for (const result of await openBoth(customer(CUSTOMER_A))) {
+      expect(result).toHaveProperty("customer");
+      expect(result.customer).toBeNull();
+    }
+  });
+
+  it("names the voucher version for every audience", async () => {
+    for (const actor of [
+      customer(CUSTOMER_A),
+      vendor(BRAND_A),
+      subVendor(BRAND_A, OUTLET_1),
+      admin(),
+    ]) {
+      for (const result of await openBoth(actor)) {
+        expect(result.voucherVersion.versionCode).toMatch(/^VCH-\d{8}-V1$/);
+        expect(result.voucherVersion.versionNumber).toBe(4);
+      }
+    }
+  });
+
+  /**
+   * The promise the two services make to each other in prose: a detail page
+   * must never carry less than the page it was opened from, and these two are
+   * read side by side by the same screens.
+   */
+  it("keeps both blocks the same shape across the two detail endpoints", async () => {
+    const [payment, claimPage] = await openBoth(vendor(BRAND_A));
+
+    expect(Object.keys(claimPage.customer).sort()).toEqual(
+      Object.keys(payment.customer).sort(),
+    );
+    expect(Object.keys(claimPage.voucherVersion).sort()).toEqual(
+      Object.keys(payment.voucherVersion).sort(),
+    );
+  });
+
+  /**
+   * ⚠️ Neither read filters `isDeleted`. A closed account does not unmake a sale
+   * the brand will still be settled for, and a counter left with a row it cannot
+   * identify is worse than a name belonging to somebody who has left.
+   */
+  it("still names a customer who has since closed their account", async () => {
+    await Customer.updateOne(
+      { _id: CUSTOMER_A },
+      { $set: { isDeleted: true, isActive: false } },
+    );
+
+    const [payment] = await openBoth(vendor(BRAND_A));
+    expect(payment.customer.fullName).toBe("Asha Menon");
   });
 });

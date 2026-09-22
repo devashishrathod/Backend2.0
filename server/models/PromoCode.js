@@ -40,6 +40,47 @@ const promoCodeSchema = new mongoose.Schema(
       maxlength: PROMO_CODE_LIMITS.MAX_DESCRIPTION_LENGTH,
     },
 
+    /**
+     * Whether the code appears in the customer app's and the vendor panel's own
+     * listing (`GET /promoCodes/customer/get-all`, `/vendor/get-all`).
+     *
+     * ⚠️ **Default `false`, and the listing asks for `true`.** This is the exact
+     * opposite reading of the `audience` trap below, and deliberately so: a
+     * schema default applies on write only, so every code created before this
+     * field existed has no value at all. Reading absent as "listed" would have
+     * published every targeted campaign on the platform — the influencer code,
+     * the win-back code, the one code mailed to a single customer — the moment
+     * this shipped. Absent must mean hidden, which `{ isPublic: true }` gives
+     * for free, and an admin opts a code in.
+     *
+     * It changes nothing about redemption: a hidden code still works when it is
+     * typed. This decides whether we hand it out, not whether it is valid.
+     */
+    isPublic: { type: Boolean, default: false },
+
+    /**
+     * Extra terms an admin writes for the listed card.
+     *
+     * Everything the code already enforces — the minimum bill, the window, the
+     * per-customer cap, the brand and category scope — is **derived** by
+     * `helpers/promoCodes/buildPromoTerms.js` and is not stored here. A term
+     * typed by hand can contradict what the validator actually does, and the
+     * customer finds out at checkout; a derived one cannot.
+     *
+     * This is for what no field expresses: "dine-in only", "not valid with
+     * other offers".
+     */
+    termsAndConditions: {
+      type: [
+        {
+          type: String,
+          trim: true,
+          maxlength: PROMO_CODE_LIMITS.MAX_TERM_LENGTH,
+        },
+      ],
+      default: [],
+    },
+
     // ---------- discount ----------
     discountType: {
       type: String,
@@ -150,5 +191,15 @@ promoCodeSchema.index({ isActive: 1, isDeleted: 1, validTill: 1 });
 promoCodeSchema.index({ audience: 1, isDeleted: 1, createdAt: -1 });
 // Multikey — powers the `stats.promoCodes` count on the category listing.
 promoCodeSchema.index({ categoryIds: 1, isDeleted: 1 });
+/**
+ * The customer and vendor listings. Both ask the same question — "which live,
+ * listed codes belong to my side?" — and without this they scan every code on
+ * the platform, including the hidden ones, on a screen a customer opens mid
+ * checkout.
+ *
+ * `isPublic` sits ahead of `audience` because it is the most selective term:
+ * most codes are never listed.
+ */
+promoCodeSchema.index({ isPublic: 1, audience: 1, isDeleted: 1, isActive: 1 });
 
 module.exports = mongoose.model("PromoCode", promoCodeSchema);

@@ -5,6 +5,7 @@ const {
   isVendor,
   isAdmin,
   isVendorOrAdmin,
+  optionalAuth,
 } = require("../middlewares");
 const { validateAddPanDetails } = require("../validator/pan");
 const { validateAddGstDetails } = require("../validator/gst");
@@ -160,13 +161,32 @@ router.get(
 // narrows to the curated picks, and without it the picks simply lead the list.
 // Declared before `/customer/get/:brandId` so the literal path is never read as
 // a brand id.
+//
+// ---------------------------------------------------------------------------
+// `optionalAuth`, not no gate at all — the same correction `routes/vouchers.js`
+// carries, for the same reason.
+//
+// Both handlers now return `isFollowed` / `isAvoided`, which are facts about the
+// **viewer**, and the viewer is read off `req.customerId`. With no gate that is
+// `undefined` even for a signed-in customer, so every follow button on every
+// brand card would render unpressed for everybody — an endpoint that is wrong
+// rather than one that errors.
+//
+// ⚠️ It is not a pure widening. A caller sending an **expired** token used to
+// get a normal 200 with the token ignored; it now gets a 401. That is
+// deliberate: silently downgrading a stale session to guest shows the customer
+// an impersonal screen and never asks them to sign in again. A guest sending no
+// token at all is unaffected.
+// ---------------------------------------------------------------------------
 router.get(
   "/customer/get-all",
+  optionalAuth,
   validateSchema(validateGetAllCustomerBrands),
   getAllCustomer,
 );
 router.get(
   "/customer/get/:brandId",
+  optionalAuth,
   validateSchema(validateGetCustomerBrand),
   getCustomer,
 );

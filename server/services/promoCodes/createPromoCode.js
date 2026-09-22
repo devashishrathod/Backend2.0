@@ -65,6 +65,27 @@ exports.assertCoherent = async (payload, existing = {}) => {
     }
   }
 
+  /**
+   * A listed code has to say what it is.
+   *
+   * The headline and the terms on the card are derived from the code's own
+   * rules, but nothing derives the *offer* — "₹50 off your first coffee" is the
+   * one line only a person can write. Without it the card renders a code and a
+   * discount with no reason to tap it, and the failure is silent: the listing
+   * works, it just publishes something nobody understands.
+   *
+   * Checked against the merged view, so clearing the description on an already
+   * public code is refused too.
+   */
+  const isPublic = payload.isPublic ?? existing.isPublic ?? false;
+  const description = payload.description ?? existing.description;
+  if (isPublic && !String(description || "").trim()) {
+    throwError(
+      422,
+      "A promo code shown in the app needs a description — it is the only line on the card that says what the offer is.",
+    );
+  }
+
   // ---------- audience ----------
   const audience = payload.audience ?? existing.audience ?? PROMO_AUDIENCE.VENDOR;
   const isCustomer = audience === PROMO_AUDIENCE.CUSTOMER;

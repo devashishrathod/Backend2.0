@@ -71,13 +71,14 @@ const sendThrottledMobileOtp = async (mobile, purpose = "auth") => {
      * for an hour over a problem entirely on our side — five attempts burned
      * without a single message ever leaving.
      *
-     * ⚠️ Pulled **by value**, not by a time range. Releasing everything from the
-     * last minute would hand back slots claimed by other callers in the same
-     * second, which is the flood this exists to stop.
+     * ⚠️ Pulled **by nonce** (O-1), the same as the WhatsApp/email path. By
+     * `claim.at` — which this was — a failed send handed back whichever entry
+     * shared its millisecond, so it could release a slot another caller had
+     * just won.
      */
     await OtpThrottle.updateOne(
       { target: mobile, purpose },
-      { $pull: { sends: claim.at } },
+      { $pull: { sends: { nonce: claim.nonce } } },
     ).catch(() => {});
 
     throw error;

@@ -127,6 +127,30 @@ hai ki kya hatana hai.
 
 ## 4. Kram — kya pehle, kya baad me
 
+> ## ✅ CloudFront zinda hai — 2026-09-22 ko live naapa gaya
+>
+> | | |
+> |---|---|
+> | prod CDN | `https://cdn.trydood.com` |
+> | nonprod CDN | `https://d3hfpe4kcf7s6s.cloudfront.net` |
+> | prefix | `dev/` · `stg/` · prod me khaali |
+>
+> Non-prod par poora round trip chal chuka hai, asli code se:
+>
+> ```
+> checkS3Ready()              ✅ ok: true
+> upload → CDN unsigned GET   ✅ 200, bytes byte-for-byte wahi
+> delete                      ✅ S3 se sach me gaya
+> private url()               ✅ null       signed GET ✅ 200
+> private anonymous           ✅ 403        url() throw ✅
+> staging/dev/…  CDN se       ✅ 403
+> ```
+>
+> 🔒 **Prod bucket yahan se verify nahi ho saka, aur wo sahi hai:**
+> `trydood-app-nonprod` user ko `trydood-prod-public` par `s3:PutObject` ka
+> access nahi hai. IAM separation kaam kar rahi hai. Prod ka verification switch
+> ke din `checkS3Ready()` prod ke apne role se karega.
+
 ### Abhi kahan khade hain — 2026-09-19 ko naapa gaya
 
 | Cheez | Haalat |
@@ -192,7 +216,11 @@ aisi row baad me haath se theek karni padegi.
 ### 5.2 Rehearsal ki checklist
 
 - [ ] Non-prod CloudFront banaya, origin `trydood-nonprod-public`, OAC ke saath
-- [ ] `staging/*` par deny behaviour laga
+- [ ] `staging/*` par deny laga — **aur ek asli key se naap kar dekha**, sirf
+      policy padh kar nahi. Yahi wo jagah hai jahan ye chup-chaap khula reh gaya
+      tha: policy sahi likhi thi, par key ka shape `dev/staging/…` tha
+- [ ] `staging/` par lifecycle rule (1 din) — **ek hi rule**, kyunki `staging/`
+      sabse upar hai
 - [ ] `CDN_BASE_URL` non-prod domain par set, deploy hua
 - [ ] Boot log me `[s3]` line sahi buckets aur region dikha rahi hai
 - [ ] Panel se `provider = AWS_S3` — **save hua** (preflight pass)

@@ -8,8 +8,8 @@ jhooth nahi bol sakti.
 
 | Collection | Requests | Status |
 |---|---:|---|
-| `trydood-customer.postman_collection.json` | 144 | ⚠️ 502 assertions · **2 failed** · 210 examples, **144/144 requests par** |
-| `trydood-vendor.postman_collection.json` | 136 | ⚠️ 300 assertions · **1 failed** · 163 examples, **136/136 requests par** |
+| `trydood-customer.postman_collection.json` | 149 | ⚠️ 526 assertions · **3 failed** · 217 examples, **149/149 requests par** |
+| `trydood-vendor.postman_collection.json` | 139 | ⚠️ 313 assertions · **4 failed** · 156 examples, **139/139 requests par** |
 | `trydood-admin.postman_collection.json` | 124 | 143 examples, **124/124 requests par** — is cycle me dobara nahi chalayi |
 
 > ### ⚠️ Ye teen number haath se sync hote hain
@@ -19,8 +19,8 @@ jhooth nahi bol sakti.
 >
 > ```
 > node scripts/verifyApiCoverage.js
->   customer   144 requests · 210 examples
->   vendor     136 requests · 163 examples
+>   customer   149 requests · 217 examples
+>   vendor     139 requests · 156 examples
 >   admin      124 requests · 143 examples
 > ```
 >
@@ -34,7 +34,7 @@ jhooth nahi bol sakti.
 > collection me thi — yaani admin team ke paas wo doc tha jise wo apne collection
 > me try hi nahi kar sakte the.
 
-> ### ⚠️ 3 assertions fail hain — fixture/state ki, code ki nahi
+> ### ⚠️ 7 assertions fail hain — fixture/state ki, code ki nahi
 >
 > Pehle yahan **0 failed** likha tha. Wo number examples ke aakhri capture ke
 > waqt sach tha aur phir chup-chaap purana ho gaya — assertions tab se chal hi
@@ -42,9 +42,51 @@ jhooth nahi bol sakti.
 >
 > | Collection | Assertion | Kya hai |
 > |---|---|---|
+> | customer | `Guest — Home banners` field list | example ka shape purana |
 > | customer | `Invoice PDF kholo — status: expected 422` | seeded invoice token |
-> | customer | `Email band karo — updatedAt: expected null` | notification-preference fixture |
-> | vendor | `Email band karo — updatedAt: expected null` | wahi |
+> | customer | `Email band karo — updatedAt` | notification-preference fixture |
+> | vendor | `Email band karo — updatedAt` | wahi |
+> | vendor | `Add an outlet — 500` | outlet fixture state |
+> | vendor | `Submit for review — 422` | voucher fixture state |
+> | vendor | `Submit voucher banner (file) — Voucher not found` | wahi |
+>
+> ⚠️ **Inme se ek bhi promo listing ka nahi hai** — `05a — Promo Codes`
+> (customer), `13` ke do promo requests (vendor), aur chaaron access-control
+> `403` requests sab pass hain.
+>
+> ### 🔴 **Har capture se pehle re-seed karo.** Ye ginti uspar tiki hai
+>
+> Bina fresh seed ke chalane par yahi collections **13 + 5 = 18** fail deti hain,
+> aur teen alag jagah par: `Set Password` admin ka password badal deta hai to
+> agle run me login `401` deta hai; email-verification ke OTP ek baar hi chalte
+> hain; notification preference `blockedBy: UNVERIFIED` par atak jaati hai.
+>
+> Ek bhi asli nahi hai — sab pichhle run ki kharch ho chuki fixtures hain. Par
+> padhne me wo code ke bug jaise lagti hain, aur teen alag modules par ungli
+> uthati hain. Isliye ye kram **optional nahi** hai:
+>
+> ```
+> seed → capture customer → seed → capture vendor
+> ```
+
+> ### 🔴 Generator aur seeder dono tootay hue the — V-4 ke saath sync nahi hue
+>
+> Promo listing jodte waqt pata chala ki ye pipeline **chal hi nahi sakti thi**:
+>
+> - `generate-customer-collection.js` aur `scripts/seedPostmanFixtures.js` dono
+>   `VOUCHER_BANNER_TYPE` import karte the, jo V-4 me **delete** ho chuka hai.
+>   Missing named export `undefined` hota hai, error nahi — to require resolve
+>   hota raha aur dono `Object.values(undefined)` / `.IMAGE` par mare.
+> - Seeder voucher images ko `{ url, sortOrder }` likh raha tha, jabki
+>   `voucherImageSchema.media` **required** hai.
+> - `generate-vendor-collection.js` ka banner request **abhi bhi** delete ho chuki
+>   `{bannerType, bannerImage, bannerVideo, bannerGif}` API describe karta hai —
+>   ye **theek nahi hua** (committed collection me sahi `media`/`poster` shape
+>   pehle se hai, sirf generator peeche hai).
+>
+> Iska matlab ye bhi hai ki collections kuch rounds se **generate nahi, haath se
+> patch** ho rahi thin. Naya request jodte waqt yahi karein — generator chalane se
+> captured examples ud jaate hain.
 >
 > ### ✅ `merchantId` wali takraar band ho gayi
 >
@@ -69,19 +111,23 @@ jhooth nahi bol sakti.
 > jaate hain. Customer ko plan ka sirf **naam** milta hai (`subscriptionPlan`),
 > billing record ka aur kuch nahi.
 
-> ### ✅ 223/223 — aur ye ab naapa jaata hai, gina nahi jaata
+> ### ✅ 231/231 — aur ye ab naapa jaata hai, gina nahi jaata
 >
 > ```bash
 > node scripts/verifyApiCoverage.js
 > ```
 >
 > ```
-> Routes served: 223  (220 in routes/, 3 in index.js)
->   ✅ endpoints_category.md    223/223 categorised
->   ✅ role docs                223/223 documented
->   ✅ collections              223/223 have a request
->   ✅ saved examples           223/223 have an example
+> Routes served: 231  (228 in routes/, 3 in index.js)
+>   ✅ endpoints_category.md    231/231 categorised
+>   ✅ role docs                231/231 documented
+>   ✅ collections              231/231 have a request
+>   ✅ saved examples           231/231 have an example
 > ```
+>
+> ⚠️ Yahan **223** likha tha — wahi drift jiske khilaf ye section likha gaya hai,
+> is section ke apne number me. Script roz sach bolti hai; ye block nahi bolta,
+> isliye collection badalne par ise bhi bharna padta hai.
 >
 > Ye routes **built Express routers** se padhta hai (`lib/routeInventory.js`),
 > kisi list se nahi — to jo route maujood hai wo report me hai, chahe kisi ko

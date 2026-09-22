@@ -554,7 +554,7 @@ unprotected endpoint.
 | Keyed on | the **target** (number/email) + purpose — never the IP |
 | Defaults | 60s between codes, 5 an hour — `constants/otp.js` |
 | Admin config | `Setting.security.otp`, which wins. Its own top-level block because vendors *and* customers use the same machinery |
-| Storage | `models/OtpThrottle.js` — a **rolling** window of send times |
+| Storage | `models/OtpThrottle.js` — a **rolling** window of `{ at, nonce }` claims |
 
 ⚠️ **Not the IP.** Indian mobile networks put thousands of real customers behind
 one CGNAT address, so an IP limit locks out a block of people while barely
@@ -564,15 +564,35 @@ inconveniencing an attacker with a phone. A number is a person.
 it would be deleted twelve times inside a one-hour window and cap nothing.
 
 ⚠️ **The claim is the write.** `claimOtpSend` prunes the window and appends in a
-single aggregation-pipeline update, and the caller learns the verdict by asking
-whether its own timestamp survived — read-then-write would let two taps send two
+single aggregation-pipeline update — read-then-write would let two taps send two
 messages, and double the limit the day a second instance starts. Mongoose 9 needs
 `{ updatePipeline: true }` on that call.
 
-⚠️ **A failed send gives the slot back**, pulled **by value**. Keeping it would
-let a provider outage lock a customer out for an hour over a problem entirely on
-our side; releasing by a time range would hand back slots claimed by other
-callers in the same second.
+> ### 🔴 A claim is identified by its **nonce**, never by its timestamp (O-1)
+>
+> Each entry is `{ at, nonce }`, and the caller learns the verdict by asking
+> whether **its own nonce** is in the array.
+>
+> This used to read `sends.includes(now.getTime())`, and that was the whole bug:
+> a timestamp is not an identity. N callers landing in the same millisecond
+> compute the same one, so the single write that actually appended was read by
+> **all** of them as their own — eight concurrent claims all returned
+> `allowed: true`, seven having written nothing, and eight messages went out.
+> The throttle opened precisely under the burst it exists to stop, silently.
+>
+> ⚠️ The atomic write was never wrong and did not change. Only the question
+> asked afterwards did — which is why it survived review: the update always
+> looked correct.
+>
+> Pinned by `__tests__/money/otpThrottle.test.js`, including a mutation note:
+> put the timestamp check back and 8 of 8 pass again.
+
+⚠️ **A failed send gives the slot back**, pulled **by nonce** — `$pull: { sends:
+{ nonce } }`. Keeping it would let a provider outage lock a customer out for an
+hour over a problem entirely on our side. ⚠️ Not by `claim.at` and not by a time
+range: both hand back a slot another caller claimed in the same millisecond, so
+a flood could make itself room by failing. That is the same O-1 bug in reverse,
+and it was live at both release sites.
 
 ---
 

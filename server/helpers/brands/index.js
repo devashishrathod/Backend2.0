@@ -31,9 +31,25 @@ const {
   customerVisibleBrandExpr,
 } = require("./customerVisibleBrand");
 
+const {
+  buildBrandRelationshipMap,
+  brandRelationshipFor,
+  getBrandRelationship,
+} = require("./brandRelationship");
+
 module.exports = {
   customerVisibleBrandFilter,
   customerVisibleBrandExpr,
+  /**
+   * `isFollowed` / `isAvoided` for the **viewer**, not for the brand.
+   *
+   * Every customer-facing brand surface returns the same two keys from the same
+   * place, so the directory row, the search result and the profile it opens
+   * cannot disagree — and a guest gets `false` rather than a missing key.
+   */
+  buildBrandRelationshipMap,
+  brandRelationshipFor,
+  getBrandRelationship,
   resolveActorBrand,
   resolveBrandIdentity,
   assertPublicBrand,

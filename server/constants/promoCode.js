@@ -93,6 +93,42 @@ const PROMO_CODE_LIMITS = Object.freeze({
   // A RESERVED usage older than this is treated as abandoned and reclaimed by
   // the promo sweep job, so a code is never locked up by a dropped checkout.
   RESERVATION_TTL_MINUTES: 30,
+
+  // ---------- the listed card ----------
+  // Extra terms an admin writes on top of the derived ones. Ten short lines is
+  // a card; past that nobody reads them and the drawer scrolls for ever.
+  MAX_TERMS_LINES: 10,
+  MAX_TERM_LENGTH: 200,
+  // How many scoped names a derived term spells out before "and N more". A code
+  // scoped to forty brands would otherwise render forty names on a phone.
+  MAX_SCOPE_NAMES: 5,
+  /**
+   * The listing evaluates every row it returns against the caller, so the page
+   * size is also the query budget. Kept well under the admin listing's 100.
+   */
+  MAX_LIST_LIMIT: 50,
+  DEFAULT_LIST_LIMIT: 20,
+});
+
+/**
+ * What a customer-side discount comes off, said in the customer's words.
+ *
+ * Derived terms are generated from the stored fields rather than typed, so a
+ * listed code can never claim a rule the validator does not enforce. These
+ * labels are the only hand-written part, and they describe the enum, not a
+ * particular code.
+ */
+const PROMO_APPLIES_TO_LABEL = Object.freeze({
+  NET_BILL: "your bill after the voucher offer",
+  CONVENIENCE_FEE: "the convenience fee",
+});
+
+// The vendor twin — which purchases a code may be used for.
+const PROMO_APPLICABLE_ACTION_LABEL = Object.freeze({
+  NEW: "a new subscription",
+  RENEW: "a renewal",
+  UPGRADE: "an upgrade",
+  DOWNGRADE: "a downgrade",
 });
 
 // Every rejection reason, so the API returns something the vendor can act on
@@ -153,6 +189,8 @@ module.exports = {
   PROMO_DISCOUNT_TYPES,
   PROMO_AUDIENCE,
   PROMO_APPLIES_TO,
+  PROMO_APPLIES_TO_LABEL,
+  PROMO_APPLICABLE_ACTION_LABEL,
   PROMO_COST_BEARING_MODE,
   REPORT_GROUP_BY,
   REPORT_LIMITS,

@@ -2,7 +2,10 @@ const mongoose = require("mongoose");
 const Voucher = require("../../models/Voucher");
 const { throwError } = require("../../utils");
 const { VOUCHER_BANNER_STATUS } = require("../../constants/voucherBanner");
-const { deleteVoucherBannerMedia } = require("../../helpers/vouchers");
+const {
+  deleteVoucherBannerMedia,
+  toManagedBanner,
+} = require("../../helpers/vouchers");
 
 const MAX_REASON = 1000;
 
@@ -129,8 +132,17 @@ exports.reviewVoucherBanner = async (adminUserId, voucherId, payload = {}) => {
     await deleteVoucherBannerMedia(supersededCurrent);
   }
 
+  /**
+   * ⚠️ Through `toManagedBanner`, not the raw sub-document.
+   *
+   * This returned `voucher.banner` as stored, so the approval and rejection
+   * responses both carried `storage.publicId` — the object's address, for a
+   * file this admin did not upload. `toMediaResponse`'s admin shape has said
+   * for a while that a panel gets `provider` and never the locator; this
+   * response simply never went through it.
+   */
   return {
     voucherId: voucher._id,
-    banner: voucher.banner,
+    banner: toManagedBanner(voucher.banner),
   };
 };

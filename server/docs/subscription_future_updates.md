@@ -38,6 +38,30 @@ Last updated: 2026-08-24
 `PromoCode` + `PromoCodeUsage`, admin CRUD under `/promoCodes`, and wiring
 through preview → order → verify.
 
+### 🆕 Each side can now see its own codes, not only type them
+
+`GET /promoCodes/vendor/get-all` (`isVendorOrAdmin`) and
+`GET /promoCodes/customer/get-all` (`isCustomer`) list the codes that side may
+use. Read-only — applying one is still the `promoCode` field on preview and
+order-create.
+
+Two things make them safe to add beside the checkout:
+
+- **One set of rules.** Everything a code is judged by moved into
+  `evaluateVendorPromo` / `evaluateCustomerPromo`, which the checkout validators
+  call as well. A listing with its own copy would eventually offer a code that
+  fails on Apply, and nothing would say which screen was wrong.
+- **Opt-in visibility.** `PromoCode.isPublic` defaults to **false** and the
+  listing asks for `true`, so a code written before the field existed stays
+  hidden. Reading absent as "listed" would have published every targeted
+  campaign at once. It changes nothing about redemption — a hidden code still
+  works when typed, which is what a targeted campaign *is*.
+
+Terms on the card are **generated** from the code's own fields, so a listed term
+cannot claim a rule the validator does not enforce. `costBearing` and the
+platform counters (`usedCount`, `totalUsageLimit`) never leave through either
+listing.
+
 **Stacking.** A promo discount stacks on top of the plan's own discount and
 applies to the already-discounted subtotal, never to `listPrice`. GST is charged
 on `listPrice − planDiscount − promoDiscount`, so the tax base stays correct:

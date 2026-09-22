@@ -73,7 +73,7 @@ Ye **re-verification round** tha — har endpoint ka gate code se dobara nikala 
 20. [Showcase APIs](#showcase-apis) — 11
 21. [Voucher APIs](#voucher-apis) — 7
 22. [Brand Feature APIs](#brand-feature-apis) — 5
-23. [Subscription Plan APIs](#subscription-plan-apis) — 2
+23. [Subscription Plan APIs](#subscription-plan-apis) — 3
 24. [My Subscription APIs](#my-subscription-apis) — 2
 25. [Payment APIs](#payment-apis) — 4
 26. [Master Data APIs](#master-data-apis) — 4
@@ -5508,10 +5508,30 @@ GET /vouchers/versions/get-all?brandId=68f1a2b3c4d5e6f7a8b9c3a1&status=DRAFT&lim
         "name": "flat 30% off on total bill",
         "description": "Valid on dine-in and takeaway",
         "tags": ["coffee", "cafe"],
-        "images": [{ "_id": "…", "url": "…", "sortOrder": 1 }],
+        "images": [
+          {
+            "_id": "…",
+            "media": {
+              "url": "…",
+              "kind": "IMAGE",
+              "width": 1200,
+              "height": 800,
+              "mimeType": "image/webp",
+              "sizeBytes": 82314,
+              "originalName": "hero.webp",
+              "provider": "AWS_S3"
+            },
+            "sortOrder": 1
+          }
+        ],
         "offers": [
           { "_id": "…", "title": "30% off above 500", "minBillAmount": 500, "discountType": "PERCENTAGE", "discountValue": 30, "maxDiscountAmount": 300 }
         ],
+        "brand": { "_id": "…", "brandName": "…", "legalBusinessName": "…", "uniqueId": "…", "merchantId": "…", "logo": "…", "isActive": true, "isApproved": true },
+        "voucher": { "_id": "…", "name": "…", "voucherCode": "…", "status": "PUBLISHED", "isActive": true, "isSuggested": false, "suggestionOrder": 0, "currentVersionId": "…", "publishedVersionId": "…", "banner": { "current": { "url": "…", "kind": "IMAGE", "provider": "AWS_S3" }, "pending": null, "status": "APPROVED" }, "createdAt": "…" },
+        "category": { "_id": "…", "name": "…", "image": "…", "isActive": true },
+        "subCategory": { "_id": "…", "name": "…", "image": "…", "isActive": true },
+        "approvedByUser": { "_id": "…", "name": "admin user", "username": "…", "role": "ADMIN" },
         "status": "PUBLISHED",
         "startAt": "2026-09-01T00:00:00.000Z",
         "endAt": "2026-10-01T23:59:59.000Z",
@@ -5543,6 +5563,33 @@ GET /vouchers/versions/get-all?brandId=68f1a2b3c4d5e6f7a8b9c3a1&status=DRAFT&lim
 **3. `sortBy=RELEVANCE` bina `search` ke silently `NEWEST` ban jaata hai** — koi error nahi.
 
 **4. `publish` (#57) ke liye `versionId` yahin se milta hai** — `status: "APPROVED"` filter karke.
+
+**5. 🆕 File ab `media` ke andar hai — teeno panel surfaces par ek hi shape.**
+
+Flat `url` ki jagah `media` object aata hai, wahi jo showcase panel (`formatManagedMedia`) aur ticker panel (`toAdminTickerShape`) dete hain:
+
+```jsonc
+{ "url", "kind", "width", "height", "mimeType", "sizeBytes", "originalName", "provider" }
+// "duration" sirf VIDEO / AUDIO par · "thumbnail" (poster) sirf VIDEO par
+```
+
+⚠️ `provider` **flat** hai, `storage` ke andar nested nahi. `publicId`, `bucket` aur `key` kabhi nahi jaate — wo file ka **pata** hai, uske baare me detail nahi: jiske paas wo hai wo file seedha fetch ya overwrite kar sakta hai, is server ke har check ko bypass karke. `provider` isliye rehta hai kyunki S3 migration ke dauraan dekhna padta hai ki kaunsi file move ho chuki hai — *kaam ka, khatarnak nahi*.
+
+Yahi `voucher.banner.current` / `.pending` par bhi lagta hai. Ek hi jagah faisla hota hai: `helpers/media/toMediaResponse.js`.
+
+**6. 🔴 Joined blocks ab whitelist hain — pehle poore documents ja rahe the.**
+
+`brand`, `voucher`, `category`, `subCategory` aur `*ByUser` lookups par **koi projection thi hi nahi**, aur user lookup `{password: 0, otp: 0, refreshToken: 0}` thi — yaani teen field hatakar baaki poora user document. Jo ja raha tha:
+
+| Block | Ab nahi jaata |
+|---|---|
+| `brand` | `BankId` · `GSTId` · `PANId` · `email` · `mobile` · `whatsappNumber` · `logoStorage` · `approvedByAdminId` / `rejectedByAdminId` / `revokedByAdminId` · `revokeReason` · `verificationAttemptCount` · `systemVerifyId` · saare entitlement counters |
+| `*ByUser` | `email` · `mobile` · `whatsappNumber` · **`walletBalance`** · `tCoinsBalance` · `referralCode` · `notificationPreferences` · `isOnline` · `currentScreen` |
+| `voucher` | `normalizedName` · `createdBy` / `updatedBy` · `banner.*.storage` ka locator |
+
+⚠️ Ye endpoint `isVendorOrAdmin` hai, aur `approvedByUser` / `reviewedByUser` wo **admin** hote hain jinhone voucher review kiya — to ek vendor apni list kholkar admin ka email, mobile aur wallet balance padh sakta tha.
+
+⚠️ Vendor users me `name` set nahi hota, isliye `createdByUser` aksar `{_id, role}` hi aayega. Ye projection ki kami nahi, us user ke paas naam hai hi nahi.
 
 ---
 
@@ -5636,13 +5683,16 @@ poster: <teaser-cover.jpg>
   "data": {
     "voucherId": "68f1a2b3c4d5e6f7a8b9c2a1",
     "banner": {
+      "current": null,
       "pending": {
         "url": "https://res.cloudinary.com/drvdnqydw/image/upload/v1/vouchers/banner-451.jpg",
         "kind": "IMAGE",
+        "width": 1200,
+        "height": 628,
         "mimeType": "image/jpeg",
         "sizeBytes": 184320,
         "originalName": "banner.jpg",
-        "storage": { "provider": "CLOUDINARY", "publicId": "vouchers/banner-451" }
+        "provider": "CLOUDINARY"
       },
       "status": "PENDING",
       "rejectionReason": null,
@@ -5658,11 +5708,22 @@ poster: <teaser-cover.jpg>
 > `current` wahi hai jo customer ko dikhta hai (hamesha approved), `pending` wo jo
 > review me hai.
 >
-> 🔴 Ye **vendor ka apna** write response hai, isliye `storage` aata hai. Customer
-> ke response me wo kabhi nahi jaata.
+> 🔴 **Response ab `{ voucherId, banner }` hai — poora voucher nahi.**
+> Code `return voucher;` kar raha tha, yaani `normalizedName`, `createdBy`,
+> `updatedBy`, `timezone`, `deleteReason` aur model ka har column — jabki ye doc
+> shuru se `{ voucherId, banner }` hi bata raha tha. Ab dono milte hain.
+>
+> 🔴 **`storage` ab nahi aata; uski jagah flat `provider` hai.** Yahan pehle
+> likha tha ki *"vendor ka apna write response hai, isliye `storage` aata hai"* —
+> wo ye samjhata tha ki khatra kyun nahi hai, ye nahi ki **zarurat kyun hai**.
+> Vendor se `publicId` kabhi maanga hi nahi jaata (file `uploadId` se attach hoti
+> hai), to wo field sirf sajawat thi — us ek response par jahan locator bhoolna
+> sabse aasaan hai. Ab teeno banner surfaces — ye upload, admin ka review, aur
+> version listing — **ek hi `toManagedBanner` se** guzarte hain.
 >
 > ⚠️ Banner-less voucher par ab `image: {}`, `video: {}`, `gif: {}` **nahi** aate —
-> pehle teeno khaali object har voucher par likhe jaate the (P9).
+> pehle teeno khaali object har voucher par likhe jaate the (P9). Jis slot me
+> kuch nahi hai wo `null` aata hai.
 
 ### Errors
 | Status | Message | Kab |
@@ -6084,6 +6145,123 @@ GET /subscriptions/getAll?isActive=true&sortBy=price&sortOrder=asc&limit=20
 |---|---|
 | `404` | `Subscription not found` |
 | `422` | *(invalid ObjectId)* |
+
+---
+
+## 67a. GET /promoCodes/vendor/get-all 🆕
+
+**Access:** Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership**
+
+Wo promo codes jo is brand ko plan kharidte waqt mil sakte hain. Har row batati hai **laga sakte ho ya nahi**, nahi to **kyun nahi**, aur — plan chuna ho to — **kitna bachega**.
+
+Ye wahi gate hai jo `POST /transactions/subscribe/preview` (#70) par hai: jo admin kisi brand ke liye purchase preview kar sakta hai, wo usi brand ke codes bhi dekh sakta hai. Brand khud `resolveActorBrand` se tay hota hai — vendor apne alawa kisi ka nahi padh sakta.
+
+### Query Params
+| Param | Type | Required | Notes |
+|---|---|:---:|---|
+| `page` · `limit` | number | ❌ | `limit` max **50**, default 20 |
+| `subscriptionId` | ObjectId | ❌ | Plan ke against price karne ke liye |
+| `brandId` | ObjectId | ⚠️ | **Vendor ke liye optional** (token se), **admin ke liye required** |
+
+### Do tareeke se poocho
+
+| Kaise | Kya milta hai |
+|---|---|
+| **Sirf list** | Catalogue: code, headline, terms, aapke brand ki usage. `savings` **`null`** |
+| **`subscriptionId` ke saath** | Upar ka sab, **plus** asli `savings`, aur wo gates jo plan maangte hain — minimum order value, plan scope, aur **action scope** |
+
+> ⚠️ **`action` aap nahi bhejte, wo nikalta hai.** Jo code sirf renewal par valid hai use pata hona chahiye ki ye renewal hai — aur wo brand ke **current plan** se tay hota hai, na ki request se. Isliye `subscriptionId` dete hi wahi `buildCheckoutPreview` chalta hai jo checkout chalata hai, aur NEW/RENEW/UPGRADE/DOWNGRADE wahin se aata hai.
+>
+> ⚠️ **Isi wajah se ye GET kabhi-kabhi likhta bhi hai.** `getActiveSubscription` `heal: true` par chalta hai: jo `Subscribed` row apni `endDate` guzarne ke baad bhi ACTIVE keh rahi ho, wo wahin EXPIRED ho jaati hai. Repair skip karte to stale row live dikhti, `action` `RENEW` aata jabki sach `NEW` hai, aur `["NEW"]` par scoped code usi vendor ko unusable dikhta jiske liye likha gaya tha — jabki ek click baad checkout wahi row heal karke usi code ko accept kar leta.
+
+### Response — `200`
+
+```jsonc
+{
+  "success": true,
+  "message": "Promo codes fetched successfully",
+  "data": {
+    "isEnabled": true,                  // Setting.vendor.subscription.isPromoCodeEnabled
+    "context": {                        // subscriptionId diya ho tab; warna null
+      "subscriptionId": "68f…k001",
+      "planName": "Gold",
+      "action": "RENEW",
+      "taxableValue": 8000
+    },
+    "total": 2, "totalPages": 1, "page": 1, "limit": 20,
+    "data": [
+      {
+        "_id": "690…b22",
+        "code": "MONSOON20",
+        "headline": "20% OFF up to ₹2,000",
+        "description": "Monsoon offer — kisi bhi plan par",
+        "discountType": "PERCENT",
+        "discountPercent": 20,
+        "discountAmount": 0,
+        "maxDiscountAmount": 2000,
+        "minOrderValue": 5000,
+        "applicableActions": ["NEW", "RENEW"],
+        "firstTimeOnly": false,
+        "validFrom": null,
+        "validTill": "2026-10-31T18:29:59.999Z",
+        "usage": { "perBrandLimit": 1, "usedByYourBrand": 0, "usesLeft": 1 },
+        "terms": [
+          "Valid on plans priced ₹5,000 or more, after the plan's own discount.",
+          "Maximum discount of ₹2,000.",
+          "Valid till 31 Oct 2026.",
+          "Can be used once per brand.",
+          "Valid on Gold, Platinum.",
+          "Valid on a new subscription, a renewal."
+        ],
+        "isApplicable": true,
+        "reason": null,
+        "savings": { "discount": 1600, "base": 8000 }
+      },
+      {
+        "code": "FIRSTPLAN",
+        "isApplicable": false,
+        "reason": "This promo code is only valid on a first subscription purchase.",
+        "savings": null
+      }
+    ]
+  }
+}
+```
+
+### `terms` **banaye** jaate hain
+
+Har line code ke apne field se nikalti hai. Haath se likhi term `₹3,000` keh sakti hai jab code `₹5,000` enforce karta ho — aur kahin kuch galat nahi dikhta, rejection checkout par aata hai. `PromoCode.termsAndConditions` sirf un baaton ke liye hai jo kisi field me express hi nahi hoti, aur wo derived lines ke **baad** aati hain.
+
+### ⚠️ Jo is response me kabhi nahi aayega
+
+| Field | Kyun |
+|---|---|
+| `costBearing` | Discount kaun bhar raha hai. Vendor ko ye batana platform ka margin batana hai |
+| `usedCount` · `totalUsageLimit` | Campaign ka size aur burn rate |
+| `isPublic` · `createdBy` · `isDeleted` | Internal state |
+
+`usage` sirf **aapke brand** ka hai — `usedByYourBrand`, `usesLeft`. Kisi doosre brand ki usage isme nahi ginti, aur RESERVED bhi ginti hai (khula hua order bhi kharch hai).
+
+### ⚠️ Jo list me nahi hai, wo bhi chal sakta hai
+
+Listing sirf `isPublic: true` codes deti hai. Jo code seedhe aapko bheja gaya ho wo list me nahi aayega aur `subscribe/preview` me type karne par chalega. Khatam/expire/abhi-shuru-nahi wale codes list me aate hi nahi; jo live hain par abhi nahi lag sakte wo `isApplicable: false` + `reason` ke saath dikhte hain.
+
+### Kram
+
+Jo lag sakte hain wo pehle, unme sabse zyada bachat wala upar — **page ke andar**.
+
+### Errors
+| Status | Message |
+|---|---|
+| `403` | Doosre brand ka `brandId` bheja |
+| `404` | `Subscription plan not found!` · `Brand not found!` |
+| `422` | Admin ne `brandId` nahi bheja · invalid ObjectId · `limit` > 50 |
+
+> `isEnabled: false` error nahi hai — `data: []` aur ek `message`.
+
+### Apply kaise hota hai
+
+Ye endpoint kuch apply nahi karta. Code uthao aur `POST /transactions/subscribe/preview` (#70) ya `create-order` (#71) ke `promoCode` field me bhejo. Wahan wahi niyam chalte hain jo yahan `isApplicable` decide karte hain, isliye list aur checkout kabhi alag jawab nahi de sakte.
 
 ---
 
@@ -7152,6 +7330,16 @@ par khaali jawab aata hai, chup-chaap galat jawab nahi.
 
 Khaali list `200` + `data: []` hai, `404` nahi.
 
+### 🆕 Har row par `customer` aur `voucherVersion`
+
+`{ fullName, uniqueId }` aur `{ versionCode, versionNumber }` — bilkul wahi do
+block jo payments listing par aate hain, wahi niyam. Poora shape aur *"pehchaan
+haan, sampark nahi"* wali wajah [#83](#83-get-voucher-claimspayments--mere-brand-ke-payments) me.
+
+⚠️ `brandSnapshot` / `voucherSnapshot` waise hi frozen hain. `customer` aur
+`voucherVersion` **live** reads hain, snapshot nahi — ye "ye kaun hai / ye kaunsa
+version hai" ka jawab dete hain, "us din kya likha tha" ka nahi.
+
 ---
 
 ## 83. GET /voucher-claims/payments — mere brand ke payments
@@ -7184,6 +7372,64 @@ entitlements ke liye `GET /subscribeds/...` use karein.
 aaj ka plan dikhega, us waqt ka nahi — kyunki ye sawaal "ye brand aaj kaun hai"
 ka jawab hai, history ka nahi.
 
+### 🆕 `customer` block — kisne pay kiya
+
+Pehle is row par grahak ka **kuch bhi** nahi aata tha: na naam, na koi id. Amount
+aur timestamp thi, aur ye batane ka koi zariya nahi tha ki ye bikri kiski thi.
+
+```json
+"customer": { "fullName": "Asha Menon", "uniqueId": "TDC000001", "email": "asha@example.com" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `customer.fullName` 🆕 | string | Grahak ka **aaj** ka naam |
+| `customer.uniqueId` 🆕 | string | Support conversation me quote karne wala handle |
+| `customer.email` 🆕 | string | Jis bikri ke baare me aapko baat karni ho, uske liye |
+
+⚠️ In me se koi bhi required field nahi hai. Set na ho to key **gayab** hoti hai,
+`null` nahi — `customer?.fullName ?? "—"` se padhein. Grahak ka record hi na mile
+to poora `customer` block gayab hota hai.
+
+🔴 **Number nahi milta, aur yahi asli line hai.** `mobile` aur `whatsappNumber`
+is block me **nahi** aate, aur na hi `_id` / `customerId`.
+
+Mailbox asynchronous hai — grahak khole to khole. **Number bajta hai**, aur har
+counter ko har kharidne wale ka number de dena bilkul alag baat hai; yahi wo field
+hai jo customer list ko bikne layak banata hai.
+
+⚠️ **Do flag hain, ek nahi.** `viewer.canSeeCustomerContact` poochta hai *"koi
+channel dikh raha hai?"* — aapke liye ab **`true`**. `viewer.canSeeCustomerPhone`
+poochta hai *"number dikh raha hai?"* — aapke liye hamesha **`false`**. Agar aapka
+panel poora customer block `canSeeCustomerContact` par chhupata tha, to ab use
+`canSeeCustomerPhone` par chhupana hai.
+
+⚠️ `uniqueId` diya gaya hai, `customerId` nahi. Internal ObjectId jaan-boojh kar
+rok rakha hai, aur `customer._id` bhi isiliye hata diya gaya hai — warna wahi id
+ek key andar se wapas mil jaati.
+
+⚠️ Grahak ne account band kar diya ho to bhi naam aata hai. Bikri ho chuki hai
+aur uska settlement aapko milna hai; row ko pehchaan-rahit kar dena aapke paas ek
+aisi line chhod deta jise aap khol hi nahi sakte.
+
+### 🆕 `voucherVersion` block — kaunsa version bika
+
+```json
+"voucherVersion": { "_id": "…", "versionCode": "VCH-00042317-V3", "versionNumber": 3 }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `voucherVersion.versionCode` 🆕 | string\|null | `VCH-########-V#`. Wahi code jo voucher listing par dikhta hai |
+| `voucherVersion.versionNumber` 🆕 | number\|null | Kaunsa version |
+
+⚠️ **`voucher.versionNumber` yahan nahi aata** — payment row ka `voucher` block
+aapke liye chaar field tak simta hai. Ye block hi ekmatra jagah hai jahan se
+aapko pata chalta hai ki bikri kis version se hui thi.
+
+⚠️ Version archive, pause ya delete ho chuka ho to bhi `versionCode` aata hai.
+Bikri us version se hui thi, aur uska record badalta nahi.
+
 ---
 
 ## 84. GET /voucher-claims/payments/:transactionId — ek payment
@@ -7196,11 +7442,314 @@ ka jawab hai, history ka nahi.
 | `403` | Dusre brand ka, ya `SUB_VENDOR` ke liye dusre outlet ka |
 | `422` | Malformed id |
 
+### 🆕 `brand.isFollowed` / `brand.isAvoided` — aapko hamesha `false` milenge
+
+Ye do keys customer app ke brand card ke liye hain, aur ye **jisne page khola**
+uske baare me hain — brand ke baare me nahi. Vendor, sub-vendor aur admin ka koi
+Customer record hota hi nahi, to unke liye dono hamesha `false` hote hain.
+
+⚠️ **Inhe khareedne wale ka status mat samjhiye.** Ye jaan-boojh kar buyer ka
+status **nahi** batate. Batana matlab aapko ye bata dena ki *"is grahak ne aapko
+avoid kar rakha hai"* — wahi kism ki baat jise `canSeeCustomerContact: false`
+rokta hai. Code me ye caller se resolve hote hain, `transaction.customerId` se
+nahi, taaki ye galti mumkin hi na rahe.
+
+Vendor panel me inhe render karne ki koi wajah nahi hai — ye ek hi response shape
+teen audience ko dene ki keemat hain, feature nahi.
+
 ⚠️ **Apna subscription payment yahan nahi khulta.** Ek hi collection vendor subscriptions
 aur customer voucher claims dono rakhti hai; `purpose` scope hi use rokta hai. Apni
 subscription ke liye `/transactions/...` use karein.
 
 `brand` ka shape #83 jaisa hi — `merchantId` 🆕 aur `subscriptionPlan` 🆕 samet.
+
+### 🆕 `customer` aur `voucherVersion` yahan **top level** par hain
+
+Listing me ye dono row ke **andar** aate hain, kyunki wahan row hi payment hai.
+Yahan response ek bundle hai, to ye dono `brand` aur `outlet` ke **bagal me**
+baithte hain — inke bilkul wahi do siblings jinke saath ye listing me the:
+
+```json
+{ "payment": {…}, "claim": {…}, "brand": {…}, "outlet": {…},
+  "customer": { "fullName": "Asha Menon", "uniqueId": "TDC000001", "email": "asha@example.com" },
+  "voucherVersion": { "versionCode": "VCH-00042317-V3", "versionNumber": 3 } }
+```
+
+Fields aur unke niyam #83 jaise hi. Row maujood na ho to key **gayab nahi hoti**,
+`null` aati hai.
+
+---
+
+## 🆕 84a. Paanch naye section — poori detail
+
+Ye paanch key `payment` / `claim` / `brand` / `outlet` ke **bagal me** aati hain.
+Purani keys **kuch nahi badlin** — koi app tootegi nahi.
+
+```json
+{
+  "payment": {…}, "claim": {…}, "brand": {…}, "outlet": {…},
+  "customer": {…}, "voucherVersion": {…}, "viewer": {…},
+
+  "outletDetail": {…},   "voucher": {…},   "pricing": {…},
+  "paymentInfo": {…},    "settlement": {…}
+}
+```
+
+⚠️ Jaan-boojh kar thoda **overlap** hai — `pricing.billAmount` aur
+`payment.voucher.billAmount` ek hi number hain. Ye keemat hai teen panel ek saath
+na todne ki. Naye code me naye section padhein; purani keys baad me hatengi.
+
+⚠️ Ye paanchon **`GET /voucher-claims/:claimId` aur `/code/:claimCode` par bhi**
+bilkul isi shape me aate hain (#85, #86).
+
+---
+
+### `outletDetail` — outlet poora
+
+```json
+"outletDetail": {
+  "_id": "…", "uniqueId": "TDO17…", "storeId": "TS-4K2M-9XQ7-RB3N",
+  "outletType": "FRANCHISE",
+  "description": "The MG Road counter",
+  "logo": "https://…", "coverImage": "https://…",
+  "email": "mgroad@cafemocha.com", "mobile": "9811111111", "whatsappNumber": "9811111112",
+  "geo": { "type": "Point", "coordinates": [75.8577, 22.7196] },
+  "address": {
+    "addressLine1": "12 MG Road", "addressLine2": "Above Kalyan Jewellers",
+    "landmark": "Opposite the clock tower",
+    "city": "Indore", "district": "Indore", "state": "Madhya Pradesh",
+    "country": "India", "zipcode": "452001",
+    "formattedAddress": "12 MG Road, Indore, Madhya Pradesh 452001",
+    "geo": { "type": "Point", "coordinates": [75.8577, 22.7196] }
+  },
+  "brandId": "…", "joinedDate": "…", "workHoursId": "…", "isActive": true
+}
+```
+
+> 🔴 **`outlet.address` pehle kabhi aata hi nahi tha.** Purana code `SubBrand` se
+> `.select("uniqueId storeId address")` karta tha — aur `SubBrand` par `address`
+> field hai hi nahi; address alag `Location` document par `locationId` ke peeche
+> hai. Aisi projection **error nahi deti**, chup rehti hai. Isliye har call par
+> wo key gayab aati thi aur kahin kuch nahi kehta tha.
+
+⚠️ Outlet ka address set na ho to `address: null` — key gayab nahi hoti.
+⚠️ `geo` set na ho to **poori key gayab** hoti hai, `[0,0]` nahi — `[0,0]` Gulf of
+Guinea ka asli point hai aur nearest-search use asli maanti hai.
+⚠️ `email`/`mobile` **outlet ke** hain, grahak ke nahi — ye storefront par likhe
+rehte hain.
+
+---
+
+### `voucher` — kya becha gaya
+
+```json
+"voucher": {
+  "voucherId": "…", "voucherVersionId": "…", "versionNumber": 3,
+  "snapshot": { "name": "Weekend Special", "bannerUrl": "https://…", "imageUrl": "https://…" },
+  "offer":    { "title": "20% off", "minBillAmount": 100,
+                "discountType": "PERCENTAGE", "discountValue": 20, "maxDiscountAmount": 250 },
+  "version":  { "versionCode": "VCH-00042317-V3", "versionNumber": 3,
+                "name": "Weekend Special", "description": "…", "tags": ["weekend"],
+                "status": "PUBLISHED", "startAt": "…", "endAt": "…",
+                "images": [...], "offers": [...],
+                "pausedAt": null, "pauseReason": null, "isActive": true }
+}
+```
+
+| Block | Kya hai |
+|---|---|
+| `snapshot` 🆕 | **Frozen** — jo grahak ne kharidte waqt dekha tha. Rename, republish, delete — kuch isse nahi badalta |
+| `offer` 🆕 | **Frozen** — theek wahi offer jo is bikri me laga, poori terms ke saath |
+| `version` 🆕 | **Live** — "ye voucher aaj kya hai" |
+
+> 🔴 **`offer` ab tak kisi ko nahi milta tha.** `claimRecordProjection`
+> `voucherSnapshot`, `brandSnapshot` aur `outletSnapshot` ko naam deti thi aur
+> `offerSnapshot` ko kabhi nahi — yaani *"is bikri me kaunsa offer laga aur kin
+> terms par"* ka jawab **kisi bhi surface par, kisi bhi role ke liye** tha hi
+> nahi, jabki data claim par frozen pada tha.
+
+⚠️ `snapshot` aur `version` dono jaan-boojh kar hain. Purani bikri ka hisaab
+frozen copy se milta hai; uspar aaj kya karna hai wo live record batata hai.
+⚠️ Moderation ki baatein (`rejectionReason`, `approvedBy`, `reviewedAt`) **sirf
+admin ko**. `pauseReason` aapki apni note hai, wo aapko milti hai.
+
+---
+
+### `pricing` — poora frozen price
+
+```json
+"pricing": {
+  "currency": "INR", "billAmount": 1000,
+  "offerTitle": "20% off", "offerDiscountType": "PERCENTAGE", "offerDiscountValue": 20,
+  "offerMinBillAmount": 100, "offerMaxDiscountAmount": 250, "offerDiscount": 200,
+  "promoCode": "WELCOME50", "promoAppliesTo": "NET_BILL", "promoBase": 800, "promoDiscount": 50,
+  "vendorPromoCost": 25,
+  "netBill": 800,
+  "convenienceFee": 10, "feeSlabSize": 500, "feePerSlab": 5, "feeMaxFee": 50,
+  "isGstEnabled": false, "gstPercentage": 0, "isGstInclusive": true,
+  "cgst": 0, "sgst": 0, "igst": 0, "gstAmount": 0, "taxOnTop": 0,
+  "placeOfSupplyState": "Madhya Pradesh", "placeOfSupplyStateCode": "23",
+  "totalPayable": 760, "amountInPaise": 76000, "youSaved": 250,
+  "commissionPercent": 0, "commissionAmount": 0, "commissionTax": 0, "commissionDeduction": 0,
+  "vendorPayable": 775,
+  "amountRefunded": 0, "isRefunded": false, "refundStatus": null
+}
+```
+
+Teen band hain:
+
+| Band | Kise | Kya |
+|---|---|---|
+| Bikri | sabko | bill, offer terms, promo, netBill, fee, tax, total, youSaved |
+| Aapka side | **vendor** + admin | `vendorPromoCost`, `commission*`, `vendorPayable` |
+| Hamara side | **sirf admin** | `platformPromoCost`, `gatewayFee`, `netReceived` |
+
+🔴 **`platformPromoCost`, `gatewayFee` aur `netReceived` aapko nahi aate.** Ye
+Trydood ka margin hai — Razorpay ne humse kya liya aur campaign ka kitna hissa
+humne bhara. Yahi refusal aur teen jagah likha hai.
+
+⚠️ `commissionAmount` / `commissionDeduction` **aate hain**, aur ye jaan-boojh
+kar hai: ye aapke settlement statement par pehle se dikhte hain, to per-payment
+view me chhupana usi statement se takraata. Jo chhupa hai wo hamari *kamai*, jo
+dikhta hai wo aapki *kataoti*.
+
+⚠️ `convenienceFee` aur GST **grahak se** liye gaye hain, aapse kaata hua nahi.
+Ye isliye dikhta hai ki warna `totalPayable` (760) aur aapki supply (800) ka
+hisaab nahi milta. `feeSlabSize`/`feePerSlab` saath aate hain kyunki slab admin
+config hai aur uski koi history nahi — *"₹10 kyun?"* ka jawab sirf claim par
+frozen copy se milta hai.
+
+---
+
+### `paymentInfo` — paisa kaise aaya
+
+```json
+"paymentInfo": {
+  "transactionId": "…",
+  "gatewayPaymentId": "pay_RxK2…", "gatewayOrderId": "order_RxK1…",
+  "invoiceNumber": "TD/VCH/26-27/000412",
+  "acquirerTransactionId": "ACQ12345678",
+  "amount": 760, "currency": "INR", "status": "captured", "verified": true,
+  "method": { "type": "upi", "vpa": "asha@okhdfcbank", "vpaHandle": "okhdfcbank",
+              "isInternational": false },
+  "createdAt": "…", "paidAt": "…", "fundsReceivedAt": "…",
+  "paidTo": { "brandId": "…", "brandName": "cafe mocha", "merchantId": "TM-…",
+              "outletId": "…", "storeId": "TS-…", "outletUniqueId": "TDO…" }
+}
+```
+
+**Teen alag waqt, aur ye aksar dinon door hote hain:**
+
+| Field | Kab |
+|---|---|
+| `createdAt` | order khula |
+| `paidAt` | payment capture hua, claim redeem hui |
+| `fundsReceivedAt` | Razorpay ne **Trydood ke** bank me settle kiya |
+
+⚠️ `fundsReceivedAt` hi wo ghadi hai jispar aapka payout chalta hai — `paidAt`
+nahi. Isliye ye aapko dikhta hai.
+
+> 🔴 **Google Pay aur PhonePe me farq nahi bataya ja sakta.** Razorpay UPI
+> payment par sirf `method: "upi"` aur `vpa` bhejta hai — **app ka naam payload
+> me hai hi nahi**. `@` ke baad ka handle PSP bank batata hai, aur convention se
+> `@ok*` Google Pay aur `@ybl` PhonePe hota hai — par wo **convention hai, fact
+> nahi**, aur PSP partner badalne par badal jaata hai.
+>
+> Isliye `vpaHandle` jo hai wahi likha jaata hai — handle — aur **usse koi app ka
+> naam banaya nahi jaata**. Payment screen par galat app ka naam "UPI" likhne se
+> **bura** hai: pehla ek aisa fact hai jispar padhne wala amal karega.
+>
+> ⚠️ `method.wallet` iska jawab **nahi** hai. Wo tabhi set hota hai jab `type`
+> `wallet` ho — PhonePe *wallet* payment, PhonePe-the-UPI-app nahi.
+
+> ⚠️ **Card ki details store hi nahi hotin.** `mapPayment` sirf `cardId` likhta
+> hai — network, last4, issuer Razorpay ke payload me aate hain par likhe nahi
+> jaate. To "Visa ••4242" kisi bhi payment par nahi dikhaya ja sakta, purane par
+> bhi nahi. Ye settle path ka change hai aur sirf **naye** payments bharega;
+> jaan-boojh kar is read ke saath nahi kiya gaya.
+
+⚠️ `gatewayAccount`, `gateway`, `acquirerData` aur gateway ke error codes **sirf
+admin ko** — wo hamari plumbing hai.
+
+---
+
+### `settlement` — aapka payout
+
+> 🔴 **Ye Trydood se aapko jaane wala paisa hai — Razorpay se Trydood ko aane
+> wala nahi.** Ek hi row par do alag cheezein "settlement" kehlaati hain:
+>
+> | | Kya |
+> |---|---|
+> | `settlement` section (ye) | **Trydood → vendor** |
+> | `razorpaySettlementId` · `fundsReceivedAt` | Razorpay → Trydood (hamari banking) |
+>
+> Doosri cheez `paymentInfo` me hai aur sirf admin ko dikhti hai.
+
+```json
+"settlement": {
+  "state": "PAID",
+  "isSettled": true,
+  "paidToVendorAt": "2026-09-14T09:12:00.000Z",
+  "hold": { "isHeld": false },
+  "record": {
+    "_id": "…", "settlementNumber": "TD/STL/26-27/000123",
+    "status": "PAID", "statusLabel": "Paid",
+    "periodStart": "…", "periodEnd": "…", "cycleType": "DAILY",
+    "grossCollected": 760, "commissionDeduction": 0, "vendorPromoCost": 25,
+    "refundAdjustment": 0, "chargebackAdjustment": 0,
+    "reserveHeld": 0, "reservePercent": 0, "reserveLabel": null,
+    "netPayable": 775, "transactionCount": 1,
+    "approvedAt": "…", "paidAt": "…", "payoutProvider": "MANUAL_BANK"
+  },
+  "bank": {
+    "accountHolderName": "Cafe Mocha LLP",
+    "maskedAccountNumber": "XXXXXX4521",
+    "accountLast4Digits": "4521",
+    "ifscCode": "HDFC0001234",
+    "bankName": "HDFC Bank"
+  },
+  "legs": [
+    { "legNumber": 1, "amount": 400, "status": "PAID", "utr": "UTR000000000001",
+      "mode": "NEFT", "provider": "MANUAL_BANK", "bankLast4": "4521",
+      "initiatedAt": "…", "paidAt": "…" },
+    { "legNumber": 2, "amount": 375, "status": "PAID", "utr": "UTR000000000002",
+      "mode": "IMPS", "provider": "MANUAL_BANK", "bankLast4": "4521",
+      "initiatedAt": "…", "paidAt": "…" }
+  ]
+}
+```
+
+**`state` — is payment ki apni position:**
+
+| `state` | Matlab |
+|---|---|
+| `NOT_SETTLED` | abhi kisi payout me nahi gaya. **Pehle ek-do din har payment aisa hi hota hai** |
+| `ON_HOLD` | hold laga hai, payout se bahar hai — `hold.reason` wajah batata hai |
+| `IN_SETTLEMENT` | payout ban chuka hai, abhi paisa gaya nahi |
+| `PAID` | payout ho gaya |
+| `PAYOUT_FAILED` | NEFT bounce hua — `record.failureReason` dekhein |
+
+> ⚠️ **"Settlement transaction id" ek field nahi, `legs` ki list hai.** Bada
+> payout do NEFT me toda ja sakta hai, aur bounce hone par retry **naya leg**
+> banata hai. Yahi wajah hai ki `PayoutLeg` alag model hai — ek `payoutUtr`
+> column doosra UTR chup-chaap kho deta.
+>
+> Jo reference aap bank statement par dhoondhenge wo `legs[].utr` hai.
+
+> 🔴 **Poora account number kahin store hi nahi hota.** `bank` block settlement
+> ke **snapshot** se aata hai, jisme `maskedAccountNumber` aur
+> `accountLast4Digits` hi rakhe jaate hain — poora number sirf `Bank` document
+> par hai aur wahan se yahan **kabhi copy nahi hota**. Ye design hai: payout
+> statement bank settings page se kahin zyada baar padha, log aur forward hota hai.
+>
+> ⚠️ `bank` **snapshot** hai, aaj ka account nahi. Aapne payout ke baad bank
+> badal liya ho to bhi yahan wahi dikhega **jahan paisa sach me gaya tha** — warna
+> record us payout ke bare me jhoot bolta.
+
+⚠️ `needsRevalidation`, `approvedBy`, `failureNote`, `taintedTransactionIds` aur
+`legs[].providerReference` **sirf admin ko**. `record` ka shape wahi hai jo
+`GET /settlements/:settlementId` deta hai — ek hi projection, do jagah, to dono
+kabhi alag nahi ho sakte.
 
 ---
 
@@ -7208,11 +7757,23 @@ subscription ke liye `/transactions/...` use karein.
 
 **Access:** 🔒 `verifyJwtToken`
 
-`claim` · `payment` · `brand` · `outlet` · **`timeline`** · `viewer`
+`claim` · `payment` · `brand` · `outlet` · **`customer`** 🆕 · **`voucherVersion`** 🆕 ·
+**`outletDetail`** 🆕 · **`voucher`** 🆕 · **`pricing`** 🆕 · **`paymentInfo`** 🆕 ·
+**`settlement`** 🆕 · **`timeline`** · `viewer`
 
 `brand` me `merchantId` 🆕 aur `subscriptionPlan` 🆕 bhi aate hain (#83 dekhein).
 `brandSnapshot` par koi asar nahi — wo claim ke waqt ka frozen naam hai aur
 waisa hi rahega.
+
+⚠️ **Paanchon naye section yahan bilkul wahi hain jo #84a me hain** — wahi shape,
+wahi role ke niyam, wahi helper. Ye do page ek hi screen se khulte hain, to inme
+se ek par section hona aur doosre par na hona sabse mushkil-se-dikhne wala bug
+hai. Poora reference [#84a](#-84a-paanch-naye-section--poori-detail) me hai.
+
+`customer` aur `voucherVersion` ka shape bhi #84 jaisa hi hai. `GET /voucher-claims`
+listing ki har row par bhi yahi dono block aate hain (par paanch naye section
+**sirf detail par** hain, listing par nahi — ek listing row par poora settlement
+aur poora voucher version bhejna page ko bhaari kar deta).
 
 Timeline har audience ke liye **banayi** jaati hai, chhaani nahi. Aapko har row se
 `label` · `at` · `fromStatus` → `toStatus` · `by` milta hai. Kaccha audit row `snapshot`
@@ -7226,7 +7787,24 @@ hai — dono me se kuch nahi aata.
 **Access:** 🔒 `verifyJwtToken`
 
 Counter par grahak code dikhaata hai, staff yahan daalta hai: **kitna pay hua, kaunsa
-offer, kab, kaunsa outlet**.
+offer, kab, kaunsa outlet** — aur ab **kaun** aur **kaunsa version** bhi.
+
+### 🆕 `customer`, `voucherVersion` aur paanchon section
+
+Ye #85 wala hi endpoint hai — **service ek hi hai**, to response bilkul wahi.
+`customer.fullName` aur `customer.uniqueId` top level par aate hain, aur
+`outletDetail` · `voucher` · `pricing` · `paymentInfo` · `settlement` bhi
+([#84a](#-84a-paanch-naye-section--poori-detail)).
+
+Counter par sabse kaam ke do badlaav:
+
+- staff ab code ke saath **naam** bhi milaa sakta hai, ObjectId padhne ki jagah;
+- `voucher.offer` batata hai ki **is bikri me kaunsa offer laga tha aur kin terms
+  par** — jo pehle kahin dikhta hi nahi tha.
+
+⚠️ Grahak ka **number** phir bhi nahi aata (`viewer.canSeeCustomerPhone: false`).
+Code sahi hai aur naam mel khaata hai — pehchaanne ke liye itna hi chahiye; grahak
+ko phone karna counter ka kaam nahi hai.
 
 ⚠️ **Code lookup ko narrow karta hai, authorise nahi karta.** Dusre brand ya dusre outlet
 ka code `403` deta hai — kisi aur ki screen se padha gaya code kuch nahi kholta.
@@ -7369,7 +7947,9 @@ Ye 62 endpoints backend me hain par vendor panel inko use na kare. Zyada tar ab 
 
 | Module | Endpoints | Gate |
 |---|---|---|
-| **Promo Codes** | `POST /promoCodes/create` · `GET /get-all` · `GET /reports` · `GET /get/:id` · `PUT /update/:id` · `DELETE /delete/:id` | `router.use(isAdmin)` |
+| **Promo Codes — sirf management** ⚠️ | `POST /promoCodes/create` · `GET /get-all` · `GET /reports` · `GET /get/:id` · `PUT /update/:id` · `DELETE /delete/:id` | `router.use(isAdmin)` |
+
+> ⚠️ **`/promoCodes` poora module ab is appendix me nahi hai.** `GET /promoCodes/vendor/get-all` **vendor panel ka apna endpoint hai** — [#67a](#67a-get-promocodesvendorget-all-) me documented. Upar wali list sirf **management** ki hai; `GET /get-all` (admin listing) aur `/vendor/get-all` (vendor listing) do alag endpoints hain, ek naam ki wajah se confuse mat kariye.
 | **Subscription admin ops** | `POST /subscribeds/admin/grant` · `PUT /admin/cancel` · `GET /admin/get-all` · `GET /admin/forfeited` · `PUT /admin/forfeited/compensate` · `PUT /admin/resync` | `isAdmin` |
 | **Webhook ops** | `GET /transactions/webhook/events` · `GET /webhook/events/:eventId` · `POST /webhook/replay/:eventId` · `GET /transactions/disputes` | `isAdmin` |
 | **Voucher approval** | `POST /vouchers/review/:versionId` | `isAdmin` |
@@ -7481,11 +8061,42 @@ liye padhi jaati hai.
 | `vendorPromoCost` · `refundAdjustment` · `chargebackAdjustment` | ✅ | Kya-kya kata |
 | `reserveHeld` · `reserveReleased` · `netPayable` | ✅ | |
 | `bankSnapshot.accountLast4Digits` · `bankName` | ✅ | Kahan bheja |
-| poora `bankSnapshot` (`ifscCode`, `accountHolderName`, `maskedAccountNumber`) | ❌ | Last 4 aur bank ka naam kaafi hai |
+| 🆕 `bankSnapshot.accountHolderName` · `maskedAccountNumber` · `ifscCode` | ✅ | Kahan bheja, **theek-theek** — neeche dekhein |
+| `bankSnapshot` me poora account number | ❌ | **Store hi nahi hota** — neeche dekhein |
+| `payoutProvider` 🆕 | ✅ | NEFT/IMPS manually bheja gaya ya provider se |
 | `needsRevalidation` | ❌ | Andar ka review state — aapke liye sach *"payout ruka hai"* hai |
 | `taintedTransactionIds` | ❌ | Faisla hone se pehle disputed payments ke naam |
 | `failureNote` | ❌ | Staff-to-staff — aapko `failureReason` (category) milta hai |
 | `approvedBy` · `idempotencyKey` | ❌ | Kis admin ne sign kiya, aur andar ki plumbing |
+
+### 🆕 `bankSnapshot` ab poora pata deta hai — par account number kabhi nahi
+
+```json
+"bankSnapshot": {
+  "accountHolderName": "Cafe Mocha LLP",
+  "maskedAccountNumber": "XXXXXX4521",
+  "accountLast4Digits": "4521",
+  "ifscCode": "HDFC0001234",
+  "bankName": "HDFC Bank"
+}
+```
+
+Pehle sirf `accountLast4Digits` + `bankName` aate the. Wo us ek sawaal ka jawab
+nahi de paate jo payout na aane par hamesha poochha jaata hai — *"aapne kis
+account me bheja?"* — kyunki ek hi bank me do account rakhne wale brand ko dono
+haal me wahi do shabd dikhte hain.
+
+> 🔴 **Poora account number yahan kabhi nahi aayega, kyunki wo yahan rakha hi
+> nahi jaata.** Settlement ka `bankSnapshot` shuru se sirf masked form aur last 4
+> rakhta hai; poora number sirf `Bank` document par hai aur wahan se yahan copy
+> nahi hota. Ye design hai — payout statement bank settings page se kahin zyada
+> baar padha, log aur forward hota hai.
+
+⚠️ Ye **snapshot** hai, aaj ka account nahi. Payout ke baad aapne bank badla ho to
+bhi yahan wahi dikhega **jahan paisa sach me gaya tha**. `paySettlement` bhi isi
+frozen copy se bhejta hai, live record se nahi — warna approve aur NEFT ke beech
+account badalne par ek aisa payout redirect ho jaata jise koi insaan pehle hi sign
+kar chuka hai, aur **NEFT wapas nahi aata**.
 
 ### `statusLabel` — aapko enum nahi dikhta
 

@@ -76,13 +76,15 @@ exports.sendOtp = async (type, target, purpose = "auth") => {
      * a problem entirely on our side. They would have burned five attempts
      * without a single message ever being sent.
      *
-     * ⚠️ Pulled **by value**, not by a time range. Releasing everything from the
-     * last minute would hand back slots claimed by other callers in the same
-     * second — which is exactly the flood this is meant to stop.
+     * ⚠️ Pulled **by nonce** (O-1). It used to pull by `claim.at`, and a
+     * timestamp is not an identity: a failed send in the same millisecond as
+     * somebody else's successful one handed back **their** slot, so a burst
+     * could give itself room by failing. Releasing by a time range would be the
+     * same mistake, wider.
      */
     await OtpThrottle.updateOne(
       { target, purpose },
-      { $pull: { sends: claim.at } },
+      { $pull: { sends: { nonce: claim.nonce } } },
     ).catch(() => {});
 
     throw error;

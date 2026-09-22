@@ -173,6 +173,102 @@ exports.claimProjection = (role) => {
 };
 
 /**
+ * What each audience may read about **the person who paid**.
+ *
+ * ### The line is drawn at the phone number, not at contact in general
+ *
+ * `fullName` and `uniqueId` answer *who is this*. `email` is how a brand reaches
+ * a buyer about the sale they just made. `mobile` and `whatsappNumber` are the
+ * channel somebody answers at any hour, and they stay admin-only.
+ *
+ * A vendor reconciling their counter has to be able to name the person on a row
+ * and quote a handle in a support thread, and can do neither from an ObjectId.
+ *
+ * ⚠️ **This moved once already.** The brand side was given name and `uniqueId`
+ * and explicitly no contact at all; `email` was added afterwards, deliberately,
+ * and `viewer.canSeeCustomerPhone` was added beside `canSeeCustomerContact` at
+ * the same time so neither flag had to start lying. If this line moves again,
+ * move the flags with it — a flag that disagrees with the projection is worse
+ * than no flag, because a client acts on it.
+ *
+ * ⚠️ `uniqueId`, not `customerId`. The ObjectId is an internal key the vendor
+ * projection deliberately omits — see the listing test that pins it — while
+ * `uniqueId` is the handle support and the customer themselves already quote.
+ *
+ * 🔴 **`_id: 0` is load-bearing, not tidiness.** A lookup projection returns
+ * `_id` unless told not to, and `Customer._id` **is** `Transaction.customerId` —
+ * the exact field `claimProjection` withholds from the brand side. Without this
+ * line the block hands back, one key deeper, the identifier the projection two
+ * hundred lines above went out of its way to omit, and the test that pins
+ * `row.customerId === undefined` would keep passing while it happened.
+ *
+ * Dropped for the admin too, who already has `customerId` on the row: one shape
+ * for every audience beats a second one that exists only to carry a duplicate.
+ */
+exports.customerIdentityProjection = (role) => {
+  /**
+   * `email` is in the shared block, `mobile` and `whatsappNumber` are not.
+   *
+   * A mailbox is asynchronous and the buyer decides whether to open it. A phone
+   * number rings, and handing every counter the number of everybody who ever
+   * bought there is a different thing entirely — it is also the field that makes
+   * a customer list worth selling.
+   */
+  const identity = { _id: 0, fullName: 1, uniqueId: 1, email: 1 };
+
+  if (role === ROLES.ADMIN) {
+    /**
+     * 🔴 This is also the fix for a field that was never there.
+     *
+     * The admin projection has named `email` and `contact` since it was written,
+     * and **nothing ever writes either one on a voucher-claim row** —
+     * `createVoucherClaimOrder` does not set them, and neither the webhook nor
+     * the settler does. Only `createSubscribeOrder` fills those two, on the
+     * other flow entirely. So an admin opening a claim payment got a projection
+     * that promised contact details and a document that had none, with nothing
+     * anywhere saying so. The customer record is where they actually live.
+     */
+    return { ...identity, mobile: 1, whatsappNumber: 1 };
+  }
+
+  return identity;
+};
+
+/**
+ * Does this audience get a `customer` block joined at all?
+ *
+ * **No, when they are the customer.** Joining `customers` on every row of
+ * somebody's own order history is a round trip that tells them their own name.
+ * The lookup is left out of their pipeline rather than added and projected away,
+ * so the highest-volume audience here pays nothing for it.
+ *
+ * Asked in one place because four surfaces ask it — two listings and two detail
+ * endpoints — and a listing that joins where a detail does not is exactly the
+ * drift `claimProjection`'s header warns about.
+ */
+exports.showsCustomerIdentity = (role) => role !== ROLES.CUSTOMER;
+
+/**
+ * The voucher version a claim was bought from.
+ *
+ * ⚠️ `versionCode` is on **neither** document this module reads. A transaction
+ * carries `voucher.voucherVersionId` and `voucher.versionNumber`, a claim
+ * carries the same two at the top level, and `voucherSnapshot` does not freeze
+ * it either — the code lives only on `VoucherVersion`. So every surface that
+ * shows it joins for it, and there is no shortcut to add later.
+ *
+ * All three audiences get it. It identifies a voucher version, never a person:
+ * the vendor quotes it asking why a September sale priced the way it did, the
+ * admin searches by it (`VoucherVersionTextIndex` weights it second), and the
+ * customer reads it out on a support call.
+ *
+ * `versionNumber` rides along because the brand-side and customer projections
+ * narrow `voucher` to four fields and never carried it — so this is the only
+ * place either of them can see which version they are looking at.
+ */
+exports.VOUCHER_VERSION_FIELDS = { versionCode: 1, versionNumber: 1 };
+
+/**
  * The aggregation for a voucher-claim listing.
  *
  * Scoped by `purpose` through `buildTransactionFilter`, so a claim listing can
@@ -208,9 +304,51 @@ exports.buildClaimTransactionPipeline = (actor, query = {}) => {
       localField: "brandId",
       as: "brand.subscriptionPlan",
     }),
+    /**
+     * The version the sale was made from — for `versionCode`, which is on no
+     * document this pipeline already reads.
+     *
+     * ⚠️ Joined off `voucher.voucherVersionId`, a path the **brand-side and
+     * customer projections drop**: `voucherSlice` names four fields and that is
+     * not one of them. So this lookup has to run before the `$project`, not
+     * after it the way the brand join does, or it would read a field that is no
+     * longer there and silently attach nothing.
+     *
+     * No `isDeleted` filter. A version can be archived, paused or deleted after
+     * it was sold, and a payment row still has to say which one it was.
+     */
+    ...buildAggregateLookup({
+      from: "voucherversions",
+      localField: "voucher.voucherVersionId",
+      as: "voucherVersion",
+      project: exports.VOUCHER_VERSION_FIELDS,
+    }),
   );
 
-  // ⚠️ Must stay below the lookups above. The next two lines mutate
+  /**
+   * Who paid — name and unique id, and contact only for an admin.
+   *
+   * ⚠️ Same reason as the version join for sitting **above** the `$project`:
+   * `customerId` survives it only for an admin and for the customer themselves.
+   * The vendor projection omits it deliberately, and joining after the
+   * projection would mean this block is simply empty for the one audience it
+   * was added for — with no error and nothing in the response saying why.
+   *
+   * ⚠️ No `isDeleted` filter here either. A customer who closes their account
+   * does not erase the sale a brand already made and will be settled for.
+   */
+  if (exports.showsCustomerIdentity(actor.role)) {
+    pipeline.push(
+      ...buildAggregateLookup({
+        from: "customers",
+        localField: "customerId",
+        as: "customer",
+        project: exports.customerIdentityProjection(actor.role),
+      }),
+    );
+  }
+
+  // ⚠️ Must stay below the lookups above. The next lines mutate
   // `pipeline[pipeline.length - 1]`, so anything pushed after this point would
   // have its own stage rewritten instead.
   pipeline.push({ $project: exports.claimProjection(actor.role) });
@@ -218,6 +356,10 @@ exports.buildClaimTransactionPipeline = (actor, query = {}) => {
   // anything it does not name, joined fields included.
   pipeline[pipeline.length - 1].$project.brand = 1;
   pipeline[pipeline.length - 1].$project.outlet = 1;
+  pipeline[pipeline.length - 1].$project.voucherVersion = 1;
+  if (exports.showsCustomerIdentity(actor.role)) {
+    pipeline[pipeline.length - 1].$project.customer = 1;
+  }
 
   return pipeline;
 };
@@ -238,10 +380,49 @@ exports.buildClaimPipeline = (actor, query = {}) => {
     delete match.status;
   }
 
-  return [
-    { $match: match },
-    { $sort: { createdAt: -1 } },
-    { $project: exports.claimRecordProjection(actor.role) },
+  const pipeline = [{ $match: match }, { $sort: { createdAt: -1 } }];
+
+  /**
+   * ---------------- the two joins that must precede the projection ----------------
+   *
+   * `voucherVersionId` is named by **no** audience's `claimRecordProjection`,
+   * and `customerId` only by the admin's and the customer's own. Both keys are
+   * therefore gone by the time the brand join below runs, so these two cannot
+   * follow the same "join after the projection" pattern — they have to read the
+   * document while it still says which version and which buyer.
+   *
+   * Their output is re-admitted to the projection a few lines down, exactly the
+   * way `buildClaimTransactionPipeline` re-admits `brand` and `outlet`.
+   */
+  pipeline.push(
+    ...buildAggregateLookup({
+      from: "voucherversions",
+      localField: "voucherVersionId",
+      as: "voucherVersion",
+      project: exports.VOUCHER_VERSION_FIELDS,
+    }),
+  );
+
+  if (exports.showsCustomerIdentity(actor.role)) {
+    pipeline.push(
+      ...buildAggregateLookup({
+        from: "customers",
+        localField: "customerId",
+        as: "customer",
+        project: exports.customerIdentityProjection(actor.role),
+      }),
+    );
+  }
+
+  // ⚠️ Must stay below the two lookups above, and above the brand joins below.
+  // The next lines mutate `pipeline[pipeline.length - 1]`.
+  pipeline.push({ $project: exports.claimRecordProjection(actor.role) });
+  pipeline[pipeline.length - 1].$project.voucherVersion = 1;
+  if (exports.showsCustomerIdentity(actor.role)) {
+    pipeline[pipeline.length - 1].$project.customer = 1;
+  }
+
+  pipeline.push(
     /**
      * The brand, live — deliberately **alongside** `brandSnapshot`, not
      * instead of it.
@@ -266,7 +447,9 @@ exports.buildClaimPipeline = (actor, query = {}) => {
       localField: "brandId",
       as: "brand.subscriptionPlan",
     }),
-  ];
+  );
+
+  return pipeline;
 };
 
 /**

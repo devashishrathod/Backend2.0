@@ -4,11 +4,34 @@ const {
   clearCollections,
 } = require("./setup/testDb");
 
+/**
+ * The provider and the code store, stubbed — so the **real** `sendOtp` can be
+ * driven into its failure branch without a WhatsApp message or a network.
+ *
+ * ⚠️ `requireActual` on the otps barrel, because `claimOtpSend` must stay real:
+ * it is the thing under test, and the release path only means anything against
+ * a claim it actually made.
+ *
+ * Named `mock*` because jest refuses a factory that closes over anything else.
+ */
+let mockSendTemplate;
+jest.mock("../../helpers/otps", () => ({
+  ...jest.requireActual("../../helpers/otps"),
+  sendTemplate: (...args) => mockSendTemplate(...args),
+}));
+
+jest.mock("../../database/otpRepository", () => ({
+  ...jest.requireActual("../../database/otpRepository"),
+  saveOtp: async () => {},
+}));
+
 const OtpThrottle = require("../../models/OtpThrottle");
 const Setting = require("../../models/Setting");
 const { claimOtpSend } = require("../../helpers/otps");
+const { sendOtp } = require("../../services/otps");
 const { generateNumericOtp } = require("../../utils");
 const { OTP_DEFAULTS } = require("../../constants/otp");
+const { LOGIN_TYPES } = require("../../constants");
 
 const SECOND_MS = 1000;
 const MINUTE_MS = 60 * SECOND_MS;
@@ -19,11 +42,26 @@ const PURPOSE = "auth";
 
 const agoMinutes = (m) => new Date(Date.now() - m * MINUTE_MS);
 
-/** Put a history on the row without waiting real minutes for it. */
+/**
+ * Put a history on the row without waiting real minutes for it.
+ *
+ * ⚠️ Each entry needs a `nonce` — an entry without one is a pre-O-1 leftover,
+ * and both the pipeline and the reader drop those on purpose. Seeding bare
+ * dates here would make every one of these tests start from an empty window
+ * while looking like it had seeded five sends.
+ */
 const seedSends = async (offsetsInMinutes, target = TARGET, purpose = PURPOSE) =>
   OtpThrottle.findOneAndUpdate(
     { target, purpose },
-    { $set: { sends: offsetsInMinutes.map(agoMinutes), updatedAt: new Date() } },
+    {
+      $set: {
+        sends: offsetsInMinutes.map((m, i) => ({
+          at: agoMinutes(m),
+          nonce: `seed-${target}-${purpose}-${i}`,
+        })),
+        updatedAt: new Date(),
+      },
+    },
     { upsert: true, returnDocument: "after" },
   ).lean();
 
@@ -39,6 +77,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await clearCollections(OtpThrottle, Setting);
+  mockSendTemplate = jest.fn(async () => ({ ok: true }));
 });
 
 /**
@@ -157,6 +196,17 @@ describe("purposes do not eat each other's allowance", () => {
  * write, so Mongo decides rather than timing.
  */
 describe("two requests at the same moment", () => {
+  /**
+   * 🔴 This was **red for weeks** — phase O-1. Eight concurrent claims all came
+   * back `allowed`, because the verdict was `sends.includes(now.getTime())` and
+   * eight callers in one millisecond share that value: the single entry the
+   * winning write appended answered "yes, mine" for every one of them.
+   *
+   * ⚠️ **Mutation to re-prove it:** in `claimOtpSend`, swap the nonce check back
+   * for `sends.includes(now.getTime())` and this returns 8. The write itself
+   * needs no change for the bug to come back, which is exactly why it survived
+   * review — the atomic update always looked right.
+   */
   it("lets exactly one through", async () => {
     const claims = await Promise.all(
       Array.from({ length: 8 }, () => claimOtpSend(TARGET, PURPOSE)),
@@ -167,6 +217,126 @@ describe("two requests at the same moment", () => {
 
     const row = await OtpThrottle.findOne({ target: TARGET }).lean();
     expect(row.sends).toHaveLength(1);
+
+    // The winner's nonce is the one on the row — not merely "some entry
+    // exists", which is what the old check effectively asserted.
+    expect(row.sends[0].nonce).toBe(allowed[0].nonce);
+  });
+
+  it("gives every caller its own nonce", async () => {
+    // Two calls far enough apart that both are allowed, so the nonces being
+    // distinct is what is under test rather than the throttle.
+    const first = await claimOtpSend(TARGET, PURPOSE);
+    await seedSends([5]);
+    const second = await claimOtpSend(TARGET, PURPOSE);
+
+    expect(first.allowed).toBe(true);
+    expect(first.nonce).toEqual(expect.any(String));
+    expect(second.nonce).not.toBe(first.nonce);
+  });
+});
+
+/**
+ * 🔴 The release path had the same flaw in reverse (O-1).
+ *
+ * A failed send gives its slot back so a provider outage does not lock someone
+ * out for an hour. That pull was `{ $pull: { sends: claim.at } }` — by value —
+ * so a failure could hand back the entry **somebody else** claimed in the same
+ * millisecond. The flood would then have made itself room by failing.
+ */
+describe("giving a slot back", () => {
+  const release = (target, purpose, claim) =>
+    OtpThrottle.updateOne(
+      { target, purpose },
+      { $pull: { sends: { nonce: claim.nonce } } },
+    );
+
+  it("removes only the caller's own entry", async () => {
+    await seedSends([30], TARGET, PURPOSE);
+    const mine = await claimOtpSend(TARGET, PURPOSE);
+    expect(mine.allowed).toBe(true);
+
+    await release(TARGET, PURPOSE, mine);
+
+    const row = await OtpThrottle.findOne({ target: TARGET }).lean();
+    // The seeded one survives; only the claim that failed to send is gone.
+    expect(row.sends).toHaveLength(1);
+    expect(row.sends[0].nonce).toBe(`seed-${TARGET}-${PURPOSE}-0`);
+  });
+
+  /**
+   * ⚠️ The two tests around this one exercise the `$pull` shape. This one
+   * exercises **`sendOtp` itself**, because that is where the bug lived — the
+   * shape being right somewhere else would not have saved it.
+   *
+   * Mutation to re-prove: put `{ $pull: { sends: claim.at } }` back in
+   * `services/otps/sendOtp.js` and this goes red, because the failed send then
+   * pulls the entry seeded a moment earlier in the same millisecond window
+   * rather than its own.
+   */
+  it("the real send path releases its own slot and nobody else's", async () => {
+    const OTHER = "919999900077";
+    mockSendTemplate = jest.fn(async () => {
+      throw new Error("whatsapp template pulled");
+    });
+
+    /**
+     * An earlier entry on the same target, five minutes back — outside the
+     * 60-second cooldown so `sendOtp`'s own claim is allowed, inside the hour
+     * so it is still in the window and can be wrongly pulled.
+     */
+    await seedSends([5], OTHER, PURPOSE);
+
+    // `sendOtp` claims, the provider fails, and it gives its own slot back.
+    await expect(sendOtp(LOGIN_TYPES.WHATSAPP, OTHER, PURPOSE)).rejects.toThrow(
+      "whatsapp template pulled",
+    );
+
+    const row = await OtpThrottle.findOne({ target: OTHER }).lean();
+    // The earlier entry survives; only the failed send's own is gone.
+    expect(row.sends).toHaveLength(1);
+    expect(row.sends[0].nonce).toBe(`seed-${OTHER}-${PURPOSE}-0`);
+  });
+
+  it("cannot take back an entry it did not claim", async () => {
+    const winner = await claimOtpSend(TARGET, PURPOSE);
+    const loser = await claimOtpSend(TARGET, PURPOSE);
+
+    expect(winner.allowed).toBe(true);
+    // Refused by the cooldown, so it holds no slot and has no nonce to pull.
+    expect(loser.allowed).toBe(false);
+    expect(loser.nonce).toBeUndefined();
+
+    await release(TARGET, PURPOSE, loser);
+
+    const row = await OtpThrottle.findOne({ target: TARGET }).lean();
+    expect(row.sends).toHaveLength(1);
+    expect(row.sends[0].nonce).toBe(winner.nonce);
+  });
+});
+
+/**
+ * Entries written before O-1 are bare `Date`s. They are dropped rather than
+ * read, and the reason is worth pinning: a mixed array would be counted by
+ * `$size` but ignored by the `$max` over mapped `at`s, so the hourly cap and
+ * the cooldown would disagree about the very same row.
+ */
+describe("rows left over from the old shape", () => {
+  it("drops them instead of half-counting them", async () => {
+    await OtpThrottle.collection.insertOne({
+      target: TARGET,
+      purpose: PURPOSE,
+      sends: [agoMinutes(1), agoMinutes(2)],
+      updatedAt: new Date(),
+    });
+
+    // A bare-date row one minute old would otherwise refuse this on cooldown.
+    const claim = await claimOtpSend(TARGET, PURPOSE);
+    expect(claim.allowed).toBe(true);
+
+    const row = await OtpThrottle.findOne({ target: TARGET }).lean();
+    expect(row.sends).toHaveLength(1);
+    expect(row.sends[0].nonce).toBe(claim.nonce);
   });
 });
 
