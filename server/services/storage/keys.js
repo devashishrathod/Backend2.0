@@ -146,15 +146,45 @@ const buildDocumentKey = (documentNumber) => {
 };
 
 /**
- * Where a presigned upload lands before anybody has seen the bytes (Phase 5).
+ * Everything that has not been looked at yet, under one root.
+ *
+ * ### 🔴 Why `staging/` comes **before** the tier prefix, not after
+ *
+ * It used to be `<prefix>staging/…`, which put dev's unconfirmed uploads at
+ * `dev/staging/…` and staging's at `stg/staging/…`. Both the bucket policy that
+ * denies public reads and the lifecycle rule that expires abandonments are
+ * **literal prefixes** — a policy written for `staging/*` matched neither, and
+ * an S3 lifecycle prefix cannot use a wildcard at all. Measured on the live
+ * distribution: `staging/` answered 403 and `dev/staging/` answered **200**, so
+ * every not-yet-validated upload was world-readable and nothing ever swept it.
+ *
+ * `staging/` is a **state**, not a place — "nobody has read these bytes". The
+ * rule that protects it keys on exactly that, so that is what has to be
+ * outermost. The tier prefix keeps its job one segment in:
+ *
+ *     staging/dev/<userId>/<uuid>.<ext>
+ *     staging/stg/<userId>/<uuid>.<ext>
+ *     staging/<userId>/<uuid>.<ext>        ← production, where prefix is empty
+ *
+ * One `staging/*` deny and one `staging/` lifecycle rule now cover every tier
+ * and both buckets, and a new environment needs no change in AWS at all.
  *
  * ⚠️ Deliberately **outside** the type tree. A key like `images/…` is a claim
  * about content, and at this point the only evidence for that claim is what the
  * client said. The object moves under its real type prefix after the magic-byte
  * check, and a lifecycle rule expires whatever never got that far.
  */
+const stagingPrefix = () => `staging/${prefix()}`;
+
+/**
+ * Where a presigned upload lands before anybody has seen the bytes (Phase 5).
+ *
+ * ⚠️ Built from `stagingPrefix()` and nothing else. `preflight.js` writes its
+ * round-trip probe under the same root, and a second copy of this string is how
+ * the two would drift until one of them sat outside the rule that sweeps it.
+ */
 const buildStagingKey = ({ userId, mime, originalName }) =>
-  `${prefix()}staging/${segment(userId, "a user id")}/${crypto.randomUUID()}.${extensionFor(mime, originalName)}`;
+  `${stagingPrefix()}${segment(userId, "a user id")}/${crypto.randomUUID()}.${extensionFor(mime, originalName)}`;
 
 /** Which bucket this purpose writes to — PUBLIC or PRIVATE. */
 const bucketFor = (purpose) => purposeConfig(purpose).bucket;
@@ -177,6 +207,7 @@ module.exports = {
   buildKey,
   buildDocumentKey,
   buildStagingKey,
+  stagingPrefix,
   bucketFor,
   cloudinaryFolder,
   extensionFor,

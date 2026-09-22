@@ -3,6 +3,9 @@ const {
   assertTransactionAccess,
   assertClaimAccess,
   buildAccessScopeFilter,
+  // Asserted **against** the flags rather than beside them: a boolean that
+  // agrees with nothing is worse than no boolean, because a client acts on it.
+  customerIdentityProjection,
 } = require("../../helpers/transactions");
 const { ROLES } = require("../../constants");
 
@@ -120,7 +123,42 @@ describe("what a vendor must never be shown", () => {
   it("hides the platform's costs from the brand", () => {
     const access = assertTransactionAccess(vendor(), row());
     expect(access.canSeePlatformCosts).toBe(false);
-    expect(access.canSeeCustomerContact).toBe(false);
+  });
+
+  /**
+   * ⚠️ The contact line moved, and there are two flags now because of it.
+   *
+   * `canSeeCustomerContact` was `false` here and meant "no channel at all". The
+   * brand side was later given the buyer's **email** — a brand does have
+   * business with the person who just bought from them — while `mobile` and
+   * `whatsappNumber` stayed admin-only. One boolean could not describe that
+   * without lying in one direction or the other.
+   *
+   * 🔴 The pair must agree with `customerIdentityProjection`. A flag that
+   * disagrees with the payload is worse than no flag: a panel either hides a
+   * field it was sent or renders a blank where it was promised one, and neither
+   * failure looks like a bug in the access helper.
+   */
+  it("gives the brand a way to write to the buyer, never a way to ring them", () => {
+    const access = assertTransactionAccess(vendor(), row());
+
+    expect(access.canSeeCustomerContact).toBe(true);
+    expect(access.canSeeCustomerPhone).toBe(false);
+
+    const projection = customerIdentityProjection(access.role);
+    expect(projection.email).toBe(1);
+    expect(projection.mobile).toBeUndefined();
+    expect(projection.whatsappNumber).toBeUndefined();
+    // The ObjectId the payment projection withholds must not return one key
+    // deeper — `_id: 0` on the lookup is what stops it.
+    expect(projection._id).toBe(0);
+  });
+
+  it("gives an admin the number as well", () => {
+    const access = assertTransactionAccess({ role: ROLES.ADMIN }, row());
+
+    expect(access.canSeeCustomerPhone).toBe(true);
+    expect(customerIdentityProjection(access.role).mobile).toBe(1);
   });
 
   it("hides the platform's costs from the customer too", () => {

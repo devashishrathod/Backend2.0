@@ -130,7 +130,12 @@ describe("🔴 the probe is a real round trip", () => {
 
     // The first six calls are the two bucket round trips.
     for (const call of mockSend.mock.calls.slice(0, 6)) {
-      expect(call[0].input.Key).toMatch(/^dev\/staging\/__preflight_/);
+      /**
+       * 🔴 `staging/` first, then the tier — the shape the deny and lifecycle
+       * rules key on. It read `dev/staging/…` until a live probe showed that
+       * prefix answering 200 on the CDN while `staging/` answered 403.
+       */
+      expect(call[0].input.Key).toMatch(/^staging\/dev\/__preflight_/);
     }
   });
 

@@ -395,10 +395,15 @@ const claim = await claimOtpSend(mobile, purpose);      // 60s / 5-per-hour
 if (!claim.allowed) throwError(429, ..., { retryAfterSeconds });
 try   { return await sendOtpToMobile(mobile); }
 catch (e) {
-  await OtpThrottle.updateOne({ target: mobile, purpose }, { $pull: { sends: claim.at } });
-  throw e;                                              // fail hua to slot wapas — value se, range se nahi
+  await OtpThrottle.updateOne({ target: mobile, purpose }, { $pull: { sends: { nonce: claim.nonce } } });
+  throw e;                                              // fail hua to slot wapas — apne nonce se
 }
 ```
+
+> ⚠️ Is snippet me pehle `{ $pull: { sends: claim.at } }` likha tha, *"value se,
+> range se nahi"* ke saath. Wo **O-1** bug tha aur 2026-09-21 ko band hua: ek hi
+> millisecond me `at` kai callers ka ek jaisa hota hai, to fail hua send kisi
+> **aur** ka claim kiya slot wapas kar deta. Pehchaan ab per-call `nonce` hai.
 
 - ➕ Login aur verification, dono mobile paths throttled
 - ➕ App ke liye **koi breaking change nahi** — `sessionId` waise ka waisa

@@ -183,6 +183,33 @@ Presigned POST me **browser seedha S3 par** POST karta hai — wo cross-origin h
 
 ### 2.4 Lifecycle rule — `staging/` prefix, 1 din
 
+> ## 📌 Ye rule **har tier par** chalta hai — 2026-09-22 ko theek kiya gaya
+>
+> Pehle key ka shape `<tier>staging/…` tha, yaani `dev/staging/…` aur
+> `stg/staging/…`. **S3 lifecycle prefix literal hota hai — usme wildcard chalta
+> hi nahi** — to `staging/` wala rule non-prod par kabhi match nahi karta, aur
+> adhoore uploads hamesha jama rehte.
+>
+> 🔴 Yahi baat bucket policy ke deny par bhi lagti thi. Live naap (nonprod CDN):
+>
+> ```
+> staging/…      → 403  ✅
+> dev/staging/…  → 200  🔴 khula pada tha
+> ```
+>
+> **Ab `staging/` sabse upar hai** — `services/storage/keys.js` ka
+> `stagingPrefix()`:
+>
+> ```
+> staging/dev/<userId>/<uuid>.<ext>
+> staging/stg/<userId>/<uuid>.<ext>
+> staging/<userId>/<uuid>.<ext>        ← production, prefix khaali
+> ```
+>
+> To neeche wala **ek hi rule**, aur `staging/*` ka **ek hi deny**, ab teeno tier
+> aur dono buckets par chalta hai. Naya environment jodne par AWS me kuch nahi
+> badalna.
+
 Presigned upload me ek beech ka kadam hai: file pehle `staging/` prefix par
 jaati hai, phir confirm hone par asli jagah copy hoti hai. Client agar beech me
 gayab ho gaya (app crash, net gaya, cancel) to wo file wahin reh jaati hai.
@@ -201,8 +228,13 @@ Days after creation  1
 Chaaron buckets par lagayein.
 
 > ⚠️ Ye `staging/` **prefix** hai, `STAGING` **tier** nahi. Naam ek jaisa hai par
-> rishta koi nahi — `staging/` ka matlab "abhi confirm nahi hua" hai. Tier ka
-> prefix uske andar aata hai: `dev/staging/…`, `staging/staging/…`.
+> rishta koi nahi — `staging/` ka matlab "abhi confirm nahi hua" hai, yaani ek
+> **haalat**, jagah nahi. Tier ka prefix uske **andar** aata hai:
+> `staging/dev/…`, `staging/stg/…`.
+>
+> 🔴 Isi liye `staging/` bahar hai aur tier andar: security rule isi haalat par
+> tika hai, to wahi sabse upar honi chahiye. Ulta rakhne par har tier ko apna
+> rule chahiye tha — aur ek chhoot gaya tha.
 
 ---
 

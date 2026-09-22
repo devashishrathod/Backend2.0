@@ -11,7 +11,7 @@
 **Framework:** Express.js (CommonJS) · **DB:** MongoDB (Mongoose)
 **Route mounting:** `routes/index.js` auto-mounts har file ko uske filename se → `routes/subBrands.js` = `/trydood/v1/subBrands` (camelCase preserved). Do file `routePrefix` override karti hain — `voucherClaims.js` → `/voucher-claims`, `customerBankAccounts.js` → `/bank-accounts`.
 
-**Scanned:** 2026-09-11 · **Total endpoints: 226** (+3 utility/non-versioned)
+**Scanned:** 2026-09-11 · **Total endpoints: 228** (+3 utility/non-versioned)
 
 > ### ⚠️ Ye ginti pichhli baar 53 endpoint peeche reh gayi thi
 >
@@ -86,9 +86,9 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | **Auth entry** — login / OTP / password | 9 | 🟣 ya ⚪ | Public hona **majboori** hai, warna koi login hi na kar paaye. Ye "browsing" nahi hai — inhe GUEST me daalna guest surface ko 9 endpoint bada dikhata jo asal me sirf darwaza hain |
 | **Machine / signed link** | 3 | 🤖 MACHINE | Do Razorpay webhook (HMAC) aur **ek** signed-link download — `GET /documents/:token`, jo chhe kism ke document serve karta hai. Pehle do alag download route the. Koi insaan-role nahi — inhe guest doc me daalna galat audience ko dikhana hai |
 
-> ### ⚠️ 4 guest endpoint `optionalAuth` par hain, `Public` par nahi — ye farq load-bearing hai
+> ### ⚠️ 6 guest endpoint `optionalAuth` par hain, `Public` par nahi — ye farq load-bearing hai
 >
-> `GET /search` · `GET /vouchers/customer/get-all` · `GET /vouchers/customer/get/:voucherId` · `POST /vouchers/customer/voucher/preview`
+> `GET /search` · `GET /vouchers/customer/get-all` · `GET /vouchers/customer/get/:voucherId` · `POST /vouchers/customer/voucher/preview` · `GET /brands/customer/get-all` · `GET /brands/customer/get/:brandId`
 >
 > Inpe **koi gate na hona** ek bug tha, guest-friendliness nahi. Ye handlers
 > `req.userId` padhte hain taaki signed-in customer ka **saved address** missing
@@ -102,7 +102,27 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 > warna session expire hone par customer ko apni saved location aur history
 > gayab dikhti aur kahin koi error nahi hota.
 >
-> Isliye ye chaar **dono** category me hain: 🟠 GUEST + 🟢 CUSTOMER.
+> Isliye ye chhe **dono** category me hain: 🟠 GUEST + 🟢 CUSTOMER.
+>
+> #### Do brand endpoint isi wajah se baad me jude — par lakshan doosra tha
+>
+> `GET /brands/customer/get-all` aur `GET /brands/customer/get/:brandId` ab
+> har brand par **`isFollowed` / `isAvoided`** lautate hain, aur ye dono baatein
+> **dekhne wale** ke baare me hain, brand ke baare me nahi — `followersCount`
+> sabke liye ek hi hai, ye nahi. Inhe `req.customerId` se resolve kiya jaata
+> hai.
+>
+> ⚠️ Yahan galti ka lakshan voucher feed jaisa **nahi** hota. Wahan `404` aata
+> tha — shor. Yahan gate ke bina signed-in customer ko bhi dono flags `false`
+> milte, yaani **har brand par follow button un-pressed** — response `200`,
+> shape bilkul sahi, aur jawab galat. Koi error kahin nahi. Isiliye gate
+> chahiye tha.
+>
+> ⚠️ **Ye pura widening nahi hai.** Jo caller **expired** token bhej raha tha
+> use pehle normal `200` milta tha (token ignore ho jaata); ab `401` milega.
+> Brand profile aur brand directory — dono screen. App ko yahan bhi wahi
+> refresh-ya-logout raasta chalana hoga jo baaki chaar par chalta hai. Bina
+> token wale guest par koi farq nahi.
 
 > ### `/search/history` guest ke liye khula **nahi** hai — aur ye soch-samajh kar hai
 >
@@ -114,7 +134,7 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 
 ---
 
-## Summary — 226 endpoints
+## Summary — 228 endpoints
 
 > ⚠️ **`#` ek sthir id hai, position nahi.** Usme gaps hain (33, 34, 166,
 > 172–175, 182, 187) — wo hataye gaye endpoints ki jagah hai — aur naye endpoints
@@ -134,7 +154,7 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | 3 | Customers 🆕 | `/customers` | 2 | – | – | – | 2 | – | – |
 | 4 | Device Tokens | `/deviceTokens` | 4 | – | – | – | – | 4 | – |
 | 5 | Notifications | `/notifications` | 7 | – | – | – | 3 | 4 | – |
-| 6 | Brands | `/brands` | 19 | 2 | – | 8 | 6 | 3 | – |
+| 6 | Brands | `/brands` | 19 | 2\* | 2\* | 8 | 6 | 3 | – |
 | 7 | Verification (KYC) | `/verification` | 3 | – | – | 3 | – | – | – |
 | 8 | Sub Brands (Outlets) | `/subBrands` | 3 | – | – | – | – | 3 | – |
 | 9 | Work Hours | `/workHours` | 1 | – | – | – | – | 1 | – |
@@ -151,7 +171,7 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | 20 | Brand Avoidances | `/brandAvoidances` | 2 | – | 2 | – | – | – | – |
 | 21 | Subscriptions (Plans) | `/subscriptions` | 5 | – | – | – | 3 | 2 | – |
 | 22 | Subscribeds | `/subscribeds` | 8 | – | – | – | 6 | 2 | – |
-| 23 | Promo Codes | `/promoCodes` | 6 | – | – | – | 6 | – | – |
+| 23 | Promo Codes | `/promoCodes` | 8 | – | 1 | – | 6 | 1 | – |
 | 24 | Transactions | `/transactions` | 14 | – | – | 1 | 6 | 5 | 2 |
 | 25 | Voucher Claims | `/voucher-claims` | 7 | – | 2 | – | – | 5 | – |
 | 26 | Customer Bank Accounts 🆕 | `/bank-accounts` | 4 | – | 4 | – | – | – | – |
@@ -164,12 +184,17 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | 33 | App Config | `/app-config` | 1 | 1 | – | – | – | – | – |
 | 34 | Documents 🆕 | `/documents` | 1 | – | – | – | – | – | 1 |
 | 35 | Uploads 🆕 | `/uploads` | 2 | – | – | – | – | 2 | – |
-| | **TOTAL** | | **226** | **22** | **17** | **15** | **86** | **83** | **3** |
+| | **TOTAL** | | **228** | **22** | **18** | **15** | **86** | **84** | **3** |
 
-> \* **4 endpoints do category me hain** (`optionalAuth`) — teen `/vouchers/customer/*`
-> aur `GET /search`. Wo 🟠 aur 🟢 dono column me ginne gaye hain, isliye
-> `22 + 17 + 15 + 86 + 83 + 3 = 226` **tabhi** milta hai jab un chaar ko ek baar
-> hi gina jaaye: distinct = `18 (pure guest) + 4 (dual) + 17 (customer) + 15 + 86 + 83 + 3 = 226` ✓
+> \* **6 endpoints do category me hain** (`optionalAuth`) — teen `/vouchers/customer/*`,
+> `GET /search`, aur do `/brands/customer/*`. Wo 🟠 aur 🟢 dono column me ginne gaye
+> hain, isliye `22 + 18 + 15 + 86 + 84 + 3 = 228` **tabhi** milta hai jab un chhe ko
+> ek baar hi gina jaaye: distinct = `16 (pure guest) + 6 (dual) + 18 (customer) + 15 + 86 + 84 + 3 = 228` ✓
+>
+> ⚠️ **TOTAL row ka 🟢 column dual wale nahi ginta** — wo 🟠 me gine ja chuke hain.
+> Module row dono jagah `\*` ke saath dikhata hai, TOTAL ek baar. Isliye 🟢 column
+> ka module-wise jod TOTAL se bada hai, aur ye antar hi wo dual hain:
+> pehle `21 − 4 = 17`, ab brands ke do jud kar `23 − 6 = 17`. TOTAL badla nahi.
 >
 > **Round 6 me kya juda:** `/auth` me do (email verification, ⚪ — har role),
 > naya `/app-config` (🟠 public), aur `/notifications` ke do endpoints ab customer
@@ -180,11 +205,11 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 | Doc | Endpoints | Breakdown | Status |
 |---|---:|---|---|
 | 🟠 Guest surface | **21** | Poori list neeche `§ Guest Surface` me | 🆕 Round 5 |
-| 📱 `customer_mobile_api_doc.md` | **66** | 17 exclusive + 22 guest + 26 shared global + 1 🤖 invoice link | ✅ **v1.7.0 — poora.** Live verified: 135 requests · 473 assertions · 0 failed · 198 captured examples |
-| 🏪 `vendor_panel_api_doc.md` | **105** | 15 exclusive + 77 shared global + 10 guest reads + 2 🤖 links | ⚠️ v1.2.1 me 78 the — 19 naye jodne hain |
-| 🛡️ `super_admin_panel_api_doc.md` | **179** | 83 exclusive + 77 shared global + 14 guest reads + 4 🤖 reference | ⬜ Baaki |
+| 📱 `customer_mobile_api_doc.md` | **67** | 18 exclusive + 22 guest + 26 shared global + 1 🤖 invoice link | ✅ **v1.7.0 — poora.** Live verified: 135 requests · 473 assertions · 0 failed · 198 captured examples |
+| 🏪 `vendor_panel_api_doc.md` | **106** | 15 exclusive + 78 shared global + 10 guest reads + 2 🤖 links | ⚠️ v1.2.1 me 78 the — 19 naye jodne hain |
+| 🛡️ `super_admin_panel_api_doc.md` | **180** | 83 exclusive + 78 shared global + 14 guest reads + 4 🤖 reference | ⬜ Baaki |
 
-> Sum > 226 kyunki shared endpoints kai docs me aate hain.
+> Sum > 228 kyunki shared endpoints kai docs me aate hain.
 >
 > ⚠️ **Ye per-doc numbers hath se maintain hote hain aur aapas me nahi milte.**
 > Upar ki table vendor **104** kehti hai, neeche ka section heading **100**;
@@ -198,8 +223,8 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 > kar diye gaye hain (delta pakka hai, base ka jhagda alag maslaa hai).
 >
 > **Cross-check:** har endpoint kam se kam ek doc me hai —
-> 🟠 21 (customer doc me saare 21) · 🟢 17 (customer) · 🔵 15 (vendor) ·
-> 🟣 83 (admin) · ⚪ 74 (vendor + admin, jinme 22 customer bhi) ·
+> 🟠 21 (customer doc me saare 21) · 🟢 18 (customer) · 🔵 15 (vendor) ·
+> 🟣 83 (admin) · ⚪ 75 (vendor + admin, jinme 22 customer bhi) ·
 > 🤖 4 (admin reference). **Koi endpoint chhoota nahi.** ✓
 >
 > ### ⚠️ Per-doc ginti "reachable" nahi hai — do baar ghatayi jaati hai
@@ -250,8 +275,14 @@ sabko "guest" keh dena ek asli farq mita deta hai:
 ### 🟠 Naya GUEST category — 21 endpoints
 
 Pichhli file me ye endpoints `Enforced: Any authenticated` likhe the. **Wo ab sach
-nahi hai** — 17 par koi gate hai hi nahi aur 4 `optionalAuth` par hain. Poori list
+nahi hai** — 15 par koi gate hai hi nahi aur 6 `optionalAuth` par hain. Poori list
 `§ Guest Surface` me.
+
+> ⚠️ Jod wahi **21** hai — batwara badla hai. Jaise-jaise in endpoints ko
+> personalisation chahiye hui, ye `Public` se `optionalAuth` par khiskte gaye:
+> `/vouchers/customer/*` ke teen, `GET /search`, aur ab `/brands/customer/*` ke
+> do. Ye number **haath se** theek karna padta hai — `verifyApiCoverage.js` sirf
+> ye dekhta hai ki route documented hai ya nahi, uska gate **naam** nahi padhta.
 
 Sabse badi chaal: `/brands/customer/*`, `/showcase` ke customer reads,
 `/brandFeatures` ke reads, `banners`/`tickers` ke `customer/active`, aur poora
@@ -310,11 +341,11 @@ hai, baaki do wo link hain jo WhatsApp/email se seedha browser me khulte hain.
 <details>
 <summary>Round 2 → Round 3 (2026-08-21, 108 → 143)</summary>
 
-### Naye modules (4) — 21 endpoints
+### Naye modules (4) — 23 endpoints
 
 | Module | Endpoints | Kya karta hai | Primary consumer |
 |---|---:|---|---|
-| `/promoCodes` | 6 | Subscription promo codes — CRUD + usage report | 🟣 ADMIN (poora module `router.use(isAdmin)`) |
+| `/promoCodes` | 8 | Promo codes — CRUD + usage report, aur 🆕 do listing endpoints (customer app, vendor panel) | 🟣 ADMIN (6, `router.use(isAdmin)`) + 🟢 Customer (1) + ⚪ Vendor/Admin (1) |
 | `/subscribeds` | 8 | Subscription lifecycle — grant, cancel, resync, forfeit compensation, history | 🟣 ADMIN (6) + ⚪ Vendor/Admin (2) |
 | `/deviceTokens` | 4 | Push notification device registration | ⚪ **All roles** (role-agnostic by design) |
 | `/notifications` | 3 | In-app notification feed + admin broadcast | ⚪ Vendor+Admin (2) + 🟣 ADMIN (1) |
@@ -524,8 +555,8 @@ Push notification device registration. **Deliberately role-agnostic** — code c
 | 37 | PUT | `/brands/admin/top-brands/:brandId` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Top brand add / remove / reorder — ek hi endpoint dono taraf (`isTopBrand: false` = remove, naya `topOrder` = reorder) |
 | 38 | GET | `/brands/admin/top-brands` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 | Admin view — **deactivated pinned brands bhi dikhte hain** taaki unpin ho sakein |
 | 39 | GET | `/brands/verifications/history` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | Shared audit trail — admin koi bhi brand, vendor sirf apna (service-level scoping) |
-| 40 | GET | `/brands/customer/get-all` | Intended: Guest + Customer · Enforced: **Public** | 🟠 | Brand directory + "Top Brands" tab (`topOnly`). Geo optional. `/customer/get/:brandId` se **pehle** declare |
-| 41 | GET | `/brands/customer/get/:brandId` | Intended: Guest + Customer · Enforced: **Public** | 🟠 | Public brand profile — brand + 10 features + visible showcase + outlets. Koi PII nahi |
+| 40 | GET | `/brands/customer/get-all` | Intended: Guest + Customer · Enforced: **optionalAuth** | 🟠 🟢 | Brand directory + "Top Brands" tab (`topOnly`). Geo optional. `/customer/get/:brandId` se **pehle** declare. Har row par `isFollowed`/`isAvoided` — **dekhne wale** ke, brand ke nahi |
+| 41 | GET | `/brands/customer/get/:brandId` | Intended: Guest + Customer · Enforced: **optionalAuth** | 🟠 🟢 | Public brand profile — brand + 10 features + visible showcase + outlets. Koi PII nahi. `followersCount` ke bagal me `isFollowed`/`isAvoided`; guest ko dono `false` |
 | 42 | GET | `/brands/get` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | PAN/GST/Bank/KYC scores/subscription billing yahin rehte hain — customer ke liye #41 hai |
 | 43 | PUT | `/brands/update` | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN** | ⚪ | |
 
@@ -961,9 +992,11 @@ Paid path `/transactions/subscribe/*` par hai; ye admin ka manual/without-paymen
 
 ---
 
-## 23. Promo Codes — `/promoCodes` (6)
+## 23. Promo Codes — `/promoCodes` (8)
 
-Subscription promo codes. **Poora module `router.use(isAdmin)`** — vendor manage nahi karta, wo sirf `/transactions/subscribe/preview` aur `create-order` me code redeem karta hai.
+Promo codes ka **manage** poora admin ka hai. Do listing endpoints (217, 218) us `router.use(isAdmin)` line ke **upar** baithte hain aur apna gate khud rakhte hain — niche kuch bhi juda to wo admin-only hi rahega, jo bhoolne ki safe disha hai.
+
+Listing sirf **dikhati** hai. Redeem karna wahi purana raasta hai — customer `/voucher-claims/create-order`, vendor `/transactions/subscribe/preview` + `create-order`.
 
 | # | Method | Endpoint | Access | Cat |
 |---|---|---|---|---|
@@ -973,8 +1006,24 @@ Subscription promo codes. **Poora module `router.use(isAdmin)`** — vendor mana
 | 135 | GET | `/promoCodes/get/:id` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 |
 | 136 | PUT | `/promoCodes/update/:id` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 |
 | 137 | DELETE | `/promoCodes/delete/:id` | Intended: ADMIN · Enforced: **ADMIN** | 🟣 |
+| 217 | GET | `/promoCodes/customer/get-all` 🆕 | Intended: CUSTOMER · Enforced: **CUSTOMER** | 🟢 | Sirf `isPublic` codes. Har row: headline, derived terms, `usage.usesLeft` (apna, platform ka nahi), `isApplicable` + `reason`. `voucherId`+`outletId`+`billAmount` **teeno saath** bhejo to `savings` bhi — wahi `buildClaimPreview` chalta hai jo checkout chalata hai |
+| 218 | GET | `/promoCodes/vendor/get-all` 🆕 | Intended: Vendor + Admin · Enforced: **VENDOR+ADMIN + ownership** | ⚪ | Wahi shape, vendor side. `subscriptionId` do to plan ke against priced — `action` (NEW/RENEW/UPGRADE) brand ke current plan se nikalta hai. Admin ko `brandId` dena zaroori (`resolveActorBrand`) |
 
-> **Admin doc me:** saare 6
+> **Admin doc me:** saare 6 manage + 218 (vendor listing ka reference; request vendor collection me hai)
+> **Vendor doc me:** 218 · **Customer doc me:** 217
+
+> ### ⚠️ `isPublic` — jo list me aata hai aur jo redeem hota hai, ek cheez nahi
+>
+> `PromoCode.isPublic` ka default **`false`** hai aur listing `{ isPublic: true }`
+> maangti hai — yaani jis code par field hai hi nahi (field se purane saare codes)
+> wo **chhupa** rehta hai. `audience` wale trap ki bilkul **ulti** padhai, jaan-bujh
+> kar: absent ko "listed" padhna is feature ke ship hote hi platform ke har targeted
+> campaign ko publish kar deta — influencer code, win-back code, wo code jo ek hi
+> customer ko mail kiya tha.
+>
+> Aur ye sirf **baantne** ka faisla hai, valid hone ka nahi. Dono checkout validators
+> `isPublic` **dekhte hi nahi** — targeted campaign ka matlab hi yahi hai ki code
+> unlisted ho aur type karne par chale.
 
 ---
 
@@ -1493,12 +1542,12 @@ har surface iske peechhe aati hai, voucher unme se sirf ek hai (U-4).
 # 🟠 Guest Surface — 21 Endpoints
 
 **Bina kisi token ke** chalne wale endpoints — guest app ka poora surface.
-17 par koi gate nahi hai; 4 `optionalAuth` par hain (⭐ se mark).
+15 par koi gate nahi hai; 6 `optionalAuth` par hain (⭐ se mark).
 
 | # | Method | Endpoint | Enforced | Section |
 |---|---|---|---|---|
-| 40 | GET | `/brands/customer/get-all` | Public | Brand directory + Top Brands tab |
-| 41 | GET | `/brands/customer/get/:brandId` | Public | Brand profile |
+| 40 ⭐ | GET | `/brands/customer/get-all` | **optionalAuth** | Brand directory + Top Brands tab |
+| 41 ⭐ | GET | `/brands/customer/get/:brandId` | **optionalAuth** | Brand profile |
 | 68 | GET | `/showcase/get-brand-showcase/:brandId` | Public | Brand gallery |
 | 69 | GET | `/showcase/:brandId/video-clips` | Public | Reels feed |
 | 73 | GET | `/brandFeatures/get-all` | Public | Brand highlights (`brandId` query mandatory) |
@@ -1519,14 +1568,21 @@ har surface iske peechhe aati hai, voucher unme se sirf ek hai (U-4).
 | 206 | GET | `/privacy-and-policies/getAll` | Public | Legal |
 | 207 | GET | `/privacy-and-policies/get/:id` | Public | Legal |
 
-### ⭐ optionalAuth wale 4 — guest aur signed-in ka farq
+### ⭐ optionalAuth wale 6 — guest aur signed-in ka farq
 
 | Endpoint | Guest ko | Token ke saath extra |
 |---|---|---|
 | `/vouchers/customer/get-all` | `latitude`+`longitude` **khud dena padega** | Saved address coordinates ki jagah le leta hai |
 | `/vouchers/customer/get/:voucherId` | Wahi | Wahi |
 | `/vouchers/customer/voucher/preview` | Daam mil jaata hai | Wahi, aur customer-specific promo eligibility |
-| `/search` | Chalta hai | Saved address fallback + committed query **history me save** hoti hai |
+| `/search` | Chalta hai | Saved address fallback + committed query **history me save** hoti hai; `BRAND` section ke har item ke `meta` me sach-much ka `isFollowed`/`isAvoided` |
+| `/brands/customer/get-all` | Poori directory, har row par `isFollowed: false` / `isAvoided: false` | Wahi rows, par dono flags **apne** follow/avoid se bhare hue |
+| `/brands/customer/get/:brandId` | Poora profile, dono flags `false` | Wahi profile, dono flags sach |
+
+⚠️ **Guest ko flags `false` milte hain, gayab nahi.** Key ka na hona app ko
+*"follow nahi kiya"* aur *"pata nahi"* me farq karne ko majboor karta, aur uske
+paas wo farq karne ka koi zariya nahi hai — to follow button ka koi state hi na
+hota. Do boolean hamesha aate hain.
 
 ⚠️ **Expired token = `401`, guest-view par silent downgrade nahi.** Client ko iska
 matlab *"sign out karo"* samajhna chahiye, *"guest ban jao"* nahi — warna session
@@ -1731,11 +1787,11 @@ koi error nahi hota.
 
 | Doc | Endpoints | Status |
 |---|---:|---|
-| `endpoints_category.md` | **226** | ✅ **Round 6 — ye file.** Live routers ke against introspection se verify. `scripts/verifyApiCoverage.js` isi ko enforce karta hai |
+| `endpoints_category.md` | **228** | ✅ **Round 6 — ye file.** Live routers ke against introspection se verify. `scripts/verifyApiCoverage.js` isi ko enforce karta hai |
 | 🟠 Guest surface | 21 | 🆕 Round 5 — naya category, poori list is file me |
-| `customer_mobile_api_doc.md` | 66 | ✅ **v1.7.0** — live verified, 135 requests · 473 assertions · 0 failed · 198 captured examples (135/135 requests) |
-| `vendor_panel_api_doc.md` | 101 | ⚠️ **v1.2.1 me 78 hain** — 19 jodne hain (voucher claims reads, refunds, disputes, settlements, legacy mounts) |
-| `super_admin_panel_api_doc.md` | 175 | ⬜ Baaki |
+| `customer_mobile_api_doc.md` | 67 | ✅ **v1.7.0** — live verified, 135 requests · 473 assertions · 0 failed · 198 captured examples (135/135 requests) |
+| `vendor_panel_api_doc.md` | 102 | ⚠️ **v1.2.1 me 78 hain** — 19 jodne hain (voucher claims reads, refunds, disputes, settlements, legacy mounts) |
+| `super_admin_panel_api_doc.md` | 176 | ⬜ Baaki |
 | `security_findings.md` | 3 open (2 deferred) | ⚠️ Round 5 ke naye findings jodne hain — #15 no-op delete, #4 OTP verify commented |
 | `account_deletion_plan.md` | – | ⏸️ Deferred — full flow ready hone pe |
 

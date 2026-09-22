@@ -55,6 +55,7 @@ const {
   mapCustomerBrandBlock,
 } = require("./customerListing");
 const { pickVoucherBanner } = require("./pickVoucherBanner");
+const { toManagedBanner } = require("./managedBanner");
 const {
   uploadVoucherBannerMedia,
   deleteVoucherBannerMedia,
@@ -89,6 +90,7 @@ module.exports = {
   // the two cannot drift.
   mapCustomerBrandBlock,
   pickVoucherBanner,
+  toManagedBanner,
   uploadVoucherBannerMedia,
   deleteVoucherBannerMedia,
   // The single source for what a claim costs. Nothing else may compute these.

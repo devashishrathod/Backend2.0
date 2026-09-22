@@ -34,8 +34,8 @@
 > khudai ka kaam na ho.
 >
 > **O-3** (chaar dead knob) aur **O-4** (multipart par size cap) ab **band** hain
-> — Block G me. Khule sirf **O-1** (OTP throttle) aur **O-2** (poori money suite
-> ek saath green nahi rehti) hain, dono jaanboojh kar. **Block X** (infra) baaki
+> — Block G me. **O-1** (OTP throttle) 2026-09-21 ko band hua. Khula sirf **O-2**
+> (poori money suite ek saath green nahi rehti) hai, jaanboojh kar. **Block X** (infra) baaki
 > hai, aur uska pehla kadam code nahi — AWS hai (§0.6).
 >
 > Har phase ka detail aur uska commit hash Part 4B me. Part 4 ka table sirf
@@ -932,6 +932,54 @@ expire hone ke baad delete ho jayega."*
 | **G11** ✅ | Showcase poster pairing galat jud sakti thi | Comment ne jo daava kiya, code wo karta nahi tha | `pairPosters.js` 🆕 |
 | **G12** ✅ | Teen poster purpose apni surface rule se **wide** the | Presign GIF poster ko signature de deta, surface uske baad 422 deta — bytes kharch hone ke baad | `constants/storage.js` |
 | **G13** ✅ | 🔴 **iPhone ki HEIC photo video ban jaati thi** | G2 ka apna blind spot — `ftyp` dekh kar rukna. Detail neeche | `inspect.js` · `presign.js` |
+| **G14** ✅ | 🔴 **Bina dekhi hui files CDN par khuli padi thin** | Key `<tier>staging/…` thi, par rule `staging/*` par. Live naapa. Detail neeche | `keys.js` · `preflight.js` |
+
+> ### 🔴 G14 — jo sirf asli CloudFront par hi dikh sakta tha
+>
+> **Kaise mila:** 2026-09-22, nonprod CloudFront zinda hone ke baad ek asli
+> upload karke. Code review se ye kabhi nahi milta — dono taraf sab "sahi" hai.
+>
+> `staging/` un files ka prefix hai jinke bytes **abhi kisi ne dekhe hi nahi**.
+> Unhe bachane wali do cheezein — bucket policy ka deny aur lifecycle ka sweep —
+> dono **literal prefix** par chalti hain, aur S3 lifecycle me wildcard hota hi
+> nahi. Key ban rahi thi `<tier>staging/…`, aur rule likha tha `staging/*` par:
+>
+> ```
+> staging/…      → 403  ✅   ← rule yahan lagta tha
+> dev/staging/…  → 200  🔴   ← asli keys yahan girti thin
+> stg/staging/…  → 200  🔴
+> ```
+>
+> **Prod par ye galti dikhti hi nahi**, kyunki wahan tier prefix khaali hai —
+> `staging/…` hi banta hai. Yahi ise khatarnak banata hai: non-prod par test
+> karne wale ko kabhi pata nahi chalta, aur non-prod hi wo jagah hai jahan log
+> bekhauf chize chadhate hain.
+>
+> **Fix:** `staging/` ab **sabse upar**, tier uske andar —
+> `keys.js` ka naya `stagingPrefix()`:
+>
+> ```
+> staging/dev/<userId>/<uuid>.<ext>
+> staging/stg/<userId>/<uuid>.<ext>
+> staging/<userId>/<uuid>.<ext>        ← production
+> ```
+>
+> 🔴 **Ye sirf rule ke aage jhukna nahi, ye zyada sahi design hai.** `staging/`
+> ek **haalat** hai — "nobody has read these bytes" — jagah nahi. Security rule
+> usi haalat par tika hai, to wahi sabse bahar honi chahiye; environment uske
+> andar. Ab **ek** deny aur **ek** lifecycle rule teeno tier aur dono buckets par
+> chalte hain, aur naya environment jodne par AWS me kuch nahi badalna.
+>
+> ⚠️ `preflight.js` ka probe bhi wahi `stagingPrefix()` use karta hai. Wo apni
+> copy rakhta tha (`${prefix()}staging/`), aur do copies hi is bug ki jad thin —
+> `HEAD_BYTES` wali sikh, dobara.
+>
+> ⚠️ **Koi migration nahi chahiye** — `Upload` collection me **0 row** thin aur
+> presign abhi off hai. `confirm` key ko opaque string ki tarah leta hai (row par
+> likhi hui, verbatim), to producer ek hi jagah badalna kaafi tha.
+>
+> ✅ Live verify: naya shape `staging/dev/…` CDN par **403** deta hai — **AWS me
+> kuch badle bina**, kyunki jo policy pehle se bani thi wahi ab match karti hai.
 
 > ### 🔴 G13 — G2 ne jo khud chhod diya tha
 >
@@ -1076,7 +1124,7 @@ expire hone ke baad delete ho jayega."*
 
 | Phase | Kaam |
 |---|---|
-| **O-1** | 🔴 **OTP throttle burst me khul jaata hai** — claim ki pehchaan timestamp se hoti hai, jo ek-saath aaye callers me ek jaisa hota hai |
+| **O-1** ✅ | ~~**OTP throttle burst me khul jaata hai**~~ — **band, 2026-09-21.** Claim ki pehchaan ab per-call nonce se hai, timestamp se nahi; release bhi nonce se. Detail neeche |
 | **O-2** | ⚠️ **Poori money suite ek saath green nahi rehti** — suite ke design ki wajah se, kisi ek test ke bug se nahi. Detail neeche |
 | **O-3** ✅ | ~~`Setting.storage` ke chaar knob kuch karte hi nahi~~ — **band, Block G me (G5)**. Chaaron ab live hain, aur ek naya rule bhi: intent TTL signature se chhota nahi ho sakta |
 | **O-4** ✅ | ~~Multipart raaste par nau surfaces ka koi size cap hai hi nahi~~ — **band, Block G me (G1)**. Dono road ab `getUploadLimit` ka ek hi number padhte hain |
@@ -1644,9 +1692,14 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 
 ---
 
-## O-2 · Poori money suite ek saath chalane par green nahi rehti
+## O-2 · Poori money suite ek saath chalane par green **rehti nahi thi** — ab ek run green hai, par daava variance ka hai
 
-`__tests__/money/*` — 99 files, ek hi `Trydood2_test` database par
+`__tests__/money/*` — **101 files**, ek hi `Trydood2_test` database par
+
+> 📌 **2026-09-21:** O-1 band hone ke baad poori suite **101/101 green** aayi —
+> is doc ka pehla aisa run. Phir bhi O-2 khula hai, kyunki iska daava "hamesha
+> red" nahi balki **"natija run-dar-run badalta hai"** hai, aur ek green run us
+> daave ka jawab nahi deta. Detail neeche.
 
 > 🔴 **Ye pehli baar 2026-09-18 ko naapa gaya, V-6 ke dauraan.** Poori suite:
 > **2 suite fail, 4 test fail, 1802 pass**. Wahi suites akele chalane par
@@ -1664,6 +1717,49 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 >
 > Dono U-5 wale fix hone ke baad akele green hain. Bacha sirf `otpThrottle`, jo
 > O-1 ka apna red marker hai.
+>
+> ### 🟢 O-1 ke baad — **poori suite pehli baar green**, 2026-09-21
+>
+> **101 suite, 2011 test: 101 pass, 5 todo, 0 fail — 52 min.**
+>
+> Is doc ke itihaas me ye pehla run hai jisme kuch bhi red nahi. Pichhla red
+> `otpThrottle` tha aur wo O-1 ka apna marker tha, to O-1 band hote hi suite ka
+> **ekmatra sthayi red** hat gaya.
+>
+> ⚠️ **Isse O-2 band nahi hota, aur ye line usi galti se bachne ke liye hai.**
+> O-2 ka daava kabhi "suite hamesha red rehti hai" tha hi nahi — daava ye hai ki
+> **natija run-dar-run badalta hai**, aur ek green run us daave ka jawab nahi
+> deta, jaise 2026-09-19 ki do run me alag-alag suites red aayi thin. O-2 tab
+> band hoga jab isolation ka koi structural jawab ho, ya jab kai run lagatar
+> green aayein.
+>
+> Jo ye run **sach me** batati hai, wo teen cheezein:
+>
+> - Block G ke baad jo **asli** tootan thi (nakli `tempFilePath` wali do suites)
+>   wo band hai — wo is baar bhi red nahi aayi.
+> - O-1 ka fix kisi aur suite se nahi takraata: 101 me se ek bhi nahi giri.
+> - Ab suite me koi bhi red **naya** hoga. Pehle har run me ek pehle se red hota
+>   tha, to "maine kuch toda kya" ka jawab dene me har baar ek extra kadam lagta
+>   tha.
+>
+> ⚠️ Is run me working tree me O-1 ka kaam **aur** kisi aur ka V-4a
+> banner-fallback kaam dono maujood the — yaani 101/101 dono ke saath hai.
+>
+> ### 📌 Promo listing ke baad dobara naapa — 2026-09-21
+>
+> **101 suite, 2006 test: 100 pass, 1 fail (1 test) — 47 min.** Red sirf
+> `otpThrottle › two requests at the same moment`, yaani **O-1 ka apna marker**.
+>
+> Is section ke itihaas me ye sabse saaf run hai (pehle: 4 test → 10 test → 10
+> aur 78). Iska matlab ye **nahi** ki O-2 khatam ho gaya — ek saaf run sirf ek
+> data point hai, aur O-2 ki dalील hi yahi thi ki natija run-dar-run badalta hai.
+> Par ye batata hai ki Block G ke baad jo asli tootan thi (nakli `tempFilePath`
+> wali do suites) wo sach me band hui hain, kyunki wo is baar red nahi aayi.
+>
+> ⚠️ Is run ke waqt working tree me promo-listing ka kaam **aur** kisi aur ka
+> V-4a banner-fallback kaam (`helpers/vouchers/customerListing.js` +
+> `services/vouchers/getAllVoucherVersions.js` + do unit test) dono maujood the.
+> Yaani 100/101 dono ke saath hai.
 >
 > ### 📌 Block G ke baad dobara naapa — 2026-09-19
 >
@@ -1730,24 +1826,31 @@ naya `helpers/common/caseInsensitiveName.js` · `helpers/vouchers/validate.js` �
 
 ---
 
-## O-1 · OTP throttle — claim ki pehchaan timestamp se nahi ho sakti
+## O-1 · OTP throttle — claim ki pehchaan timestamp se nahi ho sakti — ✅ **DONE** (2026-09-21)
 
-> ### 🔴 Iska ek test **abhi red hai**, aur wo jaan-bujh kar hai
+> ### ✅ Wo test ab green hai
 >
 > `__tests__/money/otpThrottle.test.js` → *"two requests at the same moment ›
-> lets exactly one through"*. Aath ek saath bheje jaate hain; **aath ke aath**
-> nikal jaate hain.
+> lets exactly one through"*. Aath ek saath bheje jaate hain; ab **ek** nikalta
+> hai, aur row par uska apna nonce hota hai.
 >
-> Ye test sahi behaviour likhta hai aur bug zinda hai, isliye wo fail hota hai —
-> `helpers/otps/claimOtpSend.js` chhua nahi gaya. **Poori money suite isi wajah
-> se kabhi poori green nahi hoti**, aur ye likha hona zaruri hai: warna agla
-> aadmi red dekh kar maan lega ki usne kuch toda hai, ya use ignore karna seekh
-> lega.
+> **Ye is repo ka sabse lamba red tha** — hafton tak jaan-bujh kar. Us waqt ka
+> faisla yahan likha rehna chahiye kyunki wo sahi tha: test `skip` **nahi** kiya
+> gaya, kyunki skipped test chup ho jaata hai aur red har run me yaad dilata
+> hai. Poori money suite isi ek test ki wajah se kabhi green nahi hoti thi, aur
+> wo keemat jaan-bujh kar di gayi.
 >
-> ⚠️ Ise `skip` **nahi** kiya gaya. Ek skipped test chup rehta hai; ye red rehta
-> hai aur har run me yaad dilata hai.
+> Iska ek aur asar tha: har naye kaam ke baad suite me **ek** red pehle se hota
+> tha, to "maine kuch toda kya" ka jawab dene me har baar ek extra kadam lagta
+> tha. Ab suite ka ekmatra red **asli** red hoga.
 
-`helpers/otps/claimOtpSend.js` · `helpers/otps/releaseOtpSend.js` · `models/OtpThrottle.js`
+`helpers/otps/claimOtpSend.js` · `services/otps/sendOtp.js` ·
+`helpers/twoFactor/sendThrottledMobileOtp.js` · `models/OtpThrottle.js`
+
+> ⚠️ Yahan pehle `helpers/otps/releaseOtpSend.js` likha tha — **wo file kabhi
+> thi hi nahi**. Release do jagah inline `$pull` hai, aur dono me wahi bug tha.
+> Ek file ka naam likh dene se wo khoj ek hi jagah rukti, aur doosri chhoot
+> jaati.
 
 > 🔴 **Throttle burst me poora khul jaata hai.** Verdict ye hai:
 >
@@ -1777,13 +1880,21 @@ galat tha** — index maujood hai (`scripts/showTestIndexes.js OtpThrottle` se
 dekha). Index ke rehte hue bhi ye bug hai, kyunki race document ke andar hai,
 document banane me nahi.
 
-- [ ] `sends: [Date]` → per-call nonce ke saath (`{ at, claim }` ya samanantar array)
-- [ ] `claimOtpSend` verdict apne **nonce** se, timestamp se nahi
-- [ ] `releaseOtpSend` bhi nonce se — abhi value se hataata hai, wahi collision
-- [ ] Window pruning (`$filter` on `$$this`), `$max`/`$size` checks naye shape par
-- [ ] `updatedAt` TTL index jaisa hai waisa
-- [ ] Purani rows: pre-launch hai, migration nahi (M-5 ka locked faisla)
-- [ ] **Proof:** wahi money test, plus mutation — nonce hatao to 8/8 pass ho jayein
+- [x] `sends: [Date]` → `[{ at, nonce }]` — sub-schema, `_id: false` (value hai, record nahi)
+- [x] `claimOtpSend` verdict apne **nonce** se, timestamp se nahi
+- [x] Release bhi nonce se — ⚠️ `releaseOtpSend` naam ki **file hai hi nahi**; release do jagah inline hai: `services/otps/sendOtp.js` aur `helpers/twoFactor/sendThrottledMobileOtp.js`. Dono badle
+- [x] Window pruning `$filter` ab `$$this.at` par; `$max` ab **mapped `at`s** par (`$max` seedha documents par lagta to unhe field-order se compare karta — aaj sahi jawab deta, aur field hilte hi chup-chaap galat)
+- [x] `updatedAt` TTL index jaisa hai waisa
+- [x] Purani rows: koi migration nahi. ⚠️ Bare-`Date` entries **drop** hoti hain, tolerate nahi — mixed array ko `$size` ginta par mapped-`at` wala `$max` legacy ko chhod deta, yaani hourly cap aur cooldown ek hi row par alag jawab dete. Ek row ka clean slate chhoti aur predictable galti hai; TTL 2 ghante ka hai
+- [x] **Proof:** `otpThrottle.test.js` **16/16** (pehle 10/11). Do mutation chalayi aur dono red aayi — nonce check hatao to concurrency test 8/8 pass kar jaata hai; `sendOtp` ka pull wapas `claim.at` karo to call-site test girta hai
+- [x] Naye test: winner ka nonce row par hai · har caller ka apna nonce · release sirf apni entry hataata hai · refused claim kuch nahi hata sakta · **asli `sendOtp` failure branch** (provider stub) · legacy bare-date row
+
+> ✅ **DONE — 2026-09-21.** `models/OtpThrottle.js` · `helpers/otps/claimOtpSend.js` ·
+> `services/otps/sendOtp.js` · `helpers/twoFactor/sendThrottledMobileOtp.js` ·
+> `__tests__/money/otpThrottle.test.js` · `CLAUDE.md`
+>
+> Koi route, koi response shape, koi API surface nahi badla — isliye docs/collections
+> ki coverage par asar nahi.
 
 > ⚠️ **Media migration se bilkul alag.** Security code hai, stored shape badalta
 > hai, aur M-block/V-block me se kisi par depend nahi karta — isliye apna phase.

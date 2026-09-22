@@ -23,6 +23,9 @@ const {
   buildMoneyListFilter,
   claimProjection,
   claimRecordProjection,
+  customerIdentityProjection,
+  showsCustomerIdentity,
+  VOUCHER_VERSION_FIELDS,
   buildClaimTransactionPipeline,
   buildClaimPipeline,
   pickByProjection,
@@ -65,6 +68,18 @@ module.exports = {
   buildMoneyListFilter,
   claimProjection,
   claimRecordProjection,
+  /**
+   * Who paid, and which voucher version they bought — the two blocks the
+   * listings join for and the two detail endpoints read directly.
+   *
+   * Exported rather than kept private because a detail endpoint cannot use an
+   * aggregation lookup (ownership is checked against the whole document first),
+   * so it reads the same two collections by hand. Sharing the field lists is
+   * what stops a detail page from showing less than the row it was opened from.
+   */
+  customerIdentityProjection,
+  showsCustomerIdentity,
+  VOUCHER_VERSION_FIELDS,
   buildClaimTransactionPipeline,
   buildClaimPipeline,
   pickByProjection,

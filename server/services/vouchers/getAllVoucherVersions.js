@@ -5,6 +5,8 @@ const { buildAggregateLookup } = require("../../database");
 const { ROLES } = require("../../constants");
 const { resolveActorBrand } = require("../../helpers/brands");
 const { escapeRegex } = require("../../validator/common");
+const { toMediaResponse } = require("../../helpers/media");
+const { toManagedBanner } = require("../../helpers/vouchers/managedBanner");
 const { pagination, validateObjectId, throwError } = require("../../utils");
 const { VOUCHER_SORT_BY } = require("../../constants/voucher");
 
@@ -25,6 +27,56 @@ const { VOUCHER_SORT_BY } = require("../../constants/voucher");
  * Same helper, same reasoning as `getAllLocations`.
  */
 const contains = (text) => ({ $regex: new RegExp(escapeRegex(text), "i") });
+
+/**
+ * Every file on a voucher version row, through the one admin media shape.
+ *
+ * ### 🔴 Why this is here and not in the `$project`
+ *
+ * `toMediaResponse` is the single place that decides what a stored file looks
+ * like on the wire, and its admin shape is deliberate: size, dimensions, mime
+ * type, original name and **`provider`** — but never `publicId`, `bucket` or
+ * `key`. Those are the object's *address*, not detail about it; whoever holds
+ * one can fetch or overwrite the file directly, around every check this server
+ * makes.
+ *
+ * This endpoint had never gone through it. `formatManagedMedia` (showcase
+ * panel) and `toAdminTickerShape` (tickers) both had, so the voucher panel was
+ * the one surface of three answering the same question a different way — with
+ * the locator still attached, and with `storage` nested where the other two
+ * answer a flat `provider`.
+ *
+ * ⚠️ One shape across all three panels is the point. A panel that learns to
+ * read a media object once should not have to learn a second spelling because
+ * of which endpoint it came from.
+ */
+const shapeVersionMedia = (version) => {
+  if (!version) return version;
+
+  const shaped = {
+    ...version,
+    images: (version.images || []).map((image) => ({
+      _id: image._id,
+      media: toMediaResponse(image.media, { forAdmin: true }),
+      sortOrder: image.sortOrder,
+    })),
+  };
+
+  /**
+   * ⚠️ Shaped, not dropped. The panel renders the voucher's banner, and it goes
+   * through the **same** helper the upload and review responses use — so the
+   * three surfaces that answer with a banner cannot describe it three ways,
+   * which is exactly what they were doing.
+   */
+  if (version.voucher?.banner) {
+    shaped.voucher = {
+      ...version.voucher,
+      banner: toManagedBanner(version.voucher.banner),
+    };
+  }
+
+  return shaped;
+};
 
 /**
  * Restrict the listing to the brand this caller may actually read.
@@ -244,7 +296,72 @@ exports.getAllVoucherVersions = async (actor, query) => {
     sortStage = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
   }
 
-  const userProject = { password: 0, otp: 0, refreshToken: 0 };
+  /**
+   * 🔴 An **inclusion** list, and the difference is the whole point.
+   *
+   * This was `{ password: 0, otp: 0, refreshToken: 0 }` — which removes three
+   * fields and ships every other one a `User` has. A voucher row needs to say
+   * *who* submitted or approved it; what it was actually answering with was
+   * that person's `email`, `mobile`, `whatsappNumber`, `username`,
+   * `referralCode`, `notificationPreferences`, `isOnline`, `currentScreen`
+   * and **`walletBalance`**.
+   *
+   * ⚠️ And `approvedByUser` / `reviewedByUser` are **admins**. This endpoint is
+   * `isVendorOrAdmin`, so a vendor opening their own voucher list was reading
+   * the contact details and wallet balance of the admin who reviewed it.
+   *
+   * A blacklist protects what somebody remembered to name. Everything below is
+   * named, so a column added to `User` tomorrow does not reach a panel by
+   * default — and the vendor doc has described this block as `{_id, name}`
+   * all along.
+   */
+  const userProject = { _id: 1, name: 1, username: 1, role: 1 };
+
+  /**
+   * ⚠️ The brand a voucher belongs to, as a voucher row needs it — a name, an
+   * id and a logo.
+   *
+   * The lookup had **no projection at all**, so it shipped the whole `Brand`:
+   * `BankId`, `GSTId` and `PANId` (the pointers to its financial documents),
+   * the owner's `email` / `mobile` / `whatsappNumber`, every admin audit field
+   * (`approvedByAdminId`, `revokedByAdminId`, `revokeReason`,
+   * `verificationAttemptCount`, `systemVerifyId`), every entitlement counter,
+   * and `logoStorage` — a legacy sidecar still holding a Cloudinary `publicId`.
+   */
+  const brandProject = {
+    _id: 1,
+    brandName: 1,
+    legalBusinessName: 1,
+    uniqueId: 1,
+    merchantId: 1,
+    logo: 1,
+    isActive: 1,
+    isApproved: 1,
+  };
+
+  /**
+   * The voucher master, as this listing needs it.
+   *
+   * ⚠️ `banner` is kept — the panel renders it — but it is a `mediaSchema`
+   * value, so it leaves through `toMediaResponse` below like every other file
+   * rather than being passed along with its locator attached.
+   */
+  const voucherProject = {
+    _id: 1,
+    name: 1,
+    voucherCode: 1,
+    status: 1,
+    isActive: 1,
+    isSuggested: 1,
+    suggestionOrder: 1,
+    currentVersionId: 1,
+    publishedVersionId: 1,
+    banner: 1,
+    createdAt: 1,
+  };
+
+  /** Category and sub-category: what a label needs, nothing else. */
+  const taxonomyProject = { _id: 1, name: 1, image: 1, isActive: 1 };
 
   const pipeline = [
     { $match: match },
@@ -257,6 +374,7 @@ exports.getAllVoucherVersions = async (actor, query) => {
       from: "vouchers",
       localField: "voucherId",
       as: "voucher",
+      project: voucherProject,
     }),
 
     // =========================================================
@@ -266,6 +384,7 @@ exports.getAllVoucherVersions = async (actor, query) => {
       from: "brands",
       localField: "brandId",
       as: "brand",
+      project: brandProject,
     }),
 
     // =========================================================
@@ -275,6 +394,7 @@ exports.getAllVoucherVersions = async (actor, query) => {
       from: "categories",
       localField: "categoryId",
       as: "category",
+      project: taxonomyProject,
     }),
 
     // =========================================================
@@ -284,6 +404,7 @@ exports.getAllVoucherVersions = async (actor, query) => {
       from: "subcategories",
       localField: "subCategoryId",
       as: "subCategory",
+      project: taxonomyProject,
     }),
 
     // =========================================================
@@ -336,8 +457,24 @@ exports.getAllVoucherVersions = async (actor, query) => {
       project: userProject,
     }),
 
+    /**
+     * ⚠️ The version's **own** fields stay as they are, deliberately.
+     *
+     * Everything sensitive on this response came in through a lookup, and those
+     * are whitelisted above. A voucher version itself is the thing being
+     * listed — name, status, dates, offers, review notes — and enumerating it
+     * here would mean the day somebody adds a field the panel needs, it
+     * silently does not arrive.
+     *
+     * Its files are the one exception, and they are shaped in JS below rather
+     * than here: `toMediaResponse` is where "what a file looks like on the wire"
+     * is decided for every other surface, and a second answer written into a
+     * `$project` is exactly how the two drift apart.
+     */
     { $project: { __v: 0 } },
   ];
 
-  return await pagination(VoucherVersion, pipeline, page, limit);
+  const result = await pagination(VoucherVersion, pipeline, page, limit);
+  result.data = (result.data || []).map(shapeVersionMedia);
+  return result;
 };

@@ -20,15 +20,32 @@ const { resolveCustomerId } = require("../customers");
  *
  * ### What a vendor must never see
  *
- * The gateway fee, the platform's share of a promo, the customer's contact
- * details. A vendor knowing our MDR is a commercial disclosure; a vendor
- * knowing the customer's phone number is a privacy one. Both are on the same
- * document, which is exactly why the projection is decided here rather than
- * remembered at each call site.
+ * The gateway fee, the platform's share of a promo, and the customer's **phone
+ * number**. A vendor knowing our MDR is a commercial disclosure; a vendor
+ * knowing the buyer's mobile is a privacy one. Both are on the same document,
+ * which is exactly why the projection is decided here rather than remembered at
+ * each call site.
+ *
+ * ### ⚠️ Two contact flags, because the line moved
+ *
+ * The brand side was once given no customer contact at all, and
+ * `canSeeCustomerContact` meant exactly that. `email` was later released to
+ * them deliberately — a brand does have business with the person who just
+ * bought from them — while `mobile` and `whatsappNumber` stayed admin-only.
+ *
+ * One boolean could not describe that without lying in one direction or the
+ * other, so there are two. `canSeeCustomerContact` answers *"is any channel
+ * shown"*, `canSeeCustomerPhone` answers *"is the number shown"*, and a client
+ * that needs to know which fields to render reads the second one.
+ *
+ * 🔴 **Both must agree with `customerIdentityProjection`.** A flag that
+ * disagrees with the projection is worse than no flag: a panel hides a field it
+ * was sent, or renders a blank where it was promised one, and neither failure
+ * looks like a bug in this file.
  *
  * @param {object} actor        the request
  * @param {object} transaction  the row being opened
- * @returns {{ role, scope, canSeePlatformCosts, canSeeCustomerContact }}
+ * @returns {{ role, scope, canSeePlatformCosts, canSeeCustomerContact, canSeeCustomerPhone }}
  * @throws {CustomError} 403 when the actor has no claim on this row
  */
 exports.assertTransactionAccess = (actor = {}, transaction) => {
@@ -43,6 +60,7 @@ exports.assertTransactionAccess = (actor = {}, transaction) => {
       scope: "ALL",
       canSeePlatformCosts: true,
       canSeeCustomerContact: true,
+      canSeeCustomerPhone: true,
     };
   }
 
@@ -55,7 +73,9 @@ exports.assertTransactionAccess = (actor = {}, transaction) => {
       // Their own money, but not our margin — what Razorpay charged us is not
       // part of what they bought.
       canSeePlatformCosts: false,
+      // Their own details, which they own outright.
       canSeeCustomerContact: true,
+      canSeeCustomerPhone: true,
     };
   }
 
@@ -85,8 +105,11 @@ exports.assertTransactionAccess = (actor = {}, transaction) => {
       scope: "BRAND",
       // Our MDR and our share of a campaign are not the vendor's business.
       canSeePlatformCosts: false,
-      // Nor is the customer's phone number.
-      canSeeCustomerContact: false,
+      // The buyer's name, `uniqueId` and email — business with the person who
+      // just bought from them.
+      canSeeCustomerContact: true,
+      // Never the number. See this file's header for why the two are separate.
+      canSeeCustomerPhone: false,
     };
   }
 
@@ -111,6 +134,7 @@ exports.assertClaimAccess = (actor = {}, claim) => {
       scope: "ALL",
       canSeePlatformCosts: true,
       canSeeCustomerContact: true,
+      canSeeCustomerPhone: true,
     };
   }
 
@@ -121,6 +145,7 @@ exports.assertClaimAccess = (actor = {}, claim) => {
       scope: "OWN",
       canSeePlatformCosts: false,
       canSeeCustomerContact: true,
+      canSeeCustomerPhone: true,
     };
   }
 
@@ -139,11 +164,16 @@ exports.assertClaimAccess = (actor = {}, claim) => {
       throwError(403, "This claim was not made at your outlet.");
     }
 
+    // Same two flags as the payment check above, and they are kept identical on
+    // purpose: a claim and its payment are opened by the same screens, and a
+    // page that shows the buyer's email on one and hides it on the other reads
+    // as a bug in whichever one the reader saw second.
     return {
       role,
       scope: "BRAND",
       canSeePlatformCosts: false,
-      canSeeCustomerContact: false,
+      canSeeCustomerContact: true,
+      canSeeCustomerPhone: false,
     };
   }
 

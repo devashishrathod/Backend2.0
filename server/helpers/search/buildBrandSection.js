@@ -6,6 +6,12 @@ const {
   customerVisibleBrandFilter,
   outletDistanceExpression,
 } = require("../brands");
+// By file, not the barrel — same reason `buildBrandPlanLookup` is required that
+// way below.
+const {
+  buildBrandRelationshipMap,
+  brandRelationshipFor,
+} = require("../brands/brandRelationship");
 const {
   SEARCH_RESULT_TYPES,
   SEARCH_TARGET_SCREENS,
@@ -23,7 +29,7 @@ const { searchRegex } = require("./searchTerm");
  * an about-us paragraph does not make somebody a pizza brand. In a search box,
  * noise costs more than a missed edge case.
  */
-const toItem = (row) => {
+const toItem = (row, relationship) => {
   const parts = [];
   if (row.category?.name) parts.push(row.category.name);
   if (row.outletCount) {
@@ -43,6 +49,10 @@ const toItem = (row) => {
       isTopBrand: row.isTopBrand ?? false,
       isVerified: row.isVerified ?? false,
       followersCount: row.followersCount ?? 0,
+      // Beside `followersCount`, which is where every other brand surface puts
+      // them. Both are always present — a guest gets `false`, not a missing key.
+      isFollowed: relationship?.isFollowed ?? false,
+      isAvoided: relationship?.isAvoided ?? false,
       outletCount: row.outletCount ?? 0,
       categoryId: row.categoryId || null,
       subCategoryId: row.subCategoryId || null,
@@ -65,6 +75,9 @@ exports.buildBrandSection = async ({
   latitude,
   longitude,
   hasGeo,
+  // Already an ObjectId, or `null` for a guest — `globalSearch` normalises it
+  // once for every section.
+  customerId,
 }) => {
   const pipeline = [
     {
@@ -197,10 +210,25 @@ exports.buildBrandSection = async ({
     allowEmpty: true,
   });
 
+  /**
+   * The viewer's own follow / avoid state, over the rows this page returned.
+   *
+   * After paging, not a `$lookup`: a search box answers while the customer is
+   * still typing, and joining two collections per matched brand before `$limit`
+   * is exactly the cost this section cannot pay. Two indexed `$in` reads over at
+   * most `limit` ids is flat. A guest resolves to nothing and skips both.
+   */
+  const relationships = await buildBrandRelationshipMap(
+    customerId,
+    result.data.map((row) => row._id),
+  );
+
   return {
     total: result.total,
     totalPages: result.totalPages,
-    items: result.data.map(toItem),
+    items: result.data.map((row) =>
+      toItem(row, brandRelationshipFor(relationships, row._id)),
+    ),
     seeAll: {
       endpoint: "/brands/customer/get-all",
       params: { search: term },

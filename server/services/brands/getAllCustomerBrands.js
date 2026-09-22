@@ -9,6 +9,8 @@ const { escapeRegex } = require("../../validator/common");
 const {
   outletDistanceExpression,
   customerVisibleBrandFilter,
+  buildBrandRelationshipMap,
+  brandRelationshipFor,
 } = require("../../helpers/brands");
 // The live plan, resolved the same way on every customer surface — never off
 // the stale `Brand.subscribedId` pointer. See the helper for what that cost.
@@ -30,8 +32,12 @@ const { buildBrandPlanLookup } = require("../../helpers/subscribeds");
  * Geo is optional (Q6). With coordinates each row carries `distanceInMeters`
  * and `DISTANCE` sorting becomes available; without them this is a plain
  * directory that does no geo work at all.
+ *
+ * @param {object} query  the validated query string
+ * @param {object} viewer `req.customerId` — a populated Customer document, or
+ *                        `undefined` for a guest.
  */
-exports.getAllCustomerBrands = async (query) => {
+exports.getAllCustomerBrands = async (query, viewer) => {
   const {
     page = 1,
     limit = 10,
@@ -236,5 +242,29 @@ exports.getAllCustomerBrands = async (query) => {
     },
   });
 
-  return pagination(Brand, pipeline, page, limit, "brand");
+  const result = await pagination(Brand, pipeline, page, limit, "brand");
+
+  /**
+   * The viewer's own follow / avoid state, added **after** paging.
+   *
+   * Deliberately not a `$lookup` in the pipeline: that would run twice per row
+   * across the whole matched set, before `$skip`/`$limit` narrows it. Decorating
+   * the page instead costs two indexed `$in` reads however many brands matched,
+   * and it keeps a per-viewer fact out of a pipeline whose every other stage is
+   * the same for everybody — including `$sort`, which must stay viewer-agnostic
+   * or the same brand pages differently for two people.
+   *
+   * A guest gets an empty map, so every row carries `false` / `false`.
+   */
+  const relationships = await buildBrandRelationshipMap(
+    viewer,
+    result.data.map((row) => row._id),
+  );
+
+  result.data = result.data.map((row) => ({
+    ...row,
+    ...brandRelationshipFor(relationships, row._id),
+  }));
+
+  return result;
 };

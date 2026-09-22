@@ -192,8 +192,46 @@ describe("buildKey", () => {
     // The type prefix is a claim about content, and at this point nothing has
     // read the bytes.
     const key = keys.buildStagingKey({ userId: "u1", mime: "image/png" });
-    expect(key.startsWith("dev/staging/u1/")).toBe(true);
     expect(key).not.toContain("images/");
+  });
+
+  /**
+   * 🔴 `staging/` is the **first** segment, ahead of the tier prefix.
+   *
+   * The bucket policy that denies public reads and the lifecycle rule that
+   * expires abandonments are both literal prefixes — S3 lifecycle cannot use a
+   * wildcard at all. When this was `<prefix>staging/`, a rule written for
+   * `staging/` matched production and nothing else: measured on the live
+   * distribution, `staging/` answered 403 while `dev/staging/` answered 200, so
+   * every unvalidated upload on non-prod was world-readable and nothing swept it.
+   */
+  test("🔴 staging comes before the tier prefix, so one rule covers every tier", () => {
+    const key = keys.buildStagingKey({ userId: "u1", mime: "image/png" });
+    expect(key.startsWith("staging/")).toBe(true);
+    expect(key.startsWith("staging/dev/u1/")).toBe(true);
+  });
+
+  /**
+   * ⚠️ The preflight probe is litter the same lifecycle rule has to reach.
+   *
+   * It used to spell the prefix itself, which is how the two drift until the
+   * probe lands somewhere nothing sweeps. This asserts they share one root
+   * rather than two strings that merely agree today.
+   */
+  test("⚠️ preflight's probe lands under the same root as a real staging key", () => {
+    const root = keys.stagingPrefix();
+    expect(root).toBe("staging/dev/");
+    expect(
+      keys.buildStagingKey({ userId: "u1", mime: "image/png" }).startsWith(root),
+    ).toBe(true);
+  });
+
+  test("and in production, where the tier prefix is empty, it is just staging/", () => {
+    mockConfig.S3_PREFIX = "";
+    expect(keys.stagingPrefix()).toBe("staging/");
+    expect(
+      keys.buildStagingKey({ userId: "u1", mime: "image/png" }),
+    ).toMatch(/^staging\/u1\/[0-9a-f-]+\.png$/);
   });
 
   test("documents are the only PRIVATE purpose", () => {

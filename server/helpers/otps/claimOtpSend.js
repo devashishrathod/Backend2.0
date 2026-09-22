@@ -1,8 +1,23 @@
+const { randomUUID } = require("node:crypto");
 const OtpThrottle = require("../../models/OtpThrottle");
 const { getSecurityConfig } = require("../settings");
 
 const SECOND_MS = 1000;
 const HOUR_MS = 60 * 60 * SECOND_MS;
+
+/**
+ * The window's send times, read only from entries that carry a nonce.
+ *
+ * ⚠️ Entries written before O-1 are bare `Date`s with no `nonce`, and the
+ * pipeline drops them (see the note on the prune stage). This mirrors that, so
+ * the refusal arithmetic can never be computed from entries the write itself
+ * has already stopped counting — the two would otherwise disagree about how
+ * full the window is.
+ */
+const sendTimes = (row) =>
+  (row?.sends || [])
+    .filter((entry) => entry?.at && entry?.nonce)
+    .map((entry) => new Date(entry.at).getTime());
 
 /**
  * May a code go to this target right now? Claims the slot if so.
@@ -15,9 +30,21 @@ const HOUR_MS = 60 * 60 * SECOND_MS;
  *
  * So Mongo decides. A pipeline update prunes the window and appends **only if**
  * the conditions hold, in a single operation, and the caller finds out by asking
- * whether its own timestamp survived. That is the same discipline the money
+ * whether **its own claim** survived. That is the same discipline the money
  * paths use for a conditional claim: the condition lives in the write, so timing
  * cannot change the answer.
+ *
+ * ### 🔴 The claim is identified by a nonce, never by its timestamp (O-1)
+ *
+ * This used to read `sends.includes(now.getTime())`. A timestamp is not an
+ * identity: N callers in the same millisecond compute the same one, so the
+ * single write that appended was read by **all** of them as their own. Eight
+ * concurrent claims all returned `allowed: true`, seven of them having written
+ * nothing, and eight messages went out — the throttle opening exactly under the
+ * burst it exists to stop.
+ *
+ * The atomic write was never the problem and is unchanged. What changed is the
+ * question asked afterwards.
  *
  * ### Refused is not an error here
  *
@@ -27,15 +54,23 @@ const HOUR_MS = 60 * 60 * SECOND_MS;
  *
  * @param {string} target   phone number or email
  * @param {string} purpose  scoped, so login and bank-attach do not share an allowance
- * @returns {Promise<{allowed: boolean, at?: Date, retryAfterSeconds: number, reason?: string}>}
- *   `at` is the exact timestamp this call claimed — the caller needs it to give
- *   the slot back by value if the message then fails to send. Releasing by a
- *   time *range* would pull entries claimed by other callers in the same second.
+ * @returns {Promise<{allowed: boolean, at?: Date, nonce?: string, retryAfterSeconds: number, reason?: string}>}
+ *   `nonce` identifies this call's entry — the caller gives the slot back with
+ *   `$pull: { sends: { nonce } }` if the message then fails to send. ⚠️ Not by
+ *   `at`, and not by a time range: both would pull an entry another caller
+ *   claimed in the same millisecond, which is the O-1 bug wearing its other
+ *   face. `at` is returned for logging and for the retry arithmetic only.
  */
 exports.claimOtpSend = async (target, purpose) => {
   const { otp: limits } = await getSecurityConfig();
 
   const now = new Date();
+  /**
+   * This call's identity. Unguessable is not the requirement — it never leaves
+   * the process — but `crypto` is free and this repo does not reach for
+   * `Math.random()` for anything that decides an outcome.
+   */
+  const nonce = randomUUID();
   const windowStart = new Date(now.getTime() - HOUR_MS);
   const cooldownCutoff = new Date(
     now.getTime() - limits.resendCooldownSeconds * SECOND_MS,
@@ -45,13 +80,24 @@ exports.claimOtpSend = async (target, purpose) => {
     { target, purpose },
     [
       {
-        // Roll the window forward first, so the count below is "the last hour"
-        // rather than "since this row was made".
+        /**
+         * Roll the window forward first, so the count below is "the last hour"
+         * rather than "since this row was made".
+         *
+         * ⚠️ `$$this.at`, and that also drops any entry left over from before
+         * O-1 — those were bare `Date`s, so `$$this.at` is missing and the
+         * comparison is false. Dropping them is deliberate rather than
+         * tolerated: a mixed array would still be counted by `$size` while
+         * `$max` over the mapped `at`s ignored the legacy ones, so the hourly
+         * cap and the cooldown would disagree about the same row. A clean slate
+         * for one row is the smaller and more predictable wrong, the TTL is two
+         * hours, and this is pre-launch — no migration, per M-5.
+         */
         $set: {
           sends: {
             $filter: {
               input: { $ifNull: ["$sends", []] },
-              cond: { $gte: ["$$this", windowStart] },
+              cond: { $gte: ["$$this.at", windowStart] },
             },
           },
         },
@@ -68,12 +114,25 @@ exports.claimOtpSend = async (target, purpose) => {
                       // Nothing in the window: the cooldown cannot have been
                       // broken by a send that is not there.
                       { $eq: [{ $size: "$sends" }, 0] },
-                      { $lte: [{ $max: "$sends" }, cooldownCutoff] },
+                      // ⚠️ `$max` over the mapped times, not over the entries —
+                      // `$max` of a list of documents compares documents, which
+                      // would order them by `at` only by accident of field
+                      // order and silently stop being true if a field moved.
+                      {
+                        $lte: [
+                          {
+                            $max: {
+                              $map: { input: "$sends", in: "$$this.at" },
+                            },
+                          },
+                          cooldownCutoff,
+                        ],
+                      },
                     ],
                   },
                 ],
               },
-              { $concatArrays: ["$sends", [now]] },
+              { $concatArrays: ["$sends", [{ at: now, nonce }]] },
               "$sends",
             ],
           },
@@ -95,31 +154,27 @@ exports.claimOtpSend = async (target, purpose) => {
     },
   ).lean();
 
-  const sends = (row?.sends || []).map((d) => new Date(d).getTime());
+  const sends = sendTimes(row);
 
   /**
-   * 🔴 **KNOWN BUG — O-1.** This identifies a claim by its timestamp, and a
-   * timestamp is not unique between callers.
+   * ✅ **O-1 fixed here.** The question is "did **my** claim survive", and only
+   * this call knows its nonce.
    *
-   * N requests that land in the same millisecond compute the **same**
-   * `now.getTime()`. The first one's write appends it; every other one then
-   * finds that identical value in `sends` and reports `allowed: true` **without
-   * having written anything**. So a burst of "resend" taps all pass, and N
-   * messages go out — the throttle fails precisely when it is needed, silently.
+   * It read `sends.includes(now.getTime())` before. That is the same question
+   * asked of a value every concurrent caller shares, so the single entry the
+   * winning write appended answered `true` for all of them — see the note at
+   * the top of this file and on the model.
    *
-   * The atomic write above is correct. What is wrong is asking "did my
-   * timestamp survive?" instead of "did *my claim* survive?", which needs a
-   * per-call nonce. The same flaw is in `releaseOtpSend`, which gives a slot
-   * back by value — the note at the top of this file already worried about
-   * exactly that collision for the release path and missed it here.
+   * ⚠️ Keep this a nonce comparison. Anything derived from the clock brings the
+   * bug straight back, and it comes back **silently**: the only symptom is
+   * messages going out under load, which nothing here can observe.
    *
-   * Caught by `__tests__/money/otpThrottle.test.js` — "two requests at the same
-   * moment › lets exactly one through". That test is **correct and currently
-   * red**; do not skip it. Fix is phase O-1 in the master execution plan.
+   * Pinned by `__tests__/money/otpThrottle.test.js` — "two requests at the same
+   * moment › lets exactly one through", plus the mutation note there.
    */
-  const allowed = sends.includes(now.getTime());
+  const allowed = (row?.sends || []).some((entry) => entry?.nonce === nonce);
 
-  if (allowed) return { allowed: true, at: now, retryAfterSeconds: 0 };
+  if (allowed) return { allowed: true, at: now, nonce, retryAfterSeconds: 0 };
 
   const last = sends.length ? Math.max(...sends) : 0;
   const oldest = sends.length ? Math.min(...sends) : 0;

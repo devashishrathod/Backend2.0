@@ -7,6 +7,8 @@ const {
 
 const Transaction = require("../../models/Transaction");
 const VoucherClaim = require("../../models/VoucherClaim");
+const Customer = require("../../models/Customer");
+const VoucherVersion = require("../../models/VoucherVersion");
 const {
   getClaimTransactions,
   getClaims,
@@ -17,9 +19,11 @@ const {
   GATEWAY_FEE_BEARER,
 } = require("../../constants/transaction");
 const { VOUCHER_CLAIM_STATUS } = require("../../constants/voucherClaim");
+const { VOUCHER_DISCOUNT_TYPES } = require("../../constants/voucher");
 const { ROLES } = require("../../constants");
 
 const oid = () => new mongoose.Types.ObjectId();
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 let CUSTOMER_A;
 let CUSTOMER_B;
@@ -27,6 +31,54 @@ let BRAND_A;
 let BRAND_B;
 let OUTLET_1;
 let OUTLET_2;
+let VERSION;
+
+/**
+ * Real customers and a real voucher version, not `oid()` placeholders.
+ *
+ * The listings join both collections now, and a `$lookup` against an id that
+ * matches nothing returns an empty array that `preserveNullAndEmptyArrays`
+ * turns into an absent field — indistinguishable from a projection that never
+ * named it. Seeding the documents is what makes "the vendor sees a name" a
+ * different assertion from "the vendor sees nothing".
+ */
+let codeSeq = 90_000_000;
+
+const seedCustomer = async ({ fullName, uniqueId }) =>
+  Customer.create({
+    userId: oid(),
+    uniqueId,
+    fullName,
+    email: `${uniqueId.toLowerCase()}@example.com`,
+    mobile: "9700000001",
+    whatsappNumber: "9700000002",
+  });
+
+const seedVersion = async (brandId) => {
+  const code = `VCH-${String(codeSeq++).padStart(8, "0")}-V1`;
+  return VoucherVersion.create({
+    voucherId: oid(),
+    brandId,
+    createdBy: oid(),
+    categoryId: oid(),
+    subCategoryId: oid(),
+    name: "Test Voucher",
+    versionNumber: 3,
+    versionCode: code,
+    startAt: new Date(Date.now() - DAY_MS),
+    endAt: new Date(Date.now() + 90 * DAY_MS),
+    images: [{ media: { url: "https://cdn.test/one.webp", kind: "IMAGE" }, sortOrder: 1 }],
+    offers: [
+      {
+        title: "20% off",
+        minBillAmount: 100,
+        discountType: VOUCHER_DISCOUNT_TYPES.PERCENTAGE,
+        discountValue: 20,
+        sortOrder: 1,
+      },
+    ],
+  });
+};
 
 const PRICING = {
   billAmount: 1000,
@@ -60,6 +112,8 @@ const seed = async ({ customerId, brandId, subBrandId, status = VOUCHER_CLAIM_ST
     contact: "9700000001",
     invoiceId: `TD/VCH/26-27/${Math.floor(Math.random() * 1e6)}`,
     voucher: {
+      voucherVersionId: VERSION._id,
+      versionNumber: VERSION.versionNumber,
       billAmount: PRICING.billAmount,
       offerDiscount: PRICING.offerDiscount,
       netBill: PRICING.netBill,
@@ -73,8 +127,8 @@ const seed = async ({ customerId, brandId, subBrandId, status = VOUCHER_CLAIM_ST
   const claim = await VoucherClaim.create({
     customerId,
     voucherId: oid(),
-    voucherVersionId: oid(),
-    versionNumber: 1,
+    voucherVersionId: VERSION._id,
+    versionNumber: VERSION.versionNumber,
     brandId,
     subBrandId,
     billAmount: PRICING.billAmount,
@@ -101,22 +155,31 @@ const admin = () => ({ role: ROLES.ADMIN });
 
 beforeAll(async () => {
   await connectTestDb();
-  for (const m of [Transaction, VoucherClaim]) await m.createIndexes();
+  for (const m of [Transaction, VoucherClaim, Customer, VoucherVersion]) {
+    await m.createIndexes();
+  }
 });
 
 afterAll(async () => {
-  await clearCollections(Transaction, VoucherClaim);
+  await clearCollections(Transaction, VoucherClaim, Customer, VoucherVersion);
   await disconnectTestDb();
 });
 
 beforeEach(async () => {
-  await clearCollections(Transaction, VoucherClaim);
-  CUSTOMER_A = oid();
-  CUSTOMER_B = oid();
+  await clearCollections(Transaction, VoucherClaim, Customer, VoucherVersion);
   BRAND_A = oid();
   BRAND_B = oid();
   OUTLET_1 = oid();
   OUTLET_2 = oid();
+
+  const [a, b, version] = await Promise.all([
+    seedCustomer({ fullName: "Asha Menon", uniqueId: "TDC000001" }),
+    seedCustomer({ fullName: "Bhavesh Rao", uniqueId: "TDC000002" }),
+    seedVersion(BRAND_A),
+  ]);
+  CUSTOMER_A = a._id;
+  CUSTOMER_B = b._id;
+  VERSION = version;
 
   // Customer A bought at brand A outlet 1, and at brand B.
   await seed({ customerId: CUSTOMER_A, brandId: BRAND_A, subBrandId: OUTLET_1 });
@@ -215,6 +278,159 @@ describe("what each audience is allowed to read", () => {
     expect(row.netReceived).toBe(792.06);
     expect(row.voucher.platformPromoCost).toBe(35);
     expect(row.email).toBe("customer@example.com");
+  });
+});
+
+/**
+ * ---------------- who paid, and which version they bought ----------------
+ *
+ * The brand side used to get neither. A vendor reconciling their counter had a
+ * row with an amount, a timestamp and no way at all to say whose it was — the
+ * customer projection omitted even `customerId`. `versionCode` was on nobody's,
+ * because it is on neither document the listings read.
+ */
+describe("the customer block", () => {
+  /**
+   * 🔴 The line is at the phone number, not at contact in general.
+   *
+   * ⚠️ This assertion **moved once**. The brand side originally got name and
+   * `uniqueId` and no contact at all; `email` was released to them afterwards,
+   * deliberately, on the argument that a brand has business with the person who
+   * just bought from them. `mobile` and `whatsappNumber` did not move and are
+   * the part this test now exists to hold.
+   *
+   * ⚠️ Mutation note: widen `customerIdentityProjection` to return the admin
+   * shape for every role and the first three assertions still pass — the vendor
+   * does get a name and an email. Only the two `toBeUndefined`s fail, which is
+   * why they are asserted individually rather than by counting keys.
+   */
+  it("gives the vendor a name, a unique id and an email — never a number", async () => {
+    const { data } = await getClaimTransactions(vendor(BRAND_A));
+    const row = data[0];
+
+    expect(row.customer.fullName).toMatch(/^(Asha Menon|Bhavesh Rao)$/);
+    expect(row.customer.uniqueId).toMatch(/^TDC00000[12]$/);
+    expect(row.customer.email).toMatch(/^tdc00000[12]@example\.com$/);
+
+    // A mailbox the buyer opens when they choose; a number that rings is not
+    // the same disclosure, and it stays admin-only.
+    expect(row.customer.mobile).toBeUndefined();
+    expect(row.customer.whatsappNumber).toBeUndefined();
+  });
+
+  /** The raw ObjectId stays out — `uniqueId` is the handle, not this. */
+  it("still keeps customerId out of the vendor's row", async () => {
+    const { data } = await getClaimTransactions(vendor(BRAND_A));
+    expect(data[0].customerId).toBeUndefined();
+    expect(data[0].customer._id).toBeUndefined();
+  });
+
+  it("scopes a sub-vendor's block the same way as a vendor's", async () => {
+    const { data } = await getClaimTransactions(subVendor(BRAND_A, OUTLET_1));
+    expect(data[0].customer.uniqueId).toBe("TDC000001");
+    expect(data[0].customer.email).toBe("tdc000001@example.com");
+    expect(data[0].customer.mobile).toBeUndefined();
+  });
+
+  /**
+   * 🔴 The admin's contact details come from the **customer record**.
+   *
+   * `claimProjection` has named `email` and `contact` on the transaction since
+   * it was written, and nothing writes either one on a voucher-claim row —
+   * only `createSubscribeOrder` fills them, on the other flow. The fixture sets
+   * `transaction.email` by hand precisely so this assertion can tell the two
+   * sources apart: if the block were reading the transaction it would say
+   * `customer@example.com`.
+   */
+  it("gives an admin the contact details, from the customer and not the payment", async () => {
+    const { data } = await getClaimTransactions(admin());
+    const row = data.find((r) => r.customer.uniqueId === "TDC000001");
+
+    expect(row.customer.fullName).toBe("Asha Menon");
+    // One shape for every audience — the admin reads the ObjectId off the row.
+    expect(row.customer._id).toBeUndefined();
+    expect(row.customer.email).toBe("tdc000001@example.com");
+    expect(row.customer.mobile).toBe("9700000001");
+    expect(row.customer.whatsappNumber).toBe("9700000002");
+  });
+
+  /**
+   * They are the person. Joining `customers` on every row of somebody's own
+   * order history is a round trip that tells them their own name, so the lookup
+   * is never added to their pipeline.
+   */
+  it("joins nothing at all for the customer reading their own history", async () => {
+    const { data } = await getClaimTransactions(customer(CUSTOMER_A));
+    expect(data[0].customer).toBeUndefined();
+    // Their own id is still theirs to see.
+    expect(String(data[0].customerId)).toBe(String(CUSTOMER_A));
+  });
+
+  it("carries the same block on the claim listing", async () => {
+    const { data } = await getClaims(vendor(BRAND_A));
+
+    expect(data[0].customer.fullName).toMatch(/^(Asha Menon|Bhavesh Rao)$/);
+    expect(data[0].customer.email).toMatch(/^tdc00000[12]@example\.com$/);
+    expect(data[0].customer.mobile).toBeUndefined();
+    // ⚠️ The claim projection drops `customerId` for a vendor, so the join has
+    // to run above the `$project` — below it there would be no key to join on
+    // and this block would be silently empty.
+    expect(data[0].customerId).toBeUndefined();
+  });
+});
+
+describe("the voucher version block", () => {
+  /**
+   * ⚠️ `versionCode` is on neither document these listings read. The
+   * transaction carries `voucher.voucherVersionId` and the claim carries
+   * `voucherVersionId`; the code itself lives only on `VoucherVersion`.
+   */
+  it.each([
+    ["vendor", () => vendor(BRAND_A)],
+    ["admin", () => admin()],
+    ["customer", () => customer(CUSTOMER_A)],
+  ])("gives the %s the version code on a payment row", async (_label, who) => {
+    const { data } = await getClaimTransactions(who());
+
+    expect(data[0].voucherVersion.versionCode).toMatch(/^VCH-\d{8}-V1$/);
+    expect(data[0].voucherVersion.versionNumber).toBe(3);
+  });
+
+  it.each([
+    ["vendor", () => vendor(BRAND_A)],
+    ["admin", () => admin()],
+    ["customer", () => customer(CUSTOMER_A)],
+  ])("gives the %s the version code on a claim row", async (_label, who) => {
+    const { data } = await getClaims(who());
+
+    expect(data[0].voucherVersion.versionCode).toMatch(/^VCH-\d{8}-V1$/);
+    expect(data[0].voucherVersion.versionNumber).toBe(3);
+  });
+
+  /**
+   * The brand-side and customer projections narrow `voucher` to four fields and
+   * `versionNumber` is not one of them — so this block is the only place either
+   * audience can see which version a sale was made from.
+   */
+  it("is the only place a vendor learns the version at all", async () => {
+    const { data } = await getClaimTransactions(vendor(BRAND_A));
+    expect(data[0].voucher.versionNumber).toBeUndefined();
+    expect(data[0].voucherVersion.versionNumber).toBe(3);
+  });
+
+  /**
+   * A version can be archived, paused or deleted after it was sold, and the
+   * payment row still has to say which one it was — so neither join filters
+   * `isDeleted`.
+   */
+  it("still names a version that has since been deleted", async () => {
+    await VoucherVersion.updateOne(
+      { _id: VERSION._id },
+      { $set: { isDeleted: true, isActive: false } },
+    );
+
+    const { data } = await getClaimTransactions(vendor(BRAND_A));
+    expect(data[0].voucherVersion.versionCode).toMatch(/^VCH-\d{8}-V1$/);
   });
 });
 
