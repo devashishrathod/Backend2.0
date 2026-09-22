@@ -932,6 +932,54 @@ expire hone ke baad delete ho jayega."*
 | **G11** ✅ | Showcase poster pairing galat jud sakti thi | Comment ne jo daava kiya, code wo karta nahi tha | `pairPosters.js` 🆕 |
 | **G12** ✅ | Teen poster purpose apni surface rule se **wide** the | Presign GIF poster ko signature de deta, surface uske baad 422 deta — bytes kharch hone ke baad | `constants/storage.js` |
 | **G13** ✅ | 🔴 **iPhone ki HEIC photo video ban jaati thi** | G2 ka apna blind spot — `ftyp` dekh kar rukna. Detail neeche | `inspect.js` · `presign.js` |
+| **G14** ✅ | 🔴 **Bina dekhi hui files CDN par khuli padi thin** | Key `<tier>staging/…` thi, par rule `staging/*` par. Live naapa. Detail neeche | `keys.js` · `preflight.js` |
+
+> ### 🔴 G14 — jo sirf asli CloudFront par hi dikh sakta tha
+>
+> **Kaise mila:** 2026-09-22, nonprod CloudFront zinda hone ke baad ek asli
+> upload karke. Code review se ye kabhi nahi milta — dono taraf sab "sahi" hai.
+>
+> `staging/` un files ka prefix hai jinke bytes **abhi kisi ne dekhe hi nahi**.
+> Unhe bachane wali do cheezein — bucket policy ka deny aur lifecycle ka sweep —
+> dono **literal prefix** par chalti hain, aur S3 lifecycle me wildcard hota hi
+> nahi. Key ban rahi thi `<tier>staging/…`, aur rule likha tha `staging/*` par:
+>
+> ```
+> staging/…      → 403  ✅   ← rule yahan lagta tha
+> dev/staging/…  → 200  🔴   ← asli keys yahan girti thin
+> stg/staging/…  → 200  🔴
+> ```
+>
+> **Prod par ye galti dikhti hi nahi**, kyunki wahan tier prefix khaali hai —
+> `staging/…` hi banta hai. Yahi ise khatarnak banata hai: non-prod par test
+> karne wale ko kabhi pata nahi chalta, aur non-prod hi wo jagah hai jahan log
+> bekhauf chize chadhate hain.
+>
+> **Fix:** `staging/` ab **sabse upar**, tier uske andar —
+> `keys.js` ka naya `stagingPrefix()`:
+>
+> ```
+> staging/dev/<userId>/<uuid>.<ext>
+> staging/stg/<userId>/<uuid>.<ext>
+> staging/<userId>/<uuid>.<ext>        ← production
+> ```
+>
+> 🔴 **Ye sirf rule ke aage jhukna nahi, ye zyada sahi design hai.** `staging/`
+> ek **haalat** hai — "nobody has read these bytes" — jagah nahi. Security rule
+> usi haalat par tika hai, to wahi sabse bahar honi chahiye; environment uske
+> andar. Ab **ek** deny aur **ek** lifecycle rule teeno tier aur dono buckets par
+> chalte hain, aur naya environment jodne par AWS me kuch nahi badalna.
+>
+> ⚠️ `preflight.js` ka probe bhi wahi `stagingPrefix()` use karta hai. Wo apni
+> copy rakhta tha (`${prefix()}staging/`), aur do copies hi is bug ki jad thin —
+> `HEAD_BYTES` wali sikh, dobara.
+>
+> ⚠️ **Koi migration nahi chahiye** — `Upload` collection me **0 row** thin aur
+> presign abhi off hai. `confirm` key ko opaque string ki tarah leta hai (row par
+> likhi hui, verbatim), to producer ek hi jagah badalna kaafi tha.
+>
+> ✅ Live verify: naya shape `staging/dev/…` CDN par **403** deta hai — **AWS me
+> kuch badle bina**, kyunki jo policy pehle se bani thi wahi ab match karti hai.
 
 > ### 🔴 G13 — G2 ne jo khud chhod diya tha
 >
