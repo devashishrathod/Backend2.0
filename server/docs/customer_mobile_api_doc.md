@@ -1265,7 +1265,13 @@ Profile update. JSON ya multipart dono chalta hai (image ke liye multipart).
 | `dob` | string | ISO date (`YYYY-MM-DD`) | Age check commented out hai — 18+ validation abhi nahi lagti |
 | `appliedReferralCode` | string | Max 20 chars, `""` allowed | Kisi ka referral code apply karna |
 | `image` | file | – | **Sirf multipart me.** Field name exactly `image` |
-| `uploadId` | ObjectId 🆕 | – | Presigned raasta — `/uploads/presign` → S3 → `/uploads/confirm` se mila id. ⚠️ `image` ke saath **nahi**; dono bhejne par `422` |
+| `uploadId` | ObjectId 🆕 | – | Presigned raasta — `/uploads/presign` → S3 par POST → wahi `uploadId` yahan. ⚠️ `image` ke saath **nahi**; dono bhejne par `422` |
+
+⚠️ **`/uploads/confirm` beech me bulana optional hai.** Bulao to app user ko
+galat file ya badi file ke baare me picker par hi bata sakti hai; na bulao to ye
+endpoint khud kar leta hai. **Dono chalte hain** — pehle aisa nahi tha: confirm
+karne ke baad yahan `409 "That upload has already been used."` aata tha, ek hi
+baar upload ki gayi photo par.
 
 ⚠️ **Purani photo nayi ke save hone ke BAAD delete hoti hai.** Pehle ulta tha —
 ek fail hua save purani photo le jaata aur profile ek dead URL par reh jaata.

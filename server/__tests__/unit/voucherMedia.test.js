@@ -576,6 +576,110 @@ describe("uploadVoucherImages — what reaches the facade", () => {
     );
     deleteSpy.mockRestore();
   });
+
+  /**
+   * 🔴 A refusal the vendor can act on must not become a 500.
+   *
+   * Every failure here came back as `500 "Failed to upload voucher images."` —
+   * a wrong id (404), the wrong surface (422), a file over the limit (413) and
+   * an upload already used (409) were one indistinguishable sentence, and the
+   * one that said what to fix went only to the server console. A vendor could
+   * not tell their own mistake from our outage, and the panel had nothing to
+   * branch on.
+   *
+   * ⚠️ This is how the presigned-upload bug reached production looking like a
+   * server fault: the real answer was a 409 about an upload that had already
+   * been confirmed, and nobody could see it.
+   */
+  test.each([
+    [409, "That upload has already been used."],
+    [404, "That upload was not found."],
+    [413, "That file is 12 MB. The limit here is 10 MB."],
+    [422, "VOUCHER_IMAGE does not accept MP4 files."],
+  ])("a %s keeps its own status and its own words", async (statusCode, message) => {
+    const deleteSpy = jest
+      .spyOn(storageFacade, "deleteAssets")
+      .mockResolvedValue({ deleted: 0, failed: 0 });
+    acceptSpy.mockImplementationOnce(async () => {
+      throw Object.assign(new Error(message), { statusCode });
+    });
+
+    const thrown = await uploadVoucherImages(who, [attached("a.jpg")], "v1").then(
+      () => null,
+      (error) => error,
+    );
+
+    expect(thrown.statusCode).toBe(statusCode);
+    expect(thrown.message).toBe(message);
+    deleteSpy.mockRestore();
+  });
+
+  /**
+   * ⚠️ Rollback still runs first. Re-throwing before the delete would leave every
+   * image uploaded ahead of the failure on storage, paid for and unreferenced —
+   * the exact defect the rollback exists for.
+   */
+  test("a refusal still takes back what was already uploaded", async () => {
+    const deleteSpy = jest
+      .spyOn(storageFacade, "deleteAssets")
+      .mockResolvedValue({ deleted: 0, failed: 0 });
+    acceptSpy
+      .mockImplementationOnce(async () => ({
+        url: "https://cdn.example.com/one.webp",
+        storage: storageRef,
+        metadata: { mimeType: "image/jpeg", size: 1024 },
+      }))
+      .mockImplementationOnce(async () => {
+        throw Object.assign(new Error("That upload has already been used."), {
+          statusCode: 409,
+        });
+      });
+
+    const thrown = await uploadVoucherImages(
+      who,
+      [attached("a.jpg"), attached("b.jpg")],
+      "v1",
+    ).then(
+      () => null,
+      (error) => error,
+    );
+
+    expect(thrown.statusCode).toBe(409);
+    expect(deleteSpy).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ storage: storageRef })]),
+    );
+    deleteSpy.mockRestore();
+  });
+
+  /**
+   * ⚠️ The other half: a fault with no status really is ours — a quota, a
+   * credential, a network drop — and its message would mean nothing to a vendor.
+   * That one keeps the generic sentence, and the original still reaches the log.
+   */
+  test("an error with no status is still reported as ours", async () => {
+    const deleteSpy = jest
+      .spyOn(storageFacade, "deleteAssets")
+      .mockResolvedValue({ deleted: 0, failed: 0 });
+    const logged = jest.spyOn(console, "error").mockImplementation(() => {});
+    acceptSpy.mockImplementationOnce(async () => {
+      throw new Error("getaddrinfo ENOTFOUND s3.ap-south-1.amazonaws.com");
+    });
+
+    const thrown = await uploadVoucherImages(who, [attached("a.jpg")], "v1").then(
+      () => null,
+      (error) => error,
+    );
+
+    expect(thrown.statusCode).toBe(500);
+    expect(thrown.message).toBe("Failed to upload voucher images.");
+    // The real cause is not lost — it is just not the vendor's problem.
+    expect(logged).toHaveBeenCalledWith(
+      "Voucher image upload failed:",
+      expect.stringContaining("ENOTFOUND"),
+    );
+    logged.mockRestore();
+    deleteSpy.mockRestore();
+  });
 });
 
 describe("uploadVoucherBannerMedia — what it refuses before paying for an upload", () => {

@@ -8562,7 +8562,28 @@ form.append("file", file);            // sabse aakhir me
 await fetch(data.url, { method: "POST", body: form });
 ```
 
-S3 seedha `204` deta hai (koi body nahi). Uske baad `/uploads/confirm`.
+S3 seedha `204` deta hai (koi body nahi). Ab aapke paas ek `uploadId` hai, aur
+usse do tarah chal sakte hain — **dono chalti hain**:
+
+| | Kya karein | Kab chunein |
+|---|---|---|
+| **A. Pehle confirm** | `/uploads/confirm` (#95), phir wahi `uploadId` surface ko | ✅ **Suggested.** Vendor ko galat file / badi file ka pata **picker khula hone par** hi chal jata hai, poora form bharne ke baad nahi |
+| **B. Seedha surface ko** | `uploadId` seedha surface ko (`/vouchers/create` waghairah) — confirm bilkul mat bulaiye | File ka object key me row ki id bhi aa jaati hai (`images/vouchers/<voucherId>/…`), jo bucket browse karte waqt suvidha deti hai |
+
+⚠️ **Dono bhejna nahi hai** — `uploadId` ke saath wahi file `file` field me bhi
+attach karenge to `422` milega ("either a file or an uploadId, not both").
+
+> ### 🔴 Pehle raasta A toota hua tha — ab nahi
+>
+> Ye doc hamesha se raasta A batati thi, par surface `uploadId` lene par file ko
+> **dobara** confirm karti thi, aur dusri baar replay guard lag jaata tha. Nateeja:
+> ek hi baar upload ki gayi file par `409 "That upload has already been used."` —
+> aur voucher create uske upar `500 "Failed to upload voucher images."` de deta tha.
+>
+> Ye **saari** presigned surfaces par tha (logo, cover, avatar, showcase, category,
+> banner, ticker, voucher), kyunki sab ek hi facade se guzarti hain. Ab guard
+> *"confirm ho gaya"* par nahi, *"kisi row ne le liya"* par hai — to dono raaste
+> chalte hain aur ek upload phir bhi sirf ek hi row par lag sakti hai.
 
 ### Errors
 | Status | Message | Kab |
@@ -8627,10 +8648,25 @@ Upload hui file ko uski asli jagah par le jaata hai, aur batata hai wo **sach me
 Ye `storage` object aap kahin bhejte **nahi** — agla step surface ka apna endpoint
 hai, aur use sirf `uploadId` chahiye.
 
-⚠️ **Vendor panel ki koi surface abhi `uploadId` nahi leti.** Pehli surface
-category hai (U-2), jo admin-only hai — admin doc **#61 / #64**. Showcase U-3 me
-judta hai, voucher U-4 me, baaki U-5 me. Tab tak vendor panel ke liye ye dono
-endpoint **ready hain par kisi ke kaam ke nahi** — multipart hi chalu hai.
+### ⚠️ Ye step **optional** hai
+
+Surface khud bhi confirm kar leti hai. Ise bulane ka ek hi faayda hai, aur wo
+bada hai: **vendor ko galat file ka pata turant chal jata hai**, poora form
+bharne aur Save dabane ke baad nahi. File ki asli pehchaan (magic bytes) aur asli
+size yahin naapa jaata hai.
+
+Chhoti si keemat: yahan `entityId` aksar pata nahi hota (create ke waqt row bani
+hi nahi hoti), to object key me `<rowId>/` wala segment nahi aayega. Ye sirf
+bucket browse karne ki suvidha hai — code kahin bhi key se id nahi padhta.
+
+**Kaun si surfaces `uploadId` leti hain:** ab **saari**. Voucher (images, banner,
+poster), showcase (media + thumbnail), brand logo/cover, sub-brand logo/cover,
+brand feature icon, category, sub-category, banner + poster, ticker icon, aur
+profile image. Har ek ke apne section me field ka naam diya hai.
+
+⚠️ Ye line pehle kehti thi *"Vendor panel ki koi surface abhi `uploadId` nahi
+leti"* — wo U-2 ke waqt sach thi aur U-4/U-5 ke baad kabhi update nahi hui. Usi
+purani line ki wajah se ye nahi pakda gaya ki raasta A kabhi test hi nahi hua tha.
 
 ### Errors
 | Status | Message | Kab |
@@ -8648,7 +8684,16 @@ endpoint **ready hain par kisi ke kaam ke nahi** — multipart hi chalu hai.
 
 **2. Kisi aur ka `uploadId` `404` deta hai, `403` nahi.** Jo id maujood hai uske baare me "ye aapki nahi" keh dena, ye bata dena hai ki wo id asli hai.
 
-**3. Ek upload ek hi baar.** Warna ek hi file do alag rows par lag jaati, aur doosri wo file rakhti jiske liye usne kuch diya hi nahi.
+**3. Ek upload ek hi row par.** Warna ek hi file do alag rows par lag jaati, aur doosri wo file rakhti jiske liye usne kuch diya hi nahi.
+
+> 🔴 **Ye guard ab confirm par nahi, "kisi row ne le liya" par hai.** Pehle dono
+> ek hi cheez thi, aur isi wajah se raasta A (confirm → phir surface) kabhi kaam
+> nahi karta tha: confirm guard laga deta, aur surface ko `409` mil jaata.
+>
+> Ab: **confirm** dobara karoge to `409` (neeche wali table) — kyunki file to
+> `staging/` se ja hi chuki hai, dobara karne ko kuch bacha hi nahi. Aur **surface
+> ko wahi id do baar** doge to bhi `409`, us row ke liye jo doosre number par aayi.
+> Ek confirm + ek surface = bilkul theek, aur yahi normal raasta hai.
 
 **4. 🔴 Size ki limit admin ki hai, aur wahi dono jagah lagti hai.** Ek hi number
 teen se banta hai — `min(code ka ceiling, Setting.storage.limits, surface

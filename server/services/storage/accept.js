@@ -302,7 +302,7 @@ const fromIntent = async (actor, { uploadId, purpose, entityId, entry }) => {
     _id: uploadId,
     userId: actor.userId,
   })
-    .select("purpose consumedAt declaredFileName")
+    .select("purpose consumedAt attachedAt storage verified declaredFileName")
     .lean();
 
   /**
@@ -321,7 +321,46 @@ const fromIntent = async (actor, { uploadId, purpose, entityId, entry }) => {
   }
 
   const { confirmUpload, publicUrl } = require("./index");
-  const confirmed = await confirmUpload(actor, uploadId, { entityId });
+
+  /**
+   * 🔴 The client may have confirmed it already, and that is not a mistake.
+   *
+   * `POST /uploads/confirm` is a live endpoint and every panel doc tells a
+   * client to call it before sending the id here — so this branch is the
+   * *documented* sequence, not an edge case. It used to walk into
+   * `confirmUpload`'s replay guard and come back **409 "That upload has already
+   * been used."** about a file uploaded exactly once. Every presigned surface
+   * had it; voucher create then wrapped it into a 500.
+   *
+   * ⚠️ Nothing is re-read and nothing is re-copied. Confirm already settled what
+   * the bytes are and moved the object — the answer is on the row, and doing it
+   * twice is not possible anyway: confirm deletes the staging object it copied
+   * from.
+   *
+   * ⚠️ `entityId` therefore does not reach the key on this road; the object was
+   * placed before the row it belongs to existed. Nothing reads an entity back
+   * out of a key — it groups objects for a human browsing the bucket, which is
+   * worth losing to keep the client's early refusal.
+   */
+  const confirmed = intent.consumedAt
+    ? fromConfirmedIntent(intent)
+    : await confirmUpload(actor, uploadId, { entityId });
+
+  /**
+   * 🔴 The one-use claim, and it is deliberately **after** the file is known to
+   * be real.
+   *
+   * Claiming first would burn an upload that never became anything: a refused
+   * type or an oversize file would leave the id spent and the vendor re-picking
+   * a file the platform had not even accepted. Confirm discards the object in
+   * those cases, so nothing is left attached to.
+   *
+   * ⚠️ Nothing is wasted by claiming late either. Two saves racing on an
+   * unconfirmed id are already decided by confirm's own conditional update, so
+   * only one of them ever reaches this line; two racing on a confirmed id do no
+   * storage work at all.
+   */
+  await claimForAttachment(intent._id);
 
   /**
    * ⚠️ No URL for a private object. `publicUrl` refuses to build one — by
@@ -337,6 +376,45 @@ const fromIntent = async (actor, { uploadId, purpose, entityId, entry }) => {
     url,
     originalName: intent.declaredFileName,
   });
+};
+
+/**
+ * What `confirmUpload` answered the first time, read back off the row.
+ *
+ * ⚠️ Both halves are written by one `$set`, so a row carrying one without the
+ * other was not written by this build. Saying so is better than the alternative:
+ * a missing `verified` would flow into `asUploadResult`'s `??` fallbacks and
+ * store a media row with a null mime type and a zero size, which nothing
+ * downstream would complain about.
+ */
+const fromConfirmedIntent = (intent) => {
+  if (!intent.storage?.provider || !intent.verified?.contentType) {
+    throwError(
+      500,
+      "That upload was confirmed, but no file was recorded against it.",
+    );
+  }
+  return { storage: intent.storage, metadata: intent.verified };
+};
+
+/**
+ * Take the upload for this row, or refuse because somebody else already did.
+ *
+ * ⚠️ Conditional, never read-then-write. Two saves landing together would both
+ * see `attachedAt: null` and both proceed, which is the entire failure this
+ * guards: one uploaded object on two rows, the second holding a file nobody
+ * paid for.
+ */
+const claimForAttachment = async (uploadId) => {
+  const claimed = await Upload.findOneAndUpdate(
+    { _id: uploadId, attachedAt: null },
+    { $set: { attachedAt: new Date() } },
+    // `returnDocument: "after"` rather than `new: true` — the latter is
+    // deprecated in Mongoose 9 and warns on every upload a surface takes. Only
+    // the match matters here, not which copy of the row comes back.
+    { returnDocument: "after" },
+  );
+  if (!claimed) throwError(409, "That upload has already been used.");
 };
 
 /**

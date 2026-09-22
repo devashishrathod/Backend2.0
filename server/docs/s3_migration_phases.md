@@ -1011,6 +1011,22 @@ Ek row = **allowed types + kaun kar sakta hai + kiska hai + kitna bada + kahan j
 8. DeleteObject staging/…  (best effort)
 ```
 
+> ### 🔴 Step 1 ka `consumedAt` check **sirf confirm ka** hai, surface ka nahi
+>
+> Surface (`acceptUpload`) is check par nahi rukti. Row pehle se confirmed mile to
+> wo `storage` + `verified` wahin se padh leti hai aur S3 ko chhuti hi nahi —
+> chhune ko kuch bacha bhi nahi hota, step 8 staging file delete kar chuka hota
+> hai.
+>
+> Pehle surface bhi isi check me girti thi, aur wahi bug tha: client ne
+> `/uploads/confirm` bulaya (jo har panel doc batati hai), phir surface ko id
+> bheji, aur surface ko `409 "That upload has already been used."` mila — ek hi
+> baar upload ki gayi file par. **Saari 11 presigned surfaces** par tha; voucher
+> create usko `500 "Failed to upload voucher images."` bana deta tha.
+>
+> Guard ab `Upload.attachedAt` par hai — *"kisi row ne le liya"* — aur wo
+> **surface** lagati hai, confirm nahi. Dobara confirm karna abhi bhi `409` hai.
+
 Magic bytes — F-12 aur F-13 ka asli fix:
 
 | Bytes | Type | Prefix |
@@ -1043,7 +1059,7 @@ Wahi 1 KB image ke dimensions bhi de deta hai (JPEG SOF0 / PNG IHDR / WebP VP8X)
 |---|---|---|
 | E-2 | Upload kiya, confirm nahi | `staging/` lifecycle 24h |
 | E-3 | Object hi nahi | `HeadObject` 404 → `400` |
-| E-4 | Same uploadId do baar | `consumedAt` → `409` |
+| E-4 | Same uploadId do baar | 🔴 **Ab `attachedAt` → `409`, `consumedAt` nahi.** Neeche dekhein |
 | E-5 | Kisi aur ka uploadId | `userId` mismatch → `403` |
 | E-6 | Key badal kar upload | S3 policy `starts-with $key` |
 | E-7 | Content-Type jhooth | Magic bytes → `400` + delete |
